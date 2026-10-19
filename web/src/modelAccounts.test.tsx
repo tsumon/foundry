@@ -471,9 +471,8 @@ it("creates OpenAI SIWC metadata without exposing API-key or live-login operatio
   fireEvent.click(manage);
   expect(screen.queryByLabelText("凭据")).not.toBeInTheDocument();
   expect(
-    await screen.findByRole("button", { name: "真实登录（未开放）" }),
+    await screen.findByRole("button", { name: "本地模拟登录（等待路由策略）" }),
   ).toBeDisabled();
-  expect(screen.getByText(/生产真实登录不会发起请求/)).toBeVisible();
   const post = fetcher.mock.calls.find(
     ([path, init]) => path === "/api/model-accounts" && init?.method === "POST",
   )!;
@@ -569,6 +568,92 @@ it("keeps legacy authorization and acceptance actions closed when route policy f
   expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
   expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
   expect(document.body.textContent).not.toContain("untrusted acceptance detail");
+});
+
+it("restores only backend-declared legacy SIWC controls for a non-gate history", async () => {
+  const siwc = {
+    ...accountFixture,
+    id: "legacy-siwc-account",
+    name: "SYNTHETIC legacy subscription",
+    provider: "openai",
+    base_url: "http://127.0.0.1:9911/v1",
+    auth_method: "openai_siwc",
+    billing_mode: "subscription",
+  };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === "/api/profiles") return response(settings);
+    if (path === "/api/model-routes")
+      return response({
+        routes: [],
+        runtime: {
+          live_authorization: false,
+          live_discovery: false,
+          live_inference: false,
+          simulation_inference: false,
+          simulation_authorization: true,
+          automatic_paid_fallback: false,
+          adapters: [],
+        },
+      });
+    if (path === "/api/model-accounts") return response({ accounts: [siwc] });
+    if (path === "/api/model-authorizations")
+      return response({
+        authorizations: [
+          {
+            id: "legacy-authorization",
+            account_id: siwc.id,
+            issuer: "http://127.0.0.1:9911",
+            subject: "synthetic-subject",
+            client_id: "synthetic-client",
+            scopes: [
+              "openid",
+              "offline_access",
+              "resource.invoke",
+              "chatgpt.tokens.use.direct",
+            ],
+            spend_class: "subscription_only",
+            state: "available",
+            generation: 1,
+            expires_at: "2026-10-19T02:00:00Z",
+          },
+        ],
+        remote_revocations: [],
+      });
+    if (
+      path ===
+      "/api/model-accounts/legacy-siwc-account/acceptance-operations"
+    )
+      return response({
+        operations: [],
+        simulation_enabled: false,
+        routes: [],
+        legacy_siwc_simulation_enabled: true,
+      });
+    if (path === "/api/model-authorizations/start" && init?.method)
+      return response({
+        flow: {
+          operation_id: "legacy-flow",
+          state: "waiting",
+          handoff_url: "http://127.0.0.1:9911/auth/start",
+          expires_at: "2026-10-19T03:00:00Z",
+        },
+      });
+    return response({ account: siwc, credentials: [] });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<ModelSettings />);
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "管理账户 SYNTHETIC legacy subscription",
+    }),
+  );
+
+  const start = await screen.findByRole("button", { name: "开始本地模拟登录" });
+  expect(start).toBeEnabled();
+  expect(screen.getByRole("button", { name: "刷新本地模拟授权" })).toBeEnabled();
+  fireEvent.click(start);
+  expect(await screen.findByText("legacy-flow")).toBeVisible();
+  expect(fetcher.mock.calls.filter(([, request]) => request?.method)).toHaveLength(1);
 });
 
 it("clears uncertain secrets, suppresses duplicates and keeps original GET-only receipt across settings unmount", async () => {

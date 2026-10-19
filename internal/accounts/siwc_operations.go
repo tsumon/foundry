@@ -54,7 +54,7 @@ func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID
 		return SIWCFlow{}, safeError(err)
 	}
 	account, err := s.lifecycle.store.GetModelAccount(accountID)
-	if err != nil || account.Revision != expectedRevision || !account.Enabled || account.Provider != "openai" || account.AuthMethod != "openai_siwc" || account.BillingMode != "subscription" || !validSIWCResource(account.BaseURL) {
+	if err != nil || account.Revision != expectedRevision || !s.LegacySimulationEligible(account) {
 		return SIWCFlow{}, ErrInvalid
 	}
 	clientID := "dynamic_agent_client"

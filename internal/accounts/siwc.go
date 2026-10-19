@@ -150,6 +150,13 @@ func validSIWCLoopbackOrigin(origin string) bool {
 
 func (s *SIWCService) SimulationEnabled() bool { return s != nil && s.simulation }
 
+// LegacySimulationEligible is the side-effect-free portion of the legacy
+// subscription SIWC start guard. HTTP adds its owned-account and recovery
+// gates before exposing this as an affirmative capability.
+func (s *SIWCService) LegacySimulationEligible(account domain.ModelAccount) bool {
+	return s != nil && s.simulation && account.Enabled && account.Provider == "openai" && account.AuthMethod == "openai_siwc" && account.BillingMode == "subscription" && validSIWCResource(account.BaseURL)
+}
+
 func liveSIWCDenial() error {
 	return &model.ProviderError{Code: "live_provider_access_pending_confirmation", Certainty: "not_sent"}
 }

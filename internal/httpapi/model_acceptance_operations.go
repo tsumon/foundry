@@ -17,6 +17,17 @@ type acceptanceRouteView struct {
 	ConnectionPurpose string `json:"connection_purpose,omitempty"`
 }
 
+// legacySIWCSimulationEligible is deliberately independent from acceptance
+// readiness: non-gate synthetic SIWC fixtures retain their existing local
+// controls, while owned acceptance accounts can never bypass their gate.
+func (s *server) legacySIWCSimulationEligible(accountID string) bool {
+	if s.recoveryReadOnly || s.acceptance.OwnsAccount(accountID) {
+		return false
+	}
+	account, err := s.store.GetModelAccount(accountID)
+	return err == nil && s.siwc.LegacySimulationEligible(account)
+}
+
 func (s *server) rejectAcceptanceBypass(w http.ResponseWriter, account string) bool {
 	if s.acceptance.OwnsAccount(account) {
 		writeError(w, 403, "acceptance_gate_required", "this synthetic account requires a separate acceptance approval")
@@ -62,7 +73,7 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 			for _, v := range s.acceptance.Routes(account) {
 				routes = append(routes, acceptanceRouteView{v.ID, v.Adapter, v.Environment, v.SpendClass, v.BaseURL, s.acceptance.ConnectionPurpose(v.ID)})
 			}
-			writeJSON(w, 200, map[string]any{"operations": items, "simulation_enabled": s.acceptance.SimulationEligible(account) && !s.recoveryReadOnly, "routes": routes})
+			writeJSON(w, 200, map[string]any{"operations": items, "simulation_enabled": s.acceptance.SimulationEligible(account) && !s.recoveryReadOnly, "legacy_siwc_simulation_enabled": s.legacySIWCSimulationEligible(account), "routes": routes})
 			return
 		}
 		if r.Method == http.MethodPost {

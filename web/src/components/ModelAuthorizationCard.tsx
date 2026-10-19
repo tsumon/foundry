@@ -137,10 +137,12 @@ export function ModelAuthorizationCard({
   account,
   runtime,
   connectionPolicy = "unavailable",
+  legacySIWCCapability = false,
 }: {
   account: ModelAccount;
   runtime?: ModelRuntime;
   connectionPolicy?: ModelAcceptanceConnectionPolicy;
+  legacySIWCCapability?: boolean;
 }) {
   const [authorizations, setAuthorizations] = useState<ModelAuthorization[]>(
     [],
@@ -310,7 +312,7 @@ export function ModelAuthorizationCard({
     });
 
   const identityOnly = connectionPolicy === "identity_only";
-  const legacyPolicy = connectionPolicy === "legacy";
+  const legacyPolicy = legacySIWCCapability === true;
   const refreshable = legacyPolicy
     ? authorizations.find((item) => item.state === "available")
     : undefined;

@@ -45,6 +45,7 @@ export function ModelAccounts({
   const [readError, setReadError] = useState("");
   const [connectionPolicy, setConnectionPolicy] =
     useState<ModelAcceptanceConnectionPolicy>("unavailable");
+  const [legacySIWCCapability, setLegacySIWCCapability] = useState(false);
   const selectionEpoch = useRef(0);
   const { busy, error, setError, run } = useCapabilityRequest(true);
   const merge = (account: ModelAccount) =>
@@ -90,6 +91,7 @@ export function ModelAccounts({
     void run(async (valid) => {
       const epoch = ++selectionEpoch.current;
       setConnectionPolicy("unavailable");
+      setLegacySIWCCapability(false);
       try {
         const data = await modelAccountApi.detail(id);
         if (valid() && epoch === selectionEpoch.current) {
@@ -354,6 +356,7 @@ export function ModelAccounts({
               account={selected}
               runtime={runtime}
               connectionPolicy={connectionPolicy}
+              legacySIWCCapability={legacySIWCCapability}
             />
           )}
           <ModelAcceptanceCard
@@ -364,6 +367,7 @@ export function ModelAccounts({
             account={selected}
             refreshAccount={refresh}
             onConnectionPolicy={setConnectionPolicy}
+            onLegacySIWCCapability={setLegacySIWCCapability}
           />
         </section>
       )}

@@ -197,6 +197,7 @@ export interface ModelAcceptanceOperation {
 export interface ModelAcceptanceHistory {
   operations: ModelAcceptanceOperation[];
   simulation_enabled: boolean;
+  legacy_siwc_simulation_enabled?: boolean;
   routes: ModelAcceptanceRoute[];
 }
 export interface ModelAcceptanceProposal {

@@ -202,6 +202,8 @@ function validHistory(
   return (
     !!value &&
     typeof value.simulation_enabled === "boolean" &&
+    (value.legacy_siwc_simulation_enabled === undefined ||
+      typeof value.legacy_siwc_simulation_enabled === "boolean") &&
     Array.isArray(value.operations) &&
     Array.isArray(value.routes) &&
     value.routes.every(validRoute) &&
@@ -265,10 +267,12 @@ export function ModelAcceptanceOperations({
   account,
   refreshAccount,
   onConnectionPolicy,
+  onLegacySIWCCapability,
 }: {
   account: ModelAccount;
   refreshAccount: () => Promise<void>;
   onConnectionPolicy?: (policy: ModelAcceptanceConnectionPolicy) => void;
+  onLegacySIWCCapability?: (enabled: boolean) => void;
 }) {
   return (
     <AcceptanceOperations
@@ -276,6 +280,7 @@ export function ModelAcceptanceOperations({
       account={account}
       refreshAccount={refreshAccount}
       onConnectionPolicy={onConnectionPolicy}
+      onLegacySIWCCapability={onLegacySIWCCapability}
     />
   );
 }
@@ -284,10 +289,12 @@ function AcceptanceOperations({
   account,
   refreshAccount,
   onConnectionPolicy,
+  onLegacySIWCCapability,
 }: {
   account: ModelAccount;
   refreshAccount: () => Promise<void>;
   onConnectionPolicy?: (policy: ModelAcceptanceConnectionPolicy) => void;
+  onLegacySIWCCapability?: (enabled: boolean) => void;
 }) {
   const [snapshot, setSnapshot] = useState<ModelAcceptanceHistory>();
   const [loaded, setLoaded] = useState(false);
@@ -315,6 +322,9 @@ function AcceptanceOperations({
     setSnapshot(history);
     setLoaded(true);
     onConnectionPolicy?.(connectionPolicy(history));
+    onLegacySIWCCapability?.(
+      history.legacy_siwc_simulation_enabled === true,
+    );
     setRouteID((current) =>
       history.routes.some((route) => route.id === current)
         ? current
@@ -327,6 +337,7 @@ function AcceptanceOperations({
     setError(undefined);
     clearSnapshot();
     onConnectionPolicy?.("unavailable");
+    onLegacySIWCCapability?.(false);
     try {
       const history = await modelAcceptanceApi.history(account.id);
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
@@ -342,6 +353,7 @@ function AcceptanceOperations({
       setError(decoded);
       setLoaded(false);
       onConnectionPolicy?.("unavailable");
+      onLegacySIWCCapability?.(false);
     } finally {
       if (lifecycle.current.active && lifecycle.current.epoch === epoch)
         setReading(false);
@@ -353,6 +365,7 @@ function AcceptanceOperations({
     lifecycle.current.epoch++;
     lifecycle.current.locked = false;
     onConnectionPolicy?.("unavailable");
+    onLegacySIWCCapability?.(false);
     void readHistory();
     return () => {
       lifecycle.current.active = false;
@@ -455,6 +468,7 @@ function AcceptanceOperations({
         clearSnapshot();
         setLoaded(false);
         onConnectionPolicy?.("unavailable");
+        onLegacySIWCCapability?.(false);
       }
       if (decoded.requiresRead) setUnresolved({ operationID });
     } finally {
@@ -473,6 +487,7 @@ function AcceptanceOperations({
     clearSnapshot();
     setLoaded(false);
     onConnectionPolicy?.("unavailable");
+    onLegacySIWCCapability?.(false);
     try {
       let recovered: ModelAcceptanceOperation | undefined;
       if (unresolved.operationID) {
@@ -529,6 +544,7 @@ function AcceptanceOperations({
         clearSnapshot();
         setLoaded(false);
         onConnectionPolicy?.("unavailable");
+        onLegacySIWCCapability?.(false);
         setError(
           cause instanceof Error && cause.message === "invalid receipt"
             ? { ...modelAcceptanceError(cause), code: "invalid_receipt" }

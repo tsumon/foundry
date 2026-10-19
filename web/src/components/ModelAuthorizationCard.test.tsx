@@ -66,6 +66,7 @@ it("reads safe history without mutations and keeps production login and refresh 
       account={account}
       runtime={runtime(false)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
 
@@ -127,6 +128,7 @@ it("starts, checks, and cancels a mock flow only after explicit clicks with exac
       account={account}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   await screen.findByText("尚无此账户的授权历史");
@@ -242,6 +244,7 @@ it.each([
         account={account}
         runtime={runtime(true)}
         connectionPolicy="legacy"
+        legacySIWCCapability
       />,
     );
     await screen.findByText("尚无此账户的授权历史");
@@ -270,6 +273,7 @@ it("refreshes only with offline access and the exact account revision", async ()
       account={account}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   fireEvent.click(
@@ -315,6 +319,7 @@ it("invalidates stale availability and leaves history unknown when refresh recon
       account={account}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
 
@@ -382,6 +387,7 @@ it("allows exact-ID revocation of retained refresh-unknown and failed authorizat
       account={account}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
 
@@ -437,6 +443,7 @@ it("preserves durable local revocation when the remote production revoke is unco
       account={account}
       runtime={runtime(false)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   fireEvent.click(
@@ -480,6 +487,7 @@ it("marks failed reads unknown, ignores late unmounted data, and explains missin
       account={account}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   expect(screen.getByText(/授权历史尚未读取/)).toBeVisible();
@@ -499,6 +507,7 @@ it("marks failed reads unknown, ignores late unmounted data, and explains missin
       account={account}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   expect(
@@ -544,6 +553,7 @@ it("clears the prior account immediately and ignores its stale authorization rea
       account={account}
       runtime={runtime(false)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   await screen.findByText("authorization-one");
@@ -552,6 +562,7 @@ it("clears the prior account immediately and ignores its stale authorization rea
       account={otherAccount}
       runtime={runtime(false)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   expect(screen.queryByText("authorization-one")).not.toBeInTheDocument();
@@ -588,6 +599,7 @@ it("shows finite authorization errors and never retries an unknown result", asyn
       account={account}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   await screen.findByText("尚无此账户的授权历史");
@@ -616,6 +628,7 @@ it("treats a malformed authorization snapshot as unknown rather than empty", asy
       account={account}
       runtime={runtime(false)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(/授权结果未知/);
@@ -644,6 +657,7 @@ it("does not apply a late mock mutation result to a newly selected account", asy
       account={account}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   await screen.findByText("尚无此账户的授权历史");
@@ -658,6 +672,7 @@ it("does not apply a late mock mutation result to a newly selected account", asy
       account={otherAccount}
       runtime={runtime(true)}
       connectionPolicy="legacy"
+      legacySIWCCapability
     />,
   );
   await screen.findByText("尚无此账户的授权历史");

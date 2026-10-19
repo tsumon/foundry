@@ -1175,15 +1175,30 @@ it.each([
     ],
     raw: "malformed-identity",
   },
+  {
+    name: "malformed legacy capability",
+    routes: [],
+    operations: [],
+    simulation_enabled: false,
+    legacy_siwc_simulation_enabled: "enabled",
+    raw: "enabled",
+  },
 ])(
   "fails closed for $name instead of treating it as a legacy route",
-  async ({ routes, operations, raw }) => {
+  async ({
+    routes,
+    operations,
+    raw,
+    simulation_enabled = true,
+    legacy_siwc_simulation_enabled,
+  }) => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
         response({
           operations,
-          simulation_enabled: true,
+          simulation_enabled,
+          legacy_siwc_simulation_enabled,
           routes,
         }),
       ),

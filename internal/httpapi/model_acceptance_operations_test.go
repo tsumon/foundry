@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"foundry/internal/acceptance"
+	"foundry/internal/accounts"
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"net/http"
@@ -11,6 +12,52 @@ import (
 	"testing"
 	"time"
 )
+
+func TestAcceptanceHistoryDeclaresOnlyTrustedLegacySIWCCapability(t *testing.T) {
+	issuer := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer issuer.Close()
+	f := newFixture(t)
+	account, err := f.store.SaveModelAccount(domain.ModelAccount{ID: "legacy", Name: "legacy", Provider: "openai", BaseURL: issuer.URL + "/v1", AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.authenticate()
+	path := "/api/model-accounts/" + account.ID + "/acceptance-operations"
+	if rr := f.request(http.MethodGet, path, "", true); rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"legacy_siwc_simulation_enabled":false`) {
+		t.Fatalf("production capability=%d %s", rr.Code, rr.Body.String())
+	}
+	siwc, err := accounts.NewSIWCSimulation(f.handler.(*server).accounts, accounts.SIWCOptions{AuthorizationOrigin: issuer.URL, TokenOrigin: issuer.URL, OIDCOrigin: issuer.URL, JWKSOrigin: issuer.URL, RevocationOrigin: issuer.URL, Issuer: issuer.URL, FlowTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer siwc.Close()
+	installSIWC(t, f, siwc)
+	if rr := f.request(http.MethodGet, path, "", true); rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"simulation_enabled":false`) || !strings.Contains(rr.Body.String(), `"legacy_siwc_simulation_enabled":true`) {
+		t.Fatalf("legacy capability=%d %s", rr.Code, rr.Body.String())
+	}
+	s := f.handler.(*server)
+	s.recoveryReadOnly = true
+	if rr := f.request(http.MethodGet, path, "", true); rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"legacy_siwc_simulation_enabled":false`) {
+		t.Fatalf("recovery capability=%d %s", rr.Code, rr.Body.String())
+	}
+	s.recoveryReadOnly = false
+	route, err := f.store.CreateModelRoute(domain.ModelRoute{ID: "identity-route", AccountID: account.ID, Adapter: "openai_siwc_responses", Protocol: "responses", BaseURL: account.BaseURL, Environment: "simulation", SpendClass: "subscription_only", ExtraUsage: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.acceptance = acceptance.NewSimulation(f.store, acceptance.Options{Routes: []domain.ModelRoute{route}})
+	if rr := f.request(http.MethodGet, path, "", true); rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"legacy_siwc_simulation_enabled":false`) {
+		t.Fatalf("owned capability=%d %s", rr.Code, rr.Body.String())
+	}
+	s.acceptance = acceptance.NewSimulation(f.store, acceptance.Options{Routes: []domain.ModelRoute{route}, IdentityOnlyRouteIDs: []string{route.ID}})
+	if rr := f.request(http.MethodGet, path, "", true); rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"legacy_siwc_simulation_enabled":false`) {
+		t.Fatalf("identity-owned capability=%d %s", rr.Code, rr.Body.String())
+	}
+	s.acceptance = acceptance.NewSimulation(f.store, acceptance.Options{Routes: []domain.ModelRoute{route}, IdentityOnlyRouteIDs: []string{"missing-route"}})
+	if rr := f.request(http.MethodGet, path, "", true); rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"legacy_siwc_simulation_enabled":false`) {
+		t.Fatalf("invalid owned policy capability=%d %s", rr.Code, rr.Body.String())
+	}
+}
 
 func TestAcceptanceOperationsProductionHTTP(t *testing.T) {
 	f := newFixture(t)
