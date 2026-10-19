@@ -97,17 +97,27 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 		"code":          {code},
 		"code_verifier": {attempt.verifier},
 		"redirect_uri":  {attempt.redirectURI},
-		"resource":      {attempt.account.BaseURL},
 	}
-	tokens, err := s.requestSIWCToken(ctx, form)
+	if attempt.purpose != siwcPurposeIdentity {
+		form.Set("resource", attempt.account.BaseURL)
+	}
+	tokens, err := s.requestSIWCToken(ctx, form, attempt.purpose)
 	if err != nil {
 		return err
 	}
-	scopes, err := validateSIWCGrant(tokens.Scope, callbackScope, nil)
+	var scopes []string
+	if attempt.purpose == siwcPurposeIdentity {
+		if tokens.RefreshToken != "" {
+			return siwcFailure("entitlement_denied", "rejected")
+		}
+		scopes, err = validateSIWCIdentityGrant(tokens.Scope, callbackScope)
+	} else {
+		scopes, err = validateSIWCGrant(tokens.Scope, callbackScope, nil)
+	}
 	if err != nil {
 		return err
 	}
-	if hasSIWCScope(scopes, "offline_access") && tokens.RefreshToken == "" {
+	if attempt.purpose != siwcPurposeIdentity && hasSIWCScope(scopes, "offline_access") && tokens.RefreshToken == "" {
 		return siwcFailure("response_incomplete", "unknown")
 	}
 	discovery, err := s.fetchSIWCDiscovery(ctx)
@@ -119,11 +129,11 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 		return err
 	}
 	if current, currentErr := s.lifecycle.store.CurrentModelAuthorization(attempt.account.ID); currentErr == nil {
-		if current.Binding.Issuer != claims.Issuer || current.Binding.Subject != claims.Subject || current.Binding.ClientID != clientID {
+		if current.Binding.Issuer != claims.Issuer || current.Binding.Subject != claims.Subject || current.Binding.ClientID != clientID || current.Binding.SpendClass != attempt.purpose {
 			return siwcFailure("auth_invalid", "rejected")
 		}
 	}
-	binding := domain.ModelAuthorizationBinding{ID: attempt.authorizationID, AccountID: attempt.account.ID, Issuer: claims.Issuer, Subject: claims.Subject, ClientID: clientID, SpendClass: "subscription_only", Scopes: scopes}
+	binding := domain.ModelAuthorizationBinding{ID: attempt.authorizationID, AccountID: attempt.account.ID, Issuer: claims.Issuer, Subject: claims.Subject, ClientID: clientID, SpendClass: attempt.purpose, Scopes: scopes}
 	if err = validateSIWCMetadataNoTokenReflection(binding, tokens); err != nil {
 		return err
 	}
@@ -131,10 +141,15 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 		return err
 	}
 	expiresAt := time.Now().UTC().Add(time.Duration(tokens.ExpiresIn) * time.Second).Format(time.RFC3339)
-	_, err = s.lifecycle.CommitModelAuthorization(ctx, attempt.public.OperationID, binding, ModelTokenBundle{
-		AccessToken: tokens.AccessToken, RefreshToken: tokens.RefreshToken, IDToken: tokens.IDToken,
-		ExpiresAt: expiresAt, EarliestRefreshAt: tokens.EarliestRefreshAt, Resource: attempt.account.BaseURL,
-	})
+	bundle := ModelTokenBundle{AccessToken: tokens.AccessToken, RefreshToken: tokens.RefreshToken, IDToken: tokens.IDToken, ExpiresAt: expiresAt, EarliestRefreshAt: tokens.EarliestRefreshAt, Resource: attempt.account.BaseURL}
+	if attempt.purpose == siwcPurposeIdentity {
+		// Any optional access token was reflection-checked above, then discarded.
+		bundle.AccessToken = ""
+		bundle.RefreshToken = ""
+		bundle.EarliestRefreshAt = ""
+		bundle.ExpiresAt = time.Unix(claims.Expires, 0).UTC().Format(time.RFC3339)
+	}
+	_, err = s.lifecycle.CommitModelAuthorization(ctx, attempt.public.OperationID, binding, bundle)
 	if err != nil {
 		return err
 	}
@@ -142,7 +157,7 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 	return nil
 }
 
-func (s *SIWCService) requestSIWCToken(ctx context.Context, form url.Values) (siwcTokenResponse, error) {
+func (s *SIWCService) requestSIWCToken(ctx context.Context, form url.Values, purpose string) (siwcTokenResponse, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.options.TokenOrigin+siwcTokenPath, strings.NewReader(form.Encode()))
 	if err != nil {
 		return siwcTokenResponse{}, siwcFailure("request_rejected", "not_sent")
@@ -190,6 +205,12 @@ func (s *SIWCService) requestSIWCToken(ctx context.Context, form url.Values) (si
 	if decoder.Decode(&raw) != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return siwcTokenResponse{}, siwcFailure("response_incomplete", "unknown")
 	}
+	if purpose == siwcPurposeIdentity {
+		if !safeSIWCToken(raw.IDToken) || raw.RefreshToken != "" || raw.AccessToken != "" && !safeSIWCToken(raw.AccessToken) || raw.TokenType != "" && raw.TokenType != "Bearer" || len(raw.Scope) > 4096 || len(raw.EarliestRefreshAt) != 0 && !bytes.Equal(raw.EarliestRefreshAt, []byte("null")) {
+			return siwcTokenResponse{}, siwcFailure("response_incomplete", "unknown")
+		}
+		return siwcTokenResponse{AccessToken: raw.AccessToken, IDToken: raw.IDToken, TokenType: raw.TokenType, Scope: raw.Scope}, nil
+	}
 	expires, err := strconv.ParseInt(string(raw.ExpiresIn), 10, 64)
 	if err != nil || expires < 1 || expires > 86400 || !safeSIWCToken(raw.AccessToken) || raw.RefreshToken != "" && !safeSIWCToken(raw.RefreshToken) || !safeSIWCToken(raw.IDToken) || raw.TokenType != "Bearer" {
 		return siwcTokenResponse{}, siwcFailure("response_incomplete", "unknown")
@@ -199,6 +220,59 @@ func (s *SIWCService) requestSIWCToken(ctx context.Context, form url.Values) (si
 		return siwcTokenResponse{}, siwcFailure("response_incomplete", "unknown")
 	}
 	return siwcTokenResponse{AccessToken: raw.AccessToken, RefreshToken: raw.RefreshToken, IDToken: raw.IDToken, TokenType: raw.TokenType, ExpiresIn: expires, Scope: raw.Scope, EarliestRefreshAt: earliest}, nil
+}
+
+// validateSIWCIdentityGrant accepts only identity scopes. The provider can
+// omit both explicit scope fields; the signed ID token then proves openid only.
+func validateSIWCIdentityGrant(tokenScope, callbackScope string) ([]string, error) {
+	parse := func(raw string) (map[string]bool, error) {
+		if raw == "" {
+			return nil, nil
+		}
+		items := strings.Fields(raw)
+		if len(items) == 0 || len(items) > len(siwcIdentityRequestedScopes) {
+			return nil, ErrInvalid
+		}
+		allowed := make(map[string]bool, len(siwcIdentityRequestedScopes))
+		for _, scope := range siwcIdentityRequestedScopes {
+			allowed[scope] = true
+		}
+		result := make(map[string]bool, len(items))
+		for _, scope := range items {
+			if !allowed[scope] || result[scope] {
+				return nil, ErrInvalid
+			}
+			result[scope] = true
+		}
+		if !result["openid"] {
+			return nil, ErrInvalid
+		}
+		return result, nil
+	}
+	grant, err := parse(tokenScope)
+	if err != nil {
+		return nil, err
+	}
+	callback, err := parse(callbackScope)
+	if err != nil {
+		return nil, err
+	}
+	if grant != nil && callback != nil && !sameSIWCScopeSet(grant, callback) {
+		return nil, ErrInvalid
+	}
+	if grant == nil {
+		grant = callback
+	}
+	if grant == nil {
+		return []string{"openid"}, nil
+	}
+	ordered := make([]string, 0, len(grant))
+	for _, scope := range siwcIdentityRequestedScopes {
+		if grant[scope] {
+			ordered = append(ordered, scope)
+		}
+	}
+	return ordered, nil
 }
 
 func hasSIWCScope(scopes []string, wanted string) bool {

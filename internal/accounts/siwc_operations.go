@@ -31,6 +31,13 @@ const (
 
 var siwcRequestedScopes = []string{"openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"}
 
+var siwcIdentityRequestedScopes = []string{"openid", "profile", "email"}
+
+const (
+	siwcPurposeSubscription = "subscription_only"
+	siwcPurposeIdentity     = "identity_only"
+)
+
 func randomSIWCValue(bytes int) (string, error) {
 	raw := make([]byte, bytes)
 	if _, err := rand.Read(raw); err != nil {
@@ -39,7 +46,10 @@ func randomSIWCValue(bytes int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID string, expectedRevision int64, ownedStop *func()) (SIWCFlow, error) {
+func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID string, expectedRevision int64, purpose string, ownedStop *func()) (SIWCFlow, error) {
+	if purpose != siwcPurposeSubscription && purpose != siwcPurposeIdentity {
+		return SIWCFlow{}, ErrInvalid
+	}
 	if err := ctx.Err(); err != nil {
 		return SIWCFlow{}, safeError(err)
 	}
@@ -50,7 +60,7 @@ func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID
 	clientID := "dynamic_agent_client"
 	current, currentErr := s.lifecycle.store.CurrentModelAuthorization(accountID)
 	if currentErr == nil {
-		if current.Binding.AccountID != accountID || current.Binding.Issuer != s.options.Issuer || current.Binding.ClientID == "" {
+		if current.Binding.AccountID != accountID || current.Binding.Issuer != s.options.Issuer || current.Binding.ClientID == "" || purpose == siwcPurposeIdentity && current.Binding.SpendClass != siwcPurposeIdentity {
 			return SIWCFlow{}, ErrInvalid
 		}
 		clientID = current.Binding.ClientID
@@ -95,20 +105,26 @@ func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID
 	attempt := &siwcAttempt{
 		public: SIWCFlow{OperationID: operationID, State: "waiting", HandoffURL: "http://" + host + siwcHandoffPath, ExpiresAt: expires.Format(time.RFC3339)},
 		cancel: cancel, listener: listener, account: account, authorizationID: authorizationID,
-		state: state, nonce: nonce, verifier: verifier, redirectURI: redirectURI, clientID: clientID,
+		state: state, nonce: nonce, verifier: verifier, redirectURI: redirectURI, clientID: clientID, purpose: purpose,
 	}
 	challenge := sha256.Sum256([]byte(verifier))
+	requestedScopes := siwcRequestedScopes
+	if purpose == siwcPurposeIdentity {
+		requestedScopes = siwcIdentityRequestedScopes
+	}
 	query := url.Values{
 		"client_id":             {clientID},
 		"ext_agent_host_id":     {hostID},
 		"response_type":         {"code"},
 		"redirect_uri":          {redirectURI},
-		"scope":                 {strings.Join(siwcRequestedScopes, " ")},
-		"resource":              {account.BaseURL},
+		"scope":                 {strings.Join(requestedScopes, " ")},
 		"state":                 {state},
 		"nonce":                 {nonce},
 		"code_challenge_method": {"S256"},
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(challenge[:])},
+	}
+	if purpose != siwcPurposeIdentity {
+		query.Set("resource", account.BaseURL)
 	}
 	if clientID == "dynamic_agent_client" {
 		query.Set("agent_name_hint", "FOUNDRY")
@@ -284,6 +300,9 @@ func (s *SIWCService) refreshSimulation(ctx context.Context, authorizationID str
 	if err != nil || authorization.State != "available" || authorization.Binding.Issuer != s.options.Issuer {
 		return result, ErrUnavailable
 	}
+	if authorization.Binding.SpendClass == siwcPurposeIdentity {
+		return result, siwcFailure("entitlement_denied", "not_sent")
+	}
 	if !hasSIWCScope(authorization.Binding.Scopes, "offline_access") {
 		return result, siwcFailure("entitlement_denied", "not_sent")
 	}
@@ -321,7 +340,7 @@ func (s *SIWCService) refreshSimulation(ctx context.Context, authorizationID str
 		"refresh_token": {previous.RefreshToken},
 		"resource":      {previous.Resource},
 	}
-	tokens, err := s.requestSIWCToken(ctx, form)
+	tokens, err := s.requestSIWCToken(ctx, form, siwcPurposeSubscription)
 	if err != nil {
 		if terminalSIWCRefreshError(err) {
 			if _, revokeErr := s.lifecycle.RevokeModelAuthorization(context.Background(), authorizationID); revokeErr != nil {

@@ -92,9 +92,17 @@ func TestSIWCProductionGatePrecedesHostSecretAndNetworkWork(t *testing.T) {
 	if !errors.As(err, &provider) || provider.Code != "live_provider_access_pending_confirmation" || provider.Certainty != "not_sent" {
 		t.Fatalf("unsafe production Begin result: %v", err)
 	}
+	_, err = siwc.BeginIdentity(context.Background(), account.ID, account.Revision)
+	if !errors.As(err, &provider) || provider.Code != "live_provider_access_pending_confirmation" || provider.Certainty != "not_sent" {
+		t.Fatalf("unsafe production identity Begin result: %v", err)
+	}
 	_, stop, err := siwc.BeginOwnedSimulation(context.Background(), account.ID, account.Revision)
 	if stop != nil || !errors.As(err, &provider) || provider.Code != "live_provider_access_pending_confirmation" || provider.Certainty != "not_sent" {
 		t.Fatalf("unsafe production owned Begin result: %v", err)
+	}
+	_, stop, err = siwc.BeginOwnedIdentitySimulation(context.Background(), account.ID, account.Revision)
+	if stop != nil || !errors.As(err, &provider) || provider.Code != "live_provider_access_pending_confirmation" || provider.Certainty != "not_sent" {
+		t.Fatalf("unsafe production owned identity Begin result: %v", err)
 	}
 	if secrets.gets != 0 || secrets.sets != 0 || secrets.deletes != 0 {
 		t.Fatal("production gate touched secrets")

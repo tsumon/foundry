@@ -56,6 +56,8 @@ type siwcIssuerFixture struct {
 	earliestRefreshAt int64
 	accessToken       string
 	refreshToken      string
+	identityOnlyToken bool
+	identityResponse  func(client, nonce string) map[string]any
 	lastToken         url.Values
 	lastRevoke        url.Values
 }
@@ -130,6 +132,16 @@ func (f *siwcIssuerFixture) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		if f.identityResponse != nil {
+			_ = json.NewEncoder(w).Encode(f.identityResponse(client, nonce))
+			return
+		}
+		if f.identityOnlyToken {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id_token": f.idToken(client, nonce, f.subject, time.Now().Add(time.Hour)),
+			})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token":        f.accessToken,
 			"refresh_token":       f.refreshToken,

@@ -35,7 +35,7 @@ func ValidateModelAuthorizationBinding(b ModelAuthorizationBinding) error {
 			return ErrInvalidModelAuthorization
 		}
 	}
-	if b.SpendClass != "subscription_only" || len(b.Scopes) > 64 {
+	if (b.SpendClass != "subscription_only" && b.SpendClass != "identity_only") || len(b.Scopes) > 64 {
 		return ErrInvalidModelAuthorization
 	}
 	seen := map[string]bool{}
@@ -45,6 +45,16 @@ func ValidateModelAuthorizationBinding(b ModelAuthorizationBinding) error {
 		}
 		seen[scope] = true
 	}
+	if b.SpendClass == "identity_only" {
+		if !seen["openid"] {
+			return ErrInvalidModelAuthorization
+		}
+		for scope := range seen {
+			if scope != "openid" && scope != "profile" && scope != "email" {
+				return ErrInvalidModelAuthorization
+			}
+		}
+	}
 	return nil
 }
 
@@ -53,6 +63,9 @@ func SameModelAuthorizationBinding(a, b ModelAuthorizationBinding) bool {
 }
 
 func ModelAuthorizationAllowsInference(b ModelAuthorizationBinding) bool {
+	if b.SpendClass != "subscription_only" {
+		return false
+	}
 	invoke, direct := false, false
 	for _, scope := range b.Scopes {
 		invoke = invoke || scope == "resource.invoke"

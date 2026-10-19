@@ -64,7 +64,12 @@ func (s *Service) CommitModelAuthorization(ctx context.Context, operationID stri
 		return zero, safeError(err)
 	}
 	expiry, expiryErr := time.Parse(time.RFC3339, bundle.ExpiresAt)
-	if domain.ValidateModelAuthorizationBinding(b) != nil || bundle.AccessToken == "" || len(bundle.AccessToken) > 65536 || strings.ContainsAny(bundle.AccessToken, "\r\n") || expiryErr != nil || !expiry.After(time.Now()) || bundle.Resource != account.BaseURL {
+	identityOnly := b.SpendClass == siwcPurposeIdentity
+	invalidBundle := bundle.AccessToken == "" || len(bundle.AccessToken) > 65536 || strings.ContainsAny(bundle.AccessToken, "\r\n")
+	if identityOnly {
+		invalidBundle = bundle.AccessToken != "" || bundle.RefreshToken != "" || bundle.IDToken == "" || len(bundle.IDToken) > 65536 || strings.ContainsAny(bundle.IDToken, "\r\n") || bundle.EarliestRefreshAt != ""
+	}
+	if domain.ValidateModelAuthorizationBinding(b) != nil || invalidBundle || expiryErr != nil || !expiry.After(time.Now()) || bundle.Resource != account.BaseURL {
 		return zero, ErrInvalid
 	}
 	if bundle.EarliestRefreshAt != "" {

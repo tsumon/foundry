@@ -63,6 +63,7 @@ type siwcAttempt struct {
 	verifier         string
 	redirectURI      string
 	clientID         string
+	purpose          string
 	exchangeDone     chan struct{}
 }
 
@@ -157,7 +158,16 @@ func (s *SIWCService) Begin(ctx context.Context, accountID string, expectedAccou
 	if s == nil || !s.simulation {
 		return SIWCFlow{}, liveSIWCDenial()
 	}
-	return s.beginSimulation(ctx, context.Background(), accountID, expectedAccountRevision, nil)
+	return s.beginSimulation(ctx, context.Background(), accountID, expectedAccountRevision, siwcPurposeSubscription, nil)
+}
+
+// BeginIdentity starts only the constructor-pinned local identity simulation.
+// Live identity connection remains independently blocked before any effects.
+func (s *SIWCService) BeginIdentity(ctx context.Context, accountID string, expectedAccountRevision int64) (SIWCFlow, error) {
+	if s == nil || !s.simulation {
+		return SIWCFlow{}, liveSIWCDenial()
+	}
+	return s.beginSimulation(ctx, context.Background(), accountID, expectedAccountRevision, siwcPurposeIdentity, nil)
 }
 
 // BeginOwnedSimulation binds a local, programmatically driven flow to its
@@ -169,7 +179,18 @@ func (s *SIWCService) BeginOwnedSimulation(ctx context.Context, accountID string
 		return SIWCFlow{}, nil, liveSIWCDenial()
 	}
 	var stop func()
-	flow, err := s.beginSimulation(ctx, ctx, accountID, expectedAccountRevision, &stop)
+	flow, err := s.beginSimulation(ctx, ctx, accountID, expectedAccountRevision, siwcPurposeSubscription, &stop)
+	return flow, stop, err
+}
+
+// BeginOwnedIdentitySimulation is the context-owned identity-only counterpart
+// to BeginOwnedSimulation. Its stop function cancels and joins callbacks.
+func (s *SIWCService) BeginOwnedIdentitySimulation(ctx context.Context, accountID string, expectedAccountRevision int64) (SIWCFlow, func(), error) {
+	if s == nil || !s.simulation {
+		return SIWCFlow{}, nil, liveSIWCDenial()
+	}
+	var stop func()
+	flow, err := s.beginSimulation(ctx, ctx, accountID, expectedAccountRevision, siwcPurposeIdentity, &stop)
 	return flow, stop, err
 }
 

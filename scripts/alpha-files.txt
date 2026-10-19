@@ -49,6 +49,7 @@ internal/accounts/recovery_test.go
 internal/accounts/service.go
 internal/accounts/service_test.go
 internal/accounts/siwc.go
+internal/accounts/siwc_identity_test.go
 internal/accounts/siwc_operations.go
 internal/accounts/siwc_protocol_test.go
 internal/accounts/siwc_test.go
