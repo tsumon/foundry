@@ -44,6 +44,10 @@ const openAIPreparation = {
   real_connection: "blocked",
   real_catalog: "blocked",
   real_inference: "blocked",
+  subscription_adapter: {
+    state: "implemented_disabled",
+    validation: "local_simulation_only",
+  },
 };
 const openAIReport = {
   ...report,
@@ -74,11 +78,84 @@ it("shows honest OpenAI stage-zero preparation without promoting metadata to per
     /本地合成诊断命令 foundry-keychain-check/,
   );
   expect(screen.getByText(/远端计费：未验证/)).toHaveTextContent(/额度：未知/);
+  expect(
+    screen.getByText(/订阅连接适配器：已实现，默认关闭/),
+  ).toHaveTextContent(/仅通过本地仿真验证/);
+  expect(screen.getByText(/真实账户、Keychain 与额度均未验证/)).toBeVisible();
   expect(screen.getByText("真实连接：待单独审批")).toBeVisible();
   expect(screen.getByText("真实目录：待单独审批")).toBeVisible();
   expect(screen.getByText("真实推理：待单独审批")).toBeVisible();
   expect(screen.queryByText(/Keychain：.*成功/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /登录|启用/ }),
+  ).not.toBeInTheDocument();
 });
+
+it("keeps an omitted subscription adapter unreported instead of implying readiness", async () => {
+  const { subscription_adapter: _omitted, ...legacyPreparation } =
+    openAIPreparation;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        acceptance: {
+          ...openAIReport,
+          openai_preparation: legacyPreparation,
+        },
+      }),
+    ),
+  );
+  render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+  fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "OpenAI · 阶段 0" }),
+  ).toBeVisible();
+  expect(screen.queryByText(/订阅连接适配器：已实现/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/仅通过本地仿真验证/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/真实账户.*已验证/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /登录|启用/ }),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  null,
+  { state: "unknown", validation: "local_simulation_only" },
+  { state: "enabled", validation: "local_simulation_only" },
+  { state: "implemented_disabled", validation: "live_account" },
+  {
+    state: "implemented_disabled",
+    validation: "local_simulation_only",
+    enabled: true,
+  },
+])(
+  "fails closed on unsafe subscription adapter metadata: %j",
+  async (value) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          acceptance: {
+            ...openAIReport,
+            openai_preparation: {
+              ...openAIPreparation,
+              subscription_adapter: value,
+            },
+          },
+        }),
+      ),
+    );
+    render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/读取失败/);
+    expect(screen.queryByText("synthetic-route")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/订阅连接适配器：已实现/),
+    ).not.toBeInTheDocument();
+  },
+);
 
 it("clears prior OpenAI preparation when a later payload claims enabled inference", async () => {
   let reads = 0;

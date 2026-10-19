@@ -50,6 +50,16 @@ const endpointPolicies: Record<OpenAIPreparation["endpoint_policy"], string> = {
 };
 type Props = { accountId: string; accountRevision: number };
 
+function validSubscriptionAdapterPreparation(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const preparation = value as Record<string, unknown>;
+  return (
+    Object.keys(preparation).length === 2 &&
+    preparation.state === "implemented_disabled" &&
+    preparation.validation === "local_simulation_only"
+  );
+}
+
 function validOpenAIPreparation(value: unknown): value is OpenAIPreparation {
   if (!value || typeof value !== "object") return false;
   const preparation = value as Record<string, unknown>;
@@ -62,7 +72,9 @@ function validOpenAIPreparation(value: unknown): value is OpenAIPreparation {
     preparation.quota === "unknown" &&
     preparation.real_connection === "blocked" &&
     preparation.real_catalog === "blocked" &&
-    preparation.real_inference === "blocked"
+    preparation.real_inference === "blocked" &&
+    (preparation.subscription_adapter === undefined ||
+      validSubscriptionAdapterPreparation(preparation.subscription_adapter))
   );
 }
 
@@ -178,6 +190,15 @@ function AcceptanceRead(props: Props) {
                 地址策略：
                 {endpointPolicies[report.openai_preparation.endpoint_policy]}
               </p>
+              {report.openai_preparation.subscription_adapter && (
+                <>
+                  <p>订阅连接适配器：已实现，默认关闭 · 仅通过本地仿真验证</p>
+                  <p className="field-help">
+                    真实账户、Keychain
+                    与额度均未验证；登录、目录、推理与自动刷新保持关闭。
+                  </p>
+                </>
+              )}
               <p className="field-help">
                 Keychain：本页未检查。此读取不运行 Keychain
                 诊断，也不认证当前主机存储或账户；请按公开文档使用本地合成诊断命令

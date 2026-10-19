@@ -76,6 +76,10 @@ export type ModelAcceptanceReason =
   | "extra_usage_local_setting_unknown"
   | "remote_billing_unverified"
   | "task_approval_required";
+export interface OpenAISubscriptionAdapterPreparation {
+  state: "implemented_disabled";
+  validation: "local_simulation_only";
+}
 export interface OpenAIPreparation {
   scope: "openai_subscription_stage0";
   endpoint_policy: "exact_official" | "owned_simulation_required" | "invalid";
@@ -85,6 +89,7 @@ export interface OpenAIPreparation {
   real_connection: "blocked";
   real_catalog: "blocked";
   real_inference: "blocked";
+  subscription_adapter?: OpenAISubscriptionAdapterPreparation;
 }
 export interface ModelAccountAcceptance {
   account_id: string;
