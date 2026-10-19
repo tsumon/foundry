@@ -137,11 +137,18 @@ function validConnectionMaterial(
       record.requested_resource === undefined
     : exactScopes(record.requested_scopes, subscriptionScopes) &&
       record.requested_resource === subscriptionResource;
+  const downstreamFieldsEmpty = [
+    record.model,
+    record.prerequisite_id,
+    record.connection_id,
+    record.prompt_digest,
+  ].every((field) => field === undefined || field === "");
   const account = record.account;
   const materialRoute = record.route;
   if (
     value.phase !== "connection" ||
     !permissionsValid ||
+    !downstreamFieldsEmpty ||
     !account ||
     typeof account !== "object" ||
     !materialRoute ||

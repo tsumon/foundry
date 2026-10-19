@@ -1452,6 +1452,132 @@ it("fails closed for a spent approval instead of exposing execute or replay acti
 
 it.each([
   {
+    policy: "subscription_only" as const,
+    state: "pending",
+    field: "model",
+    kind: "nonempty string",
+    value: "gpt-forbidden",
+  },
+  {
+    policy: "identity_only" as const,
+    state: "approved",
+    field: "model",
+    kind: "malformed type",
+    value: 7,
+  },
+  {
+    policy: "subscription_only" as const,
+    state: "approved",
+    field: "prerequisite_id",
+    kind: "nonempty string",
+    value: "forbidden-prerequisite",
+  },
+  {
+    policy: "identity_only" as const,
+    state: "pending",
+    field: "prerequisite_id",
+    kind: "malformed type",
+    value: ["forbidden"],
+  },
+  {
+    policy: "subscription_only" as const,
+    state: "pending",
+    field: "connection_id",
+    kind: "nonempty string",
+    value: "forbidden-connection",
+  },
+  {
+    policy: "identity_only" as const,
+    state: "approved",
+    field: "connection_id",
+    kind: "malformed type",
+    value: { id: "forbidden" },
+  },
+  {
+    policy: "subscription_only" as const,
+    state: "approved",
+    field: "prompt_digest",
+    kind: "nonempty string",
+    value: "b".repeat(64),
+  },
+  {
+    policy: "identity_only" as const,
+    state: "pending",
+    field: "prompt_digest",
+    kind: "malformed type",
+    value: true,
+  },
+])(
+  "fails closed when explicit $policy $state material carries $field as a $kind",
+  async ({ policy, state, field, value }) => {
+    const identityAccount = {
+      ...account,
+      id: "acceptance-gate-openai-identity",
+    };
+    const identityRoute = {
+      ...route,
+      id: "acceptance-gate-openai-identity-route",
+      connection_purpose: "identity_only" as const,
+    };
+    const selectedAccount =
+      policy === "subscription_only" ? subscriptionAccount : identityAccount;
+    const selectedRoute =
+      policy === "subscription_only" ? subscriptionRoute : identityRoute;
+    const explicitMaterial = {
+      ...material("connection"),
+      account: selectedAccount,
+      route: {
+        ...selectedRoute,
+        account_id: selectedAccount.id,
+        protocol: "responses",
+        extra_usage: "off",
+        created_at: "2026-10-19T00:00:00Z",
+      },
+      connection_purpose: policy,
+      requested_scopes:
+        policy === "subscription_only"
+          ? subscriptionScopes
+          : (["openid", "profile", "email"] as const),
+      ...(policy === "subscription_only"
+        ? { requested_resource: "https://api.openai.com/v1" as const }
+        : {}),
+      [field]: value,
+    };
+    const malformed = {
+      ...operation(`forbidden-${field}-${policy}`, "connection", state),
+      account_id: selectedAccount.id,
+      material: explicitMaterial,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          operations: [malformed],
+          simulation_enabled: true,
+          routes: [selectedRoute],
+        }),
+      ),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={selectedAccount}
+        refreshAccount={async () => {}}
+      />,
+    );
+
+    expect(await screen.findByText("invalid_receipt")).toBeVisible();
+    expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "批准连接材料" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "执行连接" }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it.each([
+  {
     name: "unknown route purpose",
     routes: [{ ...route, connection_purpose: "model_use" }],
     operations: [],
