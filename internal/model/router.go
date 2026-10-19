@@ -82,6 +82,9 @@ func (r *Router) PreflightModelSelection(ctx context.Context, schema int, s doma
 	if p.ID == "" || strings.TrimSpace(p.Model) == "" || p.HasKey || a.ID != p.AccountID || a.Revision < 1 || a.Revision != p.AccountRevision || p.BaseURL != a.BaseURL || p.CredentialVersion != a.CurrentCredentialVersion || p.RouteID != route.ID || p.Protocol != route.Protocol || domain.ValidateModelRoute(*route, *a) != nil {
 		return providerFailure("request_rejected", "not_sent")
 	}
+	if a.Provider == "openai" && OpenAIPreparationEndpointPolicy(route.BaseURL) != "owned_simulation_required" {
+		return providerFailure("request_rejected", "not_sent")
+	}
 	u, err := url.Parse(route.BaseURL)
 	if err != nil || !r.origins[u.Scheme+"://"+u.Host] || strings.Contains(u.Path, "..") || strings.Contains(u.Path, "//") {
 		return providerFailure("request_rejected", "not_sent")

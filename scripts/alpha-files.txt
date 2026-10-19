@@ -22,6 +22,8 @@ cmd/foundry-acceptance/protocol_scenarios.go
 cmd/foundry-acceptance/role_policy.go
 cmd/foundry-acceptance/role_policy_test.go
 cmd/foundry-acceptance/synthetic.go
+cmd/foundry-keychain-check/main.go
+cmd/foundry-keychain-check/main_test.go
 cmd/foundry/diagnostic_startup_test.go
 cmd/foundry/local_mcp_test.go
 cmd/foundry/main.go
@@ -33,6 +35,7 @@ docs/public/alpha-status.md
 docs/public/architecture.md
 docs/public/model-acceptance-gates.md
 docs/public/model-acceptance.md
+docs/public/openai-stage0.md
 docs/public/safety.md
 go.mod
 go.sum
@@ -218,6 +221,8 @@ internal/model/client.go
 internal/model/client_test.go
 internal/model/messages.go
 internal/model/model_accounts_test.go
+internal/model/openai_preparation.go
+internal/model/openai_preparation_test.go
 internal/model/provider_errors.go
 internal/model/routed_contract.go
 internal/model/routed_contract_test.go
@@ -232,6 +237,10 @@ internal/model/router_validation_test.go
 internal/model/secrets.go
 internal/model/secrets_darwin.go
 internal/model/secrets_other.go
+internal/model/secret_probe.go
+internal/model/secret_probe_darwin_test.go
+internal/model/secret_probe_other_test.go
+internal/model/secret_probe_test.go
 internal/model/siwc_stream.go
 internal/model/usage_test.go
 internal/sandbox/docker.go
@@ -275,6 +284,7 @@ internal/store/model_acceptance.go
 internal/store/model_acceptance_operations.go
 internal/store/model_acceptance_operations_test.go
 internal/store/model_acceptance_test.go
+internal/store/openai_preparation_test.go
 internal/store/model_accounts.go
 internal/store/model_accounts_schema.go
 internal/store/model_accounts_test.go

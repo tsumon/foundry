@@ -202,7 +202,7 @@ func TestExplicitRoutedProfileProbeUsesAtomicSelectionAndPreservesCompatibility(
 	var requests atomic.Int64
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
-		if r.URL.Path != "/models" || r.Header.Get("Authorization") != "Bearer fake-probe-key" {
+		if r.URL.Path != "/v1/models" || r.Header.Get("Authorization") != "Bearer fake-probe-key" {
 			t.Errorf("request path=%q auth=%q", r.URL.Path, r.Header.Get("Authorization"))
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -213,7 +213,7 @@ func TestExplicitRoutedProfileProbeUsesAtomicSelectionAndPreservesCompatibility(
 	f := newFixture(t)
 	installRouter(f, provider.URL)
 	f.authenticate()
-	a := routeAccount(t, f, "openai", "api_key", "api_credits", provider.URL)
+	a := routeAccount(t, f, "openai", "api_key", "api_credits", provider.URL+"/v1")
 	if _, err := f.handler.(*server).accounts.AddCredential(context.Background(), a.ID, a.Revision, "probe-key", "fake-probe-key"); err != nil {
 		t.Fatal(err)
 	}

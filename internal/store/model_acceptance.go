@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"foundry/internal/domain"
+	"foundry/internal/model"
 	"regexp"
 	"time"
 )
@@ -61,6 +62,9 @@ func (s *Store) ReadModelAccountAcceptance(ctx context.Context, accountID string
 		reasons = append(reasons, "credential_metadata_unavailable")
 	}
 	report := domain.ModelAccountAcceptance{AccountID: a.ID, AccountRevision: a.Revision, Scope: "account_routes_only", LiveAccess: "blocked", Quota: "unknown", Checks: []domain.ModelAcceptanceCheck{}, Routes: []domain.ModelAcceptanceRoute{}}
+	if a.Provider == "openai" && a.AuthMethod == "openai_siwc" {
+		report.OpenAIPreparation = &domain.OpenAIPreparation{Scope: "openai_subscription_stage0", EndpointPolicy: model.OpenAIPreparationEndpointPolicy(a.BaseURL), CredentialStorage: "not_checked", RemoteBilling: "unverified", Quota: "unknown", RealConnection: "blocked", RealCatalog: "blocked", RealInference: "blocked"}
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT `+modelRouteColumns+` FROM model_routes WHERE account_id=? ORDER BY created_at,id`, a.ID)
 	if err != nil {
 		return zero, err

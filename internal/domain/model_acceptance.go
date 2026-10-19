@@ -3,13 +3,24 @@ package domain
 // ModelAccountAcceptance contains only a point-in-time metadata diagnostic,
 // never credentials, provider URLs, an execution permit, or remote evidence.
 type ModelAccountAcceptance struct {
-	AccountID       string                 `json:"account_id"`
-	AccountRevision int64                  `json:"account_revision"`
-	Scope           string                 `json:"scope"`
-	LiveAccess      string                 `json:"live_access"`
-	Quota           string                 `json:"quota"`
-	Checks          []ModelAcceptanceCheck `json:"checks"`
-	Routes          []ModelAcceptanceRoute `json:"routes"`
+	AccountID         string                 `json:"account_id"`
+	AccountRevision   int64                  `json:"account_revision"`
+	Scope             string                 `json:"scope"`
+	LiveAccess        string                 `json:"live_access"`
+	Quota             string                 `json:"quota"`
+	Checks            []ModelAcceptanceCheck `json:"checks"`
+	Routes            []ModelAcceptanceRoute `json:"routes"`
+	OpenAIPreparation *OpenAIPreparation     `json:"openai_preparation,omitempty"`
+}
+type OpenAIPreparation struct {
+	Scope             string `json:"scope"`
+	EndpointPolicy    string `json:"endpoint_policy"`
+	CredentialStorage string `json:"credential_storage"`
+	RemoteBilling     string `json:"remote_billing"`
+	Quota             string `json:"quota"`
+	RealConnection    string `json:"real_connection"`
+	RealCatalog       string `json:"real_catalog"`
+	RealInference     string `json:"real_inference"`
 }
 type ModelAcceptanceCheck struct {
 	Phase       string   `json:"phase"`
