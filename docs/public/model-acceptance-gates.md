@@ -10,6 +10,8 @@ OpenAI subscription acceptance starts with its own subscription connection; it d
 
 ## Three separate permissions
 
+The dedicated subscription connection-only increment is specified in [OpenAI subscription connection preparation](openai-subscription-connection.md). It freezes the complete requested permission set and resource without enabling later phases or altering the legacy laboratory flow below.
+
 | Operation | Reviewed material | Allowed effect after approval |
 | --- | --- | --- |
 | `connection` | Exact provider, account/revision, route, owned loopback endpoint, auth method, billing class, fixture-only data summary, expiry | One synthetic connection attempt. OpenAI uses the existing local SIWC protocol flow; Kimi installs only a generated fixture package Key. No directory or inference request. |
