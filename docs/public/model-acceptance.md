@@ -7,12 +7,12 @@ This stage prepares OpenAI and Kimi acceptance while keeping real sign-in, accou
 | Stage | Work | Permission boundary |
 | --- | --- | --- |
 | A: preparation (this change) | Metadata-only acceptance inspection, failure tests, bilingual documentation and synthetic workbench screenshots | No real credentials, authentication or provider calls; no live-enabling switch |
-| B: account acceptance (future) | User-approved OpenAI browser authorization or Kimi Code package Key setup | Account connection only; no inference permission implied |
-| C: catalog acceptance (future) | A separately approved bounded model-directory request | A visible model is not proof that inference works |
-| D: one-call acceptance (future) | One small coding request with synthetic input per approved provider | Exact account, endpoint, model, input, deadline and attempt budget; no retry or fallback |
+| B: connection gate (local simulation) | Separately approved synthetic OpenAI authorization or generated Kimi fixture-Key setup | Account connection only; no inference permission implied |
+| C: catalog gate (local simulation) | A separately approved bounded request to the owned fixture model directory | A visible model is not proof that inference works |
+| D: one-call gate (local simulation) | One small coding request with fixed synthetic input per approval | Exact account, endpoint, model, input, deadline and attempt budget; no retry or fallback |
 | E: task acceptance (future) | One disposable repository through the existing workflow | Frozen role/model snapshots and all existing approvals; no source writes or deployment |
 
-Stages B–E require further user confirmation and implementation review. This document is not authorization to perform them. Packaging, Windows support, external MCP execution and production deployment are outside this change.
+Real-provider versions of B–D and all of E require further user confirmation and implementation review. This document is not authorization to perform them. Packaging, Windows support, external MCP execution and production deployment are outside this change. The executable simulation-gate design is in [Single-use acceptance gates](model-acceptance-gates.md).
 
 ## Provider choices and billing evidence
 
