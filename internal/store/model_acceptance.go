@@ -44,8 +44,13 @@ func (s *Store) ReadModelAccountAcceptance(ctx context.Context, accountID string
 		if readErr != nil && !errors.Is(readErr, ErrNotFound) {
 			return zero, readErr
 		}
+		var unresolved bool
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM model_authorization_operations WHERE account_id=? AND (state='pending' OR cleanup_pending=1))`, a.ID).Scan(&unresolved)
+		if err != nil {
+			return zero, err
+		}
 		expiry, expiryErr := time.Parse(time.RFC3339, auth.ExpiresAt)
-		if errors.Is(readErr, ErrNotFound) || auth.State != "available" || auth.Binding.AccountID != a.ID || expiryErr != nil {
+		if unresolved || errors.Is(readErr, ErrNotFound) || auth.State != "available" || auth.Binding.AccountID != a.ID || expiryErr != nil {
 			reasons = append(reasons, "authorization_unavailable")
 		} else if !expiry.After(time.Now()) {
 			reasons = append(reasons, "authorization_expired")

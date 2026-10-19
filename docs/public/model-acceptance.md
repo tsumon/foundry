@@ -49,7 +49,7 @@ The JSON envelope is `{ "acceptance": report }`. Its metadata-only contract is:
 | `routes[]` | Safe route `id`, known `adapter` or `unknown`, `environment`: `live`, `simulation`, `unknown` |
 | Route metadata | `local_metadata`: `ready` or `blocked`; `local_extra_usage`: `off` or `unknown`; `remote_extra_usage`: always `unverified`; finite `reason_codes[]` |
 
-Only local metadata can be `ready`. It requires an enabled, valid account with available current credential metadata and no pending/cleanup operation, or an available unexpired authorization with the required inference scopes, plus a valid route declaring local extra usage off. This does not check whether the secret can be read or whether the provider will accept it. Optional authorization storage is never created by this GET; a storage failure is an error, not permission to initialize or repair it.
+Only local metadata can be `ready`. It requires an enabled, valid account with available current credential metadata and no pending/cleanup operation, or an available unexpired authorization with the required inference scopes and no account-wide pending/cleanup authorization operation, plus a valid route declaring local extra usage off. An older available authorization cannot hide an unfinished new sign-in, refresh or replacement cleanup. This does not check whether the secret can be read or whether the provider will accept it. Optional authorization storage is never created by this GET; a storage failure is an error, not permission to initialize or repair it.
 
 The complete `reason_codes` vocabulary is:
 
@@ -60,7 +60,7 @@ The complete `reason_codes` vocabulary is:
 | `route_missing` | No account route exists |
 | `route_invalid` | Route metadata fails local validation |
 | `credential_metadata_unavailable` | Current credential metadata is missing, unavailable, pending or requires cleanup |
-| `authorization_unavailable` | No currently available authorization metadata |
+| `authorization_unavailable` | No currently available authorization metadata, or an account-wide authorization operation is pending or requires cleanup |
 | `authorization_expired` | Recorded authorization expiry has passed; no refresh is attempted |
 | `inference_scope_missing` | Identity authorization does not grant direct inference |
 | `extra_usage_local_setting_unknown` | Local extra-usage declaration is unknown |

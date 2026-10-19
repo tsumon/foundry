@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
 	"foundry/internal/accounts"
 	"foundry/internal/domain"
@@ -10,6 +11,40 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestModelAcceptanceHTTPAuthorizationOperationsReadFailure(t *testing.T) {
+	f := newFixture(t)
+	f.authenticate()
+	a, err := f.store.SaveModelAccount(domain.ModelAccount{ID: "oauth", Name: "Synthetic", Provider: "openai", BaseURL: "http://127.0.0.1:1234/v1", AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.store.BeginModelAuthorization(a.ID, "login", "sign_in", "auth"); err != nil {
+		t.Fatal(err)
+	}
+	b := domain.ModelAuthorizationBinding{ID: "auth", AccountID: a.ID, Issuer: "https://issuer.invalid", Subject: "synthetic", ClientID: "fake-client", SpendClass: "subscription_only", Scopes: []string{"resource.invoke", "chatgpt.tokens.use.direct"}}
+	if _, err = f.store.CommitModelAuthorization("login", b, "2099-01-01T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite3", f.storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`DROP TABLE model_authorization_operations`); err != nil {
+		t.Fatal(err)
+	}
+	srv := f.handler.(*server)
+	srv.secrets = forbiddenSecrets{t}
+	srv.accounts = accounts.New(f.store, forbiddenSecrets{t})
+	for _, recovery := range []bool{false, true} {
+		srv.recoveryReadOnly = recovery
+		rr := f.request(http.MethodGet, "/api/model-accounts/"+a.ID+"/acceptance", "", true)
+		if rr.Code != 503 || !strings.Contains(rr.Body.String(), "model_account_storage_unavailable") || strings.Contains(rr.Body.String(), "model_authorization_operations") || strings.Contains(rr.Body.String(), `"acceptance"`) {
+			t.Fatalf("operations read failure=%d %s", rr.Code, rr.Body.String())
+		}
+	}
+}
 
 func TestModelAcceptanceHTTPReadOnlySafeBoundary(t *testing.T) {
 	f := newFixture(t)

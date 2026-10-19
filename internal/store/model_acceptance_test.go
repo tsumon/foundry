@@ -103,7 +103,7 @@ func TestModelAcceptanceCredentialMetadata(t *testing.T) {
 }
 
 func TestModelAcceptanceAuthorizationMetadata(t *testing.T) {
-	for _, state := range []string{"available", "missing", "expired", "refreshing", "refresh_unknown", "revoked", "identity_only"} {
+	for _, state := range []string{"available", "missing", "expired", "refreshing", "refresh_unknown", "revoked", "identity_only", "fresh_binding_pending", "post_refresh_cleanup", "failed_replacement_cleanup"} {
 		t.Run(state, func(t *testing.T) {
 			s := openTestStore(t)
 			b := authorizationFixture(t, s)
@@ -121,8 +121,23 @@ func TestModelAcceptanceAuthorizationMetadata(t *testing.T) {
 				if _, err := s.CommitModelAuthorization("login", b, expiry); err != nil {
 					t.Fatal(err)
 				}
-				if state == "refreshing" || state == "refresh_unknown" {
+				if state == "refreshing" || state == "refresh_unknown" || state == "post_refresh_cleanup" {
 					if _, err := s.BeginModelAuthorization(b.AccountID, "refresh", "refresh", b.ID); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if state == "post_refresh_cleanup" {
+					if _, err := s.CommitModelAuthorization("refresh", b, "2099-02-01T00:00:00Z"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if state == "fresh_binding_pending" || state == "failed_replacement_cleanup" {
+					if _, err := s.BeginModelAuthorization(b.AccountID, "replacement", "sign_in", "fresh-auth"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if state == "failed_replacement_cleanup" {
+					if err := s.FailModelAuthorization("replacement", "failed"); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -152,7 +167,7 @@ func TestModelAcceptanceAuthorizationMetadata(t *testing.T) {
 			if report.Checks[0].State != want || report.Routes[0].LocalMetadata != want {
 				t.Fatalf("report=%+v", report)
 			}
-			wantReasons := map[string][]string{"available": {}, "missing": {"authorization_unavailable"}, "expired": {"authorization_expired"}, "refreshing": {"authorization_unavailable"}, "refresh_unknown": {"authorization_unavailable"}, "revoked": {"authorization_unavailable"}, "identity_only": {"inference_scope_missing"}}
+			wantReasons := map[string][]string{"available": {}, "missing": {"authorization_unavailable"}, "expired": {"authorization_expired"}, "refreshing": {"authorization_unavailable"}, "refresh_unknown": {"authorization_unavailable"}, "revoked": {"authorization_unavailable"}, "identity_only": {"inference_scope_missing"}, "fresh_binding_pending": {"authorization_unavailable"}, "post_refresh_cleanup": {"authorization_unavailable"}, "failed_replacement_cleanup": {"authorization_unavailable"}}
 			if !reflect.DeepEqual(report.Checks[0].ReasonCodes, wantReasons[state]) {
 				t.Fatalf("reasons=%v", report.Checks[0].ReasonCodes)
 			}
@@ -160,7 +175,58 @@ func TestModelAcceptanceAuthorizationMetadata(t *testing.T) {
 			if !reflect.DeepEqual(before, acceptanceSnapshot(t, s)) {
 				t.Fatal("inspection mutated authorization or database")
 			}
+			if state == "post_refresh_cleanup" || state == "failed_replacement_cleanup" {
+				operation := "login"
+				if state == "failed_replacement_cleanup" {
+					operation = "replacement"
+				}
+				if err := s.CompleteModelAuthorizationCleanup(operation); err != nil {
+					t.Fatal(err)
+				}
+				report, err = s.ReadModelAccountAcceptance(context.Background(), b.AccountID)
+				if err != nil || report.Checks[0].State != "ready" {
+					t.Fatal("resolved cleanup still blocked", report, err)
+				}
+			}
 		})
+	}
+}
+
+func TestModelAcceptanceAuthorizationOperationsReadFailureDoesNotRepair(t *testing.T) {
+	s := openTestStore(t)
+	b := authorizationFixture(t, s)
+	if _, err := s.BeginModelAuthorization(b.AccountID, "login", "sign_in", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CommitModelAuthorization("login", b, "2099-01-01T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`DROP TABLE model_authorization_operations`); err != nil {
+		t.Fatal(err)
+	}
+	var schemaBefore, changesBefore int64
+	if err := s.db.QueryRow(`PRAGMA schema_version`).Scan(&schemaBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow(`SELECT total_changes()`).Scan(&changesBefore); err != nil {
+		t.Fatal(err)
+	}
+	report, err := s.ReadModelAccountAcceptance(context.Background(), b.AccountID)
+	if err == nil || !reflect.DeepEqual(report, domain.ModelAccountAcceptance{}) {
+		t.Errorf("unreadable operations returned report: %+v %v", report, err)
+	}
+	var schemaAfter, changesAfter, tableCount int64
+	if err := s.db.QueryRow(`PRAGMA schema_version`).Scan(&schemaAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow(`SELECT total_changes()`).Scan(&changesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name='model_authorization_operations'`).Scan(&tableCount); err != nil {
+		t.Fatal(err)
+	}
+	if schemaBefore != schemaAfter || changesBefore != changesAfter || tableCount != 0 {
+		t.Fatal("diagnostic wrote or repaired missing operations schema")
 	}
 }
 
