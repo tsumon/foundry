@@ -32,6 +32,20 @@ create task
 
 Each approval is bound to controller-computed digests and current revisions. Context approval does not authorize a tool call or execution. A one-call MCP grant does not authorize a second call, a plan, verification, or delivery. Plan approval binds the exact plan, frozen inputs, selected candidate generation, and resolved Docker image. Delivery remains a final explicit action after successful verification and review.
 
+## Roles divide work, not permission
+
+| Role | Current responsibility | Hard boundary |
+| --- | --- | --- |
+| Main | Explains goals, plans, evidence, and blockers | Chat text cannot approve execution or delivery |
+| Researcher | Optionally inspects frozen repository facts read-only and cites real paths | Cannot execute code, expand authority, or browse the web |
+| Planner | Produces an acyclic plan of at most six steps | Cannot approve or execute its own plan |
+| Worker | Proposes complete file contents one plan step at a time | Limited to exact step files; no host shell or source-repository writes |
+| Debugger | Proposes bounded repairs from failure evidence | At most two rounds; cannot delete tests or weaken acceptance criteria |
+| QA | Reviews the current candidate and deterministic verification evidence | Cannot invent test results; insufficient evidence must fail |
+| Auditor | Independently reviews changes, scope, safety, and evidence | Cannot write code or self-authorize delivery; may block delivery |
+
+Role separation is not permission separation. The controller enforces every state transition, approval, budget, frozen binding, verification record, and artifact export.
+
 ## Immutable task snapshots
 
 At task creation, FOUNDRY snapshots the committed Git base, in-scope manifest, task specification, model selection per role, and confirmed role policy. Account-backed selections include the exact account revision, route, credential generation or authorization binding, protocol, model, and provenance digest. Later settings or policy changes apply only to new tasks; they do not silently rewrite existing task authority.
@@ -45,6 +59,8 @@ Production account routes marked `live` are gated before secret access or networ
 Legacy accountless profiles are a separate compatibility path. They can make model-directory and inference requests to their configured provider when an approved workflow reaches that model operation. Remote endpoints require HTTPS and credentials; literal-loopback HTTP is allowed for local providers. Therefore the application must not be described as entirely offline.
 
 External MCP connections can perform explicitly approved catalog discovery, but their tools are not eligible for task-time `tools/call`. The only task-executable MCP in this alpha is the exact controller-owned local test descriptor. Its fixture is not a model service.
+
+The read-only model-account acceptance inspection is also not a network permission. It reports local account, route, credential-generation, and authorization metadata without reading secret values, contacting a provider, reserving a call, or changing state. Its `live_access: blocked` result remains configuration evidence only. See [model acceptance](model-acceptance.md).
 
 ## Failure, uncertainty, and recovery
 

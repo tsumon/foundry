@@ -18,7 +18,7 @@ Read [architecture](docs/public/architecture.md), [safety](docs/public/safety.md
 
 ## Development setup
 
-Use an Apple Silicon Mac (`darwin/arm64`) with cgo, a C compiler, Go 1.27, Node.js, npm, and a system `/usr/bin/git` for which `/usr/bin/git --no-lazy-fetch --version` succeeds. A newer Git elsewhere on `PATH` does not replace the controller's trusted system path. Intel macOS and other OS/CPU targets are unverified and unsupported for this alpha. Install frontend dependencies exactly from the lockfile:
+Use an Apple Silicon Mac (`darwin/arm64`) with cgo, a C compiler, Go 1.27.2, Node.js 22.23.2, npm 10.9.8, and a system `/usr/bin/git` for which `/usr/bin/git --no-lazy-fetch --version` succeeds. A newer Git elsewhere on `PATH` does not replace the controller's trusted system path. Intel macOS and other OS/CPU targets are unverified and unsupported for this alpha. Install frontend dependencies exactly from the lockfile:
 
 ```sh
 cd web
@@ -44,6 +44,6 @@ Document any skipped check and the exact reason. A local pass does not imply Git
 
 Keep changes focused and add tests for behavior changes. Validate failure, restart, and concurrent/repeated-request paths for controller mutations. Unknown or dispatching remote outcomes must remain consumed and must not be automatically replayed. Do not weaken host/origin/session checks, immutable snapshots, revision/epoch fences, scope/protected-path checks, Docker isolation, or bounded input/output handling.
 
-Update public documentation when a user-visible flag, requirement, capability, limitation, approval boundary, or security property changes. Public documents must not link to private planning records, local absolute paths, runtime data, generated artifacts, or screenshots.
+Update public documentation when a user-visible flag, requirement, capability, limitation, approval boundary, or security property changes. Public documents must not link to private planning records, local absolute paths, private runtime data, or generated acceptance artifacts. A committed screenshot must come from a fresh synthetic acceptance run, contain no personal repository, account, credential, token, authorization URL, or host path, and document its source revision, scenario, viewport, and fixture limits in [`docs/media/README.md`](docs/media/README.md). Review both the pixels and embedded metadata before committing it; a screenshot is presentation evidence, not proof of real-provider or Docker behavior.
 
 By intentionally submitting a contribution for inclusion, you agree that it is provided under the repository's [Apache License 2.0](LICENSE), unless explicitly stated otherwise.

@@ -12,6 +12,7 @@ SECURITY.md
 THIRD_PARTY_NOTICES.md
 cmd/foundry-acceptance/main.go
 cmd/foundry-acceptance/main_test.go
+cmd/foundry-acceptance/model_acceptance_test.go
 cmd/foundry-acceptance/model_accounts.go
 cmd/foundry-acceptance/protocol_acceptance_test.go
 cmd/foundry-acceptance/protocol_fixture.go
@@ -23,8 +24,12 @@ cmd/foundry/diagnostic_startup_test.go
 cmd/foundry/local_mcp_test.go
 cmd/foundry/main.go
 cmd/foundry/main_test.go
+docs/media/README.md
+docs/media/model-acceptance.jpg
+docs/media/workbench-plan-approval.jpg
 docs/public/alpha-status.md
 docs/public/architecture.md
+docs/public/model-acceptance.md
 docs/public/safety.md
 go.mod
 go.sum
@@ -59,6 +64,7 @@ internal/domain/history_test.go
 internal/domain/hooks.go
 internal/domain/mcp_execution.go
 internal/domain/mcp_execution_test.go
+internal/domain/model_acceptance.go
 internal/domain/model_accounts.go
 internal/domain/model_accounts_test.go
 internal/domain/model_authorizations.go
@@ -161,6 +167,8 @@ internal/httpapi/mcp_tasks_test.go
 internal/httpapi/mission_views.go
 internal/httpapi/missions.go
 internal/httpapi/model_account_views.go
+internal/httpapi/model_acceptance.go
+internal/httpapi/model_acceptance_test.go
 internal/httpapi/model_accounts.go
 internal/httpapi/model_accounts_acceptance_test.go
 internal/httpapi/model_accounts_test.go
@@ -255,6 +263,8 @@ internal/store/mcp_result_kind_test.go
 internal/store/mcp_snapshots.go
 internal/store/mcp_snapshots_test.go
 internal/store/mcp_transitions.go
+internal/store/model_acceptance.go
+internal/store/model_acceptance_test.go
 internal/store/model_accounts.go
 internal/store/model_accounts_schema.go
 internal/store/model_accounts_test.go
@@ -439,6 +449,8 @@ web/src/components/MCPInvocationActivity.test.tsx
 web/src/components/MCPInvocationActivity.tsx
 web/src/components/MissionViews.tsx
 web/src/components/MissionWorkspace.tsx
+web/src/components/ModelAcceptanceCard.test.tsx
+web/src/components/ModelAcceptanceCard.tsx
 web/src/components/ModelAccountCredentials.test.tsx
 web/src/components/ModelAccountCredentials.tsx
 web/src/components/ModelAccounts.tsx
