@@ -9,11 +9,12 @@ import (
 )
 
 type acceptanceRouteView struct {
-	ID          string `json:"id"`
-	Adapter     string `json:"adapter"`
-	Environment string `json:"environment"`
-	SpendClass  string `json:"spend_class"`
-	BaseURL     string `json:"base_url"`
+	ID                string `json:"id"`
+	Adapter           string `json:"adapter"`
+	Environment       string `json:"environment"`
+	SpendClass        string `json:"spend_class"`
+	BaseURL           string `json:"base_url"`
+	ConnectionPurpose string `json:"connection_purpose,omitempty"`
 }
 
 func (s *server) rejectAcceptanceBypass(w http.ResponseWriter, account string) bool {
@@ -59,7 +60,7 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 			}
 			routes := []acceptanceRouteView{}
 			for _, v := range s.acceptance.Routes(account) {
-				routes = append(routes, acceptanceRouteView{v.ID, v.Adapter, v.Environment, v.SpendClass, v.BaseURL})
+				routes = append(routes, acceptanceRouteView{v.ID, v.Adapter, v.Environment, v.SpendClass, v.BaseURL, s.acceptance.ConnectionPurpose(v.ID)})
 			}
 			writeJSON(w, 200, map[string]any{"operations": items, "simulation_enabled": s.acceptance.SimulationEligible(account) && !s.recoveryReadOnly, "routes": routes})
 			return

@@ -93,12 +93,14 @@ type fixtureAuthorizationRequest struct {
 	callback, state, nonce, challenge, resource string
 	clientID                                    string
 	decided                                     bool
+	identityOnly                                bool
 }
 
 type fixtureAuthorizationCode struct {
 	callback, nonce, challenge, resource, clientID string
 	scopes                                         []string
 	used                                           bool
+	identityOnly                                   bool
 }
 
 type fixtureRefreshGrant struct {
@@ -129,6 +131,7 @@ type protocolFixture struct {
 	kimiKey        string
 	invalid        string
 	directories    int
+	modelRequests  int
 	tokenCalls     int
 	pkce           bool
 	signed         int
@@ -346,8 +349,15 @@ func (f *protocolFixture) handleIssuer(w http.ResponseWriter, r *http.Request) {
 
 func (f *protocolFixture) handleAuthorizationPage(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
-	required := []string{"client_id", "ext_agent_host_id", "response_type", "redirect_uri", "scope", "resource", "state", "nonce", "code_challenge_method", "code_challenge"}
-	if !exactQuery(values, required, []string{"agent_name_hint"}) || values.Get("response_type") != "code" || values.Get("code_challenge_method") != "S256" || values.Get("resource") != f.modelBaseURL() || !literal127URL(values.Get("redirect_uri"), "/auth/callback") || values.Get("client_id") != "dynamic_agent_client" || values.Get("agent_name_hint") != "FOUNDRY" || !strings.HasPrefix(values.Get("ext_agent_host_id"), "urn:uuid:") || values.Get("scope") != strings.Join(fixtureRequestedScopes, " ") {
+	identityOnly := values.Get("scope") == strings.Join(fixtureIdentityScopes, " ")
+	required := []string{"client_id", "ext_agent_host_id", "response_type", "redirect_uri", "scope", "state", "nonce", "code_challenge_method", "code_challenge"}
+	validGrant := identityOnly && !values.Has("resource")
+	if !identityOnly {
+		required = append(required, "resource")
+		validGrant = values.Get("resource") == f.modelBaseURL() && values.Get("scope") == strings.Join(fixtureRequestedScopes, " ")
+	}
+	validClient := values.Get("client_id") == "dynamic_agent_client" && values.Get("agent_name_hint") == "FOUNDRY" || values.Get("client_id") == "oaiapp_foundry_synthetic" && !values.Has("agent_name_hint")
+	if !exactQuery(values, required, []string{"agent_name_hint"}) || !validGrant || !validClient || values.Get("response_type") != "code" || values.Get("code_challenge_method") != "S256" || !literal127URL(values.Get("redirect_uri"), "/auth/callback") || !strings.HasPrefix(values.Get("ext_agent_host_id"), "urn:uuid:") {
 		f.setInvalid("synthetic authorization request violated the reviewed SIWC contract")
 		http.Error(w, "invalid synthetic authorization request", http.StatusBadRequest)
 		return
@@ -360,6 +370,7 @@ func (f *protocolFixture) handleAuthorizationPage(w http.ResponseWriter, r *http
 	f.mu.Lock()
 	f.requests[id] = &fixtureAuthorizationRequest{
 		callback: values.Get("redirect_uri"), state: values.Get("state"), nonce: values.Get("nonce"), challenge: values.Get("code_challenge"), resource: values.Get("resource"), clientID: "oaiapp_foundry_synthetic",
+		identityOnly: identityOnly,
 	}
 	f.mu.Unlock()
 	callbackURL, err := url.Parse(values.Get("redirect_uri"))
@@ -405,11 +416,14 @@ func (f *protocolFixture) handleAuthorizationDecision(w http.ResponseWriter, r *
 		return
 	}
 	scopes := append([]string(nil), fixtureRequestedScopes...)
-	if parts[1] == "identity" {
+	if parts[1] == "identity" || request.identityOnly {
 		scopes = append([]string(nil), fixtureIdentityScopes...)
 	}
-	f.codes[code] = &fixtureAuthorizationCode{callback: request.callback, nonce: request.nonce, challenge: request.challenge, resource: request.resource, clientID: request.clientID, scopes: scopes}
+	f.codes[code] = &fixtureAuthorizationCode{callback: request.callback, nonce: request.nonce, challenge: request.challenge, resource: request.resource, clientID: request.clientID, scopes: scopes, identityOnly: request.identityOnly}
 	location := request.callback + "?code=" + url.QueryEscape(code) + "&state=" + url.QueryEscape(request.state) + "&client_id=" + url.QueryEscape(request.clientID) + "&scope=" + url.QueryEscape(strings.Join(scopes, " "))
+	if request.identityOnly {
+		location = request.callback + "?code=" + url.QueryEscape(code) + "&state=" + url.QueryEscape(request.state) + "&client_id=" + url.QueryEscape(request.clientID)
+	}
 	f.mu.Unlock()
 	http.Redirect(w, r, location, http.StatusFound)
 }
@@ -439,10 +453,6 @@ func writeInvalidGrant(w http.ResponseWriter) {
 }
 
 func (f *protocolFixture) handleAuthorizationCode(w http.ResponseWriter, r *http.Request) {
-	if !exactQuery(r.PostForm, []string{"grant_type", "client_id", "code", "code_verifier", "redirect_uri", "resource"}, nil) {
-		writeInvalidGrant(w)
-		return
-	}
 	f.mu.Lock()
 	code := f.codes[r.PostForm.Get("code")]
 	if code == nil || code.used {
@@ -451,15 +461,30 @@ func (f *protocolFixture) handleAuthorizationCode(w http.ResponseWriter, r *http
 		return
 	}
 	code.used = true
+	required := []string{"grant_type", "client_id", "code", "code_verifier", "redirect_uri"}
+	if !code.identityOnly {
+		required = append(required, "resource")
+	}
 	digest := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
 	pkce := base64.RawURLEncoding.EncodeToString(digest[:]) == code.challenge
-	valid := pkce && r.PostForm.Get("client_id") == code.clientID && r.PostForm.Get("redirect_uri") == code.callback && r.PostForm.Get("resource") == code.resource
+	valid := exactQuery(r.PostForm, required, nil) && pkce && r.PostForm.Get("client_id") == code.clientID && r.PostForm.Get("redirect_uri") == code.callback && r.PostForm.Get("resource") == code.resource
 	if !valid {
 		f.mu.Unlock()
 		writeInvalidGrant(w)
 		return
 	}
 	f.pkce = true
+	if code.identityOnly {
+		f.mu.Unlock()
+		idToken, err := f.signIDToken(code.clientID, code.nonce)
+		if err != nil {
+			http.Error(w, "fixture unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"id_token": idToken})
+		return
+	}
 	access, accessErr := randomFixtureValue(32)
 	refresh, refreshErr := randomFixtureValue(32)
 	if accessErr != nil || refreshErr != nil {
@@ -560,6 +585,7 @@ func (f *protocolFixture) authorized(r *http.Request) bool {
 
 func (f *protocolFixture) handleModel(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
+	f.modelRequests++ // Count rejected requests too: zero means no model transport.
 	gate := f.acceptanceGates
 	f.mu.Unlock()
 	if gate {
@@ -730,6 +756,15 @@ func completeFixtureAuthorization(ctx context.Context, siwc *accounts.SIWCServic
 
 func completeOwnedFixtureAuthorization(ctx context.Context, siwc *accounts.SIWCService, account domain.ModelAccount, outcome string) error {
 	flow, stop, err := siwc.BeginOwnedSimulation(ctx, account.ID, account.Revision)
+	if err != nil {
+		return err
+	}
+	defer stop()
+	return driveFixtureAuthorization(ctx, siwc, flow, outcome)
+}
+
+func completeOwnedIdentityFixtureAuthorization(ctx context.Context, siwc *accounts.SIWCService, account domain.ModelAccount, outcome string) error {
+	flow, stop, err := siwc.BeginOwnedIdentitySimulation(ctx, account.ID, account.Revision)
 	if err != nil {
 		return err
 	}

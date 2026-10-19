@@ -28,6 +28,7 @@ The account's existing acceptance card shows the purpose, requested scopes, sepa
 - Partial secret writes use the existing exact-reference cleanup journal. No plaintext fallback or credential-store enumeration is introduced.
 - Timeout, interrupted execution and lost completion writes remain consumed/unknown; restart recovery does not replay the provider request. The owned callback is canceled and joined before failure completion so it cannot write a late success.
 - A failed or unknown attempt is not automatically retried, refreshed or replaced. A new attempt needs new material, a new approval and explicit execution.
+- Once unresolved cleanup is cleared, expired or revoked identity metadata may be snapshotted for a fresh independently approved connection. It never counts as current proof: success requires a new valid, unexpired identity proof.
 - Errors and receipts use bounded codes and summaries, never provider bodies, tokens, callback codes or auth URLs. Tests must verify secret-read/write and endpoint counters for denied paths.
 
 ## Implementation and acceptance sequence

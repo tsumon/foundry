@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"reflect"
 )
 
 const AcceptancePrompt = "Write a pure function that adds two integers. Synthetic acceptance data only."
@@ -11,6 +12,7 @@ const AcceptanceSystem = "Return a short coding example. No tools, files, reposi
 
 type ModelAcceptanceProposal struct {
 	Phase                   string `json:"phase"`
+	ConnectionPurpose       string `json:"connection_purpose,omitempty"`
 	RouteID                 string `json:"route_id"`
 	ExpectedAccountRevision int64  `json:"expected_account_revision"`
 	Model                   string `json:"model,omitempty"`
@@ -18,6 +20,8 @@ type ModelAcceptanceProposal struct {
 }
 type ModelAcceptanceMaterial struct {
 	Phase             string              `json:"phase"`
+	ConnectionPurpose string              `json:"connection_purpose,omitempty"`
+	RequestedScopes   []string            `json:"requested_scopes,omitempty"`
 	Account           ModelAccount        `json:"account"`
 	Route             ModelRoute          `json:"route"`
 	CredentialVersion int64               `json:"credential_version"`
@@ -32,6 +36,21 @@ type ModelAcceptanceMaterial struct {
 	DeadlineSeconds   int                 `json:"deadline_seconds"`
 	MaxAttempts       int                 `json:"max_attempts"`
 }
+
+// Identity policy is narrower than the route's subscription billing metadata.
+// Empty purpose/scopes preserve historical simulation material and digests.
+func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
+	if m.ConnectionPurpose == "" {
+		return len(m.RequestedScopes) == 0
+	}
+	return m.ConnectionPurpose == "identity_only" && m.Phase == "connection" &&
+		m.Model == "" && m.PrerequisiteID == "" && m.ConnectionID == "" && m.PromptDigest == "" &&
+		m.Account.Provider == "openai" && m.Account.AuthMethod == "openai_siwc" &&
+		m.Route.AccountID == m.Account.ID && m.Route.Adapter == "openai_siwc_responses" &&
+		m.Route.Environment == "simulation" && m.Route.ExtraUsage == "off" &&
+		reflect.DeepEqual(m.RequestedScopes, []string{"openid", "profile", "email"})
+}
+
 type ModelAcceptanceCatalogEntry struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name"`

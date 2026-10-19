@@ -27,8 +27,17 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 		return e
 	}
 	routes := []domain.ModelRoute{}
-	for _, provider := range []string{"openai", "kimi"} {
+	identityRoutes := []string{}
+	for _, fixture := range []string{"openai", "kimi", "openai-identity"} {
+		provider := fixture
+		if fixture == "openai-identity" {
+			provider = "openai"
+		}
 		a := domain.ModelAccount{ID: "acceptance-gate-" + provider, Name: "SYNTHETIC acceptance gates — " + provider, Provider: provider, BaseURL: r.gateProtocol.modelBaseURL(), AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true}
+		if fixture == "openai-identity" {
+			a.ID = "acceptance-gate-openai-identity"
+			a.Name = "SYNTHETIC OpenAI — identity only"
+		}
 		route := domain.ModelRoute{ID: a.ID + "-route", AccountID: a.ID, Adapter: "openai_siwc_responses", Protocol: "responses", Environment: "simulation", SpendClass: "subscription_only", ExtraUsage: "off"}
 		if provider == "kimi" {
 			a.BaseURL = r.gateProtocol.kimiBaseURL()
@@ -46,11 +55,17 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 			return e
 		}
 		routes = append(routes, route)
+		if fixture == "openai-identity" {
+			identityRoutes = append(identityRoutes, route.ID)
+		}
 	}
 	router := model.NewRouter(nil, accountService, model.RouterOptions{SimulationOrigins: []string{r.gateProtocol.modelOrigin()}})
-	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
+	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, IdentityOnlyRouteIDs: identityRoutes, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
 		switch m.Account.Provider {
 		case "openai":
+			if m.ConnectionPurpose == "identity_only" {
+				return completeOwnedIdentityFixtureAuthorization(ctx, r.gateSIWC, m.Account, "identity")
+			}
 			return completeOwnedFixtureAuthorization(ctx, r.gateSIWC, m.Account, "approve")
 		case "kimi":
 			op, e := randomFixtureValue(18)

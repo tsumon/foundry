@@ -12,6 +12,7 @@ SECURITY.md
 THIRD_PARTY_NOTICES.md
 cmd/foundry-acceptance/acceptance_gates.go
 cmd/foundry-acceptance/acceptance_gates_test.go
+cmd/foundry-acceptance/acceptance_identity_test.go
 cmd/foundry-acceptance/main.go
 cmd/foundry-acceptance/main_test.go
 cmd/foundry-acceptance/model_acceptance_test.go
@@ -41,6 +42,7 @@ docs/public/safety.md
 go.mod
 go.sum
 internal/acceptance/service.go
+internal/acceptance/service_identity_test.go
 internal/acceptance/service_test.go
 internal/accounts/credentials.go
 internal/accounts/model_authorizations.go
@@ -178,6 +180,7 @@ internal/httpapi/mcp_tasks_test.go
 internal/httpapi/mission_views.go
 internal/httpapi/missions.go
 internal/httpapi/model_acceptance.go
+internal/httpapi/model_acceptance_identity_test.go
 internal/httpapi/model_acceptance_operations.go
 internal/httpapi/model_acceptance_operations_test.go
 internal/httpapi/model_acceptance_test.go
@@ -283,6 +286,7 @@ internal/store/mcp_snapshots.go
 internal/store/mcp_snapshots_test.go
 internal/store/mcp_transitions.go
 internal/store/model_acceptance.go
+internal/store/model_acceptance_identity_test.go
 internal/store/model_acceptance_operations.go
 internal/store/model_acceptance_operations_test.go
 internal/store/model_acceptance_test.go

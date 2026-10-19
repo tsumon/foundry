@@ -77,7 +77,7 @@ func acceptanceWrite(tx *sql.Tx, o *domain.ModelAcceptanceOperation) error {
 
 // Capture and revalidation use the same SQLite transaction as proposal/claim.
 // This projection never reads a secret reference or credential value.
-func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, now time.Time) (domain.ModelAcceptanceMaterial, error) {
+func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, purpose string, now time.Time) (domain.ModelAcceptanceMaterial, error) {
 	var m domain.ModelAcceptanceMaterial
 	a, e := modelAccountTx(tx, account)
 	if e != nil {
@@ -99,6 +99,12 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, n
 		return m, ErrConflict
 	}
 	m.Account, m.Route, m.CredentialVersion = a, r, a.CurrentCredentialVersion
+	if purpose != "" {
+		m.Phase, m.ConnectionPurpose, m.RequestedScopes = "connection", purpose, []string{"openid", "profile", "email"}
+		if !m.ValidConnectionPurpose() {
+			return m, ErrConflict
+		}
+	}
 	if a.AuthMethod == "api_key" {
 		if a.CurrentCredentialVersion > 0 {
 			var state string
@@ -125,7 +131,17 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, n
 				return m, ErrConflict
 			}
 			expiry, x := time.Parse(time.RFC3339Nano, auth.ExpiresAt)
-			if auth.State != "available" || x != nil || !expiry.After(now) || !domain.ModelAuthorizationAllowsInference(auth.Binding) || domain.ValidateModelAuthorizationBinding(auth.Binding) != nil {
+			allowed := domain.ModelAuthorizationAllowsInference(auth.Binding)
+			if purpose == "identity_only" {
+				allowed = auth.Binding.SpendClass == "identity_only"
+			}
+			proofCurrent := auth.State == "available" && expiry.After(now)
+			// Reauthentication approval snapshots prior identity metadata, not a
+			// usable proof. Finish and every connected gate still require expiry.
+			if purpose == "identity_only" && !connected && (auth.State == "available" || auth.State == "revoked") {
+				proofCurrent = true
+			}
+			if !proofCurrent || auth.Binding.AccountID != account || x != nil || !allowed || domain.ValidateModelAuthorizationBinding(auth.Binding) != nil {
 				return m, ErrConflict
 			}
 			m.Authorization = &auth
@@ -137,11 +153,13 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, n
 }
 func acceptanceSnapshotDigest(m domain.ModelAcceptanceMaterial) string {
 	return domain.AcceptanceDigest(struct {
-		Account       domain.ModelAccount
-		Route         domain.ModelRoute
-		Credential    int64
-		Authorization *domain.ModelAuthorization
-	}{m.Account, m.Route, m.CredentialVersion, m.Authorization})
+		Account           domain.ModelAccount
+		Route             domain.ModelRoute
+		Credential        int64
+		Authorization     *domain.ModelAuthorization
+		ConnectionPurpose string   `json:"connection_purpose,omitempty"`
+		RequestedScopes   []string `json:"requested_scopes,omitempty"`
+	}{m.Account, m.Route, m.CredentialVersion, m.Authorization, m.ConnectionPurpose, m.RequestedScopes})
 }
 func acceptancePrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error {
 	if m.Phase == "connection" {
@@ -158,7 +176,7 @@ func acceptancePrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error 
 	if m.Phase == "inference" {
 		want = "catalog"
 	}
-	if p.State != "succeeded" || p.Phase != want || p.Material.Route.ID != m.Route.ID || p.ResultAccountRevision != m.Account.Revision || p.ResultSnapshotDigest != acceptanceSnapshotDigest(m) {
+	if p.Material.ConnectionPurpose != "" || p.State != "succeeded" || p.Phase != want || p.Material.Route.ID != m.Route.ID || p.ResultAccountRevision != m.Account.Revision || p.ResultSnapshotDigest != acceptanceSnapshotDigest(m) {
 		return ErrConflict
 	}
 	connection := p
@@ -181,7 +199,7 @@ func acceptancePrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error 
 			return ErrConflict
 		}
 	}
-	if connection.State != "succeeded" || connection.ClaimSequence < 1 || connection.ResultSnapshotDigest != acceptanceSnapshotDigest(m) {
+	if connection.Material.ConnectionPurpose != "" || connection.State != "succeeded" || connection.ClaimSequence < 1 || connection.ResultSnapshotDigest != acceptanceSnapshotDigest(m) {
 		return ErrConflict
 	}
 	// Dispatch order, not proposal order or wall-clock time, defines lineage.
@@ -207,7 +225,7 @@ func (s *Store) ProposeModelAcceptance(account string, q domain.ModelAcceptanceP
 	if _, e = tx.Exec(`UPDATE model_accounts SET revision=revision WHERE id=?`, account); e != nil {
 		return o, e
 	}
-	m, e := acceptanceGateSnapshot(tx, account, q.RouteID, q.Phase != "connection", now)
+	m, e := acceptanceGateSnapshot(tx, account, q.RouteID, q.Phase != "connection", q.ConnectionPurpose, now)
 	if e != nil {
 		return o, e
 	}
@@ -215,6 +233,9 @@ func (s *Store) ProposeModelAcceptance(account string, q domain.ModelAcceptanceP
 		return o, ErrConflict
 	}
 	m.Phase, m.PrerequisiteID, m.Model = q.Phase, q.PrerequisiteID, q.Model
+	if !m.ValidConnectionPurpose() {
+		return o, ErrConflict
+	}
 	if m.Phase == "catalog" {
 		m.ConnectionID = q.PrerequisiteID
 	}
@@ -263,7 +284,7 @@ func (s *Store) transitionModelAcceptance(account, id string, revision int64, di
 	if e != nil {
 		return o, e
 	}
-	if o.Revision != revision || o.MaterialDigest != digest || domain.AcceptanceDigest(o.Material) != digest {
+	if o.Revision != revision || o.MaterialDigest != digest || domain.AcceptanceDigest(o.Material) != digest || !validAcceptanceMaterial(o) {
 		return o, ErrConflict
 	}
 	if action == "execute" {
@@ -290,7 +311,7 @@ func (s *Store) transitionModelAcceptance(account, id string, revision int64, di
 	if !expiry.After(now) {
 		invalid = "expired"
 	} else {
-		current, e := acceptanceGateSnapshot(tx, account, o.Material.Route.ID, o.Phase != "connection", now)
+		current, e := acceptanceGateSnapshot(tx, account, o.Material.Route.ID, o.Phase != "connection", o.Material.ConnectionPurpose, now)
 		if e != nil {
 			if !errors.Is(e, ErrConflict) && !errors.Is(e, ErrNotFound) {
 				return o, e
@@ -378,13 +399,22 @@ func (s *Store) FinishModelAcceptance(account, id string, revision int64, state,
 	if e != nil {
 		return o, e
 	}
-	if o.State != "running" || o.Revision != revision || o.Attempts != 1 {
+	if o.State != "running" || o.Revision != revision || o.Attempts != 1 || !validAcceptanceMaterial(o) || domain.AcceptanceDigest(o.Material) != o.MaterialDigest {
+		return o, ErrConflict
+	}
+	if o.Material.ConnectionPurpose == "identity_only" && (len(catalog) != 0 || input != 0 || output != 0 || usage) {
 		return o, ErrConflict
 	}
 	if state == "succeeded" {
-		m, e := acceptanceGateSnapshot(tx, account, o.Material.Route.ID, true, now)
+		m, e := acceptanceGateSnapshot(tx, account, o.Material.Route.ID, true, o.Material.ConnectionPurpose, now)
 		if e != nil {
 			return o, e
+		}
+		if !reflect.DeepEqual(m.Route, o.Material.Route) || o.Material.ConnectionPurpose == "identity_only" && !reflect.DeepEqual(m.Account, o.Material.Account) {
+			return o, ErrConflict
+		}
+		if o.Material.ConnectionPurpose == "identity_only" && o.Material.Authorization != nil && m.Authorization.Binding.ID == o.Material.Authorization.Binding.ID && m.Authorization.Generation <= o.Material.Authorization.Generation {
+			return o, ErrConflict
 		}
 		if o.Phase != "connection" && (!reflect.DeepEqual(m.Account, o.Material.Account) || acceptanceSnapshotDigest(m) != acceptanceSnapshotDigest(o.Material)) {
 			return o, ErrConflict
@@ -400,6 +430,13 @@ func (s *Store) FinishModelAcceptance(account, id string, revision int64, state,
 		return o, e
 	}
 	return o, tx.Commit()
+}
+
+func validAcceptanceMaterial(o domain.ModelAcceptanceOperation) bool {
+	m := o.Material
+	return o.Phase == m.Phase && (o.Phase == "connection" || o.Phase == "catalog" || o.Phase == "inference") &&
+		o.AccountID == m.Account.ID && m.Route.AccountID == m.Account.ID &&
+		m.MaxAttempts == 1 && m.DeadlineSeconds > 0 && m.DeadlineSeconds <= 30 && m.ValidConnectionPurpose()
 }
 func (s *Store) RecoverModelAcceptance(now time.Time) error {
 	tx, e := s.db.Begin()
@@ -426,6 +463,9 @@ func (s *Store) RecoverModelAcceptance(now time.Time) error {
 		return e
 	}
 	for _, o := range items {
+		if !validAcceptanceMaterial(o) || domain.AcceptanceDigest(o.Material) != o.MaterialDigest {
+			return ErrConflict
+		}
 		o.State = "unknown"
 		o.Certainty = "unknown"
 		o.Code = "transport_unknown"
