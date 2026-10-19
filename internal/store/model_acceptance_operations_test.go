@@ -296,3 +296,114 @@ func TestAcceptanceAccountCannotDispatchOverlappingSnapshots(t *testing.T) {
 		t.Fatal("blocked overlap consumed permission")
 	}
 }
+
+func TestAcceptanceConnectionLineageUsesClaimOrderNotProposalOrder(t *testing.T) {
+	for _, clock := range []string{"tied", "backwards"} {
+		t.Run(clock, func(t *testing.T) {
+			s, a, r := gateStore(t)
+			first := gateProposal(t, s, a, r)
+			second := gateProposal(t, s, a, r)
+			now := time.Now()
+			var e error
+			first, e = s.DecideModelAcceptance(a.ID, first.ID, first.Revision, first.MaterialDigest, "approve", now)
+			if e != nil {
+				t.Fatal(e)
+			}
+			second, e = s.DecideModelAcceptance(a.ID, second.ID, second.Revision, second.MaterialDigest, "approve", now)
+			if e != nil {
+				t.Fatal(e)
+			}
+			second, e = s.ClaimModelAcceptance(a.ID, second.ID, second.Revision, second.MaterialDigest, now)
+			if e != nil {
+				t.Fatal(e)
+			}
+			second, e = s.FinishModelAcceptance(a.ID, second.ID, second.Revision, "unknown", "unknown", "transport_unknown", nil, 0, 0, false, now)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if clock == "backwards" {
+				now = now.Add(-time.Minute)
+			}
+			first, e = s.ClaimModelAcceptance(a.ID, first.ID, first.Revision, first.MaterialDigest, now)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = s.BeginModelCredential(domain.ModelCredentialVersion{AccountID: a.ID, OperationID: "reverse-connection", SecretRef: "foundry-model-account-reverse"}, a.Revision); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = s.FinishModelCredential("reverse-connection", "available"); e != nil {
+				t.Fatal(e)
+			}
+			first, e = s.FinishModelAcceptance(a.ID, first.ID, first.Revision, "succeeded", "completed", "", nil, 0, 0, false, now)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if second.ClaimSequence < 1 || first.ClaimSequence <= second.ClaimSequence {
+				t.Fatal("claim sequence did not follow actual execution order")
+			}
+			a, e = s.GetModelAccount(a.ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			q := domain.ModelAcceptanceProposal{Phase: "catalog", RouteID: r.ID, ExpectedAccountRevision: a.Revision, PrerequisiteID: first.ID}
+			if _, e = s.ProposeModelAcceptance(a.ID, q, now); e != nil {
+				t.Fatalf("latest executed successful connection lost to proposal order: %v", e)
+			}
+			// A later consumed unknown must still invalidate that success, even if
+			// the wall clock moved backwards and the account did not change.
+			later := gateProposal(t, s, a, r)
+			later, e = s.DecideModelAcceptance(a.ID, later.ID, later.Revision, later.MaterialDigest, "approve", now)
+			if e != nil {
+				t.Fatal(e)
+			}
+			later, e = s.ClaimModelAcceptance(a.ID, later.ID, later.Revision, later.MaterialDigest, now.Add(-time.Minute))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e = s.RecoverModelAcceptance(now.Add(-time.Minute)); e != nil {
+				t.Fatal(e)
+			}
+			later, e = s.GetModelAcceptance(a.ID, later.ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if later.State != "unknown" || later.ClaimSequence <= first.ClaimSequence {
+				t.Fatal("recovery lost latest claim order")
+			}
+			if _, e = s.ProposeModelAcceptance(a.ID, q, now); !errors.Is(e, ErrConflict) {
+				t.Fatalf("later unknown did not invalidate earlier success: %v", e)
+			}
+		})
+	}
+}
+
+func TestAcceptanceClaimSequenceRollsBackWithFailedConsumption(t *testing.T) {
+	s, a, r := gateStore(t)
+	o := gateProposal(t, s, a, r)
+	var e error
+	o, e = s.DecideModelAcceptance(a.ID, o.ID, o.Revision, o.MaterialDigest, "approve", time.Now())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.Exec(`CREATE TRIGGER fail_claim BEFORE UPDATE ON model_acceptance_operations WHEN NEW.state='running' BEGIN SELECT RAISE(ABORT,'synthetic claim failure'); END`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.ClaimModelAcceptance(a.ID, o.ID, o.Revision, o.MaterialDigest, time.Now()); e == nil {
+		t.Fatal("claim unexpectedly persisted")
+	}
+	var count int
+	if e = s.db.QueryRow(`SELECT COUNT(*) FROM model_acceptance_claims`).Scan(&count); e != nil || count != 0 {
+		t.Fatalf("failed attempt left a durable claim: %d %v", count, e)
+	}
+	got, e := s.GetModelAcceptance(a.ID, o.ID)
+	if e != nil || got.ClaimSequence != 0 || got.Attempts != 0 || got.State != "approved" {
+		t.Fatal("failed consumption changed operation")
+	}
+	if _, e = s.db.Exec(`DROP TRIGGER fail_claim`); e != nil {
+		t.Fatal(e)
+	}
+	got, e = s.ClaimModelAcceptance(a.ID, o.ID, o.Revision, o.MaterialDigest, time.Now())
+	if e != nil || got.ClaimSequence < 1 || got.Attempts != 1 {
+		t.Fatalf("atomic claim unavailable: %+v %v", got, e)
+	}
+}

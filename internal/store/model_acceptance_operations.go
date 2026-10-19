@@ -14,7 +14,10 @@ import (
 func (s *Store) initializeModelAcceptanceOperations() error {
 	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS model_acceptance_operations(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES model_accounts(id),revision INTEGER NOT NULL,state TEXT NOT NULL, data BLOB NOT NULL);
  CREATE INDEX IF NOT EXISTS acceptance_account_history ON model_acceptance_operations(account_id);
- CREATE TRIGGER IF NOT EXISTS acceptance_no_delete BEFORE DELETE ON model_acceptance_operations BEGIN SELECT RAISE(ABORT,'immutable acceptance history'); END;`)
+ CREATE TRIGGER IF NOT EXISTS acceptance_no_delete BEFORE DELETE ON model_acceptance_operations BEGIN SELECT RAISE(ABORT,'immutable acceptance history'); END;
+ CREATE TABLE IF NOT EXISTS model_acceptance_claims(sequence INTEGER PRIMARY KEY AUTOINCREMENT,operation_id TEXT NOT NULL UNIQUE REFERENCES model_acceptance_operations(id));
+ CREATE TRIGGER IF NOT EXISTS acceptance_claim_no_update BEFORE UPDATE ON model_acceptance_claims BEGIN SELECT RAISE(ABORT,'immutable acceptance claim'); END;
+ CREATE TRIGGER IF NOT EXISTS acceptance_claim_no_delete BEFORE DELETE ON model_acceptance_claims BEGIN SELECT RAISE(ABORT,'immutable acceptance claim'); END;`)
 	return err
 }
 func acceptanceRead(row modelRowScanner) (domain.ModelAcceptanceOperation, error) {
@@ -178,12 +181,13 @@ func acceptancePrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error 
 			return ErrConflict
 		}
 	}
-	if connection.State != "succeeded" || connection.ResultSnapshotDigest != acceptanceSnapshotDigest(m) {
+	if connection.State != "succeeded" || connection.ClaimSequence < 1 || connection.ResultSnapshotDigest != acceptanceSnapshotDigest(m) {
 		return ErrConflict
 	}
-	// A newer connection (including consumed unknown) revokes old lineage.
+	// Dispatch order, not proposal order or wall-clock time, defines lineage.
+	// A newer claimed connection (including consumed unknown) revokes it.
 	var latest string
-	e = tx.QueryRow(`SELECT id FROM model_acceptance_operations WHERE account_id=? AND json_extract(data,'$.phase')='connection' AND json_extract(data,'$.attempts')=1 ORDER BY rowid DESC LIMIT 1`, m.Account.ID).Scan(&latest)
+	e = tx.QueryRow(`SELECT o.id FROM model_acceptance_claims c JOIN model_acceptance_operations o ON o.id=c.operation_id WHERE o.account_id=? AND json_extract(o.data,'$.phase')='connection' ORDER BY c.sequence DESC LIMIT 1`, m.Account.ID).Scan(&latest)
 	if e != nil || latest != connection.ID {
 		return ErrConflict
 	}
@@ -314,6 +318,16 @@ func (s *Store) transitionModelAcceptance(account, id string, revision int64, di
 	case "reject":
 		o.State = "rejected"
 	case "execute":
+		// The ledger entry and consumed operation commit or roll back together.
+		// AUTOINCREMENT is durable across restarts and independent of clock time.
+		claim, claimErr := tx.Exec(`INSERT INTO model_acceptance_claims(operation_id) VALUES(?)`, o.ID)
+		if claimErr != nil {
+			return o, claimErr
+		}
+		o.ClaimSequence, e = claim.LastInsertId()
+		if e != nil {
+			return o, e
+		}
 		o.State = "running"
 		o.Attempts = 1
 		o.Certainty = "unknown"

@@ -34,6 +34,8 @@ pending / approved → expired | invalidated
 
 Approval does not dispatch. The user explicitly executes the approved operation. Before any credential read or outbound action, a database transaction revalidates the frozen material and atomically consumes the single attempt (`approved → running`, attempts 0 → 1). Concurrent execution, stale tabs, repeated clicks and HTTP retries cannot dispatch it twice. Failures and unknown outcomes require a new proposal and new approval; there is no retry endpoint.
 
+At dispatch, that transaction assigns a durable monotonic `claim_sequence`; connection lineage follows this sequence, never proposal order or timestamps.
+
 Connection may legitimately create a new credential/authorization revision. Its evidence records the resulting revision; later catalog proposals bind that result, not the pre-connection revision. Catalog evidence must match the current connection and account snapshot. Inference selects a model from that exact catalog, never a hard-coded provider recommendation. Reconnecting invalidates prior downstream authority.
 
 ## Recovery and evidence

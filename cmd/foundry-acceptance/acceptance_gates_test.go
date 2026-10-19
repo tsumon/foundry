@@ -19,6 +19,7 @@ func TestAcceptanceGatesIndependentOwnedProtocolStages(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			account := "acceptance-gate-" + provider
 			route := account + "-route"
+			var lastClaim int64
 			run := func(phase, prereq, model string) domain.ModelAcceptanceOperation {
 				t.Helper()
 				a, e := r.store.GetModelAccount(account)
@@ -50,9 +51,10 @@ func TestAcceptanceGatesIndependentOwnedProtocolStages(t *testing.T) {
 						t.Fatal("secret in receipt")
 					}
 				}
-				if o.Attempts != 1 || o.Source != "local_simulation" || o.LiveAccess != "blocked" || o.Quota != "unknown" {
+				if o.Attempts != 1 || o.ClaimSequence <= lastClaim || o.Source != "local_simulation" || o.LiveAccess != "blocked" || o.Quota != "unknown" {
 					t.Fatalf("unsafe receipt %+v", o)
 				}
+				lastClaim = o.ClaimSequence
 				return o
 			}
 			r.gateProtocol.mu.Lock()
@@ -204,7 +206,7 @@ func TestAcceptanceGatesHTTPReviewExecuteAndSafeHistory(t *testing.T) {
 		t.Fatalf("repeat %d", status)
 	}
 	saved := decode(request("GET", path+"/"+o.ID, nil))
-	if saved.Revision != o.Revision || saved.Attempts != 1 {
+	if saved.Revision != o.Revision || saved.Attempts != 1 || saved.ClaimSequence < 1 || saved.ClaimSequence != o.ClaimSequence {
 		t.Fatal("read mutated record")
 	}
 	if status, body := request("GET", "/api/model-accounts/acceptance-gate-openai/acceptance-operations/"+o.ID, nil); status != 404 || strings.Contains(string(body), o.MaterialDigest) {

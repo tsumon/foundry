@@ -95,9 +95,10 @@ func TestServiceLostCompletionDisablesExecutionAndRecoveryConsumes(t *testing.T)
 		t.Fatal("write failure did not disable")
 	}
 	got, _ := svc.Get(a.ID, o.ID)
-	if got.State != "running" || got.Attempts != 1 {
+	if got.State != "running" || got.Attempts != 1 || got.ClaimSequence < 1 {
 		t.Fatalf("consumption not durable %+v", got)
 	}
+	claimSequence := got.ClaimSequence
 	if e = svc.Recover(); e != ErrPersistence {
 		t.Fatal("recovery failure hidden")
 	}
@@ -115,7 +116,7 @@ func TestServiceLostCompletionDisablesExecutionAndRecoveryConsumes(t *testing.T)
 		t.Fatal(e)
 	}
 	got, _ = svc.Get(a.ID, o.ID)
-	if got.State != "unknown" || got.Attempts != 1 {
+	if got.State != "unknown" || got.Attempts != 1 || got.ClaimSequence != claimSequence {
 		t.Fatalf("restart %+v", got)
 	}
 	if _, e = svc.Execute(context.Background(), a.ID, o.ID, got.Revision, got.MaterialDigest); e == nil || calls != 1 {

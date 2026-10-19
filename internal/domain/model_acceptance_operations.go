@@ -45,6 +45,7 @@ type ModelAcceptanceOperation struct {
 	Material              ModelAcceptanceMaterial       `json:"material"`
 	MaterialDigest        string                        `json:"material_digest"`
 	Attempts              int                           `json:"attempts"`
+	ClaimSequence         int64                         `json:"claim_sequence"`
 	Source                string                        `json:"source"`
 	Certainty             string                        `json:"certainty"`
 	Code                  string                        `json:"code,omitempty"`
