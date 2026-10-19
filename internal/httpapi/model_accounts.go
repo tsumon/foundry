@@ -157,6 +157,14 @@ func (s *server) modelAccountsRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if parts[1] == "acceptance" {
+		if len(parts) != 2 || r.Method != http.MethodGet || r.URL.RawQuery != "" || r.URL.ForceQuery {
+			writeError(w, 404, "not_found", "route not found")
+			return
+		}
+		s.modelAcceptance(w, r, id)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "operations" && r.Method == "GET" {
 		if err := domain.ValidateModelCredentialOperation(parts[2]); err != nil {
 			writeAccountError(w, err)

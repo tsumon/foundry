@@ -37,6 +37,44 @@ const settings = {
   settings: { default_profile_id: "", role_bindings: {} },
 };
 
+it("offers local acceptance only inside the selected account and never reads it automatically", async () => {
+  const fetcher = vi.fn(async (path: string, _init?: RequestInit) => {
+    if (path === "/api/profiles") return response(settings);
+    if (path === "/api/model-accounts")
+      return response({ accounts: [accountFixture] });
+    if (path === `/api/model-accounts/${accountFixture.id}/acceptance`)
+      return response(
+        {
+          error: {
+            code: "model_account_storage_unavailable",
+            message: "untrusted detail",
+          },
+        },
+        503,
+      );
+    return response({ account: accountFixture, credentials: [] });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<ModelSettings />);
+  const manage = await screen.findByRole("button", {
+    name: "管理账户 SYNTHETIC account",
+  });
+  expect(
+    screen.queryByRole("button", { name: "本地验收检查" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(manage);
+  const inspect = await screen.findByRole("button", { name: "本地验收检查" });
+  expect(
+    fetcher.mock.calls.filter(([path]) => path.endsWith("/acceptance")),
+  ).toHaveLength(0);
+  fireEvent.click(inspect);
+  expect(await screen.findByText(/本地验收读取失败/)).toBeVisible();
+  expect(
+    fetcher.mock.calls.filter(([path]) => path.endsWith("/acceptance")),
+  ).toHaveLength(1);
+  expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
+});
+
 it("can explicitly query the original ID after an old unmounted POST settles before the remounted query", async () => {
   const account = { ...accountFixture, id: "late-before-query" };
   let finish!: (value: Response) => void;

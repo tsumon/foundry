@@ -64,6 +64,40 @@ export interface RoleModelSelection {
   route?: ModelRoute;
   authorization?: ModelAuthorizationBinding;
 }
+export type ModelAcceptanceReason =
+  | "live_provider_access_pending_confirmation"
+  | "account_disabled"
+  | "route_missing"
+  | "route_invalid"
+  | "credential_metadata_unavailable"
+  | "authorization_unavailable"
+  | "authorization_expired"
+  | "inference_scope_missing"
+  | "extra_usage_local_setting_unknown"
+  | "remote_billing_unverified"
+  | "task_approval_required";
+export interface ModelAccountAcceptance {
+  account_id: string;
+  account_revision: number;
+  scope: "account_routes_only";
+  live_access: "blocked";
+  quota: "unknown";
+  checks: {
+    phase: "local_metadata" | "login" | "catalog" | "inference" | "task";
+    state: "ready" | "blocked" | "not_evaluated";
+    reason_codes: ModelAcceptanceReason[];
+  }[];
+  routes: {
+    id: string;
+    adapter: string;
+    environment: "live" | "simulation" | "unknown";
+    local_metadata: "ready" | "blocked";
+    local_extra_usage: "off" | "unknown";
+    remote_extra_usage: "unverified";
+    reason_codes: ModelAcceptanceReason[];
+  }[];
+}
+
 export type ModelRouteEnvironment = "live" | "simulation";
 export type ModelRouteSpendClass =
   "explicit_api" | "interactive_package" | "subscription_only";

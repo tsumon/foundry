@@ -2,6 +2,7 @@ import { APIError, request } from "./api";
 import type {
   BillingMode,
   ModelAccount,
+  ModelAccountAcceptance,
   ModelAuthorization,
   ModelAuthorizationFlow,
   ModelCredential,
@@ -34,6 +35,8 @@ const json = (method: string, body: unknown) => ({
   body: JSON.stringify(body),
 });
 export const modelAccountApi = {
+  acceptance: (id: string) =>
+    request<{ acceptance: ModelAccountAcceptance }>(`${path(id)}/acceptance`),
   list: () => request<{ accounts: ModelAccount[] }>("/api/model-accounts"),
   create: (q: AccountCreateInput) =>
     request<{ account: ModelAccount }>(
