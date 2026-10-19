@@ -461,6 +461,8 @@ web/src/components/MissionViews.tsx
 web/src/components/MissionWorkspace.tsx
 web/src/components/ModelAcceptanceCard.test.tsx
 web/src/components/ModelAcceptanceCard.tsx
+web/src/components/ModelAcceptanceOperations.test.tsx
+web/src/components/ModelAcceptanceOperations.tsx
 web/src/components/ModelAccountCredentials.test.tsx
 web/src/components/ModelAccountCredentials.tsx
 web/src/components/ModelAccounts.tsx
@@ -517,6 +519,7 @@ web/src/hookApi.ts
 web/src/hookTypes.ts
 web/src/main.tsx
 web/src/mcpTaskApi.ts
+web/src/modelAcceptanceApi.ts
 web/src/modelAccountApi.ts
 web/src/modelAccounts.test.tsx
 web/src/modelSnapshot.ts

@@ -98,6 +98,101 @@ export interface ModelAccountAcceptance {
   }[];
 }
 
+export type ModelAcceptancePhase = "connection" | "catalog" | "inference";
+export type ModelAcceptanceState =
+  | "pending"
+  | "approved"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "unknown"
+  | "rejected"
+  | "expired"
+  | "invalidated";
+export interface ModelAcceptanceRoute {
+  id: string;
+  adapter: string;
+  environment: "simulation";
+  spend_class: string;
+  base_url: string;
+}
+export interface ModelAcceptanceAccount {
+  id: string;
+  revision: number;
+  name: string;
+  provider: string;
+  base_url: string;
+  auth_method: ModelAccount["auth_method"];
+  billing_mode: BillingMode;
+  enabled: boolean;
+  current_credential_version: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface ModelAcceptanceAuthorization {
+  binding: ModelAuthorizationBinding;
+  state: string;
+  generation: number;
+  expires_at: string;
+}
+export interface ModelAcceptanceMaterial {
+  phase: ModelAcceptancePhase;
+  account: ModelAcceptanceAccount;
+  route: ModelRoute;
+  credential_version: number;
+  authorization?: ModelAcceptanceAuthorization;
+  prerequisite_id?: string;
+  connection_id?: string;
+  model?: string;
+  prompt_digest?: string;
+  data_summary: string;
+  created_at: string;
+  expires_at: string;
+  deadline_seconds: 30;
+  max_attempts: 1;
+}
+export interface ModelAcceptanceCatalogEntry {
+  id: string;
+  display_name: string;
+}
+export interface ModelAcceptanceOperation {
+  id: string;
+  account_id: string;
+  revision: number;
+  phase: ModelAcceptancePhase;
+  state: ModelAcceptanceState;
+  material: ModelAcceptanceMaterial;
+  material_digest: string;
+  attempts: number;
+  claim_sequence: number;
+  source: "local_simulation";
+  certainty: "not_sent" | "completed" | "rejected" | "unknown";
+  code?: string;
+  started_at?: string;
+  finished_at?: string;
+  result_account_revision?: number;
+  result_snapshot_digest?: string;
+  catalog: ModelAcceptanceCatalogEntry[];
+  input_tokens?: number;
+  output_tokens?: number;
+  usage_known: boolean;
+  quota: "unknown";
+  remote_billing: "unverified";
+  live_access: "blocked";
+}
+export interface ModelAcceptanceHistory {
+  operations: ModelAcceptanceOperation[];
+  simulation_enabled: boolean;
+  routes: ModelAcceptanceRoute[];
+}
+export interface ModelAcceptanceProposal {
+  phase: ModelAcceptancePhase;
+  route_id: string;
+  expected_account_revision: number;
+  model?: string;
+  prerequisite_id?: string;
+}
+
 export type ModelRouteEnvironment = "live" | "simulation";
 export type ModelRouteSpendClass =
   "explicit_api" | "interactive_package" | "subscription_only";

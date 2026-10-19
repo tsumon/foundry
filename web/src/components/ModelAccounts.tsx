@@ -9,6 +9,7 @@ import type { ModelAccount, ModelCredential, ModelRuntime } from "../types";
 import { ModelAccountCredentials } from "./ModelAccountCredentials";
 import { ModelAuthorizationCard } from "./ModelAuthorizationCard";
 import { ModelAcceptanceCard } from "./ModelAcceptanceCard";
+import { ModelAcceptanceOperations } from "./ModelAcceptanceOperations";
 import { useCapabilityRequest } from "./capabilities/useCapabilityRequest";
 
 export const billingLabels = {
@@ -348,6 +349,10 @@ export function ModelAccounts({
           <ModelAcceptanceCard
             accountId={selected.id}
             accountRevision={selected.revision}
+          />
+          <ModelAcceptanceOperations
+            account={selected}
+            refreshAccount={refresh}
           />
         </section>
       )}

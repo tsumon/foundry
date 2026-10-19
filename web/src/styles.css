@@ -1309,6 +1309,110 @@ summary {
   padding-top: 20px;
   margin-top: 20px;
 }
+.acceptance-operations {
+  min-width: 0;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.acceptance-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: end;
+  margin: 14px 0;
+}
+.acceptance-toolbar > label,
+.acceptance-toolbar > select,
+.acceptance-route-summary {
+  grid-column: 1;
+  min-width: 0;
+}
+.acceptance-toolbar > button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.acceptance-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+}
+.acceptance-steps > li {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fdfdfa;
+}
+.acceptance-steps label,
+.acceptance-steps select {
+  min-width: 0;
+  width: 100%;
+  font-size: 11px;
+}
+.acceptance-step-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.acceptance-step-heading button,
+.acceptance-actions button,
+.acceptance-toolbar button {
+  padding: 6px 9px;
+  font-size: 11px;
+}
+.acceptance-review {
+  min-width: 0;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+.acceptance-review dl {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  margin: 8px 0;
+}
+.acceptance-review dt,
+.acceptance-review dd {
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+.acceptance-review dt {
+  color: var(--muted);
+}
+.acceptance-review code,
+.acceptance-receipt code,
+.acceptance-route-summary code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.acceptance-receipts > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.acceptance-receipt {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 3px;
+  text-align: left;
+}
+.acceptance-receipt span,
+.acceptance-receipt code {
+  min-width: 0;
+  font-size: 10px;
+}
 .account-credentials {
   border-top: 1px solid var(--line);
   padding-top: 18px;
@@ -1389,6 +1493,15 @@ summary {
   .account-list > li {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .acceptance-toolbar,
+  .acceptance-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .acceptance-toolbar > button {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
   }
   .saved-connection {
     flex-wrap: wrap;

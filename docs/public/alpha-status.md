@@ -10,7 +10,7 @@ FOUNDRY is an experimental, source-only macOS arm64 (Apple Silicon) alpha. This 
 - Serial planning, bounded candidate edits, Docker acceptance commands, QA/Auditor review, and local patch/report export.
 - Explicit MCP catalog discovery and a controller-owned synthetic task-time MCP fixture behind `--local-mcp-test`.
 - Synthetic acceptance harness with fresh temporary state, fake in-memory credentials, local protocol fixtures, and a random loopback port.
-- Read-only model-account acceptance inspection over local account, route, credential-generation, and authorization metadata. It does not read secret values or grant live access.
+- Read-only model-account acceptance inspection over local account, route, credential-generation, and authorization metadata, plus three separately proposed, approved, and explicitly executed connection, catalog, and inference gates against process-owned local fixtures. They do not read real secret values or grant live access; real login, catalog discovery, and inference remain blocked.
 
 ## Deliberately not implemented
 

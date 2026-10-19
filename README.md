@@ -133,7 +133,7 @@ go run ./cmd/foundry-acceptance --web-dir web/dist
 
 <p align="center"><sub>只读本地元数据检查会显示阻塞阶段、路由配置与未知的远程状态。它不读取 Keychain 值、不联系 provider，也不授予登录、目录发现、推理或任务执行权限。</sub></p>
 
-模型接入采用“先准备、后逐阶段批准”的设计。当前只实现本地元数据检查，真实登录、目录发现、单次推理和任务验收仍分别关闭。参阅[模型验收：准备，不是实时接入](docs/public/model-acceptance.md)。
+模型接入采用“先准备、后逐阶段批准”的设计。除只读本地元数据检查外，一次性验收环境现提供连接、目录和推理三道分别提案、批准并显式执行的本地合成模拟门禁；它们只访问进程拥有的 loopback fixture。真实登录、真实目录发现、真实推理和任务验收仍分别关闭。参阅[模型验收：准备，不是实时接入](docs/public/model-acceptance.md)。
 
 <details>
 <summary>本地开发与运行入口</summary>

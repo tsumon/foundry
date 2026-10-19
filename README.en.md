@@ -133,7 +133,7 @@ The command creates a fresh temporary Git repository and SQLite state, then uses
 
 <p align="center"><sub>The current UI is shown in Chinese. The read-only local metadata inspection reports blocked phases, route configuration, and unknown remote state. It does not read Keychain values, contact a provider, or authorize login, catalog discovery, inference, or task execution.</sub></p>
 
-Model access follows a “prepare first, approve each later stage” design. Only local metadata inspection is implemented here. Real sign-in, catalog discovery, one-call inference, and task acceptance remain separately closed. See [Model acceptance: preparation, not live access](docs/public/model-acceptance.md).
+Model access follows a “prepare first, approve each later stage” design. In addition to read-only local metadata inspection, the disposable acceptance environment now provides three separately proposed, approved, and explicitly executed local synthetic gates for connection, catalog, and inference. They contact only process-owned loopback fixtures. Real sign-in, real catalog discovery, real inference, and task acceptance remain separately closed. See [Model acceptance: preparation, not live access](docs/public/model-acceptance.md).
 
 <details>
 <summary>Local development and runtime entrypoints</summary>
