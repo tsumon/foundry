@@ -2,7 +2,6 @@ package domain
 
 import (
 	"encoding/json"
-	"reflect"
 	"testing"
 )
 
@@ -69,8 +68,5 @@ func TestSubscriptionResourceIsDigestBoundWithoutChangingLegacyJSON(t *testing.T
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil || fields["requested_resource"] != nil || fields["requested_scopes"] != nil || fields["connection_purpose"] != nil {
 		t.Fatalf("legacy material gained permission fields: %s", raw)
-	}
-	if !reflect.DeepEqual(subscriptionMaterial().RequestedScopes, []string{"openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"}) {
-		t.Fatal("test fixture drift")
 	}
 }

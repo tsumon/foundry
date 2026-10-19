@@ -5,15 +5,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"foundry/internal/acceptance"
+	"foundry/internal/accounts"
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/store"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const subscriptionGateAccount = "acceptance-gate-openai-subscription"
@@ -195,5 +199,78 @@ func TestSubscriptionGateLostFinishRestartsUnknownWithoutReplay(t *testing.T) {
 	}
 	if _, err = r.gates.Execute(context.Background(), subscriptionGateAccount, o.ID, recovered.Revision, recovered.MaterialDigest); err == nil || replays.Load() != 0 || r.gateProtocol.tokenCount() != 1 {
 		t.Fatal("restart replayed subscription authorization")
+	}
+}
+
+func TestSubscriptionGateCancellationAndTimeoutConsumeWithoutReplay(t *testing.T) {
+	for _, mode := range []string{"cancel", "timeout"} {
+		t.Run(mode, func(t *testing.T) {
+			r := startProtocolAcceptanceForTest(t)
+			entered, canceled := make(chan struct{}), make(chan struct{})
+			var tokenCalls atomic.Int32
+			token := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+				if err := req.ParseForm(); err != nil {
+					t.Error(err)
+					return
+				}
+				if req.PostForm.Get("resource") != domain.OpenAISubscriptionRequestedResource || req.PostForm.Get("grant_type") != "authorization_code" {
+					t.Errorf("subscription token contract=%v", req.PostForm)
+				}
+				tokenCalls.Add(1)
+				close(entered)
+				<-req.Context().Done()
+				close(canceled)
+			}))
+			defer token.Close()
+			options := r.gateProtocol.siwcOptions()
+			options.TokenOrigin = token.URL
+			_ = r.gateSIWC.Close()
+			var err error
+			r.gateSIWC, err = accounts.NewSIWCSimulation(accounts.New(r.store, &ephemeralSecrets{values: map[string]string{}}), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			o := subscriptionGateProposal(t, r)
+			o, err = r.gates.Decide(subscriptionGateAccount, o.ID, o.Revision, o.MaterialDigest, "approve")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			if mode == "timeout" {
+				cancel()
+				ctx, cancel = context.WithTimeout(context.Background(), 300*time.Millisecond)
+			}
+			defer cancel()
+			done := make(chan domain.ModelAcceptanceOperation, 1)
+			go func() {
+				got, _ := r.gates.Execute(ctx, subscriptionGateAccount, o.ID, o.Revision, o.MaterialDigest)
+				done <- got
+			}()
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("subscription token exchange not reached")
+			}
+			if mode == "cancel" {
+				cancel()
+			}
+			var got domain.ModelAcceptanceOperation
+			select {
+			case got = <-done:
+			case <-time.After(3 * time.Second):
+				t.Fatal("subscription cancellation did not terminate")
+			}
+			select {
+			case <-canceled:
+			case <-time.After(time.Second):
+				t.Fatal("subscription gate returned before token request canceled")
+			}
+			assertCanceledGateConnection(t, r, o, got)
+			r.gateProtocol.mu.Lock()
+			defer r.gateProtocol.mu.Unlock()
+			if tokenCalls.Load() != 1 || r.gateProtocol.refreshCalls != 0 || r.gateProtocol.modelRequests != 0 || r.gateProtocol.directories != 0 {
+				t.Fatal("canceled subscription continued to downstream effects")
+			}
+		})
 	}
 }
