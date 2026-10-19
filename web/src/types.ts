@@ -126,7 +126,7 @@ export interface ModelAcceptanceRoute {
   environment: "simulation";
   spend_class: string;
   base_url: string;
-  connection_purpose?: "identity_only";
+  connection_purpose?: "identity_only" | "subscription_only";
 }
 export interface ModelAcceptanceAccount {
   id: string;
@@ -149,8 +149,18 @@ export interface ModelAcceptanceAuthorization {
 }
 export interface ModelAcceptanceMaterial {
   phase: ModelAcceptancePhase;
-  connection_purpose?: "identity_only";
-  requested_scopes?: ["openid", "profile", "email"];
+  connection_purpose?: "identity_only" | "subscription_only";
+  requested_scopes?:
+    | ["openid", "profile", "email"]
+    | [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "resource.invoke",
+        "chatgpt.tokens.use.direct",
+      ];
+  requested_resource?: "https://api.openai.com/v1";
   account: ModelAcceptanceAccount;
   route: ModelRoute;
   credential_version: number;
@@ -202,7 +212,7 @@ export interface ModelAcceptanceHistory {
 }
 export interface ModelAcceptanceProposal {
   phase: ModelAcceptancePhase;
-  connection_purpose?: "identity_only";
+  connection_purpose?: "identity_only" | "subscription_only";
   route_id: string;
   expected_account_revision: number;
   model?: string;

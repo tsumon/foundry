@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
@@ -80,6 +81,49 @@ const history = (operations: unknown[] = [], enabled = true) =>
     simulation_enabled: enabled,
     routes: enabled ? [route] : [],
   });
+
+const subscriptionAccount = {
+  ...account,
+  id: "acceptance-gate-openai-subscription",
+  name: "SYNTHETIC OpenAI — subscription connection",
+};
+const subscriptionRoute = {
+  ...route,
+  id: "acceptance-gate-openai-subscription-route",
+  connection_purpose: "subscription_only" as const,
+};
+const subscriptionScopes = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "resource.invoke",
+  "chatgpt.tokens.use.direct",
+] as const;
+const subscriptionMaterial = () => ({
+  ...material("connection"),
+  account: subscriptionAccount,
+  route: {
+    ...subscriptionRoute,
+    account_id: subscriptionAccount.id,
+    protocol: "responses",
+    extra_usage: "off",
+    created_at: "2026-10-19T00:00:00Z",
+  },
+  connection_purpose: "subscription_only" as const,
+  requested_scopes: subscriptionScopes,
+  requested_resource: "https://api.openai.com/v1" as const,
+});
+const subscriptionOperation = (
+  id: string,
+  state: string,
+  extra: Record<string, unknown> = {},
+) => ({
+  ...operation(id, "connection", state, extra),
+  account_id: subscriptionAccount.id,
+  material: subscriptionMaterial(),
+  ...extra,
+});
 
 it("requires a new reviewed permit for connection, catalog, and inference without automatic dispatch", async () => {
   const refreshAccount = vi.fn(async () => {});
@@ -177,6 +221,147 @@ it("requires a new reviewed permit for connection, catalog, and inference withou
     vi.useRealTimers();
   }
 });
+
+it("reviews the exact subscription permission contract and exposes only the independent connection controls", async () => {
+  let current: ReturnType<typeof subscriptionOperation> & {
+    result_account_revision?: number;
+  } = subscriptionOperation("subscription-connection", "pending");
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (!init?.method)
+      return response({
+        operations: [],
+        simulation_enabled: true,
+        routes: [subscriptionRoute],
+      });
+    const body = JSON.parse(String(init.body));
+    if (path.endsWith("/acceptance-operations")) {
+      expect(body).toEqual({
+        phase: "connection",
+        route_id: subscriptionRoute.id,
+        expected_account_revision: 1,
+        connection_purpose: "subscription_only",
+      });
+      return response({ operation: current });
+    }
+    if (path.endsWith("/decision")) {
+      expect(body).toEqual({
+        expected_revision: 1,
+        material_digest: digest,
+        decision: "approve",
+      });
+      current = { ...current, revision: 2, state: "approved" };
+      return response({ operation: current });
+    }
+    if (path.endsWith("/execute")) {
+      current = {
+        ...current,
+        revision: 4,
+        state: "succeeded",
+        attempts: 1,
+        claim_sequence: 1,
+        certainty: "completed",
+        result_account_revision: 1,
+      };
+      return response({ operation: current });
+    }
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={subscriptionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  expect(await screen.findByText(/本地订阅连接模拟/)).toBeVisible();
+  expect(screen.getByText(/额度：未知.*真实访问：关闭/)).toBeVisible();
+  expect(screen.queryByText("目录")).not.toBeInTheDocument();
+  expect(screen.queryByText("推理")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "创建连接材料" }));
+
+  const review = await screen.findByLabelText("连接材料审阅");
+  for (const scope of subscriptionScopes)
+    expect(within(review).getByText(scope)).toBeVisible();
+  expect(within(review).getByText(/用于身份协议登录/)).toBeVisible();
+  expect(within(review).getByText(/读取基础个人资料/)).toBeVisible();
+  expect(within(review).getByText(/读取账户邮箱声明/)).toBeVisible();
+  expect(within(review).getByText(/请求离线授权权限/)).toBeVisible();
+  expect(within(review).getByText(/请求资源调用权限/)).toBeVisible();
+  expect(within(review).getByText(/请求订阅令牌直接使用权限/)).toBeVisible();
+  expect(within(review).getByText("https://api.openai.com/v1")).toBeVisible();
+  expect(within(review).getByText(subscriptionRoute.base_url)).toBeVisible();
+  expect(
+    within(review).getByText(/协议 audience，不是本地传输地址/),
+  ).toBeVisible();
+  expect(
+    within(review).getByText("offline_access").closest("li"),
+  ).toHaveTextContent(/offline_access.*应用刷新仍禁用/);
+  expect(
+    within(review).getByText(
+      /目录查询：禁用.*推理：禁用.*应用刷新：禁用.*付费回退：禁用/,
+    ),
+  ).toBeVisible();
+  expect(within(review).getByText(/批准有效期 10 分钟/)).toBeVisible();
+  expect(within(review).getByText(/30 秒/)).toBeVisible();
+  expect(within(review).getByText(/最多 1 次/)).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "执行连接" }),
+  ).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "批准连接材料" }));
+  expect(await screen.findByRole("button", { name: "执行连接" })).toBeEnabled();
+  expect(
+    fetcher.mock.calls.filter(([path]) => String(path).endsWith("/execute")),
+  ).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+  expect(await screen.findByText(/连接 · 已成功 · 本地模拟/)).toBeVisible();
+  expect(screen.queryByText("目录")).not.toBeInTheDocument();
+  expect(screen.queryByText("推理")).not.toBeInTheDocument();
+});
+
+it.each([
+  ["rejected", "rejected", "rejected"],
+  ["failed", "failed", "entitlement_denied"],
+  ["unknown", "unknown", "transport_unknown"],
+])(
+  "keeps a consumed subscription %s receipt terminal without an execute or retry control",
+  async (_name, state, code) => {
+    const terminal = subscriptionOperation(`subscription-${state}`, state, {
+      attempts: 1,
+      claim_sequence: 8,
+      certainty: state === "unknown" ? "unknown" : "rejected",
+      ...(code === "rejected" ? {} : { code }),
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          operations: [terminal],
+          simulation_enabled: true,
+          routes: [subscriptionRoute],
+        }),
+      ),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={subscriptionAccount}
+        refreshAccount={async () => {}}
+      />,
+    );
+
+    fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+      target: { value: terminal.id },
+    });
+    expect(screen.getByText(/单次尝试已消耗/)).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "执行连接" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /重试/ }),
+    ).not.toBeInTheDocument();
+  },
+);
 
 it("uses the highest positive connection claim sequence across reverse-ordered receipts and lets a later unknown invalidate success", async () => {
   const latestSuccess = operation(
@@ -592,7 +777,7 @@ it("discards an older account read that settles after the newly selected account
 });
 
 it("locks every mutation after a lost decision response until an explicit GET reads that saved receipt", async () => {
-  const pending = operation("pending-1", "connection", "pending");
+  const pending = subscriptionOperation("pending-1", "pending");
   let detailReads = 0;
   const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
     if (!init?.method) {
@@ -600,14 +785,18 @@ it("locks every mutation after a lost decision response until an explicit GET re
         detailReads++;
         return response({ operation: pending });
       }
-      return history([pending]);
+      return response({
+        operations: [pending],
+        simulation_enabled: true,
+        routes: [subscriptionRoute],
+      });
     }
     throw new Error("synthetic network loss");
   });
   vi.stubGlobal("fetch", fetcher);
   render(
     <ModelAcceptanceOperations
-      account={account}
+      account={subscriptionAccount}
       refreshAccount={async () => {}}
     />,
   );
@@ -1091,7 +1280,8 @@ it("fails closed when reconciliation returns mismatched identity material", asyn
   };
   const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method) throw new Error("synthetic lost decision response");
-    if (path.endsWith(`/${pending.id}`)) return response({ operation: mismatched });
+    if (path.endsWith(`/${pending.id}`))
+      return response({ operation: mismatched });
     return response({
       operations: [pending],
       simulation_enabled: true,
@@ -1106,10 +1296,9 @@ it("fails closed when reconciliation returns mismatched identity material", asyn
     />,
   );
 
-  fireEvent.change(
-    await screen.findByLabelText("连接已保存材料"),
-    { target: { value: pending.id } },
-  );
+  fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+    target: { value: pending.id },
+  });
   fireEvent.click(screen.getByRole("button", { name: "批准连接材料" }));
   fireEvent.click(
     await screen.findByRole("button", { name: "仅读取原验收记录" }),
@@ -1144,7 +1333,10 @@ it("retains read-only historical evidence when simulation is disabled", async ()
     ),
   );
   render(
-    <ModelAcceptanceOperations account={account} refreshAccount={async () => {}} />,
+    <ModelAcceptanceOperations
+      account={account}
+      refreshAccount={async () => {}}
+    />,
   );
 
   expect(await screen.findByText("read-only-connection")).toBeVisible();
@@ -1174,6 +1366,70 @@ it.each([
       }),
     ],
     raw: "malformed-identity",
+  },
+  {
+    name: "reordered subscription scopes",
+    routes: [subscriptionRoute],
+    operations: [
+      {
+        ...subscriptionOperation("malformed-subscription-scopes", "pending"),
+        material: {
+          ...subscriptionMaterial(),
+          requested_scopes: [
+            "profile",
+            "openid",
+            "email",
+            "offline_access",
+            "resource.invoke",
+            "chatgpt.tokens.use.direct",
+          ],
+        },
+      },
+    ],
+    raw: "malformed-subscription-scopes",
+  },
+  {
+    name: "subscription resource replaced with the loopback endpoint",
+    routes: [subscriptionRoute],
+    operations: [
+      {
+        ...subscriptionOperation("malformed-subscription-resource", "pending"),
+        material: {
+          ...subscriptionMaterial(),
+          requested_resource: subscriptionRoute.base_url,
+        },
+      },
+    ],
+    raw: "malformed-subscription-resource",
+  },
+  {
+    name: "subscription receipt carrying catalog output",
+    routes: [subscriptionRoute],
+    operations: [
+      subscriptionOperation("subscription-with-output", "succeeded", {
+        attempts: 1,
+        claim_sequence: 3,
+        certainty: "completed",
+        result_account_revision: 1,
+        catalog: [{ id: "unsafe-catalog", display_name: "Unsafe catalog" }],
+      }),
+    ],
+    raw: "unsafe-catalog",
+  },
+  {
+    name: "subscription route with the wrong adapter",
+    routes: [{ ...subscriptionRoute, adapter: "untrusted_adapter" }],
+    operations: [],
+    raw: "untrusted_adapter",
+  },
+  {
+    name: "mixed identity and subscription route purposes",
+    routes: [
+      { ...route, connection_purpose: "identity_only" },
+      { ...subscriptionRoute, id: "mixed-subscription-route" },
+    ],
+    operations: [],
+    raw: "mixed-subscription-route",
   },
   {
     name: "malformed legacy capability",

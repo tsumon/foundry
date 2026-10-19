@@ -312,10 +312,13 @@ export function ModelAuthorizationCard({
     });
 
   const identityOnly = connectionPolicy === "identity_only";
+  const subscriptionOnly = connectionPolicy === "subscription_only";
+  const acceptanceManaged = identityOnly || subscriptionOnly;
   const legacyPolicy = legacySIWCCapability === true;
-  const refreshable = legacyPolicy
-    ? authorizations.find((item) => item.state === "available")
-    : undefined;
+  const refreshable =
+    legacyPolicy && !acceptanceManaged
+      ? authorizations.find((item) => item.state === "available")
+      : undefined;
   const hasOfflineAccess =
     refreshable?.scopes.includes("offline_access") ?? false;
   const hasDirectUse =
@@ -341,7 +344,9 @@ export function ModelAuthorizationCard({
       <p className="note">
         {identityOnly
           ? "本地身份专用模拟仅记录身份验证；不开放模型权限、刷新、目录或推理。不会自动打开浏览器、轮询或切换付费通道。"
-          : "账户路由的真实登录与刷新保持关闭；旧式独立连接的既有行为保持不变。不会自动打开浏览器、轮询或切换付费通道。"}
+          : subscriptionOnly
+            ? "订阅连接由验收材料处理。请求 offline_access 不会开放应用刷新；目录、推理、自动轮询与付费通道切换保持禁用。"
+            : "账户路由的真实登录与刷新保持关闭；旧式独立连接的既有行为保持不变。不会自动打开浏览器、轮询或切换付费通道。"}
       </p>
       {!loaded && (
         <p className="warning-copy">授权历史尚未读取，不能视为无授权或可用。</p>
@@ -353,9 +358,9 @@ export function ModelAuthorizationCard({
       )}
       {notice && <p role="status">{notice}</p>}
       <div className="authorization-actions">
-        {identityOnly ? (
+        {acceptanceManaged ? (
           <button type="button" disabled>
-            身份验证由验收材料处理
+            {identityOnly ? "身份验证" : "订阅连接"}由验收材料处理
           </button>
         ) : simulation && legacyPolicy ? (
           <button
@@ -393,7 +398,7 @@ export function ModelAuthorizationCard({
           重新读取授权记录
         </button>
       </div>
-      {!identityOnly && legacyPolicy && !simulation && (
+      {!acceptanceManaged && legacyPolicy && !simulation && (
         <p id="authorization-live-reason" className="field-help">
           当前进程没有本地模拟授权能力；生产真实登录不会发起请求。
         </p>

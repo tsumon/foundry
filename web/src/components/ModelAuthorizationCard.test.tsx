@@ -192,6 +192,36 @@ it("uses trusted identity policy to keep the broader login and refresh paths clo
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
+it("keeps subscription connection accounts on the approval card without legacy login or refresh shortcuts", async () => {
+  const fetcher = vi.fn(async (_path: string) =>
+    response({ authorizations: [authorization], remote_revocations: [] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="subscription_only"
+      legacySIWCCapability
+    />,
+  );
+
+  expect(
+    await screen.findByRole("button", { name: "订阅连接由验收材料处理" }),
+  ).toBeDisabled();
+  expect(screen.getByText(/offline_access.*应用刷新/)).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "开始本地模拟登录" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "刷新本地模拟授权" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "真实刷新（未开放）" }),
+  ).not.toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
 it("fails closed while route policy is unavailable", async () => {
   const fetcher = vi.fn(async (_path: string) =>
     response({ authorizations: [authorization], remote_revocations: [] }),

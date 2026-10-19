@@ -41,19 +41,48 @@ const receiptCodes = new Set([
 const identifier = /^[A-Za-z0-9_-]{1,256}$/;
 const digest = /^[a-f0-9]{64}$/;
 const identityScopes = ["openid", "profile", "email"] as const;
+const subscriptionScopes = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "resource.invoke",
+  "chatgpt.tokens.use.direct",
+] as const;
+const subscriptionResource = "https://api.openai.com/v1";
 const identityAdapter = "openai_siwc_responses";
 const identitySpendClass = "subscription_only";
+const scopeMeanings: Record<(typeof subscriptionScopes)[number], string> = {
+  openid: "用于身份协议登录",
+  profile: "读取基础个人资料",
+  email: "读取账户邮箱声明",
+  offline_access: "请求离线授权权限；应用刷新仍禁用",
+  "resource.invoke": "请求资源调用权限",
+  "chatgpt.tokens.use.direct": "请求订阅令牌直接使用权限",
+};
 
 export type ModelAcceptanceConnectionPolicy =
-  "identity_only" | "legacy" | "unavailable";
+  "identity_only" | "subscription_only" | "legacy" | "unavailable";
 
 function validConnectionPurpose(
   value: unknown,
-): value is "identity_only" | undefined {
-  return value === undefined || value === "identity_only";
+): value is "identity_only" | "subscription_only" | undefined {
+  return (
+    value === undefined ||
+    value === "identity_only" ||
+    value === "subscription_only"
+  );
 }
 
-function validIdentityMaterial(
+function exactScopes(value: unknown, expected: readonly string[]): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((scope, index) => scope === expected[index])
+  );
+}
+
+function validConnectionMaterial(
   value: ModelAcceptanceOperation,
   accountID: string,
   trustedRoute?: ModelAcceptanceHistory["routes"][number],
@@ -63,20 +92,48 @@ function validIdentityMaterial(
   const record = material as Record<string, unknown>;
   if (!validConnectionPurpose(record.connection_purpose)) return false;
   if (record.connection_purpose === undefined)
-    return record.requested_scopes === undefined;
-  const scopesValid =
-    value.phase === "connection" &&
-    Array.isArray(record.requested_scopes) &&
-    record.requested_scopes.length === identityScopes.length &&
-    record.requested_scopes.every(
-      (scope, index) => scope === identityScopes[index],
+    return (
+      record.requested_scopes === undefined &&
+      record.requested_resource === undefined
     );
-  if (!scopesValid || !trustedRoute) return scopesValid;
+  const identityOnly = record.connection_purpose === "identity_only";
+  const permissionsValid = identityOnly
+    ? exactScopes(record.requested_scopes, identityScopes) &&
+      record.requested_resource === undefined
+    : exactScopes(record.requested_scopes, subscriptionScopes) &&
+      record.requested_resource === subscriptionResource;
+  const account = record.account;
   const materialRoute = record.route;
-  if (!materialRoute || typeof materialRoute !== "object") return false;
+  if (
+    value.phase !== "connection" ||
+    !permissionsValid ||
+    !account ||
+    typeof account !== "object" ||
+    !materialRoute ||
+    typeof materialRoute !== "object" ||
+    record.deadline_seconds !== 30 ||
+    record.max_attempts !== 1
+  )
+    return false;
+  const accountRecord = account as Record<string, unknown>;
   const route = materialRoute as Record<string, unknown>;
-  return (
+  const created = Date.parse(String(record.created_at));
+  const expires = Date.parse(String(record.expires_at));
+  const snapshotValid =
+    accountRecord.id === accountID &&
+    accountRecord.provider === "openai" &&
+    accountRecord.auth_method === "openai_siwc" &&
+    accountRecord.billing_mode === "subscription" &&
     route.account_id === accountID &&
+    route.adapter === identityAdapter &&
+    route.environment === "simulation" &&
+    route.spend_class === identitySpendClass &&
+    route.extra_usage === "off" &&
+    Number.isFinite(created) &&
+    Number.isFinite(expires) &&
+    expires - created === 10 * 60 * 1000;
+  if (!snapshotValid || !trustedRoute) return snapshotValid;
+  return (
     route.id === trustedRoute.id &&
     route.adapter === trustedRoute.adapter &&
     route.environment === trustedRoute.environment &&
@@ -112,6 +169,17 @@ function isTrustedIdentityRoute(
   );
 }
 
+function isTrustedSubscriptionRoute(
+  route: ModelAcceptanceHistory["routes"][number],
+): boolean {
+  return (
+    route.connection_purpose === "subscription_only" &&
+    route.adapter === identityAdapter &&
+    route.environment === "simulation" &&
+    route.spend_class === identitySpendClass
+  );
+}
+
 export function connectionPolicy(
   history: ModelAcceptanceHistory,
 ): ModelAcceptanceConnectionPolicy {
@@ -129,6 +197,11 @@ function routePolicy(
     routes.every(isTrustedIdentityRoute)
   )
     return "identity_only";
+  if (
+    purposes.every((purpose) => purpose === "subscription_only") &&
+    routes.every(isTrustedSubscriptionRoute)
+  )
+    return "subscription_only";
   if (purposes.every((purpose) => purpose === undefined)) return "legacy";
   return "unavailable";
 }
@@ -153,7 +226,7 @@ function validOperation(
     value.quota === "unknown" &&
     value.remote_billing === "unverified" &&
     !!value.material &&
-    validIdentityMaterial(value, accountID, trustedRoute) &&
+    validConnectionMaterial(value, accountID, trustedRoute) &&
     value.material.phase === value.phase &&
     value.material.account.id === accountID &&
     digest.test(value.material_digest) &&
@@ -164,7 +237,12 @@ function validOperation(
         identifier.test(entry.id) &&
         typeof entry.display_name === "string" &&
         entry.display_name.length <= 256,
-    )
+    ) &&
+    (value.material.connection_purpose !== "subscription_only" ||
+      (value.catalog.length === 0 &&
+        value.usage_known === false &&
+        value.input_tokens === undefined &&
+        value.output_tokens === undefined))
   );
 }
 
@@ -173,7 +251,9 @@ function operationRoute(
   routes: ModelAcceptanceHistory["routes"],
 ) {
   const id = operation.material?.route?.id;
-  return typeof id === "string" ? routes.find((route) => route.id === id) : undefined;
+  return typeof id === "string"
+    ? routes.find((route) => route.id === id)
+    : undefined;
 }
 
 function validOperationForSnapshot(
@@ -184,13 +264,15 @@ function validOperationForSnapshot(
   const policy = connectionPolicy(history);
   if (policy === "unavailable") return false;
   const trustedRoute =
-    policy === "identity_only" ? operationRoute(operation, history.routes) : undefined;
+    policy === "identity_only" || policy === "subscription_only"
+      ? operationRoute(operation, history.routes)
+      : undefined;
   return (
-    (policy !== "identity_only" || !!trustedRoute) &&
+    (policy === "legacy" || !!trustedRoute) &&
     validOperation(operation, accountID, trustedRoute) &&
-    (policy === "identity_only"
+    (policy === "identity_only" || policy === "subscription_only"
       ? operation.phase === "connection" &&
-        operation.material.connection_purpose === "identity_only"
+        operation.material.connection_purpose === policy
       : operation.material.connection_purpose === undefined)
   );
 }
@@ -227,7 +309,7 @@ function validHistory(
               !!trustedRoute &&
               validOperation(operation, accountID, trustedRoute) &&
               operation.phase === "connection" &&
-              operation.material.connection_purpose === "identity_only"
+              operation.material.connection_purpose === policy
             );
           })
         );
@@ -322,9 +404,7 @@ function AcceptanceOperations({
     setSnapshot(history);
     setLoaded(true);
     onConnectionPolicy?.(connectionPolicy(history));
-    onLegacySIWCCapability?.(
-      history.legacy_siwc_simulation_enabled === true,
-    );
+    onLegacySIWCCapability?.(history.legacy_siwc_simulation_enabled === true);
     setRouteID((current) =>
       history.routes.some((route) => route.id === current)
         ? current
@@ -377,6 +457,10 @@ function AcceptanceOperations({
   const operations = snapshot?.operations ?? [];
   const policy = snapshot ? connectionPolicy(snapshot) : "unavailable";
   const identityOnly = policy === "identity_only";
+  const subscriptionOnly = policy === "subscription_only";
+  const visiblePhases = subscriptionOnly
+    ? (["connection"] as ModelAcceptancePhase[])
+    : phases;
   // Connection authority is dispatch order, never response/list/proposal/time order.
   const latestConnection = useMemo(
     () => latestClaimed(operations, "connection"),
@@ -413,7 +497,10 @@ function AcceptanceOperations({
   }, [catalog?.id, catalog?.revision]);
 
   const replaceOperation = (operation: ModelAcceptanceOperation) => {
-    if (!snapshot || !validOperationForSnapshot(operation, account.id, snapshot))
+    if (
+      !snapshot ||
+      !validOperationForSnapshot(operation, account.id, snapshot)
+    )
       throw new Error("invalid receipt");
     setSnapshot((current) =>
       current
@@ -581,8 +668,8 @@ function AcceptanceOperations({
         phase,
         route_id: routeID,
         expected_account_revision: currentAccountRevision,
-        ...(identityOnly
-          ? { connection_purpose: "identity_only" as const }
+        ...(identityOnly || subscriptionOnly
+          ? { connection_purpose: policy }
           : {}),
         ...(prerequisite ? { prerequisite_id: prerequisite } : {}),
         ...(phase === "inference" ? { model } : {}),
@@ -597,7 +684,11 @@ function AcceptanceOperations({
       <div className="section-heading">
         <div>
           <h4>单次本地模拟验收</h4>
-          <p className="muted">连接、目录与推理分别审阅、批准和执行。</p>
+          <p className="muted">
+            {subscriptionOnly
+              ? "订阅连接材料单独审阅、批准和执行。"
+              : "连接、目录与推理分别审阅、批准和执行。"}
+          </p>
         </div>
         <span className="route-lock">
           {snapshot?.simulation_enabled ? "仅本地模拟" : "生产真实访问保持关闭"}
@@ -611,6 +702,11 @@ function AcceptanceOperations({
       {identityOnly && (
         <p className="note">
           本地身份专用模拟；请求身份范围：openid、profile、email。真实登录仍待确认；账户与工作区由用户稍后选择；额度和计费未知。身份验证成功不代表模型可用。
+        </p>
+      )}
+      {subscriptionOnly && (
+        <p className="note">
+          本地订阅连接模拟；额度：未知，真实访问：关闭。成功只记录合成连接证据，不代表真实订阅、工作区或额度已经验证。
         </p>
       )}
       {error && (
@@ -652,6 +748,7 @@ function AcceptanceOperations({
             {snapshot.routes.find((route) => route.id === routeID)!.adapter} ·{" "}
             {snapshot.routes.find((route) => route.id === routeID)!.spend_class}
             {identityOnly && " · 仅身份验证，不授予模型权限"}
+            {subscriptionOnly && " · 仅订阅连接，不授予目录或推理权限"}
           </p>
         )}
         <button
@@ -667,7 +764,7 @@ function AcceptanceOperations({
         <p>尚无已保存的验收材料</p>
       )}
       <ol className="acceptance-steps">
-        {phases.map((phase) => {
+        {visiblePhases.map((phase) => {
           const phaseOperations = operations.filter(
             (operation) => operation.phase === phase,
           );
@@ -762,6 +859,7 @@ function AcceptanceOperations({
                       async (result) => {
                         if (
                           !identityOnly &&
+                          !subscriptionOnly &&
                           result.phase === "connection" &&
                           result.state === "succeeded"
                         )
@@ -829,7 +927,7 @@ function OperationReview({
         {stateLabels[operation.state]}
       </p>
       <dl>
-        <dt>固定端点</dt>
+        <dt>本地模拟端点</dt>
         <dd>{material.route.base_url}</dd>
         <dt>账户快照</dt>
         <dd>
@@ -860,6 +958,31 @@ function OperationReview({
             <dd>{material.requested_scopes?.join(" · ")}</dd>
           </>
         )}
+        {material.connection_purpose === "subscription_only" && (
+          <>
+            <dt>连接目的</dt>
+            <dd>本地订阅连接模拟；不授予后续模型操作</dd>
+            <dt>请求协议权限</dt>
+            <dd>
+              <ul>
+                {subscriptionScopes.map((scope) => (
+                  <li key={scope}>
+                    <code>{scope}</code> — {scopeMeanings[scope]}
+                  </li>
+                ))}
+              </ul>
+            </dd>
+            <dt>请求资源 / audience</dt>
+            <dd>
+              <code>{material.requested_resource}</code>
+              （协议 audience，不是本地传输地址）
+            </dd>
+            <dt>应用能力</dt>
+            <dd>
+              目录查询：禁用 · 推理：禁用 · 应用刷新：禁用 · 付费回退：禁用
+            </dd>
+          </>
+        )}
         <dt>输入摘要</dt>
         <dd>{material.data_summary}</dd>
         {material.model && (
@@ -878,7 +1001,9 @@ function OperationReview({
         )}
         <dt>期限</dt>
         <dd>
-          {material.deadline_seconds} 秒 · 到期 {material.expires_at}
+          {material.connection_purpose === "subscription_only"
+            ? `批准有效期 10 分钟 · 执行期限 ${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`
+            : `${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`}
         </dd>
         <dt>尝试预算</dt>
         <dd>
