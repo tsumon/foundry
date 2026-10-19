@@ -106,6 +106,27 @@ func TestCleanupPendingJournalDoesNotReplayProbe(t *testing.T) {
 	}
 }
 
+// Recovery belongs to the preserved journal and binary, not to a build-tree
+// path that may have been moved or removed after an interrupted diagnostic.
+func TestCleanupPendingJournalSurvivesUnavailableSourceRoot(t *testing.T) {
+	store := &commandSecrets{value: "left-behind-synthetic"}
+	deps, path := testCommandDeps(t, store)
+	writeTestJournal(t, path, journalRecord{Version: journalVersion, ProbeID: testProbeID, State: "pending", Cleanup: "unconfirmed"})
+	if err := os.RemoveAll(deps.sourceRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCommand([]string{"--cleanup", path}, deps, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if store.setCalls != 0 || store.deleteCalls != 1 || store.getCalls != 1 {
+		t.Fatalf("cleanup did not use exact recovery path: %+v", store)
+	}
+	record, err := readJournal(path)
+	if err != nil || record.State != "failed" || record.Cleanup != "confirmed" {
+		t.Fatalf("record=%+v err=%v", record, err)
+	}
+}
+
 func TestCleanupConfirmedTerminalJournalIsReadOnly(t *testing.T) {
 	store := &commandSecrets{}
 	deps, path := testCommandDeps(t, store)

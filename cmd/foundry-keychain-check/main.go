@@ -63,7 +63,11 @@ func runCommand(args []string, deps commandDeps, out io.Writer) error {
 	if path == "" {
 		path = *cleanupPath
 	}
-	if err := validateJournalPath(path, deps.sourceRoot); err != nil {
+	if *journalPath != "" {
+		if err := validateNewJournalPath(path, deps.sourceRoot); err != nil {
+			return err
+		}
+	} else if _, err := resolveJournalPath(path); err != nil {
 		return err
 	}
 	lock, err := acquireJournalLock(path + ".lock")
@@ -164,19 +168,26 @@ func writeReport(out io.Writer, report model.SecretProbeReport) error {
 	return json.NewEncoder(out).Encode(report)
 }
 
-func validateJournalPath(path, sourceRoot string) error {
+func resolveJournalPath(path string) (string, error) {
 	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return errors.New("journal path must be clean and absolute")
+		return "", errors.New("journal path must be clean and absolute")
 	}
 	parent, err := filepath.EvalSymlinks(filepath.Dir(path))
 	if err != nil {
-		return errors.New("journal parent is unavailable")
+		return "", errors.New("journal parent is unavailable")
+	}
+	return filepath.Join(parent, filepath.Base(path)), nil
+}
+
+func validateNewJournalPath(path, sourceRoot string) error {
+	candidate, err := resolveJournalPath(path)
+	if err != nil {
+		return err
 	}
 	source, err := filepath.EvalSymlinks(sourceRoot)
 	if err != nil {
 		return errors.New("source root is unavailable")
 	}
-	candidate := filepath.Join(parent, filepath.Base(path))
 	rel, err := filepath.Rel(source, candidate)
 	if err != nil || rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))) {
 		return errors.New("journal path must be outside source checkout")
