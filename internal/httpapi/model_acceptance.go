@@ -8,5 +8,8 @@ func (s *server) modelAcceptance(w http.ResponseWriter, r *http.Request, account
 		writeAccountError(w, err)
 		return
 	}
+	if report.OpenAIPreparation != nil {
+		report.OpenAIPreparation.SubscriptionAdapter = s.siwc.SubscriptionAdapterPreparation()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"acceptance": report})
 }

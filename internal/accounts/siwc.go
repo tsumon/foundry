@@ -51,21 +51,22 @@ type SIWCRevokeResult struct {
 }
 
 type siwcAttempt struct {
-	public           SIWCFlow
-	cancel           context.CancelFunc
-	listener         net.Listener
-	server           *http.Server
-	authorizationURL string
-	account          domain.ModelAccount
-	authorizationID  string
-	state            string
-	nonce            string
-	verifier         string
-	redirectURI      string
-	clientID         string
-	purpose          string
-	resource         string
-	exchangeDone     chan struct{}
+	public              SIWCFlow
+	cancel              context.CancelFunc
+	listener            net.Listener
+	server              *http.Server
+	authorizationURL    string
+	account             domain.ModelAccount
+	authorizationID     string
+	state               string
+	nonce               string
+	verifier            string
+	redirectURI         string
+	clientID            string
+	purpose             string
+	resource            string
+	subscriptionAdapter bool
+	exchangeDone        chan struct{}
 }
 
 func stopSIWCAttempt(attempt *siwcAttempt, graceful bool) {
@@ -199,7 +200,7 @@ func (s *SIWCService) BeginOwnedSubscriptionConnectionSimulation(ctx context.Con
 		return SIWCFlow{}, nil, liveSIWCDenial()
 	}
 	var stop func()
-	flow, err := s.beginSimulationWithResource(ctx, ctx, accountID, expectedAccountRevision, siwcPurposeSubscription, officialSIWCResource, &stop)
+	flow, err := s.beginSIWCConnection(ctx, ctx, accountID, expectedAccountRevision, siwcPurposeSubscription, officialSIWCResource, &stop)
 	return flow, stop, err
 }
 

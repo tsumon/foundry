@@ -12,6 +12,61 @@ import (
 	"testing"
 )
 
+// Fails if implementation status is inferred from account data, omitted when
+// SIWC is present, or reading the projection changes the existing denied flags.
+func TestModelAcceptanceSubscriptionAdapterProjectionIsOptionalAndReadOnly(t *testing.T) {
+	f := newFixture(t)
+	f.authenticate()
+	a, err := f.store.SaveModelAccount(domain.ModelAccount{ID: "adapter", Name: "Synthetic", Provider: "openai", BaseURL: "https://api.openai.com/v1", AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := f.handler.(*server)
+	srv.secrets = forbiddenSecrets{t}
+	srv.accounts = accounts.New(f.store, forbiddenSecrets{t})
+	for _, present := range []bool{false, true} {
+		for _, recovery := range []bool{false, true} {
+			srv.recoveryReadOnly = recovery
+			srv.siwc = nil
+			if present {
+				srv.siwc = accounts.NewSIWCService(nil)
+			}
+			rr := f.request(http.MethodGet, "/api/model-accounts/"+a.ID+"/acceptance", "", true)
+			if rr.Code != 200 {
+				t.Fatalf("projection status=%d", rr.Code)
+			}
+			var payload struct {
+				Acceptance struct {
+					Preparation map[string]json.RawMessage `json:"openai_preparation"`
+				} `json:"acceptance"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+				t.Fatal(err)
+			}
+			p := payload.Acceptance.Preparation
+			adapter, found := p["subscription_adapter"]
+			if found != present {
+				t.Fatalf("optional adapter status present=%v want=%v", found, present)
+			}
+			if present && string(adapter) != `{"state":"implemented_disabled","validation":"local_simulation_only"}` {
+				t.Fatalf("unsafe adapter metadata=%s", adapter)
+			}
+			for _, field := range []string{"real_connection", "real_catalog", "real_inference"} {
+				if string(p[field]) != `"blocked"` {
+					t.Fatalf("%s no longer blocked", field)
+				}
+			}
+			if string(p["quota"]) != `"unknown"` || string(p["remote_billing"]) != `"unverified"` {
+				t.Fatal("projection claimed remote evidence")
+			}
+			after, err := f.store.GetModelAccount(a.ID)
+			if err != nil || !reflect.DeepEqual(a, after) {
+				t.Fatal("read mutated account", err)
+			}
+		}
+	}
+}
+
 func TestModelAcceptanceHTTPAuthorizationOperationsReadFailure(t *testing.T) {
 	f := newFixture(t)
 	f.authenticate()

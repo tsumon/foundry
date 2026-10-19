@@ -13,14 +13,19 @@ type ModelAccountAcceptance struct {
 	OpenAIPreparation *OpenAIPreparation     `json:"openai_preparation,omitempty"`
 }
 type OpenAIPreparation struct {
-	Scope             string `json:"scope"`
-	EndpointPolicy    string `json:"endpoint_policy"`
-	CredentialStorage string `json:"credential_storage"`
-	RemoteBilling     string `json:"remote_billing"`
-	Quota             string `json:"quota"`
-	RealConnection    string `json:"real_connection"`
-	RealCatalog       string `json:"real_catalog"`
-	RealInference     string `json:"real_inference"`
+	SubscriptionAdapter *OpenAISubscriptionAdapterPreparation `json:"subscription_adapter,omitempty"`
+	Scope               string                                `json:"scope"`
+	EndpointPolicy      string                                `json:"endpoint_policy"`
+	CredentialStorage   string                                `json:"credential_storage"`
+	RemoteBilling       string                                `json:"remote_billing"`
+	Quota               string                                `json:"quota"`
+	RealConnection      string                                `json:"real_connection"`
+	RealCatalog         string                                `json:"real_catalog"`
+	RealInference       string                                `json:"real_inference"`
+}
+type OpenAISubscriptionAdapterPreparation struct {
+	State      string `json:"state"`
+	Validation string `json:"validation"`
 }
 type ModelAcceptanceCheck struct {
 	Phase       string   `json:"phase"`

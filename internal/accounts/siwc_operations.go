@@ -47,27 +47,38 @@ func randomSIWCValue(bytes int) (string, error) {
 }
 
 func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID string, expectedRevision int64, purpose string, ownedStop *func()) (SIWCFlow, error) {
-	return s.beginSimulationWithResource(ctx, flowParent, accountID, expectedRevision, purpose, "", ownedStop)
+	return s.beginSIWCConnection(ctx, flowParent, accountID, expectedRevision, purpose, "", ownedStop)
 }
 
-func (s *SIWCService) beginSimulationWithResource(ctx, flowParent context.Context, accountID string, expectedRevision int64, purpose, requestedResource string, ownedStop *func()) (SIWCFlow, error) {
+// beginSIWCConnection is the shared connection core. The nonempty
+// subscription resource selects the adapter profile, independently of local
+// simulation eligibility. Public callers enforce release/ownership admission.
+func (s *SIWCService) beginSIWCConnection(ctx, flowParent context.Context, accountID string, expectedRevision int64, purpose, requestedResource string, ownedStop *func()) (SIWCFlow, error) {
 	if purpose != siwcPurposeSubscription && purpose != siwcPurposeIdentity {
 		return SIWCFlow{}, ErrInvalid
 	}
-	if requestedResource != "" && (purpose != siwcPurposeSubscription || requestedResource != officialSIWCResource || !s.simulation) {
+	subscriptionAdapter := requestedResource != ""
+	if subscriptionAdapter && (purpose != siwcPurposeSubscription || requestedResource != officialSIWCResource || !s.validSubscriptionProfile()) {
+		return SIWCFlow{}, ErrInvalid
+	}
+	if s == nil || s.lifecycle == nil || !subscriptionAdapter && !s.simulation {
 		return SIWCFlow{}, ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {
 		return SIWCFlow{}, safeError(err)
 	}
 	account, err := s.lifecycle.store.GetModelAccount(accountID)
-	if err != nil || account.Revision != expectedRevision || !s.LegacySimulationEligible(account) {
+	eligible := s.LegacySimulationEligible(account)
+	if subscriptionAdapter {
+		eligible = s.subscriptionAccountEligible(account)
+	}
+	if err != nil || account.Revision != expectedRevision || !eligible {
 		return SIWCFlow{}, ErrInvalid
 	}
 	clientID := "dynamic_agent_client"
 	current, currentErr := s.lifecycle.store.CurrentModelAuthorization(accountID)
 	if currentErr == nil {
-		if current.Binding.AccountID != accountID || current.Binding.Issuer != s.options.Issuer || current.Binding.ClientID == "" || purpose == siwcPurposeIdentity && current.Binding.SpendClass != siwcPurposeIdentity {
+		if current.Binding.AccountID != accountID || current.Binding.Issuer != s.options.Issuer || current.Binding.ClientID == "" || purpose == siwcPurposeIdentity && current.Binding.SpendClass != siwcPurposeIdentity || subscriptionAdapter && (!validSubscriptionClientID(current.Binding.ClientID) || current.Binding.SpendClass != siwcPurposeSubscription) {
 			return SIWCFlow{}, ErrInvalid
 		}
 		clientID = current.Binding.ClientID
@@ -113,6 +124,7 @@ func (s *SIWCService) beginSimulationWithResource(ctx, flowParent context.Contex
 		public: SIWCFlow{OperationID: operationID, State: "waiting", HandoffURL: "http://" + host + siwcHandoffPath, ExpiresAt: expires.Format(time.RFC3339)},
 		cancel: cancel, listener: listener, account: account, authorizationID: authorizationID,
 		state: state, nonce: nonce, verifier: verifier, redirectURI: redirectURI, clientID: clientID, purpose: purpose, resource: requestedResource,
+		subscriptionAdapter: subscriptionAdapter,
 	}
 	if attempt.resource == "" {
 		attempt.resource = account.BaseURL
@@ -260,6 +272,8 @@ func (s *SIWCService) handleSIWCCallback(ctx context.Context, attempt *siwcAttem
 	code := values.Get("code")
 	clientID := values.Get("client_id")
 	if !safeSIWCCallbackValue(code, 8192) || len(values.Get("scope")) > 4096 ||
+		attempt.subscriptionAdapter && values.Has("scope") && strings.TrimSpace(values.Get("scope")) == "" ||
+		attempt.subscriptionAdapter && clientID != "" && !validSubscriptionClientID(clientID) ||
 		attempt.clientID == "dynamic_agent_client" && (!safeSIWCCallbackValue(clientID, 2048) || clientID == "dynamic_agent_client") ||
 		attempt.clientID != "dynamic_agent_client" && clientID != "" && clientID != attempt.clientID {
 		attempt.public.State = "failed"

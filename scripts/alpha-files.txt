@@ -58,6 +58,8 @@ internal/accounts/siwc.go
 internal/accounts/siwc_identity_test.go
 internal/accounts/siwc_operations.go
 internal/accounts/siwc_protocol_test.go
+internal/accounts/siwc_subscription_adapter.go
+internal/accounts/siwc_subscription_adapter_test.go
 internal/accounts/siwc_test.go
 internal/accounts/siwc_tokens.go
 internal/capability/assets_test.go

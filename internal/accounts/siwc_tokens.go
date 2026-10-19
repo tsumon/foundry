@@ -121,7 +121,7 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 	if attempt.purpose != siwcPurposeIdentity && hasSIWCScope(scopes, "offline_access") && tokens.RefreshToken == "" {
 		return siwcFailure("response_incomplete", "unknown")
 	}
-	discovery, err := s.fetchSIWCDiscovery(ctx)
+	discovery, err := s.readSIWCDiscovery(ctx, attempt.subscriptionAdapter)
 	if err != nil {
 		return err
 	}
@@ -402,6 +402,12 @@ func sameSIWCScopeSet(a, b map[string]bool) bool {
 }
 
 func (s *SIWCService) fetchSIWCDiscovery(ctx context.Context) (siwcDiscovery, error) {
+	return s.readSIWCDiscovery(ctx, false)
+}
+
+// Connection does not require the optional, unused revocation endpoint. Legacy
+// refresh/revoke discovery keeps requiring it; a present endpoint stays pinned.
+func (s *SIWCService) readSIWCDiscovery(ctx context.Context, connectionOnly bool) (siwcDiscovery, error) {
 	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.options.OIDCOrigin+"/.well-known/openid-configuration", nil)
 	response, err := s.http.Do(request)
 	if err != nil {
@@ -417,7 +423,7 @@ func (s *SIWCService) fetchSIWCDiscovery(ctx context.Context) (siwcDiscovery, er
 	}
 	var discovery siwcDiscovery
 	decoder := json.NewDecoder(bytes.NewReader(body))
-	if decoder.Decode(&discovery) != nil || decoder.Decode(&struct{}{}) != io.EOF || discovery.Issuer != s.options.Issuer || !urlAtSIWCOrigin(discovery.JWKSURI, s.options.JWKSOrigin) || !urlAtSIWCOrigin(discovery.RevocationEndpoint, s.options.RevocationOrigin) {
+	if decoder.Decode(&discovery) != nil || decoder.Decode(&struct{}{}) != io.EOF || discovery.Issuer != s.options.Issuer || !urlAtSIWCOrigin(discovery.JWKSURI, s.options.JWKSOrigin) || (!connectionOnly || discovery.RevocationEndpoint != "") && !urlAtSIWCOrigin(discovery.RevocationEndpoint, s.options.RevocationOrigin) {
 		return siwcDiscovery{}, siwcFailure("auth_invalid", "rejected")
 	}
 	return discovery, nil
