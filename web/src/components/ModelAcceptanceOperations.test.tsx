@@ -321,15 +321,15 @@ it("reviews the exact subscription permission contract and exposes only the inde
 });
 
 it.each([
-  ["rejected", "rejected", "rejected"],
-  ["failed", "failed", "entitlement_denied"],
-  ["unknown", "unknown", "transport_unknown"],
+  ["rejected", "rejected", "rejected", 0, 0],
+  ["failed", "failed", "entitlement_denied", 1, 8],
+  ["unknown", "unknown", "transport_unknown", 1, 8],
 ])(
-  "keeps a consumed subscription %s receipt terminal without an execute or retry control",
-  async (_name, state, code) => {
+  "keeps a subscription %s receipt terminal without an execute or retry control",
+  async (_name, state, code, attempts, claimSequence) => {
     const terminal = subscriptionOperation(`subscription-${state}`, state, {
-      attempts: 1,
-      claim_sequence: 8,
+      attempts,
+      claim_sequence: claimSequence,
       certainty: state === "unknown" ? "unknown" : "rejected",
       ...(code === "rejected" ? {} : { code }),
     });
@@ -353,7 +353,7 @@ it.each([
     fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
       target: { value: terminal.id },
     });
-    expect(screen.getByText(/单次尝试已消耗/)).toBeVisible();
+    if (attempts > 0) expect(screen.getByText(/单次尝试已消耗/)).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "执行连接" }),
     ).not.toBeInTheDocument();
@@ -1344,6 +1344,110 @@ it("retains read-only historical evidence when simulation is disabled", async ()
   expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "创建目录材料" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "创建推理材料" })).toBeDisabled();
+});
+
+it.each([
+  ["external host", "https://example.invalid/v1"],
+  ["localhost alias", "http://localhost:43123/v1"],
+  ["query string", "http://127.0.0.1:43123/v1?mode=unsafe"],
+  ["userinfo", "http://user@127.0.0.1:43123/v1"],
+  ["non-v1 path", "http://127.0.0.1:43123/"],
+])("fails closed for a subscription route with %s", async (_name, baseURL) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        operations: [],
+        simulation_enabled: true,
+        routes: [{ ...subscriptionRoute, base_url: baseURL }],
+      }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={subscriptionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+  expect(document.body.textContent).not.toContain(baseURL);
+});
+
+it("fails closed when subscription material names an account endpoint outside its trusted route", async () => {
+  const mismatchedAccount = subscriptionOperation(
+    "subscription-account-endpoint-mismatch",
+    "pending",
+    {
+      material: {
+        ...subscriptionMaterial(),
+        account: {
+          ...subscriptionAccount,
+          base_url: "https://example.invalid/v1",
+        },
+      },
+    },
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        operations: [mismatchedAccount],
+        simulation_enabled: true,
+        routes: [subscriptionRoute],
+      }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={subscriptionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "批准连接材料" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+});
+
+it("fails closed for a spent approval instead of exposing execute or replay actions", async () => {
+  const spentApproval = subscriptionOperation(
+    "spent-subscription-approval",
+    "approved",
+    {
+      attempts: 1,
+      claim_sequence: 9,
+      certainty: "unknown",
+    },
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        operations: [spentApproval],
+        simulation_enabled: true,
+        routes: [subscriptionRoute],
+      }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={subscriptionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "执行连接" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /重试/ }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
 });
 
 it.each([

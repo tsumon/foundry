@@ -82,6 +82,41 @@ function exactScopes(value: unknown, expected: readonly string[]): boolean {
   );
 }
 
+function canonicalLoopbackV1(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const port = Number(url.port);
+    return (
+      url.protocol === "http:" &&
+      url.hostname === "127.0.0.1" &&
+      Number.isInteger(port) &&
+      port > 0 &&
+      port <= 65535 &&
+      url.username === "" &&
+      url.password === "" &&
+      url.pathname === "/v1" &&
+      url.search === "" &&
+      url.hash === "" &&
+      url.href === value
+    );
+  } catch {
+    return false;
+  }
+}
+
+function validAttemptCount(value: ModelAcceptanceOperation): boolean {
+  switch (value.state) {
+    case "pending":
+    case "approved":
+    case "rejected":
+    case "expired":
+    case "invalidated":
+      return value.attempts === 0;
+    default:
+      return value.attempts === 1;
+  }
+}
+
 function validConnectionMaterial(
   value: ModelAcceptanceOperation,
   accountID: string,
@@ -122,6 +157,7 @@ function validConnectionMaterial(
   const snapshotValid =
     accountRecord.id === accountID &&
     accountRecord.provider === "openai" &&
+    accountRecord.base_url === route.base_url &&
     accountRecord.auth_method === "openai_siwc" &&
     accountRecord.billing_mode === "subscription" &&
     route.account_id === accountID &&
@@ -165,7 +201,8 @@ function isTrustedIdentityRoute(
     route.connection_purpose === "identity_only" &&
     route.adapter === identityAdapter &&
     route.environment === "simulation" &&
-    route.spend_class === identitySpendClass
+    route.spend_class === identitySpendClass &&
+    canonicalLoopbackV1(route.base_url)
   );
 }
 
@@ -176,7 +213,8 @@ function isTrustedSubscriptionRoute(
     route.connection_purpose === "subscription_only" &&
     route.adapter === identityAdapter &&
     route.environment === "simulation" &&
-    route.spend_class === identitySpendClass
+    route.spend_class === identitySpendClass &&
+    canonicalLoopbackV1(route.base_url)
   );
 }
 
@@ -221,6 +259,7 @@ function validOperation(
     value.revision > 0 &&
     Number.isSafeInteger(value.claim_sequence) &&
     value.claim_sequence >= 0 &&
+    validAttemptCount(value) &&
     value.source === "local_simulation" &&
     value.live_access === "blocked" &&
     value.quota === "unknown" &&
@@ -763,7 +802,13 @@ function AcceptanceOperations({
       {!reading && loaded && operations.length === 0 && (
         <p>尚无已保存的验收材料</p>
       )}
-      <ol className="acceptance-steps">
+      <ol
+        className={
+          subscriptionOnly
+            ? "acceptance-steps acceptance-steps--subscription-only"
+            : "acceptance-steps"
+        }
+      >
         {visiblePhases.map((phase) => {
           const phaseOperations = operations.filter(
             (operation) => operation.phase === phase,
@@ -1032,7 +1077,7 @@ function OperationReview({
           </button>
         </div>
       )}
-      {operation.state === "approved" && (
+      {operation.state === "approved" && operation.attempts === 0 && (
         <button type="button" disabled={disabled} onClick={execute}>
           执行{phaseLabels[operation.phase]}
         </button>

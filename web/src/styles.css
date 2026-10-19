@@ -1347,6 +1347,9 @@ summary {
   border-radius: 6px;
   background: #fdfdfa;
 }
+.acceptance-steps--subscription-only {
+  grid-template-columns: minmax(0, 1fr);
+}
 .acceptance-steps label,
 .acceptance-steps select {
   min-width: 0;
