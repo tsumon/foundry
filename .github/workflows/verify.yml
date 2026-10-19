@@ -1,0 +1,107 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-verify:
+    name: macOS verification
+    # Public-repository arm64 image with current Apple developer tools.
+    # verify.sh still feature-checks the trusted /usr/bin/git; no PATH fallback.
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .go-version
+          cache: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Run shared verification
+        run: ./scripts/verify.sh
+
+  security:
+    name: Security checks
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .go-version
+          cache: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Install pinned security tools
+        env:
+          ACTIONLINT_SHA256: aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f
+          GITLEAKS_SHA256: b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5
+          GOVULN_MOD_SHA256: h1:12VaqnI9kJfqwRoPptxoqsUhQtdfrSbdksT7X/KY/sc=
+          GOVULN_MODFILE_SHA256: h1:E/Frwm0xp49fTyBW+6CQHdkvobknbwUM49yEpMGUauw=
+        run: |
+          set -eu
+          tools="$RUNNER_TEMP/security-tools"
+          mkdir -p "$tools"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/gitleaks.tar.gz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$RUNNER_TEMP/gitleaks.tar.gz" | shasum -a 256 --check
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$tools" gitleaks
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/actionlint.tar.gz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz
+          printf '%s  %s\n' "$ACTIONLINT_SHA256" "$RUNNER_TEMP/actionlint.tar.gz" | shasum -a 256 --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$tools" actionlint
+          go mod download -json golang.org/x/vuln@v1.9.0 >"$RUNNER_TEMP/govuln-module.json"
+          node -e '
+            const fs = require("node:fs");
+            const module = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (module.Sum !== process.env.GOVULN_MOD_SHA256 || module.GoModSum !== process.env.GOVULN_MODFILE_SHA256) {
+              throw new Error("govulncheck module checksum mismatch");
+            }
+          ' "$RUNNER_TEMP/govuln-module.json"
+          GOBIN="$tools" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          "$tools/gitleaks" version
+          "$tools/actionlint" -version
+          "$tools/govulncheck" -version
+      - name: Scan source files and full Git history
+        run: |
+          set -eu
+          tools="$RUNNER_TEMP/security-tools"
+          "$tools/gitleaks" dir . --redact=100 --no-banner
+          "$tools/gitleaks" git . --log-opts=--all --redact=100 --no-banner
+      - name: Check dependencies and workflow
+        run: |
+          set -eu
+          tools="$RUNNER_TEMP/security-tools"
+          npm_configs="$RUNNER_TEMP/npm-configs"
+          mkdir -p "$npm_configs"
+          : >"$npm_configs/user.npmrc"
+          : >"$npm_configs/global.npmrc"
+          export NPM_CONFIG_USERCONFIG="$npm_configs/user.npmrc"
+          export NPM_CONFIG_GLOBALCONFIG="$npm_configs/global.npmrc"
+          go mod download
+          go mod verify
+          "$tools/govulncheck" -show=verbose ./...
+          (cd web && npm audit --audit-level=low)
+          "$tools/actionlint" .github/workflows/*.yml

@@ -1,0 +1,12 @@
+node_modules/
+web/dist/
+bin/
+.foundry/
+.superpowers/sdd/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+coverage/
+playwright-report/
+test-results/

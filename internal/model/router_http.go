@@ -1,0 +1,191 @@
+package model
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"mime"
+	"net/http"
+	"strings"
+
+	"foundry/internal/domain"
+)
+
+func routedPayload(r Request, adapter string) (string, any) {
+	switch adapter {
+	case "anthropic_api_messages":
+		return "/messages", map[string]any{"model": r.Profile.Model, "system": r.System, "messages": []chatMessage{{Role: "user", Content: r.Prompt}}, "max_tokens": r.MaxOutputTokens}
+	case "openai_siwc_responses":
+		return "/responses", map[string]any{"model": r.Profile.Model, "instructions": r.System, "input": []chatMessage{{Role: "user", Content: r.Prompt}}, "stream": true, "store": false}
+	case "openai_api_responses":
+		return "/responses", map[string]any{"model": r.Profile.Model, "instructions": r.System, "input": []chatMessage{{Role: "user", Content: r.Prompt}}, "max_output_tokens": r.MaxOutputTokens, "store": false}
+	default:
+		key := "max_tokens"
+		if adapter == "openai_api_chat" {
+			key = "max_completion_tokens"
+		}
+		return "/chat/completions", map[string]any{"model": r.Profile.Model, "messages": []chatMessage{{Role: "system", Content: r.System}, {Role: "user", Content: r.Prompt}}, key: r.MaxOutputTokens}
+	}
+}
+
+func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, endpoint string, payload any) (*http.Response, int64, error) {
+	if ctx.Err() != nil {
+		return nil, 0, providerFailure("request_rejected", "not_sent")
+	}
+	var encoded []byte
+	if payload != nil {
+		var err error
+		encoded, err = json.Marshal(payload)
+		if err != nil {
+			return nil, 0, providerFailure("request_rejected", "not_sent")
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimSuffix(s.Route.BaseURL, "/")+endpoint, bytes.NewReader(encoded))
+	if err != nil {
+		return nil, 0, providerFailure("request_rejected", "not_sent")
+	}
+	if r.resolver == nil {
+		return nil, 0, providerFailure("auth_invalid", "not_sent")
+	}
+	lease, err := r.resolver.ResolveModelCredential(ctx, s)
+	if err != nil {
+		return nil, 0, sanitizedResolverError(err)
+	}
+	if lease.Secret == "" || strings.ContainsAny(lease.Secret, "\r\n") {
+		return nil, lease.Generation, providerFailure("auth_invalid", "not_sent")
+	}
+	req.Header.Set("User-Agent", "Foundry/0.1.0")
+	req.Header.Set("Accept", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if s.Route.Adapter == "anthropic_api_messages" {
+		req.Header.Set("x-api-key", lease.Secret)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	} else {
+		req.Header.Set("Authorization", "Bearer "+lease.Secret)
+	}
+	if s.Route.Adapter == "openai_siwc_responses" && method == http.MethodPost {
+		req.Header.Set("Accept", "text/event-stream")
+	}
+	response, err := r.http.Do(req)
+	if err != nil {
+		return nil, lease.Generation, providerFailure("transport_unknown", "unknown")
+	}
+	// A hostile provider can echo credentials into otherwise valid ID fields.
+	for _, name := range []string{"X-Request-ID", "Request-ID"} {
+		if strings.Contains(response.Header.Get(name), lease.Secret) {
+			response.Header.Del(name)
+		}
+	}
+	if response.StatusCode != http.StatusOK {
+		defer response.Body.Close()
+		// Accepted/partial success and unhandled 3xx envelopes do not prove
+		// rejection. Never promote body error strings into known-failure evidence.
+		if response.StatusCode < http.StatusBadRequest {
+			failure := providerFailure("response_incomplete", "unknown")
+			failure.HTTPStatus = response.StatusCode
+			failure.RequestID = safeIdentifier(response.Header.Get("X-Request-ID"))
+			if failure.RequestID == "" {
+				failure.RequestID = safeIdentifier(response.Header.Get("Request-ID"))
+			}
+			return nil, lease.Generation, failure
+		}
+		body, err := readBounded(response.Body)
+		if err != nil {
+			return nil, lease.Generation, providerFailure("transport_unknown", "unknown")
+		}
+		failure := classifyProviderError(response.StatusCode, response.Header, body)
+		removeCredentialErrorEchoes(response.Request, failure)
+		return nil, lease.Generation, failure
+	}
+	return response, lease.Generation, nil
+}
+
+func (r *Router) decodeResponse(response *http.Response, adapter string) (result Result, err error) {
+	defer func() {
+		if p, ok := err.(*ProviderError); ok {
+			removeCredentialErrorEchoes(response.Request, p)
+			p.HTTPStatus = response.StatusCode
+			if p.RequestID == "" {
+				p.RequestID = safeIdentifier(response.Header.Get("X-Request-ID"))
+				if p.RequestID == "" {
+					p.RequestID = safeIdentifier(response.Header.Get("Request-ID"))
+				}
+			}
+		}
+	}()
+	media, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	want := "application/json"
+	if adapter == "openai_siwc_responses" {
+		want = "text/event-stream"
+	}
+	if err != nil || media != want {
+		return Result{}, providerFailure("response_incomplete", "unknown")
+	}
+	if adapter == "openai_siwc_responses" {
+		result, err = decodeSIWCStream(response.Body, response.Header)
+	} else {
+		var body []byte
+		body, err = readBounded(response.Body)
+		if err != nil {
+			return Result{}, providerFailure("response_incomplete", "unknown")
+		}
+		switch adapter {
+		case "anthropic_api_messages":
+			result, err = decodeMessages(body)
+		case "openai_api_responses":
+			result, err = decodeRoutedResponses(body)
+		default:
+			result, err = decodeRoutedChat(body)
+		}
+	}
+	id := safeIdentifier(response.Header.Get("X-Request-ID"))
+	if id == "" {
+		id = safeIdentifier(response.Header.Get("Request-ID"))
+	}
+	if err != nil {
+		if p, ok := err.(*ProviderError); ok && p.RequestID == "" {
+			p.RequestID = id
+		}
+		return Result{}, err
+	}
+	// This exact leased credential must not enter sealed model evidence. This
+	// is intentionally not general secret detection or rewriting model output.
+	if echoesRequestCredential(response.Request, result.Text) {
+		return Result{}, providerFailure("response_incomplete", "unknown")
+	}
+	result.RequestID = id
+	if echoesRequestCredential(response.Request, result.ResolvedModel) {
+		result.ResolvedModel = ""
+	}
+	return result, nil
+}
+
+func removeCredentialErrorEchoes(request *http.Request, failure *ProviderError) {
+	if echoesRequestCredential(request, failure.ProviderCode) {
+		failure.ProviderCode = ""
+	}
+	if echoesRequestCredential(request, failure.ProviderParam) {
+		failure.ProviderParam = ""
+	}
+}
+
+func echoesRequestCredential(request *http.Request, values ...string) bool {
+	if request == nil {
+		return false
+	}
+	secret := request.Header.Get("x-api-key")
+	if secret == "" {
+		secret = strings.TrimPrefix(request.Header.Get("Authorization"), "Bearer ")
+	}
+	if secret == "" {
+		return false
+	}
+	for _, value := range values {
+		if strings.Contains(value, secret) {
+			return true
+		}
+	}
+	return false
+}

@@ -1,0 +1,307 @@
+.capability-settings {
+  min-width: 0;
+}
+.settings-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 18px 32px 0;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+.settings-subnav button {
+  border-color: transparent;
+  background: transparent;
+  padding: 9px 16px;
+}
+.settings-subnav button[aria-pressed="true"] {
+  background: var(--sage-light, #eef1e8);
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
+.capability-session {
+  margin: 24px 32px;
+}
+.capability-page {
+  padding-top: 24px;
+}
+.capability-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 1fr);
+  gap: 20px;
+}
+.capability-page section,
+.capability-page aside,
+.capability-page form,
+.capability-page fieldset,
+.capability-page input,
+.capability-page textarea,
+.capability-page select {
+  min-width: 0;
+  max-width: 100%;
+}
+.capability-page textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.capability-page p,
+.capability-page code,
+.capability-page h3,
+.capability-page h4,
+.capability-page dd {
+  overflow-wrap: anywhere;
+}
+.capability-page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #f8f9f6;
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.capability-page .capability-check {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+}
+.capability-check input[type="checkbox"] {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+}
+.capability-read-state {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  font-size: 12px;
+}
+.capability-record {
+  border-top: 1px solid var(--line);
+  padding: 20px 0;
+}
+.capability-record:last-child {
+  padding-bottom: 0;
+}
+.capability-record-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: start;
+}
+.capability-record-header > div {
+  min-width: 0;
+}
+.capability-record h3 {
+  margin: 0 0 8px;
+}
+.capability-record p {
+  font-size: 12px;
+  line-height: 1.8;
+}
+.capability-page .actions {
+  flex-wrap: wrap;
+}
+.capability-page .actions button {
+  white-space: normal;
+}
+.capability-observation {
+  background: #f8f9f6;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  margin-top: 16px;
+  padding: 16px;
+}
+.capability-observation h4 {
+  margin: 0 0 12px;
+}
+.capability-observation dl {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+.capability-observation dd {
+  margin: 0;
+}
+.capability-page summary {
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.capability-tool {
+  border-top: 1px solid var(--line);
+  padding: 4px 0;
+}
+.capability-page .warning-text {
+  color: #8b5e26;
+}
+.capability-confirm {
+  margin-top: 20px;
+}
+.capability-file-editor {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-bottom: 12px;
+}
+.capability-file-editor > button {
+  margin-top: 8px;
+}
+.capability-file h4 {
+  font-size: 13px;
+}
+.hook-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr);
+  gap: 20px;
+}
+.hook-section-heading,
+.hook-record-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.hook-section-heading h2,
+.hook-section-heading h3,
+.hook-record-title strong {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.hook-section-heading p {
+  margin: 7px 0 0;
+  font-size: 12px;
+}
+.hook-kind-list {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  margin: 18px 0;
+  padding: 14px;
+}
+.hook-kind-list legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.hook-kind-list .capability-check + .capability-check {
+  margin-top: 12px;
+}
+.hook-kind-list small {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.hook-enable {
+  margin-top: 18px;
+}
+.hook-runtime-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #f8f9f6;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.hook-rule-list {
+  margin-top: 0;
+}
+.hook-records {
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+  padding-top: 22px;
+  min-width: 0;
+}
+.activity-content .hook-records {
+  margin-top: 20px;
+}
+.hook-read-note {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.hook-record {
+  border-top: 1px solid var(--line);
+  padding: 14px 0;
+  min-width: 0;
+}
+.hook-record-title {
+  align-items: center;
+}
+.hook-record-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.hook-record p,
+.hook-record button,
+.hook-record-facts span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.hook-record p {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.hook-record-actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 1179px) {
+  .capability-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hook-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 799px) {
+  .settings-subnav {
+    padding: 16px 16px 0;
+    gap: 4px;
+  }
+  .settings-subnav button {
+    padding: 8px 11px;
+    font-size: 12px;
+  }
+  .capability-page {
+    padding: 24px 16px;
+  }
+  .capability-record-header {
+    flex-direction: column;
+  }
+  .hook-section-heading,
+  .hook-record-title {
+    flex-direction: column;
+  }
+  .hook-section-heading button,
+  .hook-record-actions button {
+    width: 100%;
+    white-space: normal;
+  }
+  .capability-page .connection-section,
+  .capability-page .connection-guide,
+  .capability-page .saved-connections {
+    padding: 16px;
+  }
+  .capability-observation {
+    padding: 12px;
+  }
+  .capability-observation dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

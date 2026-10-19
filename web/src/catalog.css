@@ -1,0 +1,261 @@
+.catalog-workspace {
+  padding: 20px 32px;
+  max-width: 1440px;
+  margin: auto;
+  min-width: 0;
+}
+.catalog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.catalog-header h1 {
+  margin: 3px 0 0;
+}
+.catalog-header > button {
+  flex-shrink: 0;
+}
+.catalog-boundary {
+  border: 1px solid var(--line);
+  background: white;
+  padding: 7px 10px;
+  margin: 9px 0 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.catalog-status {
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 18px;
+  margin-bottom: 4px;
+}
+.catalog-columns {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
+  gap: 28px;
+  align-items: start;
+}
+.catalog-projects {
+  width: 100%;
+}
+.catalog-workspace h2 {
+  font-size: 18px;
+  margin: 12px 0 7px;
+}
+.catalog-form {
+  min-width: 0;
+  background: white;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.catalog-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.catalog-form legend {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.catalog-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  min-width: 0;
+}
+.catalog-form input,
+.catalog-form select,
+.catalog-form textarea {
+  width: 100%;
+  min-width: 0;
+}
+.catalog-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+}
+.catalog-tabs {
+  display: flex;
+  overflow-x: auto;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  margin-top: 6px;
+}
+.catalog-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 9px 14px;
+  white-space: nowrap;
+}
+.catalog-tabs button.selected {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+.catalog-panel {
+  padding: 4px 0 20px;
+}
+.catalog-panel[hidden] {
+  display: none;
+}
+.catalog-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.catalog-list li {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.catalog-list li > div {
+  min-width: 0;
+}
+.catalog-list p {
+  margin: 7px 0;
+  white-space: pre-wrap;
+}
+.catalog-list small {
+  color: var(--muted);
+}
+.catalog-project-details {
+  margin-top: 3px;
+}
+.catalog-project-context {
+  border-bottom: 1px solid var(--line);
+  padding: 3px 0 6px;
+}
+.catalog-project-context > p {
+  margin: 2px 0 6px;
+  color: var(--muted);
+}
+.catalog-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.catalog-counts li {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
+  padding: 4px 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.catalog-disclosure {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 4px;
+  min-width: 0;
+}
+.catalog-disclosure > summary {
+  color: var(--blue);
+  font-weight: 600;
+}
+.catalog-disclosure > .catalog-form {
+  margin-top: 8px;
+  max-width: 760px;
+}
+.catalog-create-project {
+  margin-top: 20px;
+}
+.catalog-workspace summary {
+  cursor: pointer;
+  padding: 10px 0;
+}
+.catalog-confirm {
+  background: #fff8ea;
+  border: 1px solid #ead5b1;
+  padding: 14px;
+  margin-top: 14px;
+}
+.catalog-selection {
+  margin-bottom: 14px;
+}
+.catalog-history {
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+  padding-top: 10px;
+}
+.catalog-history ol {
+  padding-left: 20px;
+  max-height: 320px;
+  overflow: auto;
+}
+.catalog-history li {
+  padding: 8px 0;
+}
+.catalog-history span,
+.catalog-history time {
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.catalog-workspace p,
+.catalog-workspace strong,
+.catalog-workspace h1,
+.catalog-workspace button,
+.catalog-workspace time,
+.catalog-workspace select,
+.catalog-workspace input,
+.catalog-workspace textarea {
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+@media (max-width: 1000px) {
+  .catalog-columns,
+  .catalog-projects {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+@media (max-width: 799px) {
+  .sidebar nav {
+    flex-wrap: wrap;
+  }
+  .catalog-workspace {
+    padding: 20px 16px;
+  }
+  .catalog-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .catalog-header h1 {
+    font-size: 26px;
+  }
+  .catalog-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .catalog-form {
+    padding: 14px;
+  }
+  .catalog-tabs button {
+    padding: 12px;
+  }
+  .catalog-list li {
+    align-items: stretch;
+  }
+  .catalog-list li > button,
+  .catalog-list li > .actions {
+    max-width: 100%;
+  }
+  .catalog-history span,
+  .catalog-history time {
+    display: block;
+    margin-left: 0;
+  }
+}
