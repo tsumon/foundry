@@ -61,7 +61,13 @@ it("reads safe history without mutations and keeps production login and refresh 
     response({ authorizations: [authorization], remote_revocations: [] }),
   );
   vi.stubGlobal("fetch", fetcher);
-  render(<ModelAuthorizationCard account={account} runtime={runtime(false)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(false)}
+      connectionPolicy="legacy"
+    />,
+  );
 
   expect(await screen.findByText("authorization-one")).toBeVisible();
   expect(screen.getByText(/代数 3/)).toBeVisible();
@@ -116,7 +122,13 @@ it("starts, checks, and cancels a mock flow only after explicit clicks with exac
     throw new Error(`unexpected ${path}`);
   });
   vi.stubGlobal("fetch", fetcher);
-  render(<ModelAuthorizationCard account={account} runtime={runtime(true)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
+  );
   await screen.findByText("尚无此账户的授权历史");
   expect(fetcher).toHaveBeenCalledTimes(1);
 
@@ -140,6 +152,66 @@ it("starts, checks, and cancels a mock flow only after explicit clicks with exac
   call = fetcher.mock.calls.at(-1)!;
   expect(call[0]).toBe("/api/model-authorizations/operations/mock-flow/cancel");
   expect(JSON.parse(String(call[1]?.body))).toEqual({});
+});
+
+it("uses trusted identity policy to keep the broader login and refresh paths closed", async () => {
+  const identityAuthorization = {
+    ...authorization,
+    spend_class: "identity_only",
+    scopes: ["openid"],
+  };
+  const fetcher = vi.fn(async (_path: string) =>
+    response({
+      authorizations: [identityAuthorization],
+      remote_revocations: [],
+    }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="identity_only"
+    />,
+  );
+
+  expect(
+    await screen.findByRole("button", { name: "身份验证由验收材料处理" }),
+  ).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "开始本地模拟登录" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "刷新本地模拟授权" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "撤销授权 authorization-one" }),
+  ).toBeEnabled();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("fails closed while route policy is unavailable", async () => {
+  const fetcher = vi.fn(async (_path: string) =>
+    response({ authorizations: [authorization], remote_revocations: [] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="unavailable"
+    />,
+  );
+
+  expect(
+    await screen.findByRole("button", { name: "本地模拟登录（等待路由策略）" }),
+  ).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "开始本地模拟登录" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "刷新本地模拟授权" }),
+  ).not.toBeInTheDocument();
 });
 
 it.each([
@@ -166,7 +238,11 @@ it.each([
     );
     vi.stubGlobal("fetch", fetcher);
     render(
-      <ModelAuthorizationCard account={account} runtime={runtime(true)} />,
+      <ModelAuthorizationCard
+        account={account}
+        runtime={runtime(true)}
+        connectionPolicy="legacy"
+      />,
     );
     await screen.findByText("尚无此账户的授权历史");
     fireEvent.click(screen.getByRole("button", { name: "开始本地模拟登录" }));
@@ -189,7 +265,13 @@ it("refreshes only with offline access and the exact account revision", async ()
       : response({ authorizations: [authorization], remote_revocations: [] }),
   );
   vi.stubGlobal("fetch", fetcher);
-  render(<ModelAuthorizationCard account={account} runtime={runtime(true)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
+  );
   fireEvent.click(
     await screen.findByRole("button", { name: "刷新本地模拟授权" }),
   );
@@ -228,7 +310,13 @@ it("invalidates stale availability and leaves history unknown when refresh recon
         );
   });
   vi.stubGlobal("fetch", fetcher);
-  render(<ModelAuthorizationCard account={account} runtime={runtime(true)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
+  );
 
   fireEvent.click(
     await screen.findByRole("button", { name: "刷新本地模拟授权" }),
@@ -289,7 +377,13 @@ it("allows exact-ID revocation of retained refresh-unknown and failed authorizat
     });
   });
   vi.stubGlobal("fetch", fetcher);
-  render(<ModelAuthorizationCard account={account} runtime={runtime(true)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
+  );
 
   expect(
     await screen.findByRole("button", {
@@ -338,7 +432,13 @@ it("preserves durable local revocation when the remote production revoke is unco
     });
   });
   vi.stubGlobal("fetch", fetcher);
-  render(<ModelAuthorizationCard account={account} runtime={runtime(false)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(false)}
+      connectionPolicy="legacy"
+    />,
+  );
   fireEvent.click(
     await screen.findByRole("button", {
       name: "撤销授权 authorization-one",
@@ -376,7 +476,11 @@ it("marks failed reads unknown, ignores late unmounted data, and explains missin
     vi.fn(() => pending),
   );
   const view = render(
-    <ModelAuthorizationCard account={account} runtime={runtime(true)} />,
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
   );
   expect(screen.getByText(/授权历史尚未读取/)).toBeVisible();
   view.unmount();
@@ -390,7 +494,13 @@ it("marks failed reads unknown, ignores late unmounted data, and explains missin
       response({ authorizations: [noDirectUse], remote_revocations: [] }),
     ),
   );
-  render(<ModelAuthorizationCard account={account} runtime={runtime(true)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
+  );
   expect(
     await screen.findAllByText(/仅身份已确认；未获直接调用权限/),
   ).toHaveLength(2);
@@ -430,11 +540,19 @@ it("clears the prior account immediately and ignores its stale authorization rea
     ),
   );
   const view = render(
-    <ModelAuthorizationCard account={account} runtime={runtime(false)} />,
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(false)}
+      connectionPolicy="legacy"
+    />,
   );
   await screen.findByText("authorization-one");
   view.rerender(
-    <ModelAuthorizationCard account={otherAccount} runtime={runtime(false)} />,
+    <ModelAuthorizationCard
+      account={otherAccount}
+      runtime={runtime(false)}
+      connectionPolicy="legacy"
+    />,
   );
   expect(screen.queryByText("authorization-one")).not.toBeInTheDocument();
   expect(screen.getByText(/授权历史尚未读取/)).toBeVisible();
@@ -465,7 +583,13 @@ it("shows finite authorization errors and never retries an unknown result", asyn
       : response({ authorizations: [], remote_revocations: [] }),
   );
   vi.stubGlobal("fetch", fetcher);
-  render(<ModelAuthorizationCard account={account} runtime={runtime(true)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
+  );
   await screen.findByText("尚无此账户的授权历史");
   fireEvent.click(screen.getByRole("button", { name: "开始本地模拟登录" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -487,7 +611,13 @@ it("treats a malformed authorization snapshot as unknown rather than empty", asy
       }),
     ),
   );
-  render(<ModelAuthorizationCard account={account} runtime={runtime(false)} />);
+  render(
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(false)}
+      connectionPolicy="legacy"
+    />,
+  );
   expect(await screen.findByRole("alert")).toHaveTextContent(/授权结果未知/);
   expect(screen.getByText(/授权历史尚未读取/)).toBeVisible();
   expect(screen.queryByText("尚无此账户的授权历史")).not.toBeInTheDocument();
@@ -510,7 +640,11 @@ it("does not apply a late mock mutation result to a newly selected account", asy
   );
   vi.stubGlobal("fetch", fetcher);
   const view = render(
-    <ModelAuthorizationCard account={account} runtime={runtime(true)} />,
+    <ModelAuthorizationCard
+      account={account}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
   );
   await screen.findByText("尚无此账户的授权历史");
   fireEvent.click(screen.getByRole("button", { name: "开始本地模拟登录" }));
@@ -520,7 +654,11 @@ it("does not apply a late mock mutation result to a newly selected account", asy
     ).toHaveLength(1),
   );
   view.rerender(
-    <ModelAuthorizationCard account={otherAccount} runtime={runtime(true)} />,
+    <ModelAuthorizationCard
+      account={otherAccount}
+      runtime={runtime(true)}
+      connectionPolicy="legacy"
+    />,
   );
   await screen.findByText("尚无此账户的授权历史");
   await act(async () =>

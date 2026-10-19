@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { APIError } from "../api";
 import { modelAuthorizationApi } from "../modelAccountApi";
+import type { ModelAcceptanceConnectionPolicy } from "./ModelAcceptanceOperations";
 import type {
   ModelAccount,
   ModelAuthorization,
@@ -135,9 +136,11 @@ const validRemoteRevocation = (
 export function ModelAuthorizationCard({
   account,
   runtime,
+  connectionPolicy = "unavailable",
 }: {
   account: ModelAccount;
   runtime?: ModelRuntime;
+  connectionPolicy?: ModelAcceptanceConnectionPolicy;
 }) {
   const [authorizations, setAuthorizations] = useState<ModelAuthorization[]>(
     [],
@@ -306,7 +309,11 @@ export function ModelAuthorizationCard({
       }
     });
 
-  const refreshable = authorizations.find((item) => item.state === "available");
+  const identityOnly = connectionPolicy === "identity_only";
+  const legacyPolicy = connectionPolicy === "legacy";
+  const refreshable = legacyPolicy
+    ? authorizations.find((item) => item.state === "available")
+    : undefined;
   const hasOfflineAccess =
     refreshable?.scopes.includes("offline_access") ?? false;
   const hasDirectUse =
@@ -330,7 +337,9 @@ export function ModelAuthorizationCard({
         </span>
       </div>
       <p className="note">
-        账户路由的真实登录与刷新保持关闭；旧式独立连接的既有行为保持不变。不会自动打开浏览器、轮询或切换付费通道。
+        {identityOnly
+          ? "本地身份专用模拟仅记录身份验证；不开放模型权限、刷新、目录或推理。不会自动打开浏览器、轮询或切换付费通道。"
+          : "账户路由的真实登录与刷新保持关闭；旧式独立连接的既有行为保持不变。不会自动打开浏览器、轮询或切换付费通道。"}
       </p>
       {!loaded && (
         <p className="warning-copy">授权历史尚未读取，不能视为无授权或可用。</p>
@@ -342,7 +351,11 @@ export function ModelAuthorizationCard({
       )}
       {notice && <p role="status">{notice}</p>}
       <div className="authorization-actions">
-        {simulation ? (
+        {identityOnly ? (
+          <button type="button" disabled>
+            身份验证由验收材料处理
+          </button>
+        ) : simulation && legacyPolicy ? (
           <button
             type="button"
             disabled={busy || flowActive(flow)}
@@ -361,7 +374,7 @@ export function ModelAuthorizationCard({
           >
             开始本地模拟登录
           </button>
-        ) : (
+        ) : legacyPolicy ? (
           <button
             type="button"
             disabled
@@ -369,12 +382,16 @@ export function ModelAuthorizationCard({
           >
             真实登录（未开放）
           </button>
+        ) : (
+          <button type="button" disabled>
+            本地模拟登录（等待路由策略）
+          </button>
         )}
         <button type="button" disabled={busy} onClick={() => void reload()}>
           重新读取授权记录
         </button>
       </div>
-      {!simulation && (
+      {!identityOnly && legacyPolicy && !simulation && (
         <p id="authorization-live-reason" className="field-help">
           当前进程没有本地模拟授权能力；生产真实登录不会发起请求。
         </p>

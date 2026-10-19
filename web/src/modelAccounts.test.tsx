@@ -428,6 +428,20 @@ it("creates OpenAI SIWC metadata without exposing API-key or live-login operatio
       });
     if (path === "/api/model-authorizations")
       return response({ authorizations: [], remote_revocations: [] });
+    if (path === "/api/model-accounts/siwc-account/acceptance-operations")
+      return response({
+        operations: [],
+        simulation_enabled: true,
+        routes: [
+          {
+            id: "siwc-route",
+            adapter: "openai_siwc_responses",
+            environment: "simulation",
+            spend_class: "subscription_only",
+            base_url: "http://127.0.0.1:43123/v1",
+          },
+        ],
+      });
     if (path === "/api/model-accounts" && init?.method === "POST")
       return response({ account: siwc });
     if (path === "/api/model-accounts") return response({ accounts: [] });

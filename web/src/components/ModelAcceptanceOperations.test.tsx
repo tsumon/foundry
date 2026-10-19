@@ -891,3 +891,162 @@ it("fails closed instead of rendering an unbounded receipt error code", async ()
   expect(document.body.textContent).not.toContain("fake-test-secret");
   expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
 });
+
+it("keeps identity-only connection review explicit and never unlocks model phases", async () => {
+  const identityAccount = {
+    ...account,
+    id: "acceptance-gate-openai-identity",
+    name: "SYNTHETIC OpenAI — identity only",
+  };
+  const identityRoute = {
+    ...route,
+    id: "acceptance-gate-openai-identity-route",
+    spend_class: "identity_only",
+    connection_purpose: "identity_only",
+  };
+  const identityMaterial = () => ({
+    ...material("connection"),
+    account: identityAccount,
+    route: {
+      ...identityRoute,
+      account_id: identityAccount.id,
+      protocol: "responses",
+      extra_usage: "off",
+      created_at: "2026-10-19T00:00:00Z",
+    },
+    connection_purpose: "identity_only",
+    requested_scopes: ["openid", "profile", "email"],
+  });
+  let identityOperation: ReturnType<typeof operation> & {
+    result_account_revision?: number;
+  } = {
+    ...operation("identity-connection", "connection", "pending"),
+    account_id: identityAccount.id,
+    material: identityMaterial(),
+  };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (!init?.method)
+      return response({
+        operations: [],
+        simulation_enabled: true,
+        routes: [identityRoute],
+      });
+    const body = JSON.parse(String(init.body));
+    if (path.endsWith("/acceptance-operations")) {
+      expect(body).toEqual({
+        phase: "connection",
+        route_id: identityRoute.id,
+        expected_account_revision: 1,
+        connection_purpose: "identity_only",
+      });
+      return response({ operation: identityOperation });
+    }
+    if (path.endsWith("/decision")) {
+      expect(body).toEqual({
+        expected_revision: 1,
+        material_digest: digest,
+        decision: "approve",
+      });
+      identityOperation = {
+        ...identityOperation,
+        revision: 2,
+        state: "approved",
+      };
+      return response({ operation: identityOperation });
+    }
+    if (path.endsWith("/execute")) {
+      expect(body).toEqual({ expected_revision: 2, material_digest: digest });
+      identityOperation = {
+        ...identityOperation,
+        revision: 3,
+        state: "succeeded",
+        attempts: 1,
+        claim_sequence: 1,
+        certainty: "completed",
+        result_account_revision: 1,
+      };
+      return response({ operation: identityOperation });
+    }
+    throw new Error(`unexpected ${path}`);
+  });
+  const refreshAccount = vi.fn(async () => {});
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={identityAccount}
+      refreshAccount={refreshAccount}
+    />,
+  );
+
+  expect(await screen.findByText(/本地身份专用模拟/)).toBeVisible();
+  expect(screen.getByText(/openid.*profile.*email/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "创建目录材料" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "创建推理材料" })).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "执行连接" }),
+  ).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "创建连接材料" }));
+  fireEvent.click(await screen.findByRole("button", { name: "批准连接材料" }));
+  await screen.findByRole("button", { name: "执行连接" });
+  expect(
+    fetcher.mock.calls.some(([path]) => String(path).endsWith("/execute")),
+  ).toBe(false);
+
+  fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+  await screen.findByText(/连接 · 已成功 · 本地模拟/);
+  expect(
+    fetcher.mock.calls.filter(([path]) => String(path).endsWith("/execute")),
+  ).toHaveLength(1);
+  expect(refreshAccount).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "创建目录材料" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "创建推理材料" })).toBeDisabled();
+});
+
+it.each([
+  {
+    name: "unknown route purpose",
+    routes: [{ ...route, connection_purpose: "model_use" }],
+    operations: [],
+    raw: "model_use",
+  },
+  {
+    name: "incomplete identity scopes",
+    routes: [{ ...route, connection_purpose: "identity_only" }],
+    operations: [
+      operation("malformed-identity", "connection", "pending", {
+        material: {
+          ...material("connection"),
+          connection_purpose: "identity_only",
+          requested_scopes: ["openid"],
+        },
+      }),
+    ],
+    raw: "malformed-identity",
+  },
+])(
+  "fails closed for $name instead of treating it as a legacy route",
+  async ({ routes, operations, raw }) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          operations,
+          simulation_enabled: true,
+          routes,
+        }),
+      ),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={account}
+        refreshAccount={async () => {}}
+      />,
+    );
+
+    expect(await screen.findByText("invalid_receipt")).toBeVisible();
+    expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建目录材料" })).toBeDisabled();
+    expect(document.body.textContent).not.toContain(raw);
+  },
+);

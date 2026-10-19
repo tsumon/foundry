@@ -40,6 +40,61 @@ const receiptCodes = new Set([
 ]);
 const identifier = /^[A-Za-z0-9_-]{1,256}$/;
 const digest = /^[a-f0-9]{64}$/;
+const identityScopes = ["openid", "profile", "email"] as const;
+
+export type ModelAcceptanceConnectionPolicy =
+  "identity_only" | "legacy" | "unavailable";
+
+function validConnectionPurpose(
+  value: unknown,
+): value is "identity_only" | undefined {
+  return value === undefined || value === "identity_only";
+}
+
+function validIdentityMaterial(value: ModelAcceptanceOperation): boolean {
+  const material = value.material as unknown;
+  if (!material || typeof material !== "object") return false;
+  const record = material as Record<string, unknown>;
+  if (!validConnectionPurpose(record.connection_purpose)) return false;
+  if (record.connection_purpose === undefined)
+    return record.requested_scopes === undefined;
+  return (
+    value.phase === "connection" &&
+    Array.isArray(record.requested_scopes) &&
+    record.requested_scopes.length === identityScopes.length &&
+    record.requested_scopes.every(
+      (scope, index) => scope === identityScopes[index],
+    )
+  );
+}
+
+function validRoute(
+  route: unknown,
+): route is ModelAcceptanceHistory["routes"][number] {
+  if (!route || typeof route !== "object") return false;
+  const record = route as Record<string, unknown>;
+  return (
+    record.environment === "simulation" &&
+    typeof record.id === "string" &&
+    identifier.test(record.id) &&
+    typeof record.adapter === "string" &&
+    typeof record.spend_class === "string" &&
+    typeof record.base_url === "string" &&
+    validConnectionPurpose(record.connection_purpose)
+  );
+}
+
+export function connectionPolicy(
+  history: ModelAcceptanceHistory,
+): ModelAcceptanceConnectionPolicy {
+  if (!history.simulation_enabled || history.routes.length === 0)
+    return "unavailable";
+  const purposes = history.routes.map((route) => route.connection_purpose);
+  if (purposes.every((purpose) => purpose === "identity_only"))
+    return "identity_only";
+  if (purposes.every((purpose) => purpose === undefined)) return "legacy";
+  return "unavailable";
+}
 
 function validOperation(
   value: ModelAcceptanceOperation,
@@ -60,6 +115,7 @@ function validOperation(
     value.quota === "unknown" &&
     value.remote_billing === "unverified" &&
     !!value.material &&
+    validIdentityMaterial(value) &&
     value.material.phase === value.phase &&
     value.material.account.id === accountID &&
     digest.test(value.material_digest) &&
@@ -86,14 +142,21 @@ function validHistory(
       validOperation(operation, accountID),
     ) &&
     Array.isArray(value.routes) &&
-    value.routes.every(
-      (route) =>
-        route.environment === "simulation" &&
-        identifier.test(route.id) &&
-        typeof route.adapter === "string" &&
-        typeof route.spend_class === "string" &&
-        typeof route.base_url === "string",
-    )
+    value.routes.every(validRoute) &&
+    (() => {
+      const policy = connectionPolicy(value);
+      if (!value.simulation_enabled)
+        return value.routes.length === 0 && value.operations.length === 0;
+      return (
+        policy !== "unavailable" &&
+        value.operations.every((operation) =>
+          policy === "identity_only"
+            ? operation.phase === "connection" &&
+              operation.material.connection_purpose === "identity_only"
+            : operation.material.connection_purpose === undefined,
+        )
+      );
+    })()
   );
 }
 
@@ -121,15 +184,18 @@ function latestClaimed(
 export function ModelAcceptanceOperations({
   account,
   refreshAccount,
+  onConnectionPolicy,
 }: {
   account: ModelAccount;
   refreshAccount: () => Promise<void>;
+  onConnectionPolicy?: (policy: ModelAcceptanceConnectionPolicy) => void;
 }) {
   return (
     <AcceptanceOperations
       key={`${account.id}:${account.revision}`}
       account={account}
       refreshAccount={refreshAccount}
+      onConnectionPolicy={onConnectionPolicy}
     />
   );
 }
@@ -137,9 +203,11 @@ export function ModelAcceptanceOperations({
 function AcceptanceOperations({
   account,
   refreshAccount,
+  onConnectionPolicy,
 }: {
   account: ModelAccount;
   refreshAccount: () => Promise<void>;
+  onConnectionPolicy?: (policy: ModelAcceptanceConnectionPolicy) => void;
 }) {
   const [snapshot, setSnapshot] = useState<ModelAcceptanceHistory>();
   const [loaded, setLoaded] = useState(false);
@@ -166,6 +234,7 @@ function AcceptanceOperations({
     if (!validHistory(history, account.id)) throw new Error("invalid receipt");
     setSnapshot(history);
     setLoaded(true);
+    onConnectionPolicy?.(connectionPolicy(history));
     setRouteID((current) =>
       history.routes.some((route) => route.id === current)
         ? current
@@ -177,6 +246,7 @@ function AcceptanceOperations({
     setReading(true);
     setError(undefined);
     clearSnapshot();
+    onConnectionPolicy?.("unavailable");
     try {
       const history = await modelAcceptanceApi.history(account.id);
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
@@ -191,6 +261,7 @@ function AcceptanceOperations({
           : modelAcceptanceError(cause);
       setError(decoded);
       setLoaded(false);
+      onConnectionPolicy?.("unavailable");
     } finally {
       if (lifecycle.current.active && lifecycle.current.epoch === epoch)
         setReading(false);
@@ -201,6 +272,7 @@ function AcceptanceOperations({
     lifecycle.current.active = true;
     lifecycle.current.epoch++;
     lifecycle.current.locked = false;
+    onConnectionPolicy?.("unavailable");
     void readHistory();
     return () => {
       lifecycle.current.active = false;
@@ -210,6 +282,8 @@ function AcceptanceOperations({
   }, [account.id, account.revision]);
 
   const operations = snapshot?.operations ?? [];
+  const policy = snapshot ? connectionPolicy(snapshot) : "unavailable";
+  const identityOnly = policy === "identity_only";
   // Connection authority is dispatch order, never response/list/proposal/time order.
   const latestConnection = useMemo(
     () => latestClaimed(operations, "connection"),
@@ -313,6 +387,7 @@ function AcceptanceOperations({
     setError(undefined);
     clearSnapshot();
     setLoaded(false);
+    onConnectionPolicy?.("unavailable");
     try {
       let recovered: ModelAcceptanceOperation | undefined;
       if (unresolved.operationID) {
@@ -363,6 +438,7 @@ function AcceptanceOperations({
       if (lifecycle.current.active && lifecycle.current.epoch === epoch) {
         clearSnapshot();
         setLoaded(false);
+        onConnectionPolicy?.("unavailable");
         setError(
           cause instanceof Error && cause.message === "invalid receipt"
             ? { ...modelAcceptanceError(cause), code: "invalid_receipt" }
@@ -377,7 +453,12 @@ function AcceptanceOperations({
   };
 
   const mutationDisabled =
-    busy || reading || !!unresolved || !loaded || !snapshot?.simulation_enabled;
+    busy ||
+    reading ||
+    !!unresolved ||
+    !loaded ||
+    !snapshot?.simulation_enabled ||
+    policy === "unavailable";
   const currentAccountRevision = Math.max(
     account.revision,
     connection?.result_account_revision ?? account.revision,
@@ -394,6 +475,9 @@ function AcceptanceOperations({
         phase,
         route_id: routeID,
         expected_account_revision: currentAccountRevision,
+        ...(identityOnly
+          ? { connection_purpose: "identity_only" as const }
+          : {}),
         ...(prerequisite ? { prerequisite_id: prerequisite } : {}),
         ...(phase === "inference" ? { model } : {}),
       }),
@@ -418,6 +502,11 @@ function AcceptanceOperations({
         fixture。不会登录真实账户、读取真实凭据、自动重试、轮询、刷新、付费降级、运行脚本或写入
         Git。
       </p>
+      {identityOnly && (
+        <p className="note">
+          本地身份专用模拟；请求身份范围：openid、profile、email。真实登录仍待确认；账户与工作区由用户稍后选择；额度和计费未知。身份验证成功不代表模型可用。
+        </p>
+      )}
       {error && (
         <p className="form-error" role="alert">
           {error.message} 错误码：<code>{error.code}</code>
@@ -456,6 +545,7 @@ function AcceptanceOperations({
             <code>{routeID}</code> ·{" "}
             {snapshot.routes.find((route) => route.id === routeID)!.adapter} ·{" "}
             {snapshot.routes.find((route) => route.id === routeID)!.spend_class}
+            {identityOnly && " · 仅身份验证，不授予模型权限"}
           </p>
         )}
         <button
@@ -479,6 +569,7 @@ function AcceptanceOperations({
           const prerequisiteMissing =
             (phase === "catalog" && !connection) ||
             (phase === "inference" && (!catalog || !model));
+          const identityClosedPhase = identityOnly && phase !== "connection";
           return (
             <li key={phase}>
               <div className="acceptance-step-heading">
@@ -489,6 +580,7 @@ function AcceptanceOperations({
                     mutationDisabled ||
                     !routeID ||
                     prerequisiteMissing ||
+                    identityClosedPhase ||
                     !account.enabled
                   }
                   onClick={() => propose(phase)}
@@ -500,6 +592,11 @@ function AcceptanceOperations({
                 <p className="warning-copy">
                   最新连接回执为{stateLabels[latestConnection.state]}
                   ；较早成功不能授权目录请求。
+                </p>
+              )}
+              {identityClosedPhase && (
+                <p className="field-help">
+                  身份专用连接不授权目录、推理、刷新或任何模型使用。
                 </p>
               )}
               {phase === "inference" && (
@@ -558,6 +655,7 @@ function AcceptanceOperations({
                       () => modelAcceptanceApi.execute(account.id, operation),
                       async (result) => {
                         if (
+                          !identityOnly &&
                           result.phase === "connection" &&
                           result.state === "succeeded"
                         )
@@ -648,6 +746,14 @@ function OperationReview({
         <dd>
           {material.account.billing_mode} · {material.route.spend_class}
         </dd>
+        {material.connection_purpose === "identity_only" && (
+          <>
+            <dt>连接目的</dt>
+            <dd>仅身份验证；不授予模型权限</dd>
+            <dt>请求身份范围</dt>
+            <dd>{material.requested_scopes?.join(" · ")}</dd>
+          </>
+        )}
         <dt>输入摘要</dt>
         <dd>{material.data_summary}</dd>
         {material.model && (

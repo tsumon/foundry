@@ -9,7 +9,10 @@ import type { ModelAccount, ModelCredential, ModelRuntime } from "../types";
 import { ModelAccountCredentials } from "./ModelAccountCredentials";
 import { ModelAuthorizationCard } from "./ModelAuthorizationCard";
 import { ModelAcceptanceCard } from "./ModelAcceptanceCard";
-import { ModelAcceptanceOperations } from "./ModelAcceptanceOperations";
+import {
+  ModelAcceptanceOperations,
+  type ModelAcceptanceConnectionPolicy,
+} from "./ModelAcceptanceOperations";
 import { useCapabilityRequest } from "./capabilities/useCapabilityRequest";
 
 export const billingLabels = {
@@ -40,6 +43,8 @@ export function ModelAccounts({
   const [name, setName] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [readError, setReadError] = useState("");
+  const [connectionPolicy, setConnectionPolicy] =
+    useState<ModelAcceptanceConnectionPolicy>("unavailable");
   const selectionEpoch = useRef(0);
   const { busy, error, setError, run } = useCapabilityRequest(true);
   const merge = (account: ModelAccount) =>
@@ -84,6 +89,7 @@ export function ModelAccounts({
   const open = (id: string) =>
     void run(async (valid) => {
       const epoch = ++selectionEpoch.current;
+      setConnectionPolicy("unavailable");
       try {
         const data = await modelAccountApi.detail(id);
         if (valid() && epoch === selectionEpoch.current) {
@@ -344,7 +350,11 @@ export function ModelAccounts({
               refresh={refresh}
             />
           ) : (
-            <ModelAuthorizationCard account={selected} runtime={runtime} />
+            <ModelAuthorizationCard
+              account={selected}
+              runtime={runtime}
+              connectionPolicy={connectionPolicy}
+            />
           )}
           <ModelAcceptanceCard
             accountId={selected.id}
@@ -353,6 +363,7 @@ export function ModelAccounts({
           <ModelAcceptanceOperations
             account={selected}
             refreshAccount={refresh}
+            onConnectionPolicy={setConnectionPolicy}
           />
         </section>
       )}
