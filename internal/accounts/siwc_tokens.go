@@ -37,6 +37,7 @@ type siwcTokenResponse struct {
 	TokenType         string
 	ExpiresIn         int64
 	Scope             string
+	ScopePresent      bool
 	EarliestRefreshAt string
 }
 
@@ -81,7 +82,7 @@ func (s *SIWCService) revalidateSIWCAccount(expected domain.ModelAccount) error 
 	return nil
 }
 
-func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt, code, clientID, callbackScope string) (resultErr error) {
+func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt, code, clientID, callbackScope string, callbackScopePresent bool) (resultErr error) {
 	if _, err := s.lifecycle.BeginModelAuthorization(ctx, attempt.account.ID, attempt.public.OperationID, "sign_in", attempt.authorizationID); err != nil {
 		return err
 	}
@@ -110,7 +111,7 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 		if tokens.RefreshToken != "" {
 			return siwcFailure("entitlement_denied", "rejected")
 		}
-		scopes, err = validateSIWCIdentityGrant(tokens.Scope, callbackScope)
+		scopes, err = validateSIWCIdentityGrant(tokens.Scope, tokens.ScopePresent, callbackScope, callbackScopePresent)
 	} else {
 		scopes, err = validateSIWCGrant(tokens.Scope, callbackScope, nil)
 	}
@@ -196,7 +197,7 @@ func (s *SIWCService) requestSIWCToken(ctx context.Context, form url.Values, pur
 		IDToken           string          `json:"id_token"`
 		TokenType         string          `json:"token_type"`
 		ExpiresIn         json.Number     `json:"expires_in"`
-		Scope             string          `json:"scope"`
+		Scope             json.RawMessage `json:"scope"`
 		EarliestRefreshAt json.RawMessage `json:"earliest_refresh_at"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
@@ -206,10 +207,15 @@ func (s *SIWCService) requestSIWCToken(ctx context.Context, form url.Values, pur
 		return siwcTokenResponse{}, siwcFailure("response_incomplete", "unknown")
 	}
 	if purpose == siwcPurposeIdentity {
-		if !safeSIWCToken(raw.IDToken) || raw.RefreshToken != "" || raw.AccessToken != "" && !safeSIWCToken(raw.AccessToken) || raw.TokenType != "" && raw.TokenType != "Bearer" || len(raw.Scope) > 4096 || len(raw.EarliestRefreshAt) != 0 && !bytes.Equal(raw.EarliestRefreshAt, []byte("null")) {
+		scope, scopePresent, err := parseSIWCIdentityScope(raw.Scope)
+		if err != nil || !safeSIWCToken(raw.IDToken) || raw.RefreshToken != "" || raw.AccessToken != "" && !safeSIWCToken(raw.AccessToken) || raw.TokenType != "" && raw.TokenType != "Bearer" || len(scope) > 4096 || len(raw.EarliestRefreshAt) != 0 && !bytes.Equal(raw.EarliestRefreshAt, []byte("null")) {
 			return siwcTokenResponse{}, siwcFailure("response_incomplete", "unknown")
 		}
-		return siwcTokenResponse{AccessToken: raw.AccessToken, IDToken: raw.IDToken, TokenType: raw.TokenType, Scope: raw.Scope}, nil
+		return siwcTokenResponse{AccessToken: raw.AccessToken, IDToken: raw.IDToken, TokenType: raw.TokenType, Scope: scope, ScopePresent: scopePresent}, nil
+	}
+	var scope string
+	if json.Unmarshal(raw.Scope, &scope) != nil {
+		return siwcTokenResponse{}, siwcFailure("response_incomplete", "unknown")
 	}
 	expires, err := strconv.ParseInt(string(raw.ExpiresIn), 10, 64)
 	if err != nil || expires < 1 || expires > 86400 || !safeSIWCToken(raw.AccessToken) || raw.RefreshToken != "" && !safeSIWCToken(raw.RefreshToken) || !safeSIWCToken(raw.IDToken) || raw.TokenType != "Bearer" {
@@ -219,14 +225,30 @@ func (s *SIWCService) requestSIWCToken(ctx context.Context, form url.Values, pur
 	if err != nil {
 		return siwcTokenResponse{}, siwcFailure("response_incomplete", "unknown")
 	}
-	return siwcTokenResponse{AccessToken: raw.AccessToken, RefreshToken: raw.RefreshToken, IDToken: raw.IDToken, TokenType: raw.TokenType, ExpiresIn: expires, Scope: raw.Scope, EarliestRefreshAt: earliest}, nil
+	return siwcTokenResponse{AccessToken: raw.AccessToken, RefreshToken: raw.RefreshToken, IDToken: raw.IDToken, TokenType: raw.TokenType, ExpiresIn: expires, Scope: scope, ScopePresent: true, EarliestRefreshAt: earliest}, nil
+}
+
+// parseSIWCIdentityScope preserves the distinction between an absent scope
+// claim and an explicit empty/null claim. Only the former gets openid fallback.
+func parseSIWCIdentityScope(raw json.RawMessage) (string, bool, error) {
+	if len(raw) == 0 {
+		return "", false, nil
+	}
+	if bytes.Equal(raw, []byte("null")) {
+		return "", true, ErrInvalid
+	}
+	var scope string
+	if json.Unmarshal(raw, &scope) != nil {
+		return "", true, ErrInvalid
+	}
+	return scope, true, nil
 }
 
 // validateSIWCIdentityGrant accepts only identity scopes. The provider can
 // omit both explicit scope fields; the signed ID token then proves openid only.
-func validateSIWCIdentityGrant(tokenScope, callbackScope string) ([]string, error) {
-	parse := func(raw string) (map[string]bool, error) {
-		if raw == "" {
+func validateSIWCIdentityGrant(tokenScope string, tokenScopePresent bool, callbackScope string, callbackScopePresent bool) ([]string, error) {
+	parse := func(raw string, present bool) (map[string]bool, error) {
+		if !present {
 			return nil, nil
 		}
 		items := strings.Fields(raw)
@@ -249,11 +271,11 @@ func validateSIWCIdentityGrant(tokenScope, callbackScope string) ([]string, erro
 		}
 		return result, nil
 	}
-	grant, err := parse(tokenScope)
+	grant, err := parse(tokenScope, tokenScopePresent)
 	if err != nil {
 		return nil, err
 	}
-	callback, err := parse(callbackScope)
+	callback, err := parse(callbackScope, callbackScopePresent)
 	if err != nil {
 		return nil, err
 	}

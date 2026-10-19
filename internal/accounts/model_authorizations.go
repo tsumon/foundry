@@ -43,6 +43,12 @@ func (s *Service) BeginModelAuthorization(ctx context.Context, accountID, operat
 	if s.secrets == nil {
 		return domain.AuthorizationOperation{}, ErrUnavailable
 	}
+	if kind == "refresh" {
+		authorization, err := s.store.GetModelAuthorization(authorizationID)
+		if err == nil && authorization.Binding.AccountID == accountID && authorization.Binding.SpendClass == siwcPurposeIdentity {
+			return domain.AuthorizationOperation{}, ErrUnavailable
+		}
+	}
 	o, err := s.store.BeginModelAuthorization(accountID, operationID, kind, authorizationID)
 	return o, safeError(err)
 }
@@ -229,7 +235,7 @@ func (s *Service) ReadModelAuthorizationRefresh(ctx context.Context, operationID
 		return zero, ErrUnavailable
 	}
 	auth, err := s.store.GetModelAuthorization(op.AuthorizationID)
-	if err != nil || auth.State != "refreshing" || auth.Binding.AccountID != op.AccountID || auth.Generation >= op.Generation {
+	if err != nil || auth.State != "refreshing" || auth.Binding.AccountID != op.AccountID || auth.Binding.SpendClass == siwcPurposeIdentity || auth.Generation >= op.Generation {
 		return zero, ErrUnavailable
 	}
 	account, err := s.store.GetModelAccount(op.AccountID)

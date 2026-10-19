@@ -127,7 +127,7 @@ func (s *Store) BeginModelAuthorization(accountID, operationID, kind, authorizat
 			return zero, ErrConflict
 		}
 	}
-	if kind == "refresh" && (err != nil || old.State != "available") {
+	if kind == "refresh" && (err != nil || old.State != "available" || old.Binding.SpendClass == "identity_only") {
 		return zero, ErrConflict
 	}
 	var last int64

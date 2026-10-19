@@ -268,7 +268,7 @@ func (s *SIWCService) handleSIWCCallback(ctx context.Context, attempt *siwcAttem
 	s.mu.Unlock()
 	defer close(attempt.exchangeDone)
 
-	err := s.exchangeSIWCCode(ctx, attempt, code, clientID, values.Get("scope"))
+	err := s.exchangeSIWCCode(ctx, attempt, code, clientID, values.Get("scope"), values.Has("scope"))
 	s.mu.Lock()
 	if attempt.public.State != "canceled" && attempt.public.State != "expired" {
 		if err == nil {

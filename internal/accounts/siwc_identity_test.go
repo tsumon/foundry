@@ -15,6 +15,8 @@ import (
 	"foundry/internal/domain"
 )
 
+func identityScope(value string) *string { return &value }
+
 func TestSIWCIdentityOnlyFlowPersistsSignedProofWithoutModelCredentials(t *testing.T) {
 	service, db, secrets, _ := setupAccounts(t)
 	resource := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -140,6 +142,90 @@ func TestSIWCIdentityOnlyRejectsBroadenedGrantsBeforeSecretPersistence(t *testin
 			}
 			if _, err := db.CurrentModelAuthorization(account.ID); err == nil {
 				t.Fatal("rejected identity response created an authorization")
+			}
+		})
+	}
+}
+
+func TestSIWCIdentityScopeEvidenceDistinguishesAbsentFromExplicitScopes(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		tokenScope        any
+		tokenScopePresent bool
+		callbackScope     *string
+		accessToken       string
+		wantOK            bool
+		wantScopes        []string
+	}{
+		{name: "absent scopes use openid proof", wantOK: true, wantScopes: []string{"openid"}},
+		{name: "explicit empty token scope", tokenScope: "", tokenScopePresent: true, wantOK: false},
+		{name: "explicit null token scope", tokenScopePresent: true, wantOK: false},
+		{name: "explicit empty callback scope", callbackScope: identityScope(""), wantOK: false},
+		{name: "duplicate token scope", tokenScope: "openid openid", tokenScopePresent: true, wantOK: false},
+		{name: "missing openid token scope", tokenScope: "profile", tokenScopePresent: true, wantOK: false},
+		{name: "token callback disagreement", tokenScope: "openid profile", tokenScopePresent: true, callbackScope: identityScope("openid"), wantOK: false},
+		{name: "matching identity subset", tokenScope: "openid profile", tokenScopePresent: true, callbackScope: identityScope("openid profile"), wantOK: true, wantScopes: []string{"openid", "profile"}},
+		{name: "optional access token is discarded", tokenScope: "openid", tokenScopePresent: true, accessToken: "optional-access", wantOK: true, wantScopes: []string{"openid"}},
+		{name: "optional access token reflection rejected", tokenScope: "openid", tokenScopePresent: true, accessToken: "subject-synthetic", wantOK: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service, db, secrets, _ := setupAccounts(t)
+			resource := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+			defer resource.Close()
+			account := newSIWCAccount(t, service, resource.URL+"/v1")
+			issuer := newSIWCIssuerFixture(t, account.BaseURL)
+			issuer.identityResponse = func(client, nonce string) map[string]any {
+				response := map[string]any{"id_token": issuer.idToken(client, nonce, issuer.subject, time.Now().Add(time.Hour))}
+				if test.tokenScopePresent {
+					response["scope"] = test.tokenScope
+				}
+				if test.accessToken != "" {
+					response["access_token"] = test.accessToken
+					response["token_type"] = "Bearer"
+				}
+				return response
+			}
+			siwc, err := NewSIWCSimulation(service, issuer.options())
+			if err != nil {
+				t.Fatal(err)
+			}
+			flow, err := siwc.BeginIdentity(context.Background(), account.ID, account.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			query := openHandoff(t, flow)
+			issuer.mu.Lock()
+			issuer.nonce = query.Get("nonce")
+			issuer.mu.Unlock()
+			callback := query.Get("redirect_uri") + "?code=scope-case&state=" + url.QueryEscape(query.Get("state")) + "&client_id=" + issuer.issuedClient
+			if test.callbackScope != nil {
+				callback += "&scope=" + url.QueryEscape(*test.callbackScope)
+			}
+			response, err := http.Get(callback)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if (response.StatusCode == http.StatusOK) != test.wantOK {
+				t.Fatalf("scope result status=%d wantOK=%t", response.StatusCode, test.wantOK)
+			}
+			authorization, authErr := db.CurrentModelAuthorization(account.ID)
+			if !test.wantOK {
+				if authErr == nil || secrets.sets != 0 {
+					t.Fatalf("invalid explicit scope persisted: authorization=%+v sets=%d", authorization, secrets.sets)
+				}
+				return
+			}
+			if authErr != nil || !reflect.DeepEqual(authorization.Binding.Scopes, test.wantScopes) {
+				t.Fatalf("identity scopes=%v want=%v err=%v", authorization.Binding.Scopes, test.wantScopes, authErr)
+			}
+			secret, err := secrets.Get(authorization.SecretRef)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var bundle storedModelTokenBundle
+			if json.Unmarshal([]byte(secret), &bundle) != nil || bundle.AccessToken != "" || bundle.RefreshToken != "" {
+				t.Fatalf("identity scope result retained model credential: %+v", bundle)
 			}
 		})
 	}

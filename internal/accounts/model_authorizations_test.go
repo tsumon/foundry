@@ -148,6 +148,30 @@ func TestIdentityOnlyGrantPersistsButNeverReadsToken(t *testing.T) {
 	}
 }
 
+func TestIdentityOnlyBindingCannotStartOrReadRefreshBeforeSecretAccess(t *testing.T) {
+	s, db, secrets, _ := setupAccounts(t)
+	sel := selectionFixture(t, s, db, true)
+	ctx := context.Background()
+	binding := domain.ModelAuthorizationBinding{ID: "identity-refresh", AccountID: sel.Account.ID, Issuer: "https://issuer.invalid", Subject: "subject", ClientID: "issued-client", SpendClass: "identity_only", Scopes: []string{"openid"}}
+	if _, err := s.BeginModelAuthorization(ctx, binding.AccountID, "identity-sign-in", "sign_in", binding.ID); err != nil {
+		t.Fatal(err)
+	}
+	authorization, err := s.CommitModelAuthorization(ctx, "identity-sign-in", binding, ModelTokenBundle{IDToken: "FAKE-IDENTITY-PROOF", ExpiresAt: "2099-01-01T00:00:00Z", Resource: sel.Route.BaseURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gets := secrets.gets
+	if _, err = s.BeginModelAuthorization(ctx, binding.AccountID, "identity-refresh", "refresh", authorization.Binding.ID); err == nil {
+		t.Fatal("identity binding reserved a refresh intent")
+	}
+	if _, err = s.ReadModelAuthorizationRefresh(ctx, "identity-refresh"); err == nil {
+		t.Fatal("identity binding exposed a refresh bundle")
+	}
+	if secrets.gets != gets {
+		t.Fatalf("identity refresh denial read protected storage: %d -> %d", gets, secrets.gets)
+	}
+}
+
 func TestAuthorizationSecretWriteFailureAndCleanupBlockReadiness(t *testing.T) {
 	s, db, secrets, _ := setupAccounts(t)
 	sel := selectionFixture(t, s, db, true)
