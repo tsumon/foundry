@@ -35,6 +35,7 @@ docs/public/alpha-status.md
 docs/public/architecture.md
 docs/public/model-acceptance-gates.md
 docs/public/model-acceptance.md
+docs/public/openai-identity-connection.md
 docs/public/openai-stage0.md
 docs/public/safety.md
 go.mod
