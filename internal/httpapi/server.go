@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"foundry/internal/acceptance"
 	"io"
 	"mime"
 	"net/http"
@@ -34,6 +35,7 @@ const (
 )
 
 type Options struct {
+	Acceptance       *acceptance.Service
 	RecoveryReadOnly bool
 	Accounts         *accounts.Service
 	ModelRouter      *model.Router
@@ -44,6 +46,7 @@ type Options struct {
 }
 
 type server struct {
+	acceptance       *acceptance.Service
 	recoveryReadOnly bool
 	accounts         *accounts.Service
 	store            *store.Store
@@ -91,7 +94,12 @@ func New(s *store.Store, e *engine.Engine, client *model.Client, secrets model.S
 	if observer == nil {
 		observer = hooks.New(s)
 	}
+	gates := opts.Acceptance
+	if gates == nil {
+		gates = acceptance.New(s)
+	}
 	return &server{
+		acceptance:       gates,
 		recoveryReadOnly: opts.RecoveryReadOnly,
 		accounts:         accountService,
 		store:            s, catalog: catalog.New(s), capability: capability.New(s, secrets), hooks: observer, engine: e, client: client, modelRouter: modelRouter, siwc: siwc, secrets: secrets,

@@ -201,6 +201,9 @@ func (s *server) modelAuthorizationsRoute(w http.ResponseWriter, r *http.Request
 			writeModelAuthorizationError(w, accounts.ErrInvalid, nil)
 			return
 		}
+		if s.rejectAcceptanceBypass(w, request.AccountID) {
+			return
+		}
 		flow, err := s.siwc.Begin(r.Context(), request.AccountID, request.ExpectedAccountRevision)
 		if err != nil {
 			writeModelAuthorizationError(w, err, nil)
@@ -284,6 +287,14 @@ func (s *server) authorizationLifecycleMutation(w http.ResponseWriter, r *http.R
 		return
 	}
 	if action == "refresh" {
+		current, err := s.store.GetModelAuthorization(authorizationID)
+		if err != nil {
+			writeModelAuthorizationError(w, err, nil)
+			return
+		}
+		if s.rejectAcceptanceBypass(w, current.Binding.AccountID) {
+			return
+		}
 		authorization, err := s.siwc.Refresh(r.Context(), authorizationID, request.ExpectedAccountRevision)
 		if err != nil {
 			writeModelAuthorizationError(w, err, nil)
@@ -292,7 +303,19 @@ func (s *server) authorizationLifecycleMutation(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"authorization": modelAuthorizationView(authorization)})
 		return
 	}
-	result, err := s.siwc.Revoke(r.Context(), authorizationID, request.ExpectedAccountRevision)
+	// Dedicated acceptance accounts belong to a different owned issuer. Keep
+	// the existing safety control local-only rather than sending its token to
+	// the global SIWC transport. Remote revocation remains unconfirmed.
+	revoker := s.siwc
+	current, err := s.store.GetModelAuthorization(authorizationID)
+	if err != nil {
+		writeModelAuthorizationError(w, err, nil)
+		return
+	}
+	if s.acceptance.OwnsAccount(current.Binding.AccountID) {
+		revoker = accounts.NewSIWCService(s.accounts)
+	}
+	result, err := revoker.Revoke(r.Context(), authorizationID, request.ExpectedAccountRevision)
 	if err != nil {
 		view := authorizationPartialRevocationView(authorizationID, result)
 		writeModelAuthorizationError(w, err, view)

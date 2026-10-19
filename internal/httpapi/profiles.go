@@ -192,6 +192,9 @@ func (s *server) profileRoute(w http.ResponseWriter, r *http.Request) {
 		writeMappedError(w, err)
 		return
 	}
+	if s.rejectAcceptanceBypass(w, profile.AccountID) {
+		return
+	}
 	if profile.RouteID != "" {
 		selection, err := s.store.ResolveModelProfile(profile.ID)
 		if err != nil {

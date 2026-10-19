@@ -10,6 +10,8 @@ README.en.md
 README.md
 SECURITY.md
 THIRD_PARTY_NOTICES.md
+cmd/foundry-acceptance/acceptance_gates.go
+cmd/foundry-acceptance/acceptance_gates_test.go
 cmd/foundry-acceptance/main.go
 cmd/foundry-acceptance/main_test.go
 cmd/foundry-acceptance/model_acceptance_test.go
@@ -29,10 +31,13 @@ docs/media/model-acceptance.jpg
 docs/media/workbench-plan-approval.jpg
 docs/public/alpha-status.md
 docs/public/architecture.md
+docs/public/model-acceptance-gates.md
 docs/public/model-acceptance.md
 docs/public/safety.md
 go.mod
 go.sum
+internal/acceptance/service.go
+internal/acceptance/service_test.go
 internal/accounts/credentials.go
 internal/accounts/model_authorizations.go
 internal/accounts/model_authorizations_test.go
@@ -65,6 +70,7 @@ internal/domain/hooks.go
 internal/domain/mcp_execution.go
 internal/domain/mcp_execution_test.go
 internal/domain/model_acceptance.go
+internal/domain/model_acceptance_operations.go
 internal/domain/model_accounts.go
 internal/domain/model_accounts_test.go
 internal/domain/model_authorizations.go
@@ -166,9 +172,11 @@ internal/httpapi/mcp_tasks_acceptance_test.go
 internal/httpapi/mcp_tasks_test.go
 internal/httpapi/mission_views.go
 internal/httpapi/missions.go
-internal/httpapi/model_account_views.go
 internal/httpapi/model_acceptance.go
+internal/httpapi/model_acceptance_operations.go
+internal/httpapi/model_acceptance_operations_test.go
 internal/httpapi/model_acceptance_test.go
+internal/httpapi/model_account_views.go
 internal/httpapi/model_accounts.go
 internal/httpapi/model_accounts_acceptance_test.go
 internal/httpapi/model_accounts_test.go
@@ -264,6 +272,8 @@ internal/store/mcp_snapshots.go
 internal/store/mcp_snapshots_test.go
 internal/store/mcp_transitions.go
 internal/store/model_acceptance.go
+internal/store/model_acceptance_operations.go
+internal/store/model_acceptance_operations_test.go
 internal/store/model_acceptance_test.go
 internal/store/model_accounts.go
 internal/store/model_accounts_schema.go

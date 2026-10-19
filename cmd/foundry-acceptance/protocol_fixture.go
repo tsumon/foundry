@@ -113,7 +113,8 @@ type fixtureRefreshGrant struct {
 // deliberately unavailable to the production binary and never imports an
 // environment credential or sends a request outside literal 127.0.0.1.
 type protocolFixture struct {
-	mu sync.Mutex
+	mu              sync.Mutex
+	acceptanceGates bool
 
 	key       *rsa.PrivateKey
 	issuer    *ownedLoopbackServer
@@ -124,15 +125,16 @@ type protocolFixture struct {
 	refreshes map[string]*fixtureRefreshGrant
 	modelHits map[string]int
 
-	explicitKey string
-	kimiKey     string
-	invalid     string
-	directories int
-	tokenCalls  int
-	pkce        bool
-	signed      int
-	revokeCalls int
-	closed      atomic.Bool
+	explicitKey    string
+	kimiKey        string
+	invalid        string
+	directories    int
+	tokenCalls     int
+	pkce           bool
+	signed         int
+	revokeCalls    int
+	revokeRequests int
+	closed         atomic.Bool
 }
 
 func newProtocolFixture() (_ *protocolFixture, err error) {
@@ -315,6 +317,9 @@ func (f *protocolFixture) handleIssuer(w http.ResponseWriter, r *http.Request) {
 		exponent := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(f.key.PublicKey.E)).Bytes())
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]string{"kty": "RSA", "kid": "synthetic-key-1", "use": "sig", "alg": "RS256", "n": base64.RawURLEncoding.EncodeToString(f.key.PublicKey.N.Bytes()), "e": exponent}}})
 	case r.Method == http.MethodPost && r.URL.Path == "/revoke":
+		f.mu.Lock()
+		f.revokeRequests++
+		f.mu.Unlock()
 		if err := r.ParseForm(); err != nil || r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" || !exactQuery(r.PostForm, []string{"token", "token_type_hint", "client_id"}, nil) {
 			http.Error(w, "invalid revocation request", http.StatusBadRequest)
 			return
@@ -554,6 +559,13 @@ func (f *protocolFixture) authorized(r *http.Request) bool {
 }
 
 func (f *protocolFixture) handleModel(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	gate := f.acceptanceGates
+	f.mu.Unlock()
+	if gate {
+		f.handleGateModel(w, r)
+		return
+	}
 	if !f.authorized(r) || r.Header.Get("User-Agent") != "Foundry/0.1.0" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)

@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"foundry/internal/acceptance"
 	"foundry/internal/accounts"
 	"foundry/internal/domain"
 	"foundry/internal/engine"
@@ -29,6 +30,9 @@ import (
 )
 
 type acceptanceRuntime struct {
+	gates                       *acceptance.Service
+	gateProtocol                *protocolFixture
+	gateSIWC                    *accounts.SIWCService
 	Root, Repo, URL             string
 	AccountID, AccountMissionID string
 	store                       *store.Store
@@ -155,6 +159,9 @@ func startAcceptance(webDir string) (_ *acceptanceRuntime, err error) {
 	if err = seedRolePolicyScenarios(r); err != nil {
 		return nil, err
 	}
+	if err = startAcceptanceGates(r, accountService); err != nil {
+		return nil, err
+	}
 	listener, err := listenAcceptance()
 	if err != nil {
 		return nil, err
@@ -163,7 +170,7 @@ func startAcceptance(webDir string) (_ *acceptanceRuntime, err error) {
 	r.URL = "http://" + address
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	base := httpapi.New(r.store, r.engine, model.NewClient(secrets), secrets, httpapi.Options{Address: address, WebDir: webDir, Accounts: accountService, ModelRouter: r.router, SIWC: r.siwc})
+	base := httpapi.New(r.store, r.engine, model.NewClient(secrets), secrets, httpapi.Options{Address: address, WebDir: webDir, Accounts: accountService, ModelRouter: r.router, SIWC: r.siwc, Acceptance: r.gates})
 	r.server = &http.Server{Handler: acceptanceHandler{runtime: r, base: base, host: address}, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute, BaseContext: func(net.Listener) context.Context { return ctx }}
 	go func() { r.serveErr <- r.server.Serve(listener) }()
 	return r, nil
@@ -183,6 +190,12 @@ func (r *acceptanceRuntime) Close() {
 	}
 	if r.siwc != nil {
 		_ = r.siwc.Close()
+	}
+	if r.gateSIWC != nil {
+		_ = r.gateSIWC.Close()
+	}
+	if r.gateProtocol != nil {
+		r.gateProtocol.Close()
 	}
 	if r.engine != nil {
 		_ = r.engine.Close()

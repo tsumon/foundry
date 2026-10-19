@@ -165,6 +165,10 @@ func (s *server) modelAccountsRoute(w http.ResponseWriter, r *http.Request) {
 		s.modelAcceptance(w, r, id)
 		return
 	}
+	if parts[1] == "acceptance-operations" {
+		s.modelAcceptanceOperations(w, r, parts)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "operations" && r.Method == "GET" {
 		if err := domain.ValidateModelCredentialOperation(parts[2]); err != nil {
 			writeAccountError(w, err)
@@ -206,6 +210,9 @@ func (s *server) modelAccountsRoute(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := decodeAccountJSON(w, r, &q); err != nil {
 				writeDecodeError(w, err)
+				return
+			}
+			if s.rejectAcceptanceBypass(w, id) {
 				return
 			}
 			v, err := s.accounts.AddCredential(r.Context(), id, q.ExpectedRevision, q.OperationID, q.Key)
