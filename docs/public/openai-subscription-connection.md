@@ -49,4 +49,6 @@ Keep the card in **Settings → Models → account detail**. Show connection pur
 
 ## Official protocol references
 
+The next implementation increment is specified in [the closed subscription adapter design](openai-subscription-adapter.md); it does not authorize real login.
+
 Checked 2026-10-20: [Open-source/local-app sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations), and [errors and recovery](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery). The application restrictions above are intentionally stricter than protocol capabilities. Eligibility, real consent, account/workspace selection and any real call still need a future separately approved acceptance step.

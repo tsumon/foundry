@@ -39,6 +39,7 @@ docs/public/model-acceptance-gates.md
 docs/public/model-acceptance.md
 docs/public/openai-identity-connection.md
 docs/public/openai-stage0.md
+docs/public/openai-subscription-adapter.md
 docs/public/openai-subscription-connection.md
 docs/public/safety.md
 go.mod
