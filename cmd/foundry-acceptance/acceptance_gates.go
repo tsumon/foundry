@@ -51,7 +51,7 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
 		switch m.Account.Provider {
 		case "openai":
-			return completeFixtureAuthorization(ctx, r.gateSIWC, m.Account, "approve")
+			return completeOwnedFixtureAuthorization(ctx, r.gateSIWC, m.Account, "approve")
 		case "kimi":
 			op, e := randomFixtureValue(18)
 			if e != nil {

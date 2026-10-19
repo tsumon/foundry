@@ -39,7 +39,7 @@ func randomSIWCValue(bytes int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-func (s *SIWCService) beginSimulation(ctx context.Context, accountID string, expectedRevision int64) (SIWCFlow, error) {
+func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID string, expectedRevision int64, ownedStop *func()) (SIWCFlow, error) {
 	if err := ctx.Err(); err != nil {
 		return SIWCFlow{}, safeError(err)
 	}
@@ -91,7 +91,7 @@ func (s *SIWCService) beginSimulation(ctx context.Context, accountID string, exp
 	host := listener.Addr().String()
 	redirectURI := "http://" + host + siwcCallbackPath
 	expires := time.Now().UTC().Add(s.options.FlowTimeout)
-	flowContext, cancel := context.WithDeadline(context.Background(), expires)
+	flowContext, cancel := context.WithDeadline(flowParent, expires)
 	attempt := &siwcAttempt{
 		public: SIWCFlow{OperationID: operationID, State: "waiting", HandoffURL: "http://" + host + siwcHandoffPath, ExpiresAt: expires.Format(time.RFC3339)},
 		cancel: cancel, listener: listener, account: account, authorizationID: authorizationID,
@@ -143,6 +143,9 @@ func (s *SIWCService) beginSimulation(ctx context.Context, accountID string, exp
 	result := attempt.public
 	s.mu.Unlock()
 
+	if ownedStop != nil {
+		*ownedStop = func() { s.stopOwnedSIWCAttempt(attempt) }
+	}
 	go func() { _ = attempt.server.Serve(listener) }()
 	go func() {
 		<-flowContext.Done()
@@ -245,7 +248,9 @@ func (s *SIWCService) handleSIWCCallback(ctx context.Context, attempt *siwcAttem
 	}
 	attempt.public.State = "exchanging"
 	attempt.public.HandoffURL = ""
+	attempt.exchangeDone = make(chan struct{})
 	s.mu.Unlock()
+	defer close(attempt.exchangeDone)
 
 	err := s.exchangeSIWCCode(ctx, attempt, code, clientID, values.Get("scope"))
 	s.mu.Lock()

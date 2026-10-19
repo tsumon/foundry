@@ -63,6 +63,7 @@ type siwcAttempt struct {
 	verifier         string
 	redirectURI      string
 	clientID         string
+	exchangeDone     chan struct{}
 }
 
 func stopSIWCAttempt(attempt *siwcAttempt, graceful bool) {
@@ -156,7 +157,36 @@ func (s *SIWCService) Begin(ctx context.Context, accountID string, expectedAccou
 	if s == nil || !s.simulation {
 		return SIWCFlow{}, liveSIWCDenial()
 	}
-	return s.beginSimulation(ctx, accountID, expectedAccountRevision)
+	return s.beginSimulation(ctx, context.Background(), accountID, expectedAccountRevision, nil)
+}
+
+// BeginOwnedSimulation binds a local, programmatically driven flow to its
+// execution context. The caller must defer the returned stop function, which
+// cancels and joins any accepted callback, including local credential cleanup.
+// Ordinary browser Begin deliberately retains its independent flow lifetime.
+func (s *SIWCService) BeginOwnedSimulation(ctx context.Context, accountID string, expectedAccountRevision int64) (SIWCFlow, func(), error) {
+	if s == nil || !s.simulation {
+		return SIWCFlow{}, nil, liveSIWCDenial()
+	}
+	var stop func()
+	flow, err := s.beginSimulation(ctx, ctx, accountID, expectedAccountRevision, &stop)
+	return flow, stop, err
+}
+
+func (s *SIWCService) stopOwnedSIWCAttempt(attempt *siwcAttempt) {
+	s.mu.Lock()
+	if attempt.public.State == "waiting" || attempt.public.State == "exchanging" {
+		attempt.public.State = "canceled"
+		attempt.public.HandoffURL = ""
+	}
+	// Callback admission and capture of its completion channel use the same
+	// lock: no credential-writing callback can start after this point.
+	done := attempt.exchangeDone
+	s.mu.Unlock()
+	stopSIWCAttempt(attempt, false)
+	if done != nil {
+		<-done
+	}
 }
 
 func (s *SIWCService) Status(operationID string) (SIWCFlow, error) {

@@ -4,14 +4,181 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"foundry/internal/accounts"
 	"foundry/internal/domain"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+func approvedGateConnection(t *testing.T, r *acceptanceRuntime) domain.ModelAcceptanceOperation {
+	t.Helper()
+	a, err := r.store.GetModelAccount("acceptance-gate-openai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := r.gates.Propose(a.ID, domain.ModelAcceptanceProposal{Phase: "connection", RouteID: a.ID + "-route", ExpectedAccountRevision: a.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err = r.gates.Decide(a.ID, o.ID, o.Revision, o.MaterialDigest, "approve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return o
+}
+
+func assertCanceledGateConnection(t *testing.T, r *acceptanceRuntime, approved, got domain.ModelAcceptanceOperation) {
+	t.Helper()
+	if got.State != "unknown" || got.Attempts != 1 || got.ClaimSequence == 0 {
+		t.Fatalf("canceled connection not consumed/unknown: %+v", got)
+	}
+	if _, err := r.gates.Execute(context.Background(), approved.Material.Account.ID, approved.ID, approved.Revision, approved.MaterialDigest); err == nil {
+		t.Fatal("canceled connection replayed")
+	}
+	if _, err := r.store.CurrentModelAuthorization(approved.Material.Account.ID); err == nil {
+		t.Fatal("authorization committed after canceled connection")
+	}
+}
+
+func TestAcceptanceGateCancellationStopsBlockedToken(t *testing.T) {
+	for _, mode := range []string{"request_cancel", "request_deadline", "driver_timeout"} {
+		t.Run(mode, func(t *testing.T) {
+			r := startProtocolAcceptanceForTest(t)
+			entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			unblock := func() { once.Do(func() { close(release) }) }
+			token := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				// Drain the request so the server observes the client's disconnect.
+				if err := req.ParseForm(); err != nil {
+					return
+				}
+				close(entered)
+				select {
+				case <-req.Context().Done():
+					close(canceled)
+				case <-release:
+					r.gateProtocol.handleToken(w, req)
+				}
+			}))
+			defer token.Close()
+			defer unblock()
+			var discoveryCalls atomic.Int32
+			discovery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				discoveryCalls.Add(1)
+				r.gateProtocol.handleIssuer(w, req)
+			}))
+			defer discovery.Close()
+			options := r.gateProtocol.siwcOptions()
+			options.TokenOrigin, options.OIDCOrigin = token.URL, discovery.URL
+			_ = r.gateSIWC.Close()
+			var err error
+			r.gateSIWC, err = accounts.NewSIWCSimulation(accounts.New(r.store, &ephemeralSecrets{values: map[string]string{}}), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			approved := approvedGateConnection(t, r)
+			ctx, cancel := context.WithCancel(context.Background())
+			if mode == "request_deadline" {
+				cancel()
+				ctx, cancel = context.WithTimeout(context.Background(), 500*time.Millisecond)
+			}
+			defer cancel()
+			done := make(chan domain.ModelAcceptanceOperation, 1)
+			go func() {
+				got, _ := r.gates.Execute(ctx, approved.Material.Account.ID, approved.ID, approved.Revision, approved.MaterialDigest)
+				done <- got
+			}()
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("token exchange not reached")
+			}
+			if mode == "request_cancel" {
+				cancel()
+			}
+			var got domain.ModelAcceptanceOperation
+			select {
+			case got = <-done:
+			case <-time.After(12 * time.Second):
+				t.Fatal("driver did not terminate")
+			}
+			select {
+			case <-canceled:
+			case <-time.After(time.Second):
+				t.Fatal("gate returned while token request remained active")
+			}
+			unblock()
+			if discoveryCalls.Load() != 0 {
+				t.Fatal("canceled token exchange continued to OIDC/JWKS")
+			}
+			assertCanceledGateConnection(t, r, approved, got)
+		})
+	}
+}
+
+type blockedGateSecrets struct {
+	ephemeralSecrets
+	entered, release chan struct{}
+}
+
+func (s *blockedGateSecrets) Set(id, value string) error {
+	close(s.entered)
+	<-s.release
+	return s.ephemeralSecrets.Set(id, value)
+}
+
+func TestAcceptanceGateCancellationJoinsCredentialWrite(t *testing.T) {
+	r := startProtocolAcceptanceForTest(t)
+	secrets := &blockedGateSecrets{ephemeralSecrets: ephemeralSecrets{values: map[string]string{}}, entered: make(chan struct{}), release: make(chan struct{})}
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(secrets.release) }) }
+	defer unblock()
+	_ = r.gateSIWC.Close()
+	var err error
+	r.gateSIWC, err = accounts.NewSIWCSimulation(accounts.New(r.store, secrets), r.gateProtocol.siwcOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved := approvedGateConnection(t, r)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan domain.ModelAcceptanceOperation, 1)
+	go func() {
+		got, _ := r.gates.Execute(ctx, approved.Material.Account.ID, approved.ID, approved.Revision, approved.MaterialDigest)
+		done <- got
+	}()
+	select {
+	case <-secrets.entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("credential write not reached")
+	}
+	cancel()
+	select {
+	case <-done:
+		t.Fatal("gate returned before canceled credential write terminated")
+	case <-time.After(100 * time.Millisecond):
+	}
+	unblock()
+	select {
+	case got := <-done:
+		assertCanceledGateConnection(t, r, approved, got)
+	case <-time.After(3 * time.Second):
+		t.Fatal("credential write did not terminate")
+	}
+	secrets.mu.Lock()
+	defer secrets.mu.Unlock()
+	if len(secrets.values) != 0 {
+		t.Fatal("canceled credential write was not cleaned up")
+	}
+}
 
 func TestAcceptanceGatesIndependentOwnedProtocolStages(t *testing.T) {
 	r := startProtocolAcceptanceForTest(t)

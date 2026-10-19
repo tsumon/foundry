@@ -725,6 +725,19 @@ func completeFixtureAuthorization(ctx context.Context, siwc *accounts.SIWCServic
 	if err != nil {
 		return err
 	}
+	return driveFixtureAuthorization(ctx, siwc, flow, outcome)
+}
+
+func completeOwnedFixtureAuthorization(ctx context.Context, siwc *accounts.SIWCService, account domain.ModelAccount, outcome string) error {
+	flow, stop, err := siwc.BeginOwnedSimulation(ctx, account.ID, account.Revision)
+	if err != nil {
+		return err
+	}
+	defer stop()
+	return driveFixtureAuthorization(ctx, siwc, flow, outcome)
+}
+
+func driveFixtureAuthorization(ctx context.Context, siwc *accounts.SIWCService, flow accounts.SIWCFlow, outcome string) error {
 	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	get := func(target string) (*http.Response, error) {
 		request, requestErr := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
