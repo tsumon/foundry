@@ -48,6 +48,7 @@ The JSON envelope is `{ "acceptance": report }`. Its metadata-only contract is:
 | `checks[]` | `phase`: `local_metadata`, `login`, `catalog`, `inference`, `task`; `state`: `ready`, `blocked`, `not_evaluated`; finite `reason_codes[]` |
 | `routes[]` | Safe route `id`, known `adapter` or `unknown`, `environment`: `live`, `simulation`, `unknown` |
 | Route metadata | `local_metadata`: `ready` or `blocked`; `local_extra_usage`: `off` or `unknown`; `remote_extra_usage`: always `unverified`; finite `reason_codes[]` |
+| Optional `openai_preparation` | OpenAI subscription stage 0 only: `credential_storage: not_checked`, `remote_billing: unverified`, `quota: unknown`, and all real phases `blocked` |
 
 Only local metadata can be `ready`. It requires an enabled, valid account with available current credential metadata and no pending/cleanup operation, or an available unexpired authorization with the required inference scopes and no account-wide pending/cleanup authorization operation, plus a valid route declaring local extra usage off. An older available authorization cannot hide an unfinished new sign-in, refresh or replacement cleanup. This does not check whether the secret can be read or whether the provider will accept it. Optional authorization storage is never created by this GET; a storage failure is an error, not permission to initialize or repair it.
 
@@ -76,6 +77,40 @@ A report is a point-in-time diagnostic, **not an execution permit**. Account cha
 3. Review the phase blockers, local billing declaration and unverified remote state. Changing configuration does not unlock real access. Re-read after a change; do not treat an old report as authority.
 
 If loading fails, keep live access closed and inspect the sanitized error. Recovery read-only mode permits diagnostics but does not grant mutation permission. A missing report or unavailable secret store is not a reason to switch to a legacy connection.
+
+### OpenAI stage-0 display
+
+For an OpenAI account using `openai_siwc`, the same GET may include `openai_preparation`. It is absent for Kimi, API-key OpenAI and older compatible responses. The section records `scope: openai_subscription_stage0` and one account-base address classification:
+
+- `exact_official`: the account base is exactly `https://api.openai.com/v1`.
+- `owned_simulation_required`: the base has the canonical literal-loopback `/v1` form, but the report does not prove that the controller owns its listener.
+- `invalid`: the account base does not meet either stage-0 form.
+
+This classification describes account base metadata only. It does not certify every stored route, method/path pair, redirect boundary or simulation ownership check. Those checks remain enforced at the actual router boundary. OpenAI subscription routing permits only its reviewed `GET /models` and `POST /responses` pairs, while real connection, catalog and inference remain closed and require separate future approval plus explicit execution. There is no retry, paid fallback or live-enable action in this section.
+
+The browser displays `Keychain: not_checked` honestly: this GET neither calls Keychain nor proves that the current host can store a generated item, and a diagnostic result does not certify an OpenAI account. Remote billing remains unverified and quota remains unknown.
+
+### Isolated local Keychain diagnostic
+
+On supported macOS arm64 source builds, an operator may build the diagnostic once and use that same binary for the initial check and cleanup. Run these commands from the source root. The `mktemp` directory is private and outside the checkout; the journal name is a new absolute path, and the command refuses an existing journal or symlink.
+
+```sh
+diagnostic_dir="$(mktemp -d /private/tmp/foundry-openai-stage0.XXXXXX)"
+chmod 700 "$diagnostic_dir"
+diagnostic_bin="$diagnostic_dir/foundry-keychain-check"
+diagnostic_journal="$diagnostic_dir/keychain-journal.json"
+go build -o "$diagnostic_bin" ./cmd/foundry-keychain-check
+"$diagnostic_bin" --journal "$diagnostic_journal"
+"$diagnostic_bin" --cleanup "$diagnostic_journal"
+```
+
+The check generates its own identifier and values under the isolated diagnostic service. It tests add, read, replace, read, delete and a typed not-found result without accepting a caller secret or enumerating an account store. Native access is noninteractive: locked, denied or unavailable storage fails closed, without unlocking Keychain, showing a password prompt or falling back to plaintext.
+
+Only `status: passed` together with `cleanup: confirmed` is a pass for that one host and run. `failed`, an absent terminal record or `cleanup: unconfirmed` is failed or unverified, never partial success. After interruption, run `--cleanup` with the same stable binary and exact journal; cleanup addresses only the generated identifier and never repeats the write/read/replace sequence. A confirmed terminal journal can be read again without touching storage.
+
+The adjacent journal lock prevents concurrent cleanup. If the process stops abnormally and leaves a lock, first confirm that no `foundry-keychain-check` process for that journal is running; only then remove that journal's exact adjacent `<journal>.lock` file and rerun cleanup. Never remove unrelated lock files. Preserve or securely handle the private journal according to local evidence policy; it contains finite states and the generated identifier, not synthetic values, tokens or raw native errors.
+
+Running this command never changes `credential_storage: not_checked` in the metadata report. It does not authorize sign-in, discovery, inference or paid usage, and this document makes no claim that a native run passed on a particular machine.
 
 ## Future execution-permit requirements
 

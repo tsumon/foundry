@@ -76,6 +76,16 @@ export type ModelAcceptanceReason =
   | "extra_usage_local_setting_unknown"
   | "remote_billing_unverified"
   | "task_approval_required";
+export interface OpenAIPreparation {
+  scope: "openai_subscription_stage0";
+  endpoint_policy: "exact_official" | "owned_simulation_required" | "invalid";
+  credential_storage: "not_checked";
+  remote_billing: "unverified";
+  quota: "unknown";
+  real_connection: "blocked";
+  real_catalog: "blocked";
+  real_inference: "blocked";
+}
 export interface ModelAccountAcceptance {
   account_id: string;
   account_revision: number;
@@ -96,6 +106,7 @@ export interface ModelAccountAcceptance {
     remote_extra_usage: "unverified";
     reason_codes: ModelAcceptanceReason[];
   }[];
+  openai_preparation?: OpenAIPreparation;
 }
 
 export type ModelAcceptancePhase = "connection" | "catalog" | "inference";

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { modelAccountApi } from "../modelAccountApi";
-import type { ModelAccountAcceptance, ModelAcceptanceReason } from "../types";
+import type {
+  ModelAccountAcceptance,
+  ModelAcceptanceReason,
+  OpenAIPreparation,
+} from "../types";
 
 const reasons: Record<ModelAcceptanceReason, string> = {
   live_provider_access_pending_confirmation:
@@ -38,7 +42,29 @@ const adapters = [
   "kimi_code_chat",
   "unknown",
 ];
+const endpointPolicies: Record<OpenAIPreparation["endpoint_policy"], string> = {
+  exact_official:
+    "官方规范基址 https://api.openai.com/v1（仅账户基础元数据；不证明全部路由或端点归属已通过）",
+  owned_simulation_required: "规范本地仿真基址（仍需控制器确认进程归属）",
+  invalid: "基址不符合阶段 0 策略",
+};
 type Props = { accountId: string; accountRevision: number };
+
+function validOpenAIPreparation(value: unknown): value is OpenAIPreparation {
+  if (!value || typeof value !== "object") return false;
+  const preparation = value as Record<string, unknown>;
+  return (
+    preparation.scope === "openai_subscription_stage0" &&
+    typeof preparation.endpoint_policy === "string" &&
+    Object.hasOwn(endpointPolicies, preparation.endpoint_policy) &&
+    preparation.credential_storage === "not_checked" &&
+    preparation.remote_billing === "unverified" &&
+    preparation.quota === "unknown" &&
+    preparation.real_connection === "blocked" &&
+    preparation.real_catalog === "blocked" &&
+    preparation.real_inference === "blocked"
+  );
+}
 
 function validReport(
   report: ModelAccountAcceptance,
@@ -53,6 +79,8 @@ function validReport(
     report.scope === "account_routes_only" &&
     report.live_access === "blocked" &&
     report.quota === "unknown" &&
+    (report.openai_preparation === undefined ||
+      validOpenAIPreparation(report.openai_preparation)) &&
     Array.isArray(report.checks) &&
     report.checks.length === 5 &&
     report.checks.every(
@@ -143,6 +171,26 @@ function AcceptanceRead(props: Props) {
       {report ? (
         <>
           <p>账户版本 r{report.account_revision} · 时间点诊断，不是执行许可</p>
+          {report.openai_preparation && (
+            <section aria-label="OpenAI 阶段 0">
+              <h5>OpenAI · 阶段 0</h5>
+              <p>
+                地址策略：
+                {endpointPolicies[report.openai_preparation.endpoint_policy]}
+              </p>
+              <p className="field-help">
+                Keychain：本页未检查。此读取不运行 Keychain
+                诊断，也不认证当前主机存储或账户；请按公开文档使用本地合成诊断命令
+                foundry-keychain-check。
+              </p>
+              <p>远端计费：未验证 · 额度：未知</p>
+              <ul>
+                <li>真实连接：待单独审批</li>
+                <li>真实目录：待单独审批</li>
+                <li>真实推理：待单独审批</li>
+              </ul>
+            </section>
+          )}
           <ul>
             {report.checks.map((check) => (
               <li key={check.phase}>

@@ -35,6 +35,116 @@ const report = {
   ],
 };
 
+const openAIPreparation = {
+  scope: "openai_subscription_stage0",
+  endpoint_policy: "exact_official",
+  credential_storage: "not_checked",
+  remote_billing: "unverified",
+  quota: "unknown",
+  real_connection: "blocked",
+  real_catalog: "blocked",
+  real_inference: "blocked",
+};
+const openAIReport = {
+  ...report,
+  routes: [
+    {
+      ...report.routes[0],
+      adapter: "openai_siwc_responses",
+    },
+  ],
+  openai_preparation: openAIPreparation,
+};
+
+it("shows honest OpenAI stage-zero preparation without promoting metadata to permission", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response({ acceptance: openAIReport })),
+  );
+  render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+  fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "OpenAI · 阶段 0" }),
+  ).toBeVisible();
+  expect(screen.getByText(/地址策略：官方规范基址/)).toHaveTextContent(
+    /仅账户基础元数据；不证明全部路由或端点归属已通过/,
+  );
+  expect(screen.getByText(/Keychain：本页未检查/)).toHaveTextContent(
+    /本地合成诊断命令 foundry-keychain-check/,
+  );
+  expect(screen.getByText(/远端计费：未验证/)).toHaveTextContent(/额度：未知/);
+  expect(screen.getByText("真实连接：待单独审批")).toBeVisible();
+  expect(screen.getByText("真实目录：待单独审批")).toBeVisible();
+  expect(screen.getByText("真实推理：待单独审批")).toBeVisible();
+  expect(screen.queryByText(/Keychain：.*成功/)).not.toBeInTheDocument();
+});
+
+it("clears prior OpenAI preparation when a later payload claims enabled inference", async () => {
+  let reads = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        acceptance:
+          ++reads === 1
+            ? openAIReport
+            : {
+                ...openAIReport,
+                openai_preparation: {
+                  ...openAIPreparation,
+                  real_inference: "enabled",
+                },
+              },
+      }),
+    ),
+  );
+  render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+  fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+  await screen.findByRole("heading", { name: "OpenAI · 阶段 0" });
+
+  fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/读取失败/);
+  expect(screen.queryByText("synthetic-route")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "OpenAI · 阶段 0" }),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  { ...openAIPreparation, real_connection: "ready" },
+  { ...openAIPreparation, endpoint_policy: "future_policy" },
+])("fails closed on an unsafe OpenAI preparation enum", async (value) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        acceptance: { ...openAIReport, openai_preparation: value },
+      }),
+    ),
+  );
+  render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+  fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/读取失败/);
+  expect(screen.queryByText("synthetic-route")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "OpenAI · 阶段 0" }),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps missing optional preparation compatible and shows no OpenAI section for Kimi", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response({ acceptance: report })),
+  );
+  render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+  fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+  expect(await screen.findByText("synthetic-route")).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: "OpenAI · 阶段 0" }),
+  ).not.toBeInTheDocument();
+});
+
 // Any mount fetch, retry, mutation, or promotion of local metadata to live permission breaks this boundary.
 it("reads once only on an explicit action and keeps live access and billing unknown", async () => {
   const fetcher = vi.fn(async (_path: string, _init?: RequestInit) =>
@@ -69,7 +179,7 @@ it("clears a previous report before reading and on errors, with no automatic ret
   let reads = 0;
   const fetcher = vi.fn(async () =>
     ++reads === 1
-      ? response({ acceptance: report })
+      ? response({ acceptance: openAIReport })
       : response(
           {
             error: {
@@ -83,13 +193,42 @@ it("clears a previous report before reading and on errors, with no automatic ret
   vi.stubGlobal("fetch", fetcher);
   render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
   fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
-  await screen.findByText("synthetic-route");
+  await screen.findByRole("heading", { name: "OpenAI · 阶段 0" });
   fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
   expect(screen.queryByText("synthetic-route")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "OpenAI · 阶段 0" }),
+  ).not.toBeInTheDocument();
   expect(await screen.findByRole("alert")).toHaveTextContent(/读取失败/);
   expect(document.body.textContent).not.toContain("secret provider details");
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+it.each([
+  { id: "other", revision: 3 },
+  { id: "synthetic", revision: 4 },
+])(
+  "clears displayed OpenAI preparation on identity or revision change: %s",
+  async ({ id, revision }) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response({ acceptance: openAIReport })),
+    );
+    const view = render(
+      <ModelAcceptanceCard accountId="synthetic" accountRevision={3} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+    await screen.findByRole("heading", { name: "OpenAI · 阶段 0" });
+
+    view.rerender(
+      <ModelAcceptanceCard accountId={id} accountRevision={revision} />,
+    );
+    expect(
+      screen.queryByRole("heading", { name: "OpenAI · 阶段 0" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/尚无当前版本的验收报告/)).toBeVisible();
+  },
+);
 
 it.each([
   { id: "other", revision: 3 },
@@ -112,8 +251,11 @@ it.each([
     view.rerender(
       <ModelAcceptanceCard accountId={id} accountRevision={revision} />,
     );
-    await act(async () => finish(response({ acceptance: report })));
+    await act(async () => finish(response({ acceptance: openAIReport })));
     expect(screen.queryByText("synthetic-route")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "OpenAI · 阶段 0" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "本地验收检查" })).toBeEnabled();
     expect(fetcher).toHaveBeenCalledTimes(1);
   },

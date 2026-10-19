@@ -11,6 +11,8 @@ FOUNDRY is an experimental, source-only macOS arm64 (Apple Silicon) alpha. This 
 - Explicit MCP catalog discovery and a controller-owned synthetic task-time MCP fixture behind `--local-mcp-test`.
 - Synthetic acceptance harness with fresh temporary state, fake in-memory credentials, local protocol fixtures, and a random loopback port.
 - Read-only model-account acceptance inspection over local account, route, credential-generation, and authorization metadata, plus three separately proposed, approved, and explicitly executed connection, catalog, and inference gates against process-owned local fixtures. They do not read real secret values or grant live access; real login, catalog discovery, and inference remain blocked.
+- OpenAI subscription accounts receive an optional stage-0 metadata projection: account-base address policy, Keychain `not_checked`, remote billing `unverified`, quota `unknown`, and connection/catalog/inference `blocked`. A canonical account base does not prove that every route or endpoint ownership check passed.
+- A separate local `foundry-keychain-check` command can exercise generated diagnostic data in an isolated Keychain service with a private recovery journal. It is noninteractive, has no plaintext fallback, does not accept a credential value or enumerate account credentials, and does not update the browser report.
 
 ## Deliberately not implemented
 
@@ -18,6 +20,7 @@ FOUNDRY is an experimental, source-only macOS arm64 (Apple Silicon) alpha. This 
 - Multi-worker scheduling or autonomous background execution.
 - Generic external MCP `tools/call`, MCP stdio/OAuth, Skill/script execution, hook scripts/webhooks, or Git hooks.
 - Automatic provider fallback, paid fallback, retry/replay of unknown remote outcomes, or automatic Docker image pulls.
+- A browser Keychain test, real-login action, live model query, or live-inference action. Stage 0 exposes preparation metadata and an operator-run synthetic storage diagnostic only.
 - An installer, signed/notarized application, package manager formula, or downloadable binary release.
 
 ## Support boundary
@@ -32,7 +35,7 @@ Legacy accountless model profiles preserve their network capability. New account
 
 ## Not yet verified or claimed
 
-- No real provider account, API key, subscription, entitlement, quota, billing, balance, or reset-time behavior is certified.
+- No real provider account, API key, subscription, entitlement, quota, billing, balance, or reset-time behavior is certified. The presence of the Keychain diagnostic is not a claim that it passed on this or any other machine.
 - No external MCP implementation is certified for task execution.
 - No independent fresh Apple Silicon Mac acceptance run is claimed.
 - No security audit, penetration test, dependency legal review, or production-readiness assessment is claimed.
