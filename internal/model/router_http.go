@@ -32,7 +32,7 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 	if ctx.Err() != nil {
 		return nil, 0, providerFailure("request_rejected", "not_sent")
 	}
-	if strings.HasPrefix(s.Route.Adapter, "openai_") && !validOpenAIRequestPair(s.Route.Adapter, method, endpoint) {
+	if s.Route.Adapter == "openai_siwc_responses" && !validSIWCRequestPair(method, endpoint) {
 		return nil, 0, providerFailure("request_rejected", "not_sent")
 	}
 	var encoded []byte
@@ -105,20 +105,11 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 	return response, lease.Generation, nil
 }
 
-func validOpenAIRequestPair(adapter, method, endpoint string) bool {
+func validSIWCRequestPair(method, endpoint string) bool {
 	if method == http.MethodGet && endpoint == "/models" {
 		return true
 	}
-	if method != http.MethodPost {
-		return false
-	}
-	switch adapter {
-	case "openai_api_chat":
-		return endpoint == "/chat/completions"
-	case "openai_api_responses", "openai_siwc_responses":
-		return endpoint == "/responses"
-	}
-	return false
+	return method == http.MethodPost && endpoint == "/responses"
 }
 
 func (r *Router) decodeResponse(response *http.Response, adapter string) (result Result, err error) {

@@ -88,6 +88,34 @@ func TestOpenAICanonicalSimulationUsesRealHTTPPath(t *testing.T) {
 	}
 }
 
+// Stage 0 hardens only the subscription adapter; API-key loopback routes keep
+// their pre-existing validated base-path behavior.
+func TestOpenAIAPIKeySimulationPreservesLegacyBareBase(t *testing.T) {
+	for _, tc := range []struct{ adapter, path, body string }{
+		{"openai_api_chat", "/chat/completions", `{"object":"chat.completion","model":"synthetic","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"done"}}]}`},
+		{"openai_api_responses", "/responses", `{"object":"response","status":"completed","model":"synthetic","output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]}]}`},
+	} {
+		t.Run(tc.adapter, func(t *testing.T) {
+			hits := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits++
+				if r.URL.Path != tc.path {
+					t.Errorf("path=%q", r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			resolver := &leaseResolver{}
+			s := routedSelection(srv.URL, tc.adapter)
+			result, err := NewRouter(nil, resolver, RouterOptions{SimulationOrigins: []string{srv.URL}}).Complete(context.Background(), routedRequest(s))
+			if err != nil || result.Text != "done" || resolver.calls != 1 || hits != 1 {
+				t.Fatalf("result=%+v err=%v reads=%d hits=%d", result, err, resolver.calls, hits)
+			}
+		})
+	}
+}
+
 // A future endpoint mapping typo must fail before the credential boundary,
 // even when the base origin itself is valid and pinned.
 func TestOpenAIUnsupportedMethodPathCannotLeaseCredentials(t *testing.T) {
