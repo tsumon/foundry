@@ -51,6 +51,22 @@ The JSON envelope is `{ "acceptance": report }`. Its metadata-only contract is:
 
 Only local metadata can be `ready`. It requires an enabled, valid account with available current credential metadata and no pending/cleanup operation, or an available unexpired authorization with the required inference scopes, plus a valid route declaring local extra usage off. This does not check whether the secret can be read or whether the provider will accept it. Optional authorization storage is never created by this GET; a storage failure is an error, not permission to initialize or repair it.
 
+The complete `reason_codes` vocabulary is:
+
+| Code | Meaning |
+| --- | --- |
+| `live_provider_access_pending_confirmation` | Real provider access remains closed |
+| `account_disabled` | The account is locally disabled |
+| `route_missing` | No account route exists |
+| `route_invalid` | Route metadata fails local validation |
+| `credential_metadata_unavailable` | Current credential metadata is missing, unavailable, pending or requires cleanup |
+| `authorization_unavailable` | No currently available authorization metadata |
+| `authorization_expired` | Recorded authorization expiry has passed; no refresh is attempted |
+| `inference_scope_missing` | Identity authorization does not grant direct inference |
+| `extra_usage_local_setting_unknown` | Local extra-usage declaration is unknown |
+| `remote_billing_unverified` | Provider-side billing/extra usage has not been verified |
+| `task_approval_required` | This diagnostic does not evaluate or approve a task |
+
 A report is a point-in-time diagnostic, **not an execution permit**. Account changes invalidate its displayed revision. There is no “approve live”, “test paid API”, background refresh, poller, retry or alternate-provider action. A failed read must clear a prior report rather than leaving an apparent current success.
 
 ### How to inspect local preparation

@@ -188,6 +188,71 @@ func TestModelAcceptanceReadFailuresDoNotRepairSchema(t *testing.T) {
 	}
 }
 
+// A permissive legacy identifier must never be reflected by the safe diagnostic DTO.
+func TestModelAcceptanceRejectsUnsafePersistedIdentifiers(t *testing.T) {
+	for _, field := range []string{"account", "route"} {
+		for _, id := range []string{"https://private.invalid/secret", "private.invalid", "unsafe id", "unsafe\nsecret", "账户", "unsafe%2Fsecret"} {
+			t.Run(field+"/"+id, func(t *testing.T) {
+				s := openTestStore(t)
+				accountID, routeID := "acceptance", "route"
+				if field == "account" {
+					accountID = id
+				} else {
+					routeID = id
+				}
+				a, err := s.SaveModelAccount(domain.ModelAccount{ID: accountID, Name: "Synthetic", Provider: "kimi", BaseURL: "http://127.0.0.1:1234/v1", AuthMethod: "api_key", BillingMode: "subscription", Enabled: true}, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = s.BeginModelCredential(domain.ModelCredentialVersion{AccountID: a.ID, OperationID: "fake", SecretRef: "foundry-model-account-fake"}, 1); err != nil {
+					t.Fatal(err)
+				}
+				if _, err = s.FinishModelCredential("fake", "available"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err = s.CreateModelRoute(domain.ModelRoute{ID: routeID, AccountID: a.ID, Adapter: "kimi_code_chat", Protocol: "chat_completions", BaseURL: a.BaseURL, Environment: "simulation", SpendClass: "interactive_package", ExtraUsage: "off"}); err != nil {
+					t.Fatal(err)
+				}
+				before := acceptanceSnapshot(t, s)
+				for attempt := 0; attempt < 2; attempt++ {
+					report, readErr := s.ReadModelAccountAcceptance(context.Background(), a.ID)
+					if readErr == nil {
+						t.Errorf("unsafe %s identifier produced a report: %+v", field, report)
+					}
+					if !reflect.DeepEqual(report, domain.ModelAccountAcceptance{}) {
+						t.Error("unsafe snapshot returned partial data")
+					}
+					if readErr != nil && strings.Contains(readErr.Error(), id) {
+						t.Error("unsafe identifier reflected in error")
+					}
+				}
+				if !reflect.DeepEqual(before, acceptanceSnapshot(t, s)) {
+					t.Fatal("rejected diagnostic mutated storage")
+				}
+			})
+		}
+	}
+}
+
+func TestModelAcceptanceAcceptsSafeIdentifierBoundaries(t *testing.T) {
+	for _, id := range []string{"A", strings.Repeat("a", 253) + "Z_-"} {
+		t.Run(id, func(t *testing.T) {
+			s := openTestStore(t)
+			a, err := s.SaveModelAccount(domain.ModelAccount{ID: id, Name: "Synthetic", Provider: "kimi", BaseURL: "http://127.0.0.1:1234/v1", AuthMethod: "api_key", BillingMode: "subscription", Enabled: true}, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.CreateModelRoute(domain.ModelRoute{ID: id, AccountID: a.ID, Adapter: "kimi_code_chat", Protocol: "chat_completions", BaseURL: a.BaseURL, Environment: "simulation", SpendClass: "interactive_package", ExtraUsage: "off"}); err != nil {
+				t.Fatal(err)
+			}
+			report, err := s.ReadModelAccountAcceptance(context.Background(), a.ID)
+			if err != nil || report.AccountID != id || len(report.Routes) != 1 || report.Routes[0].ID != id {
+				t.Fatal(report, err)
+			}
+		})
+	}
+}
+
 func acceptanceSnapshot(t *testing.T, s *Store) []string {
 	t.Helper()
 	// total_changes catches even no-op writes; schema_version catches lazy DDL.

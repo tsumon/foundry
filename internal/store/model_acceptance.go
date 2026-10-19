@@ -5,8 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"foundry/internal/domain"
+	"regexp"
 	"time"
 )
+
+// The diagnostic projection is narrower than legacy account/route validation.
+var acceptanceIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,256}$`)
 
 func (s *Store) ReadModelAccountAcceptance(ctx context.Context, accountID string) (domain.ModelAccountAcceptance, error) {
 	var zero domain.ModelAccountAcceptance
@@ -18,6 +22,9 @@ func (s *Store) ReadModelAccountAcceptance(ctx context.Context, accountID string
 	a, err := scanModelAccount(tx.QueryRowContext(ctx, `SELECT `+modelAccountColumns+` FROM model_accounts WHERE id=?`, accountID))
 	if err != nil {
 		return zero, err
+	}
+	if !acceptanceIdentifierPattern.MatchString(a.ID) {
+		return zero, errors.New("invalid model acceptance metadata")
 	}
 	reasons := []string{}
 	if !a.Enabled {
@@ -59,6 +66,10 @@ func (s *Store) ReadModelAccountAcceptance(ctx context.Context, accountID string
 		if readErr != nil {
 			rows.Close()
 			return zero, readErr
+		}
+		if !acceptanceIdentifierPattern.MatchString(route.ID) {
+			rows.Close()
+			return zero, errors.New("invalid model acceptance metadata")
 		}
 		rr := append([]string{}, reasons...)
 		adapter := acceptanceAdapter(route.Adapter)
