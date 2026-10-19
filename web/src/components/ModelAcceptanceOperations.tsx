@@ -329,23 +329,34 @@ function AcceptanceOperations({
       const history = await modelAcceptanceApi.history(account.id);
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
         return;
+      if (!validHistory(history, account.id))
+        throw new Error("invalid receipt");
+      const historyReceipt = recovered
+        ? history.operations.find((item) => item.id === recovered.id)
+        : undefined;
+      const recoveredReceipt =
+        historyReceipt &&
+        recovered &&
+        historyReceipt.revision >= recovered.revision
+          ? historyReceipt
+          : recovered;
       acceptHistory(
-        recovered
+        recoveredReceipt
           ? {
               ...history,
               operations: [
-                recovered,
+                recoveredReceipt,
                 ...history.operations.filter(
-                  (item) => item.id !== recovered.id,
+                  (item) => item.id !== recoveredReceipt.id,
                 ),
               ],
             }
           : history,
       );
-      if (recovered)
+      if (recoveredReceipt)
         setSelected((current) => ({
           ...current,
-          [recovered.phase]: recovered.id,
+          [recoveredReceipt.phase]: recoveredReceipt.id,
         }));
       setUnresolved(undefined);
     } catch (cause) {

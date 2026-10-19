@@ -686,6 +686,71 @@ it("clears apparent eligibility after a failed recovery GET and unlocks only aft
   ).toHaveLength(1);
 });
 
+it("keeps a newer consumed history receipt when recovery detail is stale", async () => {
+  const olderSuccess = operation(
+    "connection-before-recovery-race",
+    "connection",
+    "succeeded",
+    {
+      revision: 4,
+      attempts: 1,
+      claim_sequence: 60,
+      certainty: "completed",
+      result_account_revision: 1,
+    },
+  );
+  const pending = operation(
+    "connection-recovery-race",
+    "connection",
+    "pending",
+  );
+  const staleDetail = operation(pending.id, "connection", "approved", {
+    revision: 2,
+  });
+  const newerUnknown = operation(pending.id, "connection", "unknown", {
+    revision: 4,
+    attempts: 1,
+    claim_sequence: 61,
+    certainty: "unknown",
+    code: "transport_unknown",
+  });
+  let historyReads = 0;
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method) throw new Error("synthetic lost decision response");
+    if (path.endsWith(`/${pending.id}`))
+      return response({ operation: staleDetail });
+    historyReads++;
+    return historyReads === 1
+      ? history([pending, olderSuccess])
+      : history([newerUnknown, olderSuccess]);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await screen.findByRole("option", {
+    name: "connection-recovery-race · 待审批",
+  });
+  fireEvent.change(screen.getByLabelText("连接已保存材料"), {
+    target: { value: pending.id },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "批准连接材料" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "仅读取原验收记录" }),
+  );
+
+  expect(await screen.findByText(/连接 · 结果未知 · 本地模拟/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "创建目录材料" })).toBeDisabled();
+  expect(screen.getByLabelText("连接已保存材料")).toHaveValue(pending.id);
+  expect(screen.getByText("transport_unknown")).toBeVisible();
+  expect(
+    fetcher.mock.calls.filter(([, init]) => init?.method === "POST"),
+  ).toHaveLength(1);
+});
+
 it("locks stale conflict material until the user explicitly reads the original receipt", async () => {
   const pending = operation("stale-1", "connection", "pending");
   const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
