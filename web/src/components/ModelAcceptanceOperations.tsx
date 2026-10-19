@@ -215,8 +215,14 @@ function AcceptanceOperations({
     () => latestClaimed(operations, "connection"),
     [operations],
   );
+  const latestResultAccountRevision = latestConnection?.result_account_revision;
   const connection =
-    latestConnection?.state === "succeeded" ? latestConnection : undefined;
+    latestConnection?.state === "succeeded" &&
+    typeof latestResultAccountRevision === "number" &&
+    Number.isSafeInteger(latestResultAccountRevision) &&
+    latestResultAccountRevision >= account.revision
+      ? latestConnection
+      : undefined;
   const catalog = useMemo(
     () =>
       connection
@@ -305,7 +311,10 @@ function AcceptanceOperations({
     const epoch = lifecycle.current.epoch;
     setBusy(true);
     setError(undefined);
+    clearSnapshot();
+    setLoaded(false);
     try {
+      let recovered: ModelAcceptanceOperation | undefined;
       if (unresolved.operationID) {
         const result = await modelAcceptanceApi.operation(
           account.id,
@@ -313,17 +322,42 @@ function AcceptanceOperations({
         );
         if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
           return;
-        replaceOperation(result.operation);
-      } else {
-        const history = await modelAcceptanceApi.history(account.id);
-        if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
-          return;
-        acceptHistory(history);
+        if (!validOperation(result.operation, account.id))
+          throw new Error("invalid receipt");
+        recovered = result.operation;
       }
+      const history = await modelAcceptanceApi.history(account.id);
+      if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
+        return;
+      acceptHistory(
+        recovered
+          ? {
+              ...history,
+              operations: [
+                recovered,
+                ...history.operations.filter(
+                  (item) => item.id !== recovered.id,
+                ),
+              ],
+            }
+          : history,
+      );
+      if (recovered)
+        setSelected((current) => ({
+          ...current,
+          [recovered.phase]: recovered.id,
+        }));
       setUnresolved(undefined);
     } catch (cause) {
-      if (lifecycle.current.active && lifecycle.current.epoch === epoch)
-        setError(modelAcceptanceError(cause));
+      if (lifecycle.current.active && lifecycle.current.epoch === epoch) {
+        clearSnapshot();
+        setLoaded(false);
+        setError(
+          cause instanceof Error && cause.message === "invalid receipt"
+            ? { ...modelAcceptanceError(cause), code: "invalid_receipt" }
+            : modelAcceptanceError(cause),
+        );
+      }
     } finally {
       lifecycle.current.locked = false;
       if (lifecycle.current.active && lifecycle.current.epoch === epoch)
@@ -333,8 +367,10 @@ function AcceptanceOperations({
 
   const mutationDisabled =
     busy || reading || !!unresolved || !loaded || !snapshot?.simulation_enabled;
-  const currentAccountRevision =
-    connection?.result_account_revision ?? account.revision;
+  const currentAccountRevision = Math.max(
+    account.revision,
+    connection?.result_account_revision ?? account.revision,
+  );
   const propose = (phase: ModelAcceptancePhase) => {
     const prerequisite =
       phase === "catalog"

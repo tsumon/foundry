@@ -67,7 +67,7 @@ const operation = (
   claim_sequence: 0,
   source: "local_simulation",
   certainty: "not_sent",
-  catalog: [],
+  catalog: [] as Array<{ id: string; display_name: string }>,
   usage_known: false,
   quota: "unknown",
   remote_billing: "unverified",
@@ -246,6 +246,210 @@ it("uses the highest positive connection claim sequence across reverse-ordered r
   ).not.toBeInTheDocument();
 });
 
+it("invalidates old downstream authority when the selected account has a newer revision", async () => {
+  const freshAccount = { ...account, revision: 5, enabled: true };
+  const oldConnection = operation(
+    "connection-old-revision",
+    "connection",
+    "succeeded",
+    {
+      attempts: 1,
+      claim_sequence: 40,
+      certainty: "completed",
+      result_account_revision: 1,
+    },
+  );
+  const oldCatalog = operation("catalog-old-revision", "catalog", "succeeded", {
+    attempts: 1,
+    claim_sequence: 41,
+    certainty: "completed",
+    material: {
+      ...material("catalog"),
+      prerequisite_id: oldConnection.id,
+      connection_id: oldConnection.id,
+    },
+    catalog: [{ id: "stale-model", display_name: "Stale model" }],
+  });
+  const fetcher = vi.fn(async (_path: string, init?: RequestInit) => {
+    if (!init?.method) return history([oldCatalog, oldConnection]);
+    const body = JSON.parse(String(init.body));
+    expect(body).toEqual({
+      phase: "connection",
+      route_id: route.id,
+      expected_account_revision: 5,
+    });
+    return response({
+      operation: operation("connection-current", "connection", "pending", {
+        material: {
+          ...material("connection"),
+          account: freshAccount,
+        },
+      }),
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={freshAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "创建连接材料" })).toBeEnabled(),
+  );
+  expect(screen.getByRole("button", { name: "创建目录材料" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "创建推理材料" })).toBeDisabled();
+  expect(
+    (screen.getByLabelText("推理模型") as HTMLSelectElement).options,
+  ).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "创建连接材料" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+});
+
+it("approves and executes catalog and inference independently, and rejection never executes", async () => {
+  const connection = operation("connection-ready", "connection", "succeeded", {
+    attempts: 1,
+    claim_sequence: 50,
+    certainty: "completed",
+    result_account_revision: 1,
+  });
+  let catalog = operation("catalog-flow", "catalog", "pending", {
+    material: {
+      ...material("catalog"),
+      prerequisite_id: connection.id,
+      connection_id: connection.id,
+    },
+  });
+  let inferenceCount = 0;
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (!init?.method) return history([connection]);
+    const body = JSON.parse(String(init.body));
+    if (path.endsWith("/acceptance-operations")) {
+      if (body.phase === "catalog") return response({ operation: catalog });
+      inferenceCount++;
+      return response({
+        operation: operation(
+          inferenceCount === 1 ? "inference-flow" : "inference-rejected",
+          "inference",
+          "pending",
+          {
+            material: {
+              ...material("inference"),
+              prerequisite_id: catalog.id,
+              connection_id: connection.id,
+              model: "fixture-model",
+              prompt_digest: "c".repeat(64),
+            },
+          },
+        ),
+      });
+    }
+    if (path.endsWith("/decision")) {
+      const currentPhase = path.includes("catalog-flow")
+        ? "catalog"
+        : "inference";
+      const id = path.includes("inference-rejected")
+        ? "inference-rejected"
+        : currentPhase === "catalog"
+          ? "catalog-flow"
+          : "inference-flow";
+      if (body.decision === "reject")
+        return response({
+          operation: operation(id, currentPhase, "rejected", {
+            revision: 2,
+            certainty: "rejected",
+            material:
+              currentPhase === "catalog"
+                ? catalog.material
+                : {
+                    ...material("inference"),
+                    prerequisite_id: catalog.id,
+                    connection_id: connection.id,
+                    model: "fixture-model",
+                    prompt_digest: "c".repeat(64),
+                  },
+          }),
+        });
+      if (currentPhase === "catalog") {
+        catalog = { ...catalog, revision: 2, state: "approved" };
+        return response({ operation: catalog });
+      }
+      return response({
+        operation: operation(id, "inference", "approved", {
+          revision: 2,
+          material: {
+            ...material("inference"),
+            prerequisite_id: catalog.id,
+            connection_id: connection.id,
+            model: "fixture-model",
+            prompt_digest: "c".repeat(64),
+          },
+        }),
+      });
+    }
+    if (path.endsWith("/execute") && path.includes("catalog-flow")) {
+      catalog = {
+        ...catalog,
+        revision: 4,
+        state: "succeeded",
+        attempts: 1,
+        claim_sequence: 51,
+        certainty: "completed",
+        catalog: [{ id: "fixture-model", display_name: "Fixture model" }],
+      };
+      return response({ operation: catalog });
+    }
+    if (path.endsWith("/execute"))
+      return response({
+        operation: operation("inference-flow", "inference", "succeeded", {
+          revision: 4,
+          attempts: 1,
+          claim_sequence: 52,
+          certainty: "completed",
+          material: {
+            ...material("inference"),
+            prerequisite_id: catalog.id,
+            connection_id: connection.id,
+            model: "fixture-model",
+            prompt_digest: "c".repeat(64),
+          },
+        }),
+      });
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={account}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: "创建目录材料" }));
+  fireEvent.click(await screen.findByRole("button", { name: "批准目录材料" }));
+  expect(await screen.findByRole("button", { name: "执行目录" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "执行目录" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "创建推理材料" })).toBeEnabled(),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "创建推理材料" }));
+  fireEvent.click(await screen.findByRole("button", { name: "批准推理材料" }));
+  expect(await screen.findByRole("button", { name: "执行推理" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "执行推理" }));
+  expect(await screen.findByText(/推理 · 已成功 · 本地模拟/)).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "创建推理材料" }));
+  fireEvent.click(await screen.findByRole("button", { name: "拒绝推理材料" }));
+  expect(await screen.findByText(/推理 · 已拒绝 · 本地模拟/)).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "执行推理" }),
+  ).not.toBeInTheDocument();
+  expect(
+    fetcher.mock.calls.filter(([, init]) => init?.method === "POST"),
+  ).toHaveLength(8);
+});
+
 it("offers inference models only from the exact successful catalog and renders terminal denials without retry", async () => {
   const connection = operation("connection-ok", "connection", "succeeded", {
     attempts: 1,
@@ -407,6 +611,7 @@ it("locks every mutation after a lost decision response until an explicit GET re
       refreshAccount={async () => {}}
     />,
   );
+  await screen.findByRole("option", { name: "pending-1 · 待审批" });
   fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
     target: { value: pending.id },
   });
@@ -418,6 +623,64 @@ it("locks every mutation after a lost decision response until an explicit GET re
   fireEvent.click(read);
   await waitFor(() => expect(detailReads).toBe(1));
   expect(screen.getByRole("button", { name: "批准连接材料" })).toBeEnabled();
+  expect(
+    fetcher.mock.calls.filter(([, init]) => init?.method === "POST"),
+  ).toHaveLength(1);
+});
+
+it("clears apparent eligibility after a failed recovery GET and unlocks only after a later complete GET recovery", async () => {
+  const pending = operation("recovery-pending", "connection", "pending");
+  let detailReads = 0;
+  let historyReads = 0;
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method) throw new Error("synthetic lost decision response");
+    if (path.endsWith(`/${pending.id}`)) {
+      detailReads++;
+      return detailReads === 1
+        ? response(
+            {
+              error: {
+                code: "acceptance_record_unavailable",
+                message: "untrusted storage detail",
+              },
+            },
+            503,
+          )
+        : response({ operation: pending });
+    }
+    historyReads++;
+    return history([pending]);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await screen.findByRole("option", { name: "recovery-pending · 待审批" });
+  fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+    target: { value: pending.id },
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "批准连接材料" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "仅读取原验收记录" }),
+  );
+  expect(
+    await screen.findByText("acceptance_record_unavailable"),
+  ).toBeVisible();
+  expect(screen.queryAllByText(pending.id)).toHaveLength(0);
+  expect(screen.queryByText(route.id)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+  const retryRead = screen.getByRole("button", { name: "仅读取原验收记录" });
+  expect(retryRead).toBeEnabled();
+  fireEvent.click(retryRead);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "批准连接材料" })).toBeEnabled(),
+  );
+  expect(screen.getByLabelText("本地模拟路由")).toHaveValue(route.id);
+  expect(detailReads).toBe(2);
+  expect(historyReads).toBe(2);
   expect(
     fetcher.mock.calls.filter(([, init]) => init?.method === "POST"),
   ).toHaveLength(1);
@@ -447,6 +710,7 @@ it("locks stale conflict material until the user explicitly reads the original r
       refreshAccount={async () => {}}
     />,
   );
+  await screen.findByRole("option", { name: "stale-1 · 待审批" });
   fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
     target: { value: pending.id },
   });
