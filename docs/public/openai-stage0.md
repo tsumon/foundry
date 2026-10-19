@@ -2,6 +2,18 @@
 
 Stage 0 strengthens the existing local workbench before any real OpenAI connection. It does not enable real sign-in, model discovery, inference, refresh, paid fallback, tools, scripts or Git writes. Kimi is unchanged and outside this stage. Connection, catalog and inference continue to require separate single-use approvals and explicit execution. A successful local check is not a permission to advance to the next stage.
 
+## Current subscription connection direction
+
+The integration direction is an explicitly consented OpenAI subscription connection, not a separate identity-only login followed by a mandatory eligibility inquiry. The [identity-only fixture](openai-identity-connection.md) remains an isolated regression case, not an onboarding prerequisite. No client-ID application or consultation is being submitted as part of this preparation.
+
+For the documented open-source flow, first registration uses `dynamic_agent_client`, Foundry's actual app name and a stable per-host identifier. The issued client ID belongs to the resulting registration and is used for exchange and later sign-ins; a borrowed client ID or another application's token cache is never acceptable. The flow requests `openid profile email offline_access resource.invoke chatgpt.tokens.use.direct` and the resource `https://api.openai.com/v1`. Both authorization and code exchange use the same `http://127.0.0.1:<port>/auth/callback` URI. These protocol parameters describe the intended route, not permission to initiate it. See the [official registration contract](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
+
+The connection approval must disclose the complete requested scope set, including refresh-token permission. Possession of a refresh token does not authorize Foundry to refresh automatically: refresh remains closed in the planned initial connection stage. Expiry stops dependent actions. The user chooses the account/workspace in the official browser flow. Identity validation remains mandatory; if no model-use permission is granted, model use stays disabled. An OAuth denial terminates the attempt instead of falling back to a different scope set, client or billing route.
+
+Connection, catalog and inference remain separate Foundry permissions even if the provider grant permits model use. Connection must not send a model-directory or inference request. Neither subscription permission nor a local `extra_usage:off` setting proves remaining quota or absence of provider-side credit usage. Billing stays unverified until independently checked; an unresolved billing boundary blocks live inference.
+
+Current code remains simulation-only. The next implementation slice must be reviewed before enabling any new capability: reuse the subscription connector and immutable approval flow, keep the existing workbench, and first prove connection-only behavior with local protocol fixtures. Review material changes must invalidate old approval; interruption or lost completion remains consumed/unknown, with no automatic retry. Real registration/login, real catalog discovery and real inference each need later explicit user authorization. Kimi, scripts, Git writes and automatic paid fallback remain outside scope.
+
 ## Design
 
 Reuse the existing controller, SIWC protocol implementation, model router, immutable approval materials and durable recovery records. Do not replace the engine, add a second approval system, or enable production traffic through configuration. Normal constructors retain their hard denial before credentials or network access. Local fixtures remain constructor-owned literal-loopback endpoints.

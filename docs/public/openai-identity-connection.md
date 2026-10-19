@@ -1,4 +1,12 @@
-# OpenAI identity-only connection
+# OpenAI identity-only simulation (not an onboarding prerequisite)
+
+## Current role
+
+As of 2026-10-19, a standalone identity-only connection is **not a prerequisite** for Foundry's subscription-model integration. The main route is the documented open-source ChatGPT plan connection, followed by separately approved catalog discovery and single inference. Foundry does not require an identity-only client application or a response to an identity-only eligibility inquiry before preparing that route. See [the current subscription connection direction](openai-stage0.md#current-subscription-connection-direction).
+
+This document retains the existing isolated identity fixture and its permission-denial regression coverage. Removing the onboarding prerequisite does not remove OAuth identity validation, grant checks, historical receipts or independent approvals. It does not enable real registration, sign-in, refresh or model calls. Existing identity-only receipts must never be silently upgraded into subscription authorization.
+
+## Implemented simulation
 
 This stage implements and verifies **local simulation only**. Real login still requires a separate user decision and a reviewed live implementation. It does not authorize model discovery, inference, automatic refresh, paid API fallback, scripts or Git writes. Kimi is unchanged. The existing workbench and separate proposal → approval → explicit execution flow remain in place.
 
@@ -42,8 +50,8 @@ The account's existing acceptance card shows the purpose, requested scopes, sepa
 
 Exit criteria include successful ID-token-only simulation, rejected broader grants and invalid identity proofs, stale/duplicate/concurrent execution rejection, recovery without replay, and zero catalog/inference/refresh calls on the identity path. Local success must not be described as real OpenAI login, entitlement or workspace verification.
 
-## Official references and remaining live gate
+## Official references and historical identity-only limitation
 
-Checked 2026-10-19: [identity-only sign-in](https://developers.openai.com/siwc/website), [open-source registration and SIWC flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [SIWC quickstart](https://developers.openai.com/siwc/quickstart). Identity-only response shape and the open-source dynamic registration flow are tested locally together; actual availability for Foundry must still be verified at the future live-connection gate. Do not substitute a partner website client or a borrowed Codex client to bypass eligibility.
+Checked 2026-10-19: [identity-only sign-in](https://developers.openai.com/siwc/website), [open-source registration and SIWC flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [SIWC quickstart](https://developers.openai.com/siwc/quickstart). Identity-only response shape and the open-source dynamic registration flow are tested locally together; this does not establish that their combination is available to Foundry in production. That unresolved standalone identity-only question is no longer a prerequisite for subscription integration. Do not substitute a partner website client or a borrowed Codex client to bypass eligibility.
 
-Before any future real login, separately confirm the app registration/eligibility, identity-only scopes, callback and storage readiness, then obtain explicit permission for connection alone. The user selects the account/workspace on the provider page. Catalog and inference each remain separate later decisions. See [stage 0](openai-stage0.md) and [acceptance gates](model-acceptance-gates.md).
+If a standalone real identity-only feature is proposed again, its registration eligibility and minimum scopes require a separate reviewed design and user authorization. It is not part of the current subscription connection route. That route still requires reviewed implementation, callback and storage readiness, and explicit approval of its actual requested permissions before real connection. The user selects the account/workspace on the provider page; catalog and inference remain separate later decisions. See [stage 0](openai-stage0.md) and [acceptance gates](model-acceptance-gates.md).

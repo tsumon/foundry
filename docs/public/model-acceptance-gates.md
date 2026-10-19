@@ -6,6 +6,8 @@ OpenAI connection, Kimi Code connection, model-directory discovery and one infer
 
 The existing metadata-only `GET .../acceptance` remains read-only, including in recovery mode. The new operations are separate, account-scoped records; they neither approve tasks nor change role/model policies or frozen task snapshots.
 
+OpenAI subscription acceptance starts with its own subscription connection; it does not require an earlier standalone identity-only operation or an identity-client inquiry. The optional identity-only fixture remains isolated and its receipts cannot satisfy subscription catalog/inference prerequisites. See [the subscription connection direction](openai-stage0.md#current-subscription-connection-direction). This direction changes neither the implemented simulation-only boundary nor the separate approval and explicit-execution requirements.
+
 ## Three separate permissions
 
 | Operation | Reviewed material | Allowed effect after approval |
