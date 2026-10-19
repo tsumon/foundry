@@ -18,27 +18,29 @@ var ErrPersistence = errors.New("acceptance_record_unavailable")
 
 type Connector func(context.Context, domain.ModelAcceptanceMaterial) error
 type Options struct {
-	Routes               []domain.ModelRoute
-	IdentityOnlyRouteIDs []string
-	Router               *model.Router
-	Connect              Connector
-	Now                  func() time.Time
+	Routes                         []domain.ModelRoute
+	IdentityOnlyRouteIDs           []string
+	SubscriptionConnectionRouteIDs []string
+	Router                         *model.Router
+	Connect                        Connector
+	Now                            func() time.Time
 }
 type Service struct {
-	store          *store.Store
-	routes         map[string]domain.ModelRoute
-	identityRoutes map[string]bool
-	ownedAccounts  map[string]bool
-	invalidPolicy  bool
-	router         *model.Router
-	connect        Connector
-	now            func() time.Time
-	ready          atomic.Bool
-	lifecycle      sync.RWMutex
+	store              *store.Store
+	routes             map[string]domain.ModelRoute
+	identityRoutes     map[string]bool
+	subscriptionRoutes map[string]bool
+	ownedAccounts      map[string]bool
+	invalidPolicy      bool
+	router             *model.Router
+	connect            Connector
+	now                func() time.Time
+	ready              atomic.Bool
+	lifecycle          sync.RWMutex
 }
 
 func New(s *store.Store) *Service {
-	return &Service{store: s, routes: map[string]domain.ModelRoute{}, identityRoutes: map[string]bool{}, ownedAccounts: map[string]bool{}, now: time.Now}
+	return &Service{store: s, routes: map[string]domain.ModelRoute{}, identityRoutes: map[string]bool{}, subscriptionRoutes: map[string]bool{}, ownedAccounts: map[string]bool{}, now: time.Now}
 }
 
 // NewSimulation only accepts constructor-owned account/route pairs. Recovery is
@@ -51,8 +53,9 @@ func NewSimulation(s *store.Store, options Options) *Service {
 		svc.now = options.Now
 	}
 	seenRoutes := map[string]bool{}
+	hasPurposePolicy := len(options.IdentityOnlyRouteIDs)+len(options.SubscriptionConnectionRouteIDs) != 0
 	for _, r := range options.Routes {
-		if seenRoutes[r.ID] && len(options.IdentityOnlyRouteIDs) != 0 {
+		if seenRoutes[r.ID] && hasPurposePolicy {
 			svc.invalidPolicy = true
 		}
 		seenRoutes[r.ID] = true
@@ -63,21 +66,29 @@ func NewSimulation(s *store.Store, options Options) *Service {
 			svc.routes[r.ID] = r
 		}
 	}
-	identityAccounts := map[string]bool{}
-	for _, id := range options.IdentityOnlyRouteIDs {
-		r, ok := svc.routes[id]
-		if !ok || r.Adapter != "openai_siwc_responses" || svc.identityRoutes[id] {
-			svc.invalidPolicy = true
+	policyAccounts := map[string]string{}
+	registerPolicy := func(ids []string, purpose string, target map[string]bool) {
+		for _, id := range ids {
+			r, ok := svc.routes[id]
+			if !ok || r.Adapter != "openai_siwc_responses" || target[id] || svc.identityRoutes[id] || svc.subscriptionRoutes[id] {
+				svc.invalidPolicy = true
+			}
+			if saved, e := s.GetModelRoute(id); e == nil {
+				svc.ownedAccounts[saved.AccountID] = true
+			}
+			target[id] = true
+			if ok {
+				if prior := policyAccounts[r.AccountID]; prior != "" {
+					svc.invalidPolicy = true
+				}
+				policyAccounts[r.AccountID] = purpose
+			}
 		}
-		// Even a stale/unowned policy must not unlock the legacy API for its account.
-		if saved, e := s.GetModelRoute(id); e == nil {
-			svc.ownedAccounts[saved.AccountID] = true
-		}
-		svc.identityRoutes[id] = true
-		identityAccounts[r.AccountID] = true
 	}
+	registerPolicy(options.IdentityOnlyRouteIDs, "identity_only", svc.identityRoutes)
+	registerPolicy(options.SubscriptionConnectionRouteIDs, "subscription_only", svc.subscriptionRoutes)
 	for _, r := range options.Routes {
-		if identityAccounts[r.AccountID] && !svc.identityRoutes[r.ID] {
+		if purpose := policyAccounts[r.AccountID]; purpose != "" && (purpose == "identity_only" && !svc.identityRoutes[r.ID] || purpose == "subscription_only" && !svc.subscriptionRoutes[r.ID]) {
 			svc.invalidPolicy = true
 		}
 	}
@@ -100,6 +111,9 @@ func (s *Service) SimulationEligible(account string) bool {
 func (s *Service) ConnectionPurpose(route string) string {
 	if s.identityRoutes[route] {
 		return "identity_only"
+	}
+	if s.subscriptionRoutes[route] {
+		return "subscription_only"
 	}
 	return ""
 }
@@ -144,7 +158,7 @@ func (s *Service) Propose(account string, q domain.ModelAcceptanceProposal) (dom
 	if !s.SimulationEligible(account) || s.routes[q.RouteID].AccountID != account {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
-	if q.ConnectionPurpose != s.ConnectionPurpose(q.RouteID) || s.identityRoutes[q.RouteID] && q.Phase != "connection" {
+	if q.ConnectionPurpose != s.ConnectionPurpose(q.RouteID) || (s.identityRoutes[q.RouteID] || s.subscriptionRoutes[q.RouteID]) && q.Phase != "connection" {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
 	return s.mutationResult(s.store.ProposeModelAcceptance(account, q, s.now()))
@@ -158,7 +172,7 @@ func (s *Service) owned(account, id string) (domain.ModelAcceptanceOperation, er
 		return s.mutationResult(o, e)
 	}
 	r, ok := s.routes[o.Material.Route.ID]
-	if !ok || r.AccountID != account || !reflect.DeepEqual(r, o.Material.Route) || o.Phase != o.Material.Phase || !o.Material.ValidConnectionPurpose() || o.Material.ConnectionPurpose != s.ConnectionPurpose(r.ID) || s.identityRoutes[r.ID] && o.Phase != "connection" {
+	if !ok || r.AccountID != account || !reflect.DeepEqual(r, o.Material.Route) || o.Phase != o.Material.Phase || !o.Material.ValidConnectionPurpose() || o.Material.ConnectionPurpose != s.ConnectionPurpose(r.ID) || (s.identityRoutes[r.ID] || s.subscriptionRoutes[r.ID]) && o.Phase != "connection" {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
 	return o, nil

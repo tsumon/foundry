@@ -64,6 +64,7 @@ type siwcAttempt struct {
 	redirectURI      string
 	clientID         string
 	purpose          string
+	resource         string
 	exchangeDone     chan struct{}
 }
 
@@ -187,6 +188,18 @@ func (s *SIWCService) BeginOwnedSimulation(ctx context.Context, accountID string
 	}
 	var stop func()
 	flow, err := s.beginSimulation(ctx, ctx, accountID, expectedAccountRevision, siwcPurposeSubscription, &stop)
+	return flow, stop, err
+}
+
+// BeginOwnedSubscriptionConnectionSimulation is the acceptance-only owned
+// subscription callback with the official protocol audience pinned separately
+// from the loopback simulation transport. It does not enable live access.
+func (s *SIWCService) BeginOwnedSubscriptionConnectionSimulation(ctx context.Context, accountID string, expectedAccountRevision int64) (SIWCFlow, func(), error) {
+	if s == nil || !s.simulation {
+		return SIWCFlow{}, nil, liveSIWCDenial()
+	}
+	var stop func()
+	flow, err := s.beginSimulationWithResource(ctx, ctx, accountID, expectedAccountRevision, siwcPurposeSubscription, officialSIWCResource, &stop)
 	return flow, stop, err
 }
 

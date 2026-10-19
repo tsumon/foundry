@@ -100,7 +100,7 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 		"redirect_uri":  {attempt.redirectURI},
 	}
 	if attempt.purpose != siwcPurposeIdentity {
-		form.Set("resource", attempt.account.BaseURL)
+		form.Set("resource", attempt.resource)
 	}
 	tokens, err := s.requestSIWCToken(ctx, form, attempt.purpose)
 	if err != nil {

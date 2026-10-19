@@ -10,6 +10,7 @@ import (
 	"foundry/internal/model"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 )
 
@@ -28,15 +29,19 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 	}
 	routes := []domain.ModelRoute{}
 	identityRoutes := []string{}
-	for _, fixture := range []string{"openai", "kimi", "openai-identity"} {
+	subscriptionRoutes := []string{}
+	for _, fixture := range []string{"openai", "kimi", "openai-identity", "openai-subscription"} {
 		provider := fixture
-		if fixture == "openai-identity" {
+		if fixture == "openai-identity" || fixture == "openai-subscription" {
 			provider = "openai"
 		}
 		a := domain.ModelAccount{ID: "acceptance-gate-" + provider, Name: "SYNTHETIC acceptance gates — " + provider, Provider: provider, BaseURL: r.gateProtocol.modelBaseURL(), AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true}
 		if fixture == "openai-identity" {
 			a.ID = "acceptance-gate-openai-identity"
 			a.Name = "SYNTHETIC OpenAI — identity only"
+		} else if fixture == "openai-subscription" {
+			a.ID = "acceptance-gate-openai-subscription"
+			a.Name = "SYNTHETIC OpenAI — subscription connection"
 		}
 		route := domain.ModelRoute{ID: a.ID + "-route", AccountID: a.ID, Adapter: "openai_siwc_responses", Protocol: "responses", Environment: "simulation", SpendClass: "subscription_only", ExtraUsage: "off"}
 		if provider == "kimi" {
@@ -57,14 +62,22 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 		routes = append(routes, route)
 		if fixture == "openai-identity" {
 			identityRoutes = append(identityRoutes, route.ID)
+		} else if fixture == "openai-subscription" {
+			subscriptionRoutes = append(subscriptionRoutes, route.ID)
 		}
 	}
 	router := model.NewRouter(nil, accountService, model.RouterOptions{SimulationOrigins: []string{r.gateProtocol.modelOrigin()}})
-	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, IdentityOnlyRouteIDs: identityRoutes, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
+	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, IdentityOnlyRouteIDs: identityRoutes, SubscriptionConnectionRouteIDs: subscriptionRoutes, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
 		switch m.Account.Provider {
 		case "openai":
 			if m.ConnectionPurpose == "identity_only" {
 				return completeOwnedIdentityFixtureAuthorization(ctx, r.gateSIWC, m.Account, "identity")
+			}
+			if m.ConnectionPurpose == "subscription_only" {
+				if !m.ValidConnectionPurpose() || m.RequestedResource != domain.OpenAISubscriptionRequestedResource || !reflect.DeepEqual(m.RequestedScopes, []string{"openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"}) {
+					return errors.New("invalid synthetic subscription permission")
+				}
+				return completeOwnedSubscriptionConnectionAuthorization(ctx, r.gateSIWC, m.Account, "approve")
 			}
 			return completeOwnedFixtureAuthorization(ctx, r.gateSIWC, m.Account, "approve")
 		case "kimi":

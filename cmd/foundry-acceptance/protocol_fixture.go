@@ -133,6 +133,7 @@ type protocolFixture struct {
 	directories    int
 	modelRequests  int
 	tokenCalls     int
+	refreshCalls   int
 	pkce           bool
 	signed         int
 	revokeCalls    int
@@ -354,7 +355,7 @@ func (f *protocolFixture) handleAuthorizationPage(w http.ResponseWriter, r *http
 	validGrant := identityOnly && !values.Has("resource")
 	if !identityOnly {
 		required = append(required, "resource")
-		validGrant = values.Get("resource") == f.modelBaseURL() && values.Get("scope") == strings.Join(fixtureRequestedScopes, " ")
+		validGrant = (values.Get("resource") == f.modelBaseURL() || values.Get("resource") == domain.OpenAISubscriptionRequestedResource) && values.Get("scope") == strings.Join(fixtureRequestedScopes, " ")
 	}
 	validClient := values.Get("client_id") == "dynamic_agent_client" && values.Get("agent_name_hint") == "FOUNDRY" || values.Get("client_id") == "oaiapp_foundry_synthetic" && !values.Has("agent_name_hint")
 	if !exactQuery(values, required, []string{"agent_name_hint"}) || !validGrant || !validClient || values.Get("response_type") != "code" || values.Get("code_challenge_method") != "S256" || !literal127URL(values.Get("redirect_uri"), "/auth/callback") || !strings.HasPrefix(values.Get("ext_agent_host_id"), "urn:uuid:") {
@@ -440,6 +441,9 @@ func (f *protocolFixture) handleToken(w http.ResponseWriter, r *http.Request) {
 	case "authorization_code":
 		f.handleAuthorizationCode(w, r)
 	case "refresh_token":
+		f.mu.Lock()
+		f.refreshCalls++
+		f.mu.Unlock()
 		f.handleRefreshToken(w, r)
 	default:
 		writeInvalidGrant(w)
@@ -756,6 +760,15 @@ func completeFixtureAuthorization(ctx context.Context, siwc *accounts.SIWCServic
 
 func completeOwnedFixtureAuthorization(ctx context.Context, siwc *accounts.SIWCService, account domain.ModelAccount, outcome string) error {
 	flow, stop, err := siwc.BeginOwnedSimulation(ctx, account.ID, account.Revision)
+	if err != nil {
+		return err
+	}
+	defer stop()
+	return driveFixtureAuthorization(ctx, siwc, flow, outcome)
+}
+
+func completeOwnedSubscriptionConnectionAuthorization(ctx context.Context, siwc *accounts.SIWCService, account domain.ModelAccount, outcome string) error {
+	flow, stop, err := siwc.BeginOwnedSubscriptionConnectionSimulation(ctx, account.ID, account.Revision)
 	if err != nil {
 		return err
 	}

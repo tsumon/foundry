@@ -9,6 +9,7 @@ import (
 
 const AcceptancePrompt = "Write a pure function that adds two integers. Synthetic acceptance data only."
 const AcceptanceSystem = "Return a short coding example. No tools, files, repository context, or external actions."
+const OpenAISubscriptionRequestedResource = "https://api.openai.com/v1"
 
 type ModelAcceptanceProposal struct {
 	Phase                   string `json:"phase"`
@@ -22,6 +23,7 @@ type ModelAcceptanceMaterial struct {
 	Phase             string              `json:"phase"`
 	ConnectionPurpose string              `json:"connection_purpose,omitempty"`
 	RequestedScopes   []string            `json:"requested_scopes,omitempty"`
+	RequestedResource string              `json:"requested_resource,omitempty"`
 	Account           ModelAccount        `json:"account"`
 	Route             ModelRoute          `json:"route"`
 	CredentialVersion int64               `json:"credential_version"`
@@ -37,18 +39,26 @@ type ModelAcceptanceMaterial struct {
 	MaxAttempts       int                 `json:"max_attempts"`
 }
 
-// Identity policy is narrower than the route's subscription billing metadata.
-// Empty purpose/scopes preserve historical simulation material and digests.
+// Explicit connection policies are narrower than the route's subscription
+// billing metadata. Empty permission fields preserve historical material.
 func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
 	if m.ConnectionPurpose == "" {
-		return len(m.RequestedScopes) == 0
+		return len(m.RequestedScopes) == 0 && m.RequestedResource == ""
 	}
-	return m.ConnectionPurpose == "identity_only" && m.Phase == "connection" &&
-		m.Model == "" && m.PrerequisiteID == "" && m.ConnectionID == "" && m.PromptDigest == "" &&
-		m.Account.Provider == "openai" && m.Account.AuthMethod == "openai_siwc" &&
-		m.Route.AccountID == m.Account.ID && m.Route.Adapter == "openai_siwc_responses" &&
-		m.Route.Environment == "simulation" && m.Route.ExtraUsage == "off" &&
-		reflect.DeepEqual(m.RequestedScopes, []string{"openid", "profile", "email"})
+	if m.Phase != "connection" || m.Model != "" || m.PrerequisiteID != "" || m.ConnectionID != "" || m.PromptDigest != "" ||
+		m.Account.Provider != "openai" || m.Account.AuthMethod != "openai_siwc" ||
+		m.Route.AccountID != m.Account.ID || m.Route.Adapter != "openai_siwc_responses" ||
+		m.Route.Environment != "simulation" || m.Route.ExtraUsage != "off" {
+		return false
+	}
+	switch m.ConnectionPurpose {
+	case "identity_only":
+		return m.RequestedResource == "" && reflect.DeepEqual(m.RequestedScopes, []string{"openid", "profile", "email"})
+	case "subscription_only":
+		return m.RequestedResource == OpenAISubscriptionRequestedResource && reflect.DeepEqual(m.RequestedScopes, []string{"openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"})
+	default:
+		return false
+	}
 }
 
 type ModelAcceptanceCatalogEntry struct {

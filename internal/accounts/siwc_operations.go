@@ -47,7 +47,14 @@ func randomSIWCValue(bytes int) (string, error) {
 }
 
 func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID string, expectedRevision int64, purpose string, ownedStop *func()) (SIWCFlow, error) {
+	return s.beginSimulationWithResource(ctx, flowParent, accountID, expectedRevision, purpose, "", ownedStop)
+}
+
+func (s *SIWCService) beginSimulationWithResource(ctx, flowParent context.Context, accountID string, expectedRevision int64, purpose, requestedResource string, ownedStop *func()) (SIWCFlow, error) {
 	if purpose != siwcPurposeSubscription && purpose != siwcPurposeIdentity {
+		return SIWCFlow{}, ErrInvalid
+	}
+	if requestedResource != "" && (purpose != siwcPurposeSubscription || requestedResource != officialSIWCResource || !s.simulation) {
 		return SIWCFlow{}, ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {
@@ -105,7 +112,10 @@ func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID
 	attempt := &siwcAttempt{
 		public: SIWCFlow{OperationID: operationID, State: "waiting", HandoffURL: "http://" + host + siwcHandoffPath, ExpiresAt: expires.Format(time.RFC3339)},
 		cancel: cancel, listener: listener, account: account, authorizationID: authorizationID,
-		state: state, nonce: nonce, verifier: verifier, redirectURI: redirectURI, clientID: clientID, purpose: purpose,
+		state: state, nonce: nonce, verifier: verifier, redirectURI: redirectURI, clientID: clientID, purpose: purpose, resource: requestedResource,
+	}
+	if attempt.resource == "" {
+		attempt.resource = account.BaseURL
 	}
 	challenge := sha256.Sum256([]byte(verifier))
 	requestedScopes := siwcRequestedScopes
@@ -124,7 +134,7 @@ func (s *SIWCService) beginSimulation(ctx, flowParent context.Context, accountID
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(challenge[:])},
 	}
 	if purpose != siwcPurposeIdentity {
-		query.Set("resource", account.BaseURL)
+		query.Set("resource", attempt.resource)
 	}
 	if clientID == "dynamic_agent_client" {
 		query.Set("agent_name_hint", "FOUNDRY")

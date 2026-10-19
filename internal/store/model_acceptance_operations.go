@@ -99,11 +99,20 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, p
 		return m, ErrConflict
 	}
 	m.Account, m.Route, m.CredentialVersion = a, r, a.CurrentCredentialVersion
-	if purpose != "" {
+	if purpose == "identity_only" {
 		m.Phase, m.ConnectionPurpose, m.RequestedScopes = "connection", purpose, []string{"openid", "profile", "email"}
 		if !m.ValidConnectionPurpose() {
 			return m, ErrConflict
 		}
+	} else if purpose == "subscription_only" {
+		m.Phase, m.ConnectionPurpose = "connection", purpose
+		m.RequestedScopes = []string{"openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"}
+		m.RequestedResource = domain.OpenAISubscriptionRequestedResource
+		if !m.ValidConnectionPurpose() {
+			return m, ErrConflict
+		}
+	} else if purpose != "" {
+		return m, ErrConflict
 	}
 	if a.AuthMethod == "api_key" {
 		if a.CurrentCredentialVersion > 0 {
@@ -134,11 +143,13 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, p
 			allowed := domain.ModelAuthorizationAllowsInference(auth.Binding)
 			if purpose == "identity_only" {
 				allowed = auth.Binding.SpendClass == "identity_only"
+			} else if purpose == "subscription_only" {
+				allowed = auth.Binding.SpendClass == "subscription_only" && reflect.DeepEqual(auth.Binding.Scopes, []string{"openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"})
 			}
 			proofCurrent := auth.State == "available" && expiry.After(now)
-			// Reauthentication approval snapshots prior identity metadata, not a
-			// usable proof. Finish and every connected gate still require expiry.
-			if purpose == "identity_only" && !connected && (auth.State == "available" || auth.State == "revoked") {
+			// Explicit reconnection approval may snapshot prior metadata, never
+			// permission. Finish and every connected gate still require freshness.
+			if purpose != "" && !connected && (auth.State == "available" || auth.State == "revoked") {
 				proofCurrent = true
 			}
 			if !proofCurrent || auth.Binding.AccountID != account || x != nil || !allowed || domain.ValidateModelAuthorizationBinding(auth.Binding) != nil {
@@ -159,7 +170,8 @@ func acceptanceSnapshotDigest(m domain.ModelAcceptanceMaterial) string {
 		Authorization     *domain.ModelAuthorization
 		ConnectionPurpose string   `json:"connection_purpose,omitempty"`
 		RequestedScopes   []string `json:"requested_scopes,omitempty"`
-	}{m.Account, m.Route, m.CredentialVersion, m.Authorization, m.ConnectionPurpose, m.RequestedScopes})
+		RequestedResource string   `json:"requested_resource,omitempty"`
+	}{m.Account, m.Route, m.CredentialVersion, m.Authorization, m.ConnectionPurpose, m.RequestedScopes, m.RequestedResource})
 }
 func acceptancePrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error {
 	if m.Phase == "connection" {
@@ -402,7 +414,7 @@ func (s *Store) FinishModelAcceptance(account, id string, revision int64, state,
 	if o.State != "running" || o.Revision != revision || o.Attempts != 1 || !validAcceptanceMaterial(o) || domain.AcceptanceDigest(o.Material) != o.MaterialDigest {
 		return o, ErrConflict
 	}
-	if o.Material.ConnectionPurpose == "identity_only" && (len(catalog) != 0 || input != 0 || output != 0 || usage) {
+	if o.Material.ConnectionPurpose != "" && (len(catalog) != 0 || input != 0 || output != 0 || usage) {
 		return o, ErrConflict
 	}
 	if state == "succeeded" {
@@ -410,10 +422,10 @@ func (s *Store) FinishModelAcceptance(account, id string, revision int64, state,
 		if e != nil {
 			return o, e
 		}
-		if !reflect.DeepEqual(m.Route, o.Material.Route) || o.Material.ConnectionPurpose == "identity_only" && !reflect.DeepEqual(m.Account, o.Material.Account) {
+		if !reflect.DeepEqual(m.Route, o.Material.Route) || o.Material.ConnectionPurpose != "" && !reflect.DeepEqual(m.Account, o.Material.Account) {
 			return o, ErrConflict
 		}
-		if o.Material.ConnectionPurpose == "identity_only" && o.Material.Authorization != nil && m.Authorization.Binding.ID == o.Material.Authorization.Binding.ID && m.Authorization.Generation <= o.Material.Authorization.Generation {
+		if o.Material.ConnectionPurpose != "" && o.Material.Authorization != nil && m.Authorization.Binding.ID == o.Material.Authorization.Binding.ID {
 			return o, ErrConflict
 		}
 		if o.Phase != "connection" && (!reflect.DeepEqual(m.Account, o.Material.Account) || acceptanceSnapshotDigest(m) != acceptanceSnapshotDigest(o.Material)) {
