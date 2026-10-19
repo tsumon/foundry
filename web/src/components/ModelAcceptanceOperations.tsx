@@ -41,6 +41,8 @@ const receiptCodes = new Set([
 const identifier = /^[A-Za-z0-9_-]{1,256}$/;
 const digest = /^[a-f0-9]{64}$/;
 const identityScopes = ["openid", "profile", "email"] as const;
+const identityAdapter = "openai_siwc_responses";
+const identitySpendClass = "subscription_only";
 
 export type ModelAcceptanceConnectionPolicy =
   "identity_only" | "legacy" | "unavailable";
@@ -51,20 +53,35 @@ function validConnectionPurpose(
   return value === undefined || value === "identity_only";
 }
 
-function validIdentityMaterial(value: ModelAcceptanceOperation): boolean {
+function validIdentityMaterial(
+  value: ModelAcceptanceOperation,
+  accountID: string,
+  trustedRoute?: ModelAcceptanceHistory["routes"][number],
+): boolean {
   const material = value.material as unknown;
   if (!material || typeof material !== "object") return false;
   const record = material as Record<string, unknown>;
   if (!validConnectionPurpose(record.connection_purpose)) return false;
   if (record.connection_purpose === undefined)
     return record.requested_scopes === undefined;
-  return (
+  const scopesValid =
     value.phase === "connection" &&
     Array.isArray(record.requested_scopes) &&
     record.requested_scopes.length === identityScopes.length &&
     record.requested_scopes.every(
       (scope, index) => scope === identityScopes[index],
-    )
+    );
+  if (!scopesValid || !trustedRoute) return scopesValid;
+  const materialRoute = record.route;
+  if (!materialRoute || typeof materialRoute !== "object") return false;
+  const route = materialRoute as Record<string, unknown>;
+  return (
+    route.account_id === accountID &&
+    route.id === trustedRoute.id &&
+    route.adapter === trustedRoute.adapter &&
+    route.environment === trustedRoute.environment &&
+    route.spend_class === trustedRoute.spend_class &&
+    route.base_url === trustedRoute.base_url
   );
 }
 
@@ -84,13 +101,33 @@ function validRoute(
   );
 }
 
+function isTrustedIdentityRoute(
+  route: ModelAcceptanceHistory["routes"][number],
+): boolean {
+  return (
+    route.connection_purpose === "identity_only" &&
+    route.adapter === identityAdapter &&
+    route.environment === "simulation" &&
+    route.spend_class === identitySpendClass
+  );
+}
+
 export function connectionPolicy(
   history: ModelAcceptanceHistory,
 ): ModelAcceptanceConnectionPolicy {
-  if (!history.simulation_enabled || history.routes.length === 0)
-    return "unavailable";
-  const purposes = history.routes.map((route) => route.connection_purpose);
-  if (purposes.every((purpose) => purpose === "identity_only"))
+  if (!history.simulation_enabled) return "unavailable";
+  return routePolicy(history.routes);
+}
+
+function routePolicy(
+  routes: ModelAcceptanceHistory["routes"],
+): ModelAcceptanceConnectionPolicy {
+  if (routes.length === 0) return "unavailable";
+  const purposes = routes.map((route) => route.connection_purpose);
+  if (
+    purposes.every((purpose) => purpose === "identity_only") &&
+    routes.every(isTrustedIdentityRoute)
+  )
     return "identity_only";
   if (purposes.every((purpose) => purpose === undefined)) return "legacy";
   return "unavailable";
@@ -99,6 +136,7 @@ export function connectionPolicy(
 function validOperation(
   value: ModelAcceptanceOperation,
   accountID: string,
+  trustedRoute?: ModelAcceptanceHistory["routes"][number],
 ): boolean {
   return (
     !!value &&
@@ -115,7 +153,7 @@ function validOperation(
     value.quota === "unknown" &&
     value.remote_billing === "unverified" &&
     !!value.material &&
-    validIdentityMaterial(value) &&
+    validIdentityMaterial(value, accountID, trustedRoute) &&
     value.material.phase === value.phase &&
     value.material.account.id === accountID &&
     digest.test(value.material_digest) &&
@@ -130,6 +168,33 @@ function validOperation(
   );
 }
 
+function operationRoute(
+  operation: ModelAcceptanceOperation,
+  routes: ModelAcceptanceHistory["routes"],
+) {
+  const id = operation.material?.route?.id;
+  return typeof id === "string" ? routes.find((route) => route.id === id) : undefined;
+}
+
+function validOperationForSnapshot(
+  operation: ModelAcceptanceOperation,
+  accountID: string,
+  history: ModelAcceptanceHistory,
+): boolean {
+  const policy = connectionPolicy(history);
+  if (policy === "unavailable") return false;
+  const trustedRoute =
+    policy === "identity_only" ? operationRoute(operation, history.routes) : undefined;
+  return (
+    (policy !== "identity_only" || !!trustedRoute) &&
+    validOperation(operation, accountID, trustedRoute) &&
+    (policy === "identity_only"
+      ? operation.phase === "connection" &&
+        operation.material.connection_purpose === "identity_only"
+      : operation.material.connection_purpose === undefined)
+  );
+}
+
 function validHistory(
   value: ModelAcceptanceHistory,
   accountID: string,
@@ -138,22 +203,37 @@ function validHistory(
     !!value &&
     typeof value.simulation_enabled === "boolean" &&
     Array.isArray(value.operations) &&
-    value.operations.every((operation) =>
-      validOperation(operation, accountID),
-    ) &&
     Array.isArray(value.routes) &&
     value.routes.every(validRoute) &&
     (() => {
-      const policy = connectionPolicy(value);
-      if (!value.simulation_enabled)
-        return value.routes.length === 0 && value.operations.length === 0;
+      const policy = routePolicy(value.routes);
+      if (!value.simulation_enabled) {
+        if (value.routes.length === 0)
+          return value.operations.every((operation) =>
+            validOperation(operation, accountID),
+          );
+        return (
+          policy !== "unavailable" &&
+          value.operations.every((operation) => {
+            if (policy === "legacy")
+              return (
+                operation.material.connection_purpose === undefined &&
+                validOperation(operation, accountID)
+              );
+            const trustedRoute = operationRoute(operation, value.routes);
+            return (
+              !!trustedRoute &&
+              validOperation(operation, accountID, trustedRoute) &&
+              operation.phase === "connection" &&
+              operation.material.connection_purpose === "identity_only"
+            );
+          })
+        );
+      }
       return (
         policy !== "unavailable" &&
         value.operations.every((operation) =>
-          policy === "identity_only"
-            ? operation.phase === "connection" &&
-              operation.material.connection_purpose === "identity_only"
-            : operation.material.connection_purpose === undefined,
+          validOperationForSnapshot(operation, accountID, value),
         )
       );
     })()
@@ -320,7 +400,7 @@ function AcceptanceOperations({
   }, [catalog?.id, catalog?.revision]);
 
   const replaceOperation = (operation: ModelAcceptanceOperation) => {
-    if (!validOperation(operation, account.id))
+    if (!snapshot || !validOperationForSnapshot(operation, account.id, snapshot))
       throw new Error("invalid receipt");
     setSnapshot((current) =>
       current
@@ -371,6 +451,11 @@ function AcceptanceOperations({
           ? { ...modelAcceptanceError(cause, true), code: "invalid_receipt" }
           : modelAcceptanceError(cause, true);
       setError(decoded);
+      if (decoded.code === "invalid_receipt") {
+        clearSnapshot();
+        setLoaded(false);
+        onConnectionPolicy?.("unavailable");
+      }
       if (decoded.requiresRead) setUnresolved({ operationID });
     } finally {
       lifecycle.current.locked = false;
@@ -397,14 +482,19 @@ function AcceptanceOperations({
         );
         if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
           return;
-        if (!validOperation(result.operation, account.id))
-          throw new Error("invalid receipt");
         recovered = result.operation;
       }
       const history = await modelAcceptanceApi.history(account.id);
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
         return;
       if (!validHistory(history, account.id))
+        throw new Error("invalid receipt");
+      if (
+        recovered &&
+        (!validOperation(recovered, account.id) ||
+          (history.simulation_enabled &&
+            !validOperationForSnapshot(recovered, account.id, history)))
+      )
         throw new Error("invalid receipt");
       const historyReceipt = recovered
         ? history.operations.find((item) => item.id === recovered.id)

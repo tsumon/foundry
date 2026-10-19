@@ -486,6 +486,91 @@ it("creates OpenAI SIWC metadata without exposing API-key or live-login operatio
   });
 });
 
+it("keeps legacy authorization and acceptance actions closed when route policy fetch is rejected", async () => {
+  const siwc = {
+    ...accountFixture,
+    id: "rejected-policy-account",
+    name: "OpenAI subscription",
+    provider: "openai",
+    base_url: "https://api.openai.com/v1",
+    auth_method: "openai_siwc",
+    billing_mode: "subscription",
+  };
+  const fetcher = vi.fn(async (path: string, _init?: RequestInit) => {
+    if (path === "/api/profiles") return response(settings);
+    if (path === "/api/model-routes")
+      return response({
+        routes: [],
+        runtime: {
+          live_authorization: false,
+          live_discovery: false,
+          live_inference: false,
+          simulation_inference: false,
+          simulation_authorization: true,
+          automatic_paid_fallback: false,
+          adapters: [],
+        },
+      });
+    if (path === "/api/model-accounts") return response({ accounts: [siwc] });
+    if (path === "/api/model-authorizations")
+      return response({
+        authorizations: [
+          {
+            id: "refreshable-authorization",
+            account_id: siwc.id,
+            issuer: "http://127.0.0.1:9911",
+            subject: "synthetic-subject",
+            client_id: "synthetic-client",
+            scopes: [
+              "openid",
+              "offline_access",
+              "resource.invoke",
+              "chatgpt.tokens.use.direct",
+            ],
+            spend_class: "subscription_only",
+            state: "available",
+            generation: 1,
+            expires_at: "2026-10-19T02:00:00Z",
+          },
+        ],
+        remote_revocations: [],
+      });
+    if (
+      path ===
+      "/api/model-accounts/rejected-policy-account/acceptance-operations"
+    )
+      return response(
+        {
+          error: {
+            code: "acceptance_record_unavailable",
+            message: "untrusted acceptance detail",
+          },
+        },
+        503,
+      );
+    return response({ account: siwc, credentials: [] });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<ModelSettings />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "管理账户 OpenAI subscription" }),
+  );
+
+  expect(await screen.findByText("acceptance_record_unavailable")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "本地模拟登录（等待路由策略）" }),
+  ).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "开始本地模拟登录" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "刷新本地模拟授权" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+  expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
+  expect(document.body.textContent).not.toContain("untrusted acceptance detail");
+});
+
 it("clears uncertain secrets, suppresses duplicates and keeps original GET-only receipt across settings unmount", async () => {
   let operationID = "";
   const fetcher = vi.fn(async (path: string, init?: RequestInit) => {

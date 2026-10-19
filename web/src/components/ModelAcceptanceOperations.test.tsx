@@ -901,7 +901,6 @@ it("keeps identity-only connection review explicit and never unlocks model phase
   const identityRoute = {
     ...route,
     id: "acceptance-gate-openai-identity-route",
-    spend_class: "identity_only",
     connection_purpose: "identity_only",
   };
   const identityMaterial = () => ({
@@ -999,6 +998,158 @@ it("keeps identity-only connection review explicit and never unlocks model phase
     fetcher.mock.calls.filter(([path]) => String(path).endsWith("/execute")),
   ).toHaveLength(1);
   expect(refreshAccount).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "创建目录材料" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "创建推理材料" })).toBeDisabled();
+});
+
+it("fails closed when an identity proposal returns material for a different trusted route", async () => {
+  const identityAccount = {
+    ...account,
+    id: "acceptance-gate-openai-identity",
+  };
+  const identityRoute = {
+    ...route,
+    id: "acceptance-gate-openai-identity-route",
+    connection_purpose: "identity_only",
+  };
+  const mismatched = {
+    ...operation("identity-mismatch", "connection", "pending"),
+    account_id: identityAccount.id,
+    material: {
+      ...material("connection"),
+      account: identityAccount,
+      route: {
+        ...identityRoute,
+        account_id: identityAccount.id,
+        protocol: "responses",
+        extra_usage: "off",
+        created_at: "2026-10-19T00:00:00Z",
+        base_url: "http://127.0.0.1:43124/v1",
+      },
+      connection_purpose: "identity_only",
+      requested_scopes: ["openid", "profile", "email"],
+    },
+  };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (!init?.method)
+      return response({
+        operations: [],
+        simulation_enabled: true,
+        routes: [identityRoute],
+      });
+    if (path.endsWith("/acceptance-operations"))
+      return response({ operation: mismatched });
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={identityAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: "创建连接材料" }));
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+  expect(document.body.textContent).not.toContain("43124");
+});
+
+it("fails closed when reconciliation returns mismatched identity material", async () => {
+  const identityAccount = {
+    ...account,
+    id: "acceptance-gate-openai-identity",
+  };
+  const identityRoute = {
+    ...route,
+    id: "acceptance-gate-openai-identity-route",
+    connection_purpose: "identity_only" as const,
+  };
+  const pending = {
+    ...operation("identity-recovery", "connection", "pending"),
+    account_id: identityAccount.id,
+    material: {
+      ...material("connection"),
+      account: identityAccount,
+      route: {
+        ...identityRoute,
+        account_id: identityAccount.id,
+        protocol: "responses",
+        extra_usage: "off",
+        created_at: "2026-10-19T00:00:00Z",
+      },
+      connection_purpose: "identity_only" as const,
+      requested_scopes: ["openid", "profile", "email"] as const,
+    },
+  };
+  const mismatched = {
+    ...pending,
+    material: {
+      ...pending.material,
+      route: { ...pending.material.route, adapter: "untrusted_adapter" },
+    },
+  };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method) throw new Error("synthetic lost decision response");
+    if (path.endsWith(`/${pending.id}`)) return response({ operation: mismatched });
+    return response({
+      operations: [pending],
+      simulation_enabled: true,
+      routes: [identityRoute],
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={identityAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.change(
+    await screen.findByLabelText("连接已保存材料"),
+    { target: { value: pending.id } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "批准连接材料" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "仅读取原验收记录" }),
+  );
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+  expect(document.body.textContent).not.toContain("untrusted_adapter");
+});
+
+it("retains read-only historical evidence when simulation is disabled", async () => {
+  const completed = {
+    ...operation("read-only-connection", "connection", "succeeded", {
+      attempts: 1,
+      claim_sequence: 1,
+      certainty: "completed",
+      result_account_revision: 1,
+    }),
+    material: {
+      ...material("connection"),
+      connection_purpose: "identity_only" as const,
+      requested_scopes: ["openid", "profile", "email"] as const,
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        operations: [completed],
+        simulation_enabled: false,
+        routes: [],
+      }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations account={account} refreshAccount={async () => {}} />,
+  );
+
+  expect(await screen.findByText("read-only-connection")).toBeVisible();
+  expect(screen.queryByText("invalid_receipt")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "创建目录材料" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "创建推理材料" })).toBeDisabled();
 });
