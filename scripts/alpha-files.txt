@@ -40,6 +40,7 @@ docs/public/alpha-status.md
 docs/public/architecture.md
 docs/public/model-acceptance-gates.md
 docs/public/model-acceptance.md
+docs/public/openai-connection-diagnostics.md
 docs/public/openai-connection-handoff.md
 docs/public/openai-operator-entry.md
 docs/public/openai-production-admission.md
