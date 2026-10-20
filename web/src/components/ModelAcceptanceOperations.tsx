@@ -704,7 +704,8 @@ function validHistory(
           value.routes.every(isTrustedProductionRoute) &&
           value.operations.every(
             (operation) =>
-              operation.source === "production_connection" &&
+              (operation.source === "production_connection" ||
+                operation.source === "production_catalog") &&
               validOperation(operation, accountID),
           )
         );
@@ -912,11 +913,15 @@ function AcceptanceOperations({
   const identityOnly = policy === "identity_only";
   const subscriptionOnly =
     policy === "subscription_only" || (production && !productionCatalog);
-  const visiblePhases = productionCatalog
-    ? (["connection", "catalog"] as ModelAcceptancePhase[])
-    : subscriptionOnly
-      ? (["connection"] as ModelAcceptancePhase[])
-      : phases;
+  const historicalCatalog =
+    policy === "production_connection" &&
+    operations.some((operation) => operation.source === "production_catalog");
+  const visiblePhases =
+    productionCatalog || historicalCatalog
+      ? (["connection", "catalog"] as ModelAcceptancePhase[])
+      : subscriptionOnly
+        ? (["connection"] as ModelAcceptancePhase[])
+        : phases;
   // Connection authority is dispatch order, never response/list/proposal/time order.
   const latestConnection = useMemo(
     () => latestClaimed(operations, "connection"),
@@ -1436,11 +1441,14 @@ function AcceptanceOperations({
             (phase === "catalog" && !connection) ||
             (phase === "inference" && (!catalog || !model));
           const identityClosedPhase = identityOnly && phase !== "connection";
+          const historicalPhase =
+            (productionCatalog && phase === "connection") ||
+            (historicalCatalog && phase === "catalog");
           return (
             <li key={phase}>
               <div className="acceptance-step-heading">
                 <strong>{phaseLabels[phase]}</strong>
-                {productionCatalog && phase === "connection" ? (
+                {historicalPhase ? (
                   <span className="route-lock">历史只读</span>
                 ) : (
                   <button
@@ -1510,10 +1518,10 @@ function AcceptanceOperations({
               {operation && (
                 <OperationReview
                   operation={operation}
-                  readOnly={productionCatalog && phase === "connection"}
+                  readOnly={historicalPhase}
                   disabled={
                     mutationDisabled ||
-                    (productionCatalog && phase === "connection") ||
+                    historicalPhase ||
                     (operation.source !== "local_simulation" &&
                       (!snapshot ||
                         !validOperationForSnapshot(

@@ -36,6 +36,188 @@ async function selectCatalog() {
   );
 }
 
+function connectionModeHistory(
+  f: ReturnType<typeof catalogFixture>,
+  operations: unknown[],
+) {
+  return {
+    ...f.history,
+    operations,
+    production_catalog_enabled: false,
+    production_connection_enabled: true,
+    production_admission: {
+      generation: "d".repeat(32),
+      profile: "openai_siwc_subscription_v1",
+    },
+    routes: [
+      {
+        ...f.route,
+        connection_purpose: "subscription_only",
+        connection_mode: "browser_handoff",
+      },
+    ],
+  };
+}
+
+it.each(["pending", "approved", "succeeded"])(
+  "keeps %s catalog history read-only after switching to connection mode without blocking fresh connection approval",
+  async (state) => {
+    const f = catalogFixture();
+    const historicalCatalog = {
+      ...f.pending,
+      state,
+      ...(state === "succeeded"
+        ? {
+            attempts: 1,
+            claim_sequence: 2,
+            certainty: "completed",
+            catalog: [{ id: "gpt-5.1", display_name: "Historical GPT" }],
+          }
+        : {}),
+    };
+    const operations = [f.connection, historicalCatalog];
+    const switched = connectionModeHistory(f, operations);
+    const freshConnection = {
+      ...f.connection,
+      id: "synthetic-new-connection",
+      state: "pending",
+      revision: 1,
+      attempts: 0,
+      claim_sequence: 0,
+      certainty: "not_sent",
+      result_account_revision: undefined,
+      result_snapshot_digest: undefined,
+      material: {
+        ...f.connection.material,
+        account: { ...f.account },
+        production_admission: switched.production_admission,
+      },
+    };
+    let connectionMode = false;
+    const fetcher = vi.fn(async (_path: string, init?: RequestInit) =>
+      response(
+        init?.method
+          ? { operation: freshConnection }
+          : connectionMode
+            ? switched
+            : { ...f.history, operations },
+      ),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "单次真实模型目录" }),
+    ).toBeVisible();
+    connectionMode = true;
+    fireEvent.click(screen.getByRole("button", { name: "重新读取验收记录" }));
+    const create = await screen.findByRole("button", {
+      name: "创建真实连接材料",
+    });
+    expect(create).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await selectCatalog();
+    const review = screen.getByLabelText("目录材料审阅");
+    expect(within(review).queryByRole("button")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: /创建真实目录|创建.*推理|批准目录|执行目录/,
+      }),
+    ).not.toBeInTheDocument();
+    if (state === "succeeded")
+      expect(within(review).getByText("Historical GPT")).toBeVisible();
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(
+      0,
+    );
+    fireEvent.click(create);
+    expect(
+      await screen.findByRole("button", { name: "批准连接材料" }),
+    ).toBeEnabled();
+    expect(
+      JSON.parse(
+        String(fetcher.mock.calls.find(([, init]) => init?.method)?.[1]?.body),
+      ),
+    ).toEqual({
+      phase: "connection",
+      route_id: f.route.id,
+      expected_account_revision: 2,
+      connection_purpose: "subscription_only",
+    });
+  },
+);
+
+it.each(["pending", "approved"])(
+  "does not grant stale-generation %s connection authority when catalog history is readable",
+  async (state) => {
+    const f = catalogFixture();
+    const stale = {
+      ...f.connection,
+      state,
+      attempts: 0,
+      claim_sequence: 0,
+      certainty: "not_sent",
+      material: { ...f.connection.material, account: { ...f.account } },
+    };
+    const h = connectionModeHistory(f, [stale, f.pending]);
+    const fetcher = mount(f, h.operations, h);
+    expect(
+      await screen.findByRole("button", { name: "创建真实连接材料" }),
+    ).toBeEnabled();
+    fireEvent.change(screen.getByRole("combobox", { name: "连接已保存材料" }), {
+      target: { value: stale.id },
+    });
+    expect(
+      screen.getByRole("button", {
+        name: state === "pending" ? "批准连接材料" : "执行连接",
+      }),
+    ).toBeDisabled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each([
+  [
+    "malformed catalog method",
+    (op: any) => {
+      op.material.request_method = "POST";
+    },
+  ],
+  [
+    "mixed simulated catalog source",
+    (op: any) => {
+      op.source = "local_simulation";
+      op.live_access = "blocked";
+    },
+  ],
+  [
+    "catalog profile as connection",
+    (op: any) => {
+      op.source = "production_connection";
+      op.live_access = "connection_only";
+    },
+  ],
+] as const)(
+  "keeps connection mode closed for %s history",
+  async (_name, change) => {
+    const f = catalogFixture();
+    change(f.pending);
+    const h = connectionModeHistory(f, [f.connection, f.pending]);
+    const fetcher = mount(f, h.operations, h);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "invalid_receipt",
+    );
+    for (const button of screen.queryAllByRole("button", {
+      name: /创建|批准|执行/,
+    }))
+      expect(button).toBeDisabled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+
 it("creates only independently approved catalog material with exact prerequisite, then separates approval and execution", async () => {
   const f = catalogFixture();
   const writes: { path: string; body: unknown }[] = [];
