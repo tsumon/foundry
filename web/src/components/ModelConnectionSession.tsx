@@ -82,12 +82,12 @@ export function validConnectionSession(
     return false;
   const expires = Date.parse(session.expires_at);
   if (!Number.isFinite(expires)) return false;
+  if (expires - now > 600 * 1000) return false;
   if (session.state === "waiting") {
     if (session.handoff_url === undefined) return true;
     return (
       typeof session.handoff_url === "string" &&
       expires > now &&
-      expires - now <= 600 * 1000 &&
       safeHandoffURL(session.handoff_url)
     );
   }
@@ -134,8 +134,7 @@ export function ModelConnectionSession({
   const cancellable =
     !!session &&
     !locallyExpired &&
-    (session.state === "exchanging" ||
-      (session.state === "waiting" && !!session.handoff_url));
+    (session.state === "waiting" || session.state === "exchanging");
 
   return (
     <section className="note" aria-label="浏览器连接会话">

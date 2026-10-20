@@ -238,7 +238,7 @@ it.each([
   },
 );
 
-it("accepts a future linkless waiting session as unavailable and offers only an explicit read", () => {
+it("keeps explicit cancellation for a future linkless waiting session", () => {
   const linkless = { ...session, handoff_url: undefined };
   const now = Date.parse("2026-10-20T00:00:00Z");
   expect(validConnectionSession(operation, linkless, now)).toBe(true);
@@ -258,11 +258,27 @@ it("accepts a future linkless waiting session as unavailable and offers only an 
   expect(
     screen.queryByRole("link", { name: "打开本地合成授权页" }),
   ).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "取消连接会话" }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "取消连接会话" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "读取连接状态" })).toBeEnabled();
 });
+
+it.each(["waiting", "exchanging", "failed"] as const)(
+  "accepts an elapsed linkless %s projection",
+  (state) => {
+    expect(
+      validConnectionSession(
+        operation,
+        {
+          ...session,
+          state,
+          expires_at: "2026-10-19T23:59:59Z",
+          handoff_url: undefined,
+        },
+        Date.parse("2026-10-20T00:00:00Z"),
+      ),
+    ).toBe(true);
+  },
+);
 
 it("keeps an already-expired linkless waiting session locally expired", () => {
   const now = Date.parse("2026-10-20T00:11:00Z");

@@ -693,6 +693,52 @@ it("removes a previously safe link before failing closed on a malformed status r
   expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
 });
 
+it.each(["waiting", "exchanging", "failed"] as const)(
+  "fails closed when a linkless %s session claims more than the 600-second future lifetime",
+  async (state) => {
+    const running = handoffOperation(`future-${state}-session`, "running", {
+      revision: 3,
+      attempts: 1,
+      claim_sequence: 7,
+    });
+    const fetcher = vi.fn(async (path: string) => {
+      if (path.endsWith(`/${running.id}`))
+        return response({
+          operation: running,
+          connection_session: {
+            ...handoffSession(running.id),
+            state,
+            expires_at: new Date(Date.now() + 601 * 1000).toISOString(),
+            handoff_url: undefined,
+          },
+        });
+      return response({
+        operations: [running],
+        simulation_enabled: true,
+        routes: [handoffRoute],
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={handoffAccount}
+        refreshAccount={async () => {}}
+      />,
+    );
+
+    fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+      target: { value: running.id },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+
+    expect(await screen.findByText("invalid_receipt")).toBeVisible();
+    expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "取消连接会话" }),
+    ).not.toBeInTheDocument();
+  },
+);
+
 it.each([
   {
     name: "browser route attached to identity-only purpose",
