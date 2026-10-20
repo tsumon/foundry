@@ -67,7 +67,7 @@ func siwcAtStage(stage, code string, err error) error {
 }
 
 func (s *SIWCService) siwcConnectionDiagnostic(attempt *siwcAttempt, defaultStage, defaultCode string, failure error) *domain.ConnectionDiagnostic {
-	d := &domain.ConnectionDiagnostic{Version: 1, Stage: defaultStage, Code: defaultCode, CredentialCommit: "not_committed", Cleanup: "not_required"}
+	d := &domain.ConnectionDiagnostic{Version: 1, Stage: defaultStage, Code: defaultCode, CredentialCommit: "unknown", Cleanup: "unknown"}
 	var staged *siwcConnectionStageError
 	if errors.As(failure, &staged) {
 		d.Stage, d.Code = staged.stage, staged.code
@@ -81,6 +81,14 @@ func (s *SIWCService) siwcConnectionDiagnostic(attempt *siwcAttempt, defaultStag
 			d.HTTPStatus = provider.HTTPStatus
 		}
 		d.ProviderCode = provider.ProviderCode
+	}
+	switch d.Stage {
+	case "callback_validation", "browser_authorization", "authorization_intent":
+		d.CredentialCommit, d.Cleanup = "not_committed", "not_required"
+	case "session":
+		if attempt != nil && attempt.exchangeDone == nil {
+			d.CredentialCommit, d.Cleanup = "not_committed", "not_required"
+		}
 	}
 	if attempt != nil {
 		op, err := s.lifecycle.store.GetModelAuthorizationOperation(attempt.public.OperationID)
@@ -101,9 +109,6 @@ func (s *SIWCService) siwcConnectionDiagnostic(attempt *siwcAttempt, defaultStag
 				d.CredentialCommit = "unknown"
 				d.Cleanup = "unknown"
 			}
-		} else if d.Stage != "callback_validation" && d.Stage != "browser_authorization" && d.Stage != "authorization_intent" && d.Stage != "session" {
-			d.CredentialCommit = "unknown"
-			d.Cleanup = "unknown"
 		}
 	}
 	if !d.Valid() {

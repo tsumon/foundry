@@ -13,7 +13,7 @@ const stageLabels: Record<ModelConnectionDiagnostic["stage"], string> = {
 };
 
 const codeLabels: Record<ModelConnectionDiagnostic["code"], string> = {
-  auth_invalid: "提供方拒绝了授权凭据",
+  auth_invalid: "授权信息未通过安全校验",
   entitlement_denied: "当前账户不符合这次连接要求",
   quota_exhausted: "提供方报告额度不可用",
   rate_limited: "提供方限制了这次请求",

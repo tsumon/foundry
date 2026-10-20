@@ -19,7 +19,7 @@ it("renders only static labels for a bounded recorded token failure", () => {
 
   const view = screen.getByLabelText("连接失败诊断");
   expect(view).toHaveTextContent("令牌交换");
-  expect(view).toHaveTextContent("提供方拒绝了授权凭据");
+  expect(view).toHaveTextContent("授权信息未通过安全校验");
   expect(view).toHaveTextContent("HTTP 403");
   expect(view).toHaveTextContent("invalid_grant");
   expect(view).toHaveTextContent("未提交");
@@ -75,4 +75,25 @@ it("renders bounded post-commit failure and cleanup evidence", () => {
   expect(view).toHaveTextContent("已提交");
   expect(view).toHaveTextContent("已完成");
   expect(view).not.toHaveTextContent("阶段未记录");
+});
+
+it.each([
+  "callback_validation",
+  "oidc_discovery",
+  "identity_validation",
+])("does not attribute local %s failures to a provider rejection", (stage) => {
+  render(
+    <ConnectionDiagnostic
+      diagnostic={{
+        version: 1,
+        stage,
+        code: "auth_invalid",
+        credential_commit: "not_committed",
+        cleanup: "completed",
+      }}
+    />,
+  );
+  const view = screen.getByLabelText("连接失败诊断");
+  expect(view).toHaveTextContent("授权信息未通过安全校验");
+  expect(view).not.toHaveTextContent("提供方拒绝了授权凭据");
 });

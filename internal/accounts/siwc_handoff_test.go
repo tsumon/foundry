@@ -86,3 +86,84 @@ func TestOwnedHandoffExchangeHasThirtySecondBoundInsideHumanWindow(t *testing.T)
 		t.Fatal("failed exchange not terminal")
 	}
 }
+
+func TestOwnedHandoffTerminalDuringExchangeWithUnavailableDurableEvidenceIsUnknown(t *testing.T) {
+	for _, terminalState := range []string{"canceled", "expired"} {
+		t.Run(terminalState, func(t *testing.T) {
+			lifecycle, db, _, _ := setupAccounts(t)
+			issuer := newSIWCIssuerFixture(t, "https://api.openai.com/v1")
+			account := newSIWCAccount(t, lifecycle, issuer.server.URL+"/v1")
+			s, err := NewSIWCSimulation(lifecycle, issuer.options())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			tokenStarted := make(chan struct{})
+			releaseToken := make(chan struct{})
+			s.http.Transport = subscriptionRoundTrip(func(req *http.Request) (*http.Response, error) {
+				close(tokenStarted)
+				<-releaseToken
+				return nil, req.Context().Err()
+			})
+			var flowContext context.Context = context.Background()
+			expire := func() {}
+			if terminalState == "expired" {
+				flowContext, expire = context.WithCancel(flowContext)
+			}
+			defer expire()
+			flow, stop, err := s.BeginOwnedSubscriptionConnectionSimulation(flowContext, account.ID, account.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stop()
+			query := openHandoff(t, flow)
+			callbackDone := make(chan struct{})
+			go func() {
+				defer close(callbackDone)
+				response, callbackErr := http.Get(query.Get("redirect_uri") + "?" + url.Values{"state": {query.Get("state")}, "code": {"synthetic"}, "client_id": {"oaiapp_synthetic"}}.Encode())
+				if callbackErr == nil {
+					response.Body.Close()
+				}
+			}()
+			select {
+			case <-tokenStarted:
+			case <-time.After(time.Second):
+				t.Fatal("token exchange did not start")
+			}
+			if err = db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if terminalState == "canceled" {
+				if _, err = s.Cancel(context.Background(), flow.OperationID); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				expire()
+				deadline := time.Now().Add(time.Second)
+				for {
+					status, statusErr := s.Status(flow.OperationID)
+					if statusErr != nil {
+						t.Fatal(statusErr)
+					}
+					if status.State == "expired" {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("exchange did not enter expired state")
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			close(releaseToken)
+			terminal, err := s.Wait(flow.OperationID)
+			if err != nil || terminal.State != terminalState || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Stage != "session" || terminal.ConnectionDiagnostic.Code != terminalState || terminal.ConnectionDiagnostic.CredentialCommit != "unknown" || terminal.ConnectionDiagnostic.Cleanup != "unknown" {
+				t.Fatalf("terminal=%+v %v", terminal, err)
+			}
+			select {
+			case <-callbackDone:
+			case <-time.After(time.Second):
+				t.Fatal("callback did not join")
+			}
+		})
+	}
+}
