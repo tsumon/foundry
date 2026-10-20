@@ -35,6 +35,8 @@ type config struct {
 	address                       string
 	webDir                        string
 	dockerPath                    string
+	openaiSubscriptionRoute       string
+	openaiKeychainJournal         string
 }
 
 type dataLock struct {
@@ -92,11 +94,16 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	flags := flag.NewFlagSet("foundry", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.BoolVar(&cfg.localMCPTest, "local-mcp-test", false, "enable the controller-owned synthetic local MCP reference service")
+	flags.StringVar(&cfg.openaiSubscriptionRoute, "openai-subscription-route", "", "explicitly enable one existing OpenAI subscription connection route")
+	flags.StringVar(&cfg.openaiKeychainJournal, "openai-keychain-journal", "", "new absolute private journal for the native startup probe")
 	if err = flags.Parse(args); err != nil {
-		return errors.New("invalid startup options; supported option: --local-mcp-test")
+		return errors.New("invalid startup options; supported options: --local-mcp-test, --openai-subscription-route, --openai-keychain-journal")
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected startup arguments")
+	}
+	if err := validateOpenAIStartupOptions(cfg); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(cfg.dataDir, 0700); err != nil {
 		return fmt.Errorf("create data directory: %w", err)
@@ -140,6 +147,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	client := model.NewClient(secrets)
 	models := newProductionModels(persistent, client, secrets)
 	defer models.siwc.Close()
+	if err := activateOpenAIConnection(cfg, persistent, &models, recoveryReadOnly, nativeOpenAIConnectionDeps()); err != nil {
+		return err
+	}
 	defer models.acceptance.Close()
 	if !recoveryReadOnly {
 		if err := models.Recover(context.Background()); err != nil {

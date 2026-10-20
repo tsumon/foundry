@@ -1,5 +1,12 @@
 package domain
 
+// ProductionConnectionStatus is read-only host capability, not an activation
+// request. Admission persists in history projection when Enabled becomes false.
+type ProductionConnectionStatus struct {
+	Enabled   bool                 `json:"production_connection_enabled"`
+	Admission *ProductionAdmission `json:"production_admission,omitempty"`
+}
+
 // ModelAccountAcceptance contains only a point-in-time metadata diagnostic,
 // never credentials, provider URLs, an execution permit, or remote evidence.
 type ModelAccountAcceptance struct {

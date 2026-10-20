@@ -16,7 +16,7 @@ func (s *SIWCService) ProductionAdmissionPreparation() *domain.OpenAIProductionA
 	if s == nil {
 		return nil
 	}
-	return &domain.OpenAIProductionAdmissionPreparation{State: "implemented_disabled", Validation: "local_simulation_only", NativeKeychain: "not_checked", OperatorActivation: "unavailable"}
+	return &domain.OpenAIProductionAdmissionPreparation{State: "implemented_disabled", Validation: "local_simulation_only", NativeKeychain: "not_checked", OperatorActivation: "explicit_startup"}
 }
 
 // ProductionConnectionAdmission is an in-process, constructor-owned policy.

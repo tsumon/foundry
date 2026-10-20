@@ -138,7 +138,7 @@ func (s *Service) ConnectionPurpose(route string) string {
 }
 func (s *Service) Routes(account string) []domain.ModelRoute {
 	out := []domain.ModelRoute{}
-	if s.SimulationEligible(account) {
+	if s.SimulationEligible(account) || s.production != nil && s.OwnsAccount(account) && s.production.Metadata().Generation != "" {
 		for _, r := range s.routes {
 			if r.AccountID == account {
 				out = append(out, r)

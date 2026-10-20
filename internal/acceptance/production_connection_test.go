@@ -124,8 +124,12 @@ func TestProductionControllerPolicyOwnershipAndGeneration(t *testing.T) {
 			if err := svc.Recover(); err != nil {
 				t.Fatal(err)
 			}
-			if svc.SimulationEligible(a.ID) || len(svc.Routes(a.ID)) != 0 {
+			if svc.SimulationEligible(a.ID) {
 				t.Fatal("production reported as simulation")
+			}
+			validPolicy := policy == "valid" || policy == "missing readiness" || policy == "failed readiness"
+			if (len(svc.Routes(a.ID)) == 1) != validPolicy || (svc.ProductionConnectionStatus(a.ID).Admission != nil) != validPolicy || svc.ProductionConnectionStatus(a.ID).Enabled != (policy == "valid") {
+				t.Fatalf("invalid production capability projection: %+v", svc.ProductionConnectionStatus(a.ID))
 			}
 			if policy != "default" && policy != "zero policy" && !svc.OwnsAccount(a.ID) {
 				t.Fatal("invalid policy lost account ownership")

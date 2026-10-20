@@ -26,11 +26,12 @@ cmd/foundry-acceptance/role_policy.go
 cmd/foundry-acceptance/role_policy_test.go
 cmd/foundry-acceptance/synthetic.go
 cmd/foundry-keychain-check/main.go
-cmd/foundry-keychain-check/main_test.go
 cmd/foundry/diagnostic_startup_test.go
 cmd/foundry/local_mcp_test.go
 cmd/foundry/main.go
 cmd/foundry/main_test.go
+cmd/foundry/openai_connection.go
+cmd/foundry/openai_connection_test.go
 cmd/foundry/production_admission_test.go
 docs/media/README.md
 docs/media/model-acceptance.jpg
@@ -224,6 +225,8 @@ internal/httpapi/server.go
 internal/httpapi/server_test.go
 internal/jsontext/validation.go
 internal/jsontext/validation_test.go
+internal/keychaincheck/command.go
+internal/keychaincheck/command_test.go
 internal/mcp/adversarial_test.go
 internal/mcp/call.go
 internal/mcp/call_adversarial_test.go

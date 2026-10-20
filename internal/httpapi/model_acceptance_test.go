@@ -52,7 +52,7 @@ func TestModelAcceptanceSubscriptionAdapterProjectionIsOptionalAndReadOnly(t *te
 				t.Fatalf("unsafe adapter metadata=%s", adapter)
 			}
 			admission, admissionFound := p["production_admission"]
-			if admissionFound != present || present && string(admission) != `{"state":"implemented_disabled","validation":"local_simulation_only","native_keychain":"not_checked","operator_activation":"unavailable"}` {
+			if admissionFound != present || present && string(admission) != `{"state":"implemented_disabled","validation":"local_simulation_only","native_keychain":"not_checked","operator_activation":"explicit_startup"}` {
 				t.Fatalf("unsafe or missing production admission preparation=%s", admission)
 			}
 			for _, field := range []string{"real_connection", "real_catalog", "real_inference"} {

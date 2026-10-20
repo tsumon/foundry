@@ -31,7 +31,7 @@ func (s *server) legacySIWCSimulationEligible(accountID string) bool {
 
 func (s *server) rejectAcceptanceBypass(w http.ResponseWriter, account string) bool {
 	if s.acceptance.OwnsAccount(account) {
-		writeError(w, 403, "acceptance_gate_required", "this synthetic account requires a separate acceptance approval")
+		writeError(w, 403, "acceptance_gate_required", "this account requires a separate acceptance approval")
 		return true
 	}
 	return false
@@ -39,7 +39,7 @@ func (s *server) rejectAcceptanceBypass(w http.ResponseWriter, account string) b
 func writeAcceptanceError(w http.ResponseWriter, e error) {
 	switch {
 	case errors.Is(e, acceptance.ErrDisabled):
-		writeError(w, 403, "acceptance_simulation_disabled", "only registered local simulation is permitted")
+		writeError(w, 403, "acceptance_simulation_disabled", "acceptance is unavailable for this account or phase")
 	case errors.Is(e, store.ErrConflict):
 		writeError(w, 409, "acceptance_conflict", "acceptance material or state is no longer current")
 	case errors.Is(e, store.ErrNotFound):
@@ -74,7 +74,12 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 			for _, v := range s.acceptance.Routes(account) {
 				routes = append(routes, acceptanceRouteView{v.ID, v.Adapter, v.Environment, v.SpendClass, v.BaseURL, s.acceptance.ConnectionPurpose(v.ID), s.acceptance.ConnectionMode(v.ID)})
 			}
-			writeJSON(w, 200, map[string]any{"operations": items, "simulation_enabled": s.acceptance.SimulationEligible(account) && !s.recoveryReadOnly, "legacy_siwc_simulation_enabled": s.legacySIWCSimulationEligible(account), "routes": routes})
+			production := s.acceptance.ProductionConnectionStatus(account)
+			payload := map[string]any{"operations": items, "simulation_enabled": s.acceptance.SimulationEligible(account) && !s.recoveryReadOnly, "legacy_siwc_simulation_enabled": s.legacySIWCSimulationEligible(account), "routes": routes, "production_connection_enabled": production.Enabled && !s.recoveryReadOnly}
+			if production.Admission != nil {
+				payload["production_admission"] = production.Admission
+			}
+			writeJSON(w, 200, payload)
 			return
 		}
 		if r.Method == http.MethodPost {

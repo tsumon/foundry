@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"foundry/internal/acceptance"
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/store"
@@ -28,6 +29,12 @@ func (s forbiddenProductionSecrets) Delete(string) error {
 func TestProductionRuntimeRecoversAdmissionLedgerWithoutActivating(t *testing.T) {
 	t.Setenv("FOUNDRY_PRODUCTION_ADMISSION", "true")
 	t.Setenv("FOUNDRY_NATIVE_KEYCHAIN_READY", "true")
+	t.Setenv("FOUNDRY_OPENAI_SUBSCRIPTION_ROUTE", "production-route")
+	t.Setenv("FOUNDRY_OPENAI_KEYCHAIN_JOURNAL", filepath.Join(t.TempDir(), "not-created.json"))
+	cfg, err := loadConfig()
+	if err != nil || cfg.openaiSubscriptionRoute != "" || cfg.openaiKeychainJournal != "" {
+		t.Fatalf("environment activated operator entry: %+v %v", cfg, err)
+	}
 	db, err := store.Open(filepath.Join(t.TempDir(), "runtime.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -56,12 +63,20 @@ func TestProductionRuntimeRecoversAdmissionLedgerWithoutActivating(t *testing.T)
 	secrets := forbiddenProductionSecrets{t}
 	runtime := newProductionModels(db, model.NewClient(secrets), secrets)
 	defer runtime.siwc.Close()
+	defer runtime.acceptance.Close()
 	recoverer, ok := any(runtime).(interface{ Recover(context.Context) error })
 	if !ok {
 		t.Fatal("production runtime does not own acceptance recovery")
 	}
 	if err = recoverer.Recover(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	status := runtime.acceptance.ProductionConnectionStatus(a.ID)
+	if status.Enabled || status.Admission != nil || len(runtime.acceptance.Routes(a.ID)) != 0 || runtime.acceptance.SimulationEligible(a.ID) {
+		t.Fatalf("default startup projected authority: %+v", status)
+	}
+	if _, err := runtime.acceptance.Propose(a.ID, domain.ModelAcceptanceProposal{Phase: "connection", ConnectionPurpose: "subscription_only", RouteID: r.ID, ExpectedAccountRevision: a.Revision}); err != acceptance.ErrDisabled {
+		t.Fatalf("default startup enabled proposal: %v", err)
 	}
 	after, err := db.GetModelAcceptance(a.ID, o.ID)
 	if err != nil || after.State != "unknown" || after.Attempts != 1 || after.Source != "production_connection" {
@@ -75,7 +90,7 @@ func TestProductionRuntimeRecoversAdmissionLedgerWithoutActivating(t *testing.T)
 	}
 }
 
-func TestProductionAdmissionHasNoStartupFlag(t *testing.T) {
+func TestProductionAdmissionRejectsLegacyReadinessAndActivationFlags(t *testing.T) {
 	t.Setenv("FOUNDRY_DATA_DIR", t.TempDir())
 	for _, flag := range []string{"--production-admission", "--native-keychain-ready", "--openai-live"} {
 		if err := runWithSecrets([]string{flag}, forbiddenProductionSecrets{t}); err == nil {
