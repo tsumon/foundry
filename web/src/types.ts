@@ -162,6 +162,8 @@ export interface ModelAcceptanceAuthorization {
 }
 export interface ModelAcceptanceMaterial {
   production_admission?: ModelProductionAdmission;
+  request_method?: "GET";
+  request_url?: "https://api.openai.com/v1/models";
   phase: ModelAcceptancePhase;
   connection_purpose?: "identity_only" | "subscription_only";
   connection_mode?: "browser_handoff";
@@ -258,7 +260,7 @@ export interface ModelAcceptanceOperation {
   material_digest: string;
   attempts: number;
   claim_sequence: number;
-  source: "local_simulation" | "production_connection";
+  source: "local_simulation" | "production_connection" | "production_catalog";
   certainty: "not_sent" | "completed" | "rejected" | "unknown";
   code?: string;
   started_at?: string;
@@ -271,18 +273,24 @@ export interface ModelAcceptanceOperation {
   usage_known: boolean;
   quota: "unknown";
   remote_billing: "unverified";
-  live_access: "blocked" | "connection_only";
+  live_access: "blocked" | "connection_only" | "catalog_only";
   connection_diagnostic?: ModelConnectionDiagnostic;
 }
 export interface ModelProductionAdmission {
   generation: string;
-  profile: "openai_siwc_subscription_v1";
+  profile: "openai_siwc_subscription_v1" | "openai_siwc_catalog_v1";
 }
 export interface ModelAcceptanceHistory {
   operations: ModelAcceptanceOperation[];
   simulation_enabled: boolean;
   legacy_siwc_simulation_enabled?: boolean;
   production_connection_enabled?: boolean;
+  production_catalog_enabled?: boolean;
+  production_catalog_blocker?:
+    | "authorization_expired"
+    | "authorization_unavailable"
+    | "prerequisite_unavailable"
+    | "admission_unavailable";
   production_admission?: ModelProductionAdmission;
   routes: ModelAcceptanceRoute[];
 }

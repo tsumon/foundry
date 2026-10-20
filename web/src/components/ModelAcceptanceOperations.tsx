@@ -72,17 +72,193 @@ export type ModelAcceptanceConnectionPolicy =
   | "identity_only"
   | "subscription_only"
   | "production_connection"
+  | "production_catalog"
   | "legacy"
   | "unavailable";
 
-function validAdmission(value: unknown): boolean {
+function validAdmission(
+  value: unknown,
+  profile = "openai_siwc_subscription_v1",
+): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   return (
     Object.keys(record).length === 2 &&
     typeof record.generation === "string" &&
     /^[a-f0-9]{32}$/.test(record.generation) &&
-    record.profile === "openai_siwc_subscription_v1"
+    record.profile === profile
+  );
+}
+
+const catalogBlockers = {
+  authorization_expired: "授权已过期；目录操作保持关闭，不会刷新或重新登录。",
+  authorization_unavailable:
+    "缺少可用授权；目录操作保持关闭，不会刷新或重新登录。",
+  prerequisite_unavailable: "缺少当前成功的真实连接证据；目录操作保持关闭。",
+  admission_unavailable: "本进程目录准入不可用；目录操作保持关闭。",
+};
+
+function isTrustedCatalogRoute(
+  route: ModelAcceptanceHistory["routes"][number],
+): boolean {
+  return (
+    route.environment === "live" &&
+    route.adapter === identityAdapter &&
+    route.spend_class === identitySpendClass &&
+    route.base_url === subscriptionResource &&
+    route.connection_purpose === undefined &&
+    route.connection_mode === undefined
+  );
+}
+
+function onlyKeys(value: object, keys: readonly string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
+// Catalog data is display evidence, never a route, model selection or inference permit.
+function validCatalogMaterial(
+  value: ModelAcceptanceOperation,
+  accountID: string,
+  trustedRoute?: ModelAcceptanceHistory["routes"][number],
+): boolean {
+  const m = value.material;
+  if (
+    !m ||
+    !onlyKeys(m, [
+      "production_admission",
+      "phase",
+      "request_method",
+      "request_url",
+      "account",
+      "route",
+      "credential_version",
+      "authorization",
+      "prerequisite_id",
+      "connection_id",
+      "data_summary",
+      "created_at",
+      "expires_at",
+      "deadline_seconds",
+      "max_attempts",
+    ])
+  )
+    return false;
+  const a = m.account,
+    r = m.route,
+    auth = m.authorization,
+    binding = auth?.binding;
+  if (
+    !a ||
+    !r ||
+    !auth ||
+    !binding ||
+    !onlyKeys(auth, ["binding", "state", "generation", "expires_at"]) ||
+    !onlyKeys(binding, [
+      "id",
+      "account_id",
+      "issuer",
+      "subject",
+      "client_id",
+      "spend_class",
+      "scopes",
+    ])
+  )
+    return false;
+  const created = Date.parse(m.created_at),
+    expires = Date.parse(m.expires_at),
+    authExpiry = Date.parse(auth.expires_at);
+  return (
+    value.phase === "catalog" &&
+    validAdmission(m.production_admission, "openai_siwc_catalog_v1") &&
+    m.request_method === "GET" &&
+    m.request_url === "https://api.openai.com/v1/models" &&
+    a.id === accountID &&
+    a.provider === "openai" &&
+    a.auth_method === "openai_siwc" &&
+    a.billing_mode === "subscription" &&
+    a.base_url === subscriptionResource &&
+    a.enabled === true &&
+    Number.isSafeInteger(a.revision) &&
+    a.revision > 0 &&
+    a.current_credential_version === 0 &&
+    identifier.test(r.id) &&
+    r.account_id === accountID &&
+    r.environment === "live" &&
+    r.adapter === identityAdapter &&
+    r.protocol === "responses" &&
+    r.base_url === subscriptionResource &&
+    r.spend_class === identitySpendClass &&
+    r.extra_usage === "off" &&
+    (!trustedRoute ||
+      (r.id === trustedRoute.id && isTrustedCatalogRoute(trustedRoute))) &&
+    m.credential_version === 0 &&
+    auth.state === "available" &&
+    Number.isSafeInteger(auth.generation) &&
+    auth.generation > 0 &&
+    identifier.test(binding.id) &&
+    binding.account_id === accountID &&
+    binding.issuer === "https://auth.openai.com" &&
+    [binding.subject, binding.client_id].every(
+      (text) =>
+        typeof text === "string" &&
+        text.trim().length > 0 &&
+        text.length <= 2048 &&
+        !/\p{Cc}/u.test(text),
+    ) &&
+    binding.spend_class === identitySpendClass &&
+    Array.isArray(binding.scopes) &&
+    binding.scopes.length <= 64 &&
+    new Set(binding.scopes).size === binding.scopes.length &&
+    binding.scopes.every(
+      (scope) =>
+        typeof scope === "string" &&
+        scope.length > 0 &&
+        scope.length <= 256 &&
+        !/[\s\p{Cc}]/u.test(scope),
+    ) &&
+    binding.scopes.includes("resource.invoke") &&
+    binding.scopes.includes("chatgpt.tokens.use.direct") &&
+    typeof m.prerequisite_id === "string" &&
+    identifier.test(m.prerequisite_id) &&
+    m.prerequisite_id === m.connection_id &&
+    m.deadline_seconds === 30 &&
+    m.max_attempts === 1 &&
+    Number.isFinite(created) &&
+    Number.isFinite(authExpiry) &&
+    expires > created &&
+    expires === Math.min(created + 600_000, authExpiry) &&
+    typeof m.data_summary === "string" &&
+    m.data_summary.length <= 4096
+  );
+}
+
+function validCatalogEntries(value: ModelAcceptanceOperation): boolean {
+  return (
+    Array.isArray(value.catalog) &&
+    value.catalog.length <= 128 &&
+    (value.attempts === 0
+      ? value.claim_sequence === 0
+      : value.claim_sequence > 0) &&
+    new Set(value.catalog.map((entry) => entry.id)).size ===
+      value.catalog.length &&
+    value.catalog.every(
+      (entry) =>
+        onlyKeys(entry, ["id", "display_name"]) &&
+        typeof entry.id === "string" &&
+        /^[A-Za-z0-9_.:/-]{1,128}$/.test(entry.id) &&
+        typeof entry.display_name === "string" &&
+        entry.display_name.trim().length > 0 &&
+        Array.from(entry.display_name).length <= 200 &&
+        !/[<>\p{Cc}]/u.test(entry.display_name),
+    ) &&
+    (value.state === "succeeded" || value.catalog.length === 0) &&
+    value.usage_known === false &&
+    value.input_tokens === undefined &&
+    value.output_tokens === undefined &&
+    ["not_sent", "completed", "rejected", "unknown"].includes(
+      value.certainty,
+    ) &&
+    (value.state !== "succeeded" || value.certainty === "completed")
   );
 }
 
@@ -317,6 +493,12 @@ export function connectionPolicy(
   history: ModelAcceptanceHistory,
 ): ModelAcceptanceConnectionPolicy {
   if (
+    validAdmission(history.production_admission, "openai_siwc_catalog_v1") &&
+    history.routes.length === 1 &&
+    history.routes.every(isTrustedCatalogRoute)
+  )
+    return "production_catalog";
+  if (
     validAdmission(history.production_admission) &&
     history.routes.length === 1 &&
     history.routes.every(isTrustedProductionRoute)
@@ -363,22 +545,28 @@ function validOperation(
     validAttemptCount(value) &&
     ((value.source === "local_simulation" && value.live_access === "blocked") ||
       (value.source === "production_connection" &&
-        value.live_access === "connection_only")) &&
+        value.live_access === "connection_only") ||
+      (value.source === "production_catalog" &&
+        value.live_access === "catalog_only")) &&
     value.quota === "unknown" &&
     value.remote_billing === "unverified" &&
     !!value.material &&
-    validConnectionMaterial(value, accountID, trustedRoute) &&
+    (value.source === "production_catalog"
+      ? validCatalogMaterial(value, accountID, trustedRoute)
+      : validConnectionMaterial(value, accountID, trustedRoute)) &&
     value.material.phase === value.phase &&
     value.material.account.id === accountID &&
     digest.test(value.material_digest) &&
     (value.code === undefined || receiptCodes.has(value.code)) &&
     Array.isArray(value.catalog) &&
-    value.catalog.every(
-      (entry) =>
-        identifier.test(entry.id) &&
-        typeof entry.display_name === "string" &&
-        entry.display_name.length <= 256,
-    ) &&
+    (value.source === "production_catalog"
+      ? validCatalogEntries(value)
+      : value.catalog.every(
+          (entry) =>
+            identifier.test(entry.id) &&
+            typeof entry.display_name === "string" &&
+            entry.display_name.length <= 256,
+        )) &&
     (value.material.connection_purpose !== "subscription_only" ||
       (value.catalog.length === 0 &&
         value.usage_known === false &&
@@ -403,6 +591,28 @@ function validOperationForSnapshot(
   history: ModelAcceptanceHistory,
 ): boolean {
   const policy = connectionPolicy(history);
+  if (policy === "production_catalog") {
+    const prerequisite = latestClaimed(history.operations, "connection");
+    return (
+      operation.source === "production_catalog" &&
+      !!operationRoute(operation, history.routes) &&
+      validOperation(
+        operation,
+        accountID,
+        operationRoute(operation, history.routes),
+      ) &&
+      operation.material.production_admission?.generation ===
+        history.production_admission?.generation &&
+      prerequisite?.source === "production_connection" &&
+      prerequisite.state === "succeeded" &&
+      prerequisite.certainty === "completed" &&
+      digest.test(prerequisite.result_snapshot_digest ?? "") &&
+      prerequisite.result_account_revision ===
+        operation.material.account.revision &&
+      prerequisite.material.route.id === operation.material.route.id &&
+      operation.material.connection_id === prerequisite.id
+    );
+  }
   if (policy === "production_connection") {
     const trustedRoute = operationRoute(operation, history.routes);
     return (
@@ -441,12 +651,46 @@ function validHistory(
       typeof value.legacy_siwc_simulation_enabled === "boolean") &&
     (value.production_connection_enabled === undefined ||
       typeof value.production_connection_enabled === "boolean") &&
+    (value.production_catalog_enabled === undefined ||
+      typeof value.production_catalog_enabled === "boolean") &&
+    (value.production_catalog_blocker === undefined ||
+      Object.hasOwn(catalogBlockers, value.production_catalog_blocker)) &&
     (value.production_admission === undefined ||
-      validAdmission(value.production_admission)) &&
+      validAdmission(value.production_admission) ||
+      validAdmission(value.production_admission, "openai_siwc_catalog_v1")) &&
     Array.isArray(value.operations) &&
     Array.isArray(value.routes) &&
     value.routes.every(validRoute) &&
+    new Set(value.operations.map((operation) => operation.id)).size ===
+      value.operations.length &&
     (() => {
+      if (
+        validAdmission(value.production_admission, "openai_siwc_catalog_v1")
+      ) {
+        return (
+          value.simulation_enabled === false &&
+          value.legacy_siwc_simulation_enabled !== true &&
+          value.production_connection_enabled === false &&
+          typeof value.production_catalog_enabled === "boolean" &&
+          !(
+            value.production_catalog_enabled &&
+            value.production_catalog_blocker !== undefined
+          ) &&
+          value.routes.length === 1 &&
+          value.routes.every(isTrustedCatalogRoute) &&
+          value.operations.every(
+            (operation) =>
+              (operation.source === "production_connection" ||
+                operation.source === "production_catalog") &&
+              validOperation(operation, accountID),
+          )
+        );
+      }
+      if (
+        value.production_catalog_enabled === true ||
+        value.production_catalog_blocker !== undefined
+      )
+        return false;
       if (
         value.production_admission !== undefined ||
         value.production_connection_enabled === true ||
@@ -468,7 +712,7 @@ function validHistory(
       if (
         value.simulation_enabled &&
         value.operations.some(
-          (operation) => operation.source === "production_connection",
+          (operation) => operation.source !== "local_simulation",
         )
       )
         return false;
@@ -561,6 +805,11 @@ function AcceptanceOperations({
   onLegacySIWCCapability?: (enabled: boolean) => void;
 }) {
   const [snapshot, setSnapshot] = useState<ModelAcceptanceHistory>();
+  // Retain only the last validated presentation when an uncertain read clears
+  // authority. The account/revision key remounts this state for a new account.
+  const [productionPresentation, setProductionPresentation] = useState<
+    "production_connection" | "production_catalog"
+  >();
   const [loaded, setLoaded] = useState(false);
   const [reading, setReading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -590,7 +839,14 @@ function AcceptanceOperations({
     requireValidReceipt(() => validHistory(history, account.id));
     setSnapshot(history);
     setLoaded(true);
-    onConnectionPolicy?.(connectionPolicy(history));
+    const nextPolicy = connectionPolicy(history);
+    setProductionPresentation(
+      nextPolicy === "production_connection" ||
+        nextPolicy === "production_catalog"
+        ? nextPolicy
+        : undefined,
+    );
+    onConnectionPolicy?.(nextPolicy);
     onLegacySIWCCapability?.(history.legacy_siwc_simulation_enabled === true);
     setRouteID((current) =>
       history.routes.some((route) => route.id === current)
@@ -643,16 +899,24 @@ function AcceptanceOperations({
 
   const operations = snapshot?.operations ?? [];
   const policy = snapshot ? connectionPolicy(snapshot) : "unavailable";
+  const productionCatalog =
+    policy === "production_catalog" ||
+    (!snapshot && productionPresentation === "production_catalog");
   const production =
+    productionCatalog ||
+    (!snapshot && productionPresentation === "production_connection") ||
     policy === "production_connection" ||
     operations.some(
       (operation) => operation.source === "production_connection",
     );
   const identityOnly = policy === "identity_only";
-  const subscriptionOnly = policy === "subscription_only" || production;
-  const visiblePhases = subscriptionOnly
-    ? (["connection"] as ModelAcceptancePhase[])
-    : phases;
+  const subscriptionOnly =
+    policy === "subscription_only" || (production && !productionCatalog);
+  const visiblePhases = productionCatalog
+    ? (["connection", "catalog"] as ModelAcceptancePhase[])
+    : subscriptionOnly
+      ? (["connection"] as ModelAcceptancePhase[])
+      : phases;
   // Connection authority is dispatch order, never response/list/proposal/time order.
   const latestConnection = useMemo(
     () => latestClaimed(operations, "connection"),
@@ -663,7 +927,13 @@ function AcceptanceOperations({
     latestConnection?.state === "succeeded" &&
     typeof latestResultAccountRevision === "number" &&
     Number.isSafeInteger(latestResultAccountRevision) &&
-    latestResultAccountRevision >= account.revision
+    (productionCatalog
+      ? latestResultAccountRevision === account.revision &&
+        latestConnection.source === "production_connection" &&
+        latestConnection.certainty === "completed" &&
+        digest.test(latestConnection.result_snapshot_digest ?? "") &&
+        latestConnection.material.route.id === routeID
+      : latestResultAccountRevision >= account.revision)
       ? latestConnection
       : undefined;
   const catalog = useMemo(
@@ -680,13 +950,51 @@ function AcceptanceOperations({
     [operations, connection?.id],
   );
   useEffect(() => {
+    if (productionCatalog) {
+      setModel("");
+      return;
+    }
     const models = catalog?.catalog ?? [];
     setModel((current) =>
       models.some((entry) => entry.id === current)
         ? current
         : (models[0]?.id ?? ""),
     );
-  }, [catalog?.id, catalog?.revision]);
+  }, [catalog?.id, catalog?.revision, productionCatalog]);
+
+  // No polling: the local timer only closes controls at the known credential expiry.
+  const catalogAuthorizationExpiry = productionCatalog
+    ? operations
+        .filter(
+          (operation) =>
+            operation.source === "production_catalog" &&
+            operation.material.production_admission?.generation ===
+              snapshot?.production_admission?.generation &&
+            operation.material.account.revision === account.revision,
+        )
+        .reduce(
+          (earliest, operation) =>
+            Math.min(
+              earliest,
+              Date.parse(operation.material.authorization!.expires_at),
+            ),
+          Infinity,
+        )
+    : Infinity;
+  const [authorizationExpired, setAuthorizationExpired] = useState(false);
+  useEffect(() => {
+    setAuthorizationExpired(catalogAuthorizationExpiry <= Date.now());
+    if (
+      !Number.isFinite(catalogAuthorizationExpiry) ||
+      catalogAuthorizationExpiry <= Date.now()
+    )
+      return;
+    const timer = window.setTimeout(
+      () => setAuthorizationExpired(true),
+      Math.min(catalogAuthorizationExpiry - Date.now(), 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [catalogAuthorizationExpiry]);
 
   const replaceOperation = (value: unknown, expectedOperationID?: string) => {
     const result = requireOperationResponse(value);
@@ -698,7 +1006,7 @@ function AcceptanceOperations({
       () =>
         !!snapshot &&
         validOperationForSnapshot(operation, account.id, snapshot) &&
-        (operation.source !== "production_connection" ||
+        (operation.source === "local_simulation" ||
           ((expectedOperationID === undefined ||
             operation.id === expectedOperationID) &&
             (!previous ||
@@ -712,7 +1020,8 @@ function AcceptanceOperations({
                     operation.claim_sequence ===
                       previous.claim_sequence)))))) &&
         (session === undefined ||
-          validConnectionSession(operation, session, Date.now())),
+          (!productionCatalog &&
+            validConnectionSession(operation, session, Date.now()))),
     );
     setSnapshot((current) =>
       current
@@ -928,11 +1237,15 @@ function AcceptanceOperations({
     reading ||
     !!unresolved ||
     !loaded ||
-    !(production
-      ? snapshot?.production_connection_enabled === true
-      : snapshot?.simulation_enabled) ||
+    authorizationExpired ||
+    !(productionCatalog
+      ? snapshot?.production_catalog_enabled === true
+      : production
+        ? snapshot?.production_connection_enabled === true
+        : snapshot?.simulation_enabled) ||
     (production &&
-      (account.provider !== "openai" ||
+      (!account.enabled ||
+        account.provider !== "openai" ||
         account.auth_method !== "openai_siwc" ||
         account.billing_mode !== "subscription" ||
         account.base_url !== subscriptionResource)) ||
@@ -953,7 +1266,7 @@ function AcceptanceOperations({
         phase,
         route_id: routeID,
         expected_account_revision: currentAccountRevision,
-        ...(identityOnly || subscriptionOnly
+        ...(phase === "connection" && (identityOnly || subscriptionOnly)
           ? {
               connection_purpose: identityOnly
                 ? ("identity_only" as const)
@@ -971,32 +1284,63 @@ function AcceptanceOperations({
   return (
     <section
       className="acceptance-operations"
-      aria-label={production ? "单次真实订阅连接" : "单次本地模拟验收"}
+      aria-label={
+        productionCatalog
+          ? "单次真实模型目录"
+          : production
+            ? "单次真实订阅连接"
+            : "单次本地模拟验收"
+      }
     >
       <div className="section-heading">
         <div>
-          <h4>{production ? "单次真实订阅连接" : "单次本地模拟验收"}</h4>
+          <h4>
+            {productionCatalog
+              ? "单次真实模型目录"
+              : production
+                ? "单次真实订阅连接"
+                : "单次本地模拟验收"}
+          </h4>
           <p className="muted">
-            {subscriptionOnly
-              ? "订阅连接材料单独审阅、批准和执行。"
-              : "连接、目录与推理分别审阅、批准和执行。"}
+            {productionCatalog
+              ? "连接历史只读；目录材料独立创建、批准和执行。"
+              : subscriptionOnly
+                ? "订阅连接材料单独审阅、批准和执行。"
+                : "连接、目录与推理分别审阅、批准和执行。"}
           </p>
         </div>
         <span className="route-lock">
-          {production
-            ? snapshot?.production_connection_enabled
-              ? "仅连接可单独审批"
-              : "连接审批不可用 · 历史只读"
-            : snapshot?.simulation_enabled
-              ? "仅本地模拟"
-              : "生产真实访问保持关闭"}
+          {productionCatalog
+            ? "仅目录可单独审批 · 推理关闭"
+            : production
+              ? snapshot?.production_connection_enabled
+                ? "仅连接可单独审批"
+                : "连接审批不可用 · 历史只读"
+              : snapshot?.simulation_enabled
+                ? "仅本地模拟"
+                : "生产真实访问保持关闭"}
         </span>
       </div>
       <p className="field-help">
-        {production
-          ? "此入口仅允许独立审批的真实订阅连接，不开放目录、推理或任务调用。不会自动打开浏览器、重试、轮询、刷新、付费降级、运行脚本或写入 Git。"
-          : "只使用本进程拥有的合成 fixture。不会登录真实账户、读取真实凭据、自动重试、轮询、刷新、付费降级、运行脚本或写入 Git。"}
+        {productionCatalog
+          ? "仅允许 GET https://api.openai.com/v1/models；不发送提示词、源代码、任务上下文或对话。最多一次请求，无自动查询、重试、轮询、刷新、重新登录或付费回退；不修改任务模型和角色策略。"
+          : production
+            ? "此入口仅允许独立审批的真实订阅连接，不开放目录、推理或任务调用。不会自动打开浏览器、重试、轮询、刷新、付费降级、运行脚本或写入 Git。"
+            : "只使用本进程拥有的合成 fixture。不会登录真实账户、读取真实凭据、自动重试、轮询、刷新、付费降级、运行脚本或写入 Git。"}
       </p>
+      {productionCatalog &&
+        (snapshot?.production_catalog_blocker || authorizationExpired) && (
+          <p className="warning-copy">
+            {
+              catalogBlockers[
+                snapshot?.production_catalog_blocker ?? "authorization_expired"
+              ]
+            }{" "}
+            <code>
+              {snapshot?.production_catalog_blocker ?? "authorization_expired"}
+            </code>
+          </p>
+        )}
       {identityOnly && (
         <p className="note">
           本地身份专用模拟；请求身份范围：openid、profile、email。真实登录仍待确认；账户与工作区由用户稍后选择；额度和计费未知。身份验证成功不代表模型可用。
@@ -1028,7 +1372,11 @@ function AcceptanceOperations({
       )}
       <div className="acceptance-toolbar">
         <label htmlFor={`acceptance-route-${account.id}`}>
-          {production ? "固定真实连接路由" : "本地模拟路由"}
+          {productionCatalog
+            ? "固定真实目录路由"
+            : production
+              ? "固定真实连接路由"
+              : "本地模拟路由"}
         </label>
         <select
           id={`acceptance-route-${account.id}`}
@@ -1049,6 +1397,7 @@ function AcceptanceOperations({
             {snapshot.routes.find((route) => route.id === routeID)!.spend_class}
             {identityOnly && " · 仅身份验证，不授予模型权限"}
             {subscriptionOnly && " · 仅订阅连接，不授予目录或推理权限"}
+            {productionCatalog && " · 仅目录，不授予推理权限"}
             {snapshot.routes.find((route) => route.id === routeID)!
               .connection_mode === "browser_handoff" &&
               " · 浏览器交接需手动打开"}
@@ -1059,6 +1408,7 @@ function AcceptanceOperations({
           disabled={
             reading ||
             busy ||
+            !!unresolved ||
             (snapshot?.simulation_enabled === false && !production)
           }
           onClick={() => void readHistory()}
@@ -1072,7 +1422,7 @@ function AcceptanceOperations({
       )}
       <ol
         className={
-          subscriptionOnly
+          subscriptionOnly || productionCatalog
             ? "acceptance-steps acceptance-steps--subscription-only"
             : "acceptance-steps"
         }
@@ -1090,20 +1440,24 @@ function AcceptanceOperations({
             <li key={phase}>
               <div className="acceptance-step-heading">
                 <strong>{phaseLabels[phase]}</strong>
-                <button
-                  type="button"
-                  disabled={
-                    mutationDisabled ||
-                    !routeID ||
-                    prerequisiteMissing ||
-                    identityClosedPhase ||
-                    !account.enabled
-                  }
-                  onClick={() => propose(phase)}
-                >
-                  创建{production ? "真实" : ""}
-                  {phaseLabels[phase]}材料
-                </button>
+                {productionCatalog && phase === "connection" ? (
+                  <span className="route-lock">历史只读</span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={
+                      mutationDisabled ||
+                      !routeID ||
+                      prerequisiteMissing ||
+                      identityClosedPhase ||
+                      !account.enabled
+                    }
+                    onClick={() => propose(phase)}
+                  >
+                    创建{production ? "真实" : ""}
+                    {phaseLabels[phase]}材料
+                  </button>
+                )}
               </div>
               {phase === "catalog" && latestConnection && !connection && (
                 <p className="warning-copy">
@@ -1156,9 +1510,11 @@ function AcceptanceOperations({
               {operation && (
                 <OperationReview
                   operation={operation}
+                  readOnly={productionCatalog && phase === "connection"}
                   disabled={
                     mutationDisabled ||
-                    (operation.source === "production_connection" &&
+                    (productionCatalog && phase === "connection") ||
+                    (operation.source !== "local_simulation" &&
                       (!snapshot ||
                         !validOperationForSnapshot(
                           operation,
@@ -1175,6 +1531,7 @@ function AcceptanceOperations({
                     reading ||
                     !!unresolved ||
                     !loaded ||
+                    productionCatalog ||
                     (operation.source === "production_connection" &&
                       (!snapshot ||
                         !validOperationForSnapshot(
@@ -1230,7 +1587,13 @@ function AcceptanceOperations({
       {operations.length > 0 && (
         <div
           className="acceptance-receipts"
-          aria-label={production ? "真实订阅连接回执" : "本地模拟回执"}
+          aria-label={
+            productionCatalog
+              ? "真实目录与连接回执"
+              : production
+                ? "真实订阅连接回执"
+                : "本地模拟回执"
+          }
         >
           <h5>已保存回执</h5>
           <ul>
@@ -1249,9 +1612,11 @@ function AcceptanceOperations({
                   <span>
                     {phaseLabels[operation.phase]} ·{" "}
                     {stateLabels[operation.state]} ·{" "}
-                    {operation.source === "production_connection"
-                      ? "真实订阅连接"
-                      : "本地模拟"}
+                    {operation.source === "production_catalog"
+                      ? "真实模型目录"
+                      : operation.source === "production_connection"
+                        ? "真实订阅连接"
+                        : "本地模拟"}
                   </span>
                   <code>{operation.id}</code>
                   {operation.code && <code>{operation.code}</code>}
@@ -1267,6 +1632,7 @@ function AcceptanceOperations({
 
 function OperationReview({
   operation,
+  readOnly = false,
   disabled,
   sessionDisabled,
   decide,
@@ -1276,6 +1642,7 @@ function OperationReview({
   cancel,
 }: {
   operation: ModelAcceptanceOperation;
+  readOnly?: boolean;
   disabled: boolean;
   sessionDisabled: boolean;
   decide: (decision: "approve" | "reject") => void;
@@ -1285,7 +1652,8 @@ function OperationReview({
   cancel: () => void;
 }) {
   const material = operation.material;
-  const production = operation.source === "production_connection";
+  const catalog = operation.source === "production_catalog";
+  const production = operation.source === "production_connection" || catalog;
   const [deadlineExpired, setDeadlineExpired] = useState(false);
   useEffect(() => {
     setDeadlineExpired(false);
@@ -1316,8 +1684,18 @@ function OperationReview({
         {stateLabels[operation.state]}
       </p>
       <dl>
-        <dt>{production ? "官方连接资源" : "本地模拟端点"}</dt>
-        <dd>{material.route.base_url}</dd>
+        <dt>
+          {catalog
+            ? "精确目录请求"
+            : production
+              ? "官方连接资源"
+              : "本地模拟端点"}
+        </dt>
+        <dd>
+          {catalog
+            ? `${material.request_method} ${material.request_url}`
+            : material.route.base_url}
+        </dd>
         <dt>账户快照</dt>
         <dd>
           {material.account.id} · r{material.account.revision}
@@ -1332,9 +1710,23 @@ function OperationReview({
               {" "}
               · 授权 {material.authorization.binding.id} · generation{" "}
               {material.authorization.generation}
+              {catalog && <> · 授权到期 {material.authorization.expires_at}</>}
             </>
           )}
         </dd>
+        {catalog && (
+          <>
+            <dt>连接前提</dt>
+            <dd>{material.connection_id}</dd>
+            <dt>本进程目录准入</dt>
+            <dd>
+              {material.production_admission?.profile} ·{" "}
+              {material.production_admission?.generation}
+            </dd>
+            <dt>应用能力</dt>
+            <dd>仅目录 · 推理：禁用 · 应用刷新：禁用 · 付费回退：禁用</dd>
+          </>
+        )}
         <dt>计费边界</dt>
         <dd>
           {material.account.billing_mode} · {material.route.spend_class}
@@ -1377,9 +1769,11 @@ function OperationReview({
         )}
         <dt>输入摘要</dt>
         <dd>
-          {production
-            ? "仅订阅连接：浏览器账户/工作区选择及凭据存储；无目录、推理、刷新、重试或付费降级。"
-            : material.data_summary}
+          {catalog
+            ? "不发送提示词、源代码、任务上下文或对话；不修改凭据、任务模型或角色策略。创建与批准不发送目录请求。"
+            : production
+              ? "仅订阅连接：浏览器账户/工作区选择及凭据存储；无目录、推理、刷新、重试或付费降级。"
+              : material.data_summary}
         </dd>
         {material.model && (
           <>
@@ -1412,7 +1806,7 @@ function OperationReview({
           <code>{operation.material_digest}</code>
         </dd>
       </dl>
-      {production && (
+      {production && !catalog && (
         <div className="note">
           <p>
             账户与工作区由用户在官方浏览器流程中选择；不要在本界面输入密码或验证码。
@@ -1431,6 +1825,7 @@ function OperationReview({
         </div>
       )}
       {production &&
+        !catalog &&
         (operation.state === "failed" || operation.state === "unknown") && (
           <p className="warning-copy">
             连接失败或结果未知；请核对已记录的本地凭据提交与清理证据。未记录的结果仍无法确认，远端授权状态仍未验证。请显式读取原记录，不会重放请求。
@@ -1442,7 +1837,33 @@ function OperationReview({
             diagnostic={operation.connection_diagnostic as unknown}
           />
         )}
-      {operation.state === "pending" && (
+      {catalog &&
+        (operation.state === "failed" || operation.state === "unknown") && (
+          <p className="warning-copy">
+            目录失败或结果未知；保留原连接，不刷新、不重新登录、不重放请求。错误分类：
+            {operation.code ?? "unknown"}。
+          </p>
+        )}
+      {catalog && operation.state === "succeeded" && (
+        <div aria-label="目录展示结果">
+          <h5>本次目录结果（仅展示）</h5>
+          {operation.catalog.length === 0 ? (
+            <p>目录为空：本次响应没有可展示的模型。</p>
+          ) : (
+            <ul>
+              {operation.catalog.map((entry) => (
+                <li key={entry.id}>
+                  <span>{entry.display_name}</span> · <code>{entry.id}</code>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="field-help">
+            可见模型不代表推理成功、可用额度或价格；不会自动选为任务模型。
+          </p>
+        </div>
+      )}
+      {!readOnly && operation.state === "pending" && (
         <div className="actions acceptance-actions">
           <button
             type="button"
@@ -1463,24 +1884,27 @@ function OperationReview({
           </button>
         </div>
       )}
-      {operation.state === "approved" && operation.attempts === 0 && (
-        <button
-          type="button"
-          disabled={reviewDisabled}
-          onClick={() => {
-            if (!production || Date.parse(material.expires_at) > Date.now())
-              execute();
-          }}
-        >
-          执行{phaseLabels[operation.phase]}
-        </button>
-      )}
+      {!readOnly &&
+        operation.state === "approved" &&
+        operation.attempts === 0 && (
+          <button
+            type="button"
+            disabled={reviewDisabled}
+            onClick={() => {
+              if (!production || Date.parse(material.expires_at) > Date.now())
+                execute();
+            }}
+          >
+            执行{phaseLabels[operation.phase]}
+          </button>
+        )}
       {(operation.state === "running" || operation.attempts > 0) && (
         <p className="warning-copy">
           单次尝试已消耗；没有重试操作。结果未知也不会重放请求。
         </p>
       )}
-      {material.connection_mode === "browser_handoff" &&
+      {!readOnly &&
+        material.connection_mode === "browser_handoff" &&
         operation.attempts > 0 && (
           <ModelConnectionSession
             operation={operation}
@@ -1491,9 +1915,11 @@ function OperationReview({
           />
         )}
       <p className="field-help">
-        {production
-          ? "真实连接记录不代表当前执行许可；模型访问：关闭"
-          : "真实访问：关闭"}{" "}
+        {catalog
+          ? "目录记录不是可复用执行许可；推理访问：关闭"
+          : production
+            ? "真实连接记录不代表当前执行许可；模型访问：关闭"
+            : "真实访问：关闭"}{" "}
         · 远端计费：未验证 · 额度：未知
       </p>
     </div>

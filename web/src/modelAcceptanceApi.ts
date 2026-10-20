@@ -54,8 +54,7 @@ export const modelAcceptanceApi = {
 };
 
 const messages: Record<string, string> = {
-  acceptance_simulation_disabled:
-    "本进程未启用构造器拥有的本地模拟；真实访问保持关闭。",
+  acceptance_simulation_disabled: "本账户或阶段未开放；不会发送请求。",
   acceptance_conflict: "材料、账户版本或操作状态已经变化；不会自动重送。",
   acceptance_record_unavailable:
     "验收记录当前不可读取或无法持久保存；不会自动重试。",
