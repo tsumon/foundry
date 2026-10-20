@@ -2,7 +2,7 @@
 
 ## Release boundary
 
-This increment connects the existing acceptance ledger to a browser-driven subscription connection session. The subsequent [production admission backend](openai-production-admission.md) adds a trusted, default-closed connection policy over the same session owner and ledger. Shipped executable acceptance paths remain constructor-owned, literal-loopback simulations with synthetic credentials. Normal Foundry still rejects real connection before provider traffic, host registration, callback binding or credential access. No environment variable, CLI flag, HTTP field or UI toggle enables it.
+This increment connects the acceptance ledger to a browser-driven subscription session. The subsequent [production admission backend](openai-production-admission.md) and [operator entry](openai-operator-entry.md) add a default-closed policy over the same owner and ledger. The acceptance preview stays a literal-loopback simulation. Ordinary startup rejects real connection before provider traffic, host registration, callback binding or credential access. Separately confirmed paired operator options can prepare one live route; HTTP fields, environment variables and UI toggles cannot activate it.
 
 Real login and this machine's native Keychain check require separate future user confirmation. Directory queries, inference, automatic refresh, automatic retry and paid-API fallback remain closed. Kimi, scripts, Git writes, task approvals and deployment/database approvals are unchanged. The workbench navigation and independent proposal → decision → explicit execution remain intact.
 

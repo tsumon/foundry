@@ -18,3 +18,4 @@ help:
 	@echo "FOUNDRY_WEB_DIR   Compiled SPA directory (default: web/dist when present; empty disables static UI)"
 	@echo "FOUNDRY_DOCKER    Docker executable name or path (default: docker)"
 	@echo "FOUNDRY_GO        Go command used by this Makefile (default: go)"
+	@echo "OpenAI operator entry is default-closed; see docs/public/openai-operator-entry.md before any real activation."

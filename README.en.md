@@ -137,6 +137,8 @@ Model access follows a “prepare first, approve each later stage” design. In 
 
 A separate browser-connection simulation supports explicit execution after approval, a ten-minute human-login window, manual status reads and cancellation, with one-attempt and failure-recovery evidence. It does not enable real sign-in or a native Keychain check. See [connection approval handoff and human-login lifetime](docs/public/openai-connection-handoff.md).
 
+The OpenAI subscription [operator entry](docs/public/openai-operator-entry.md) is wired but ordinary startup remains closed. After separate confirmation, an operator must explicitly bind one official route and complete a new native test-item Keychain probe in that process. The workbench still requires separate proposal, approval, execution and manual browser handoff. Validation uses local simulations only; no real login has been performed. Catalog, inference, refresh, automatic retry and paid-API fallback remain closed.
+
 <details>
 <summary>Local development and runtime entrypoints</summary>
 
@@ -168,7 +170,8 @@ The service exposes one fixed read-only test tool and is the only MCP eligible f
 | `FOUNDRY_DOCKER` | Docker executable name or path. Defaults to `docker`. |
 | `FOUNDRY_DISABLE_CONTROLLED_READ_CREATION` | Optional Go boolean. `true` prevents new controlled-read tasks while historical records remain readable. Malformed values stop startup. |
 | `FOUNDRY_GO` | Go command used by `scripts/build.sh` and the Makefile. Defaults to `go`. |
-| `--local-mcp-test` | The only supported production application flag. The synthetic MCP fixture is off by default. |
+| `--local-mcp-test` | Explicitly starts the synthetic MCP fixture; off by default. |
+| `--openai-subscription-route` + `--openai-keychain-journal` | Paired operator opt-in for one existing official subscription route and a new private diagnostic journal. Runs a fresh native test-item probe; real use requires separate confirmation and never replaces one-operation workbench approval. See [operator entry](docs/public/openai-operator-entry.md). |
 
 </details>
 

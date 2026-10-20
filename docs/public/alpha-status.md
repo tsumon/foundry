@@ -17,13 +17,15 @@ FOUNDRY is an experimental, source-only macOS arm64 (Apple Silicon) alpha. This 
 - OpenAI subscription accounts receive an optional stage-0 metadata projection: account-base address policy, Keychain `not_checked`, remote billing `unverified`, quota `unknown`, and connection/catalog/inference `blocked`. A canonical account base does not prove that every route or endpoint ownership check passed.
 - A separate local `foundry-keychain-check` command can exercise generated diagnostic data in an isolated Keychain service with a private recovery journal. It is noninteractive, has no plaintext fallback, does not accept a credential value or enumerate account credentials, and does not update the browser report.
 
+The [OpenAI operator entry](openai-operator-entry.md) is implemented and default-closed, with a paired startup opt-in, fresh journaled native readiness prerequisite and independent workbench connection approval. This is locally simulated implementation evidence, not real-provider acceptance. Installing or starting the default build never grants real-login permission.
+
 ## Deliberately not implemented
 
 - Automatic patch application, source-repository writes, commits, pushes, releases, deployment, or database migration.
 - Multi-worker scheduling or autonomous background execution.
 - Generic external MCP `tools/call`, MCP stdio/OAuth, Skill/script execution, hook scripts/webhooks, or Git hooks.
 - Automatic provider fallback, paid fallback, retry/replay of unknown remote outcomes, or automatic Docker image pulls.
-- A browser Keychain test, real-login action, live model query, or live-inference action. Stage 0 exposes preparation metadata and an operator-run synthetic storage diagnostic only.
+- A browser-triggered native Keychain test, ordinary-startup real-login action, live model query, or live-inference action. Only separately confirmed operator activation can prepare the connection-only approval workflow; its native check is never triggered by a web request.
 - An installer, signed/notarized application, package manager formula, or downloadable binary release.
 
 ## Support boundary
