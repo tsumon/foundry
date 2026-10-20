@@ -1,6 +1,6 @@
 # OpenAI subscription connection: production admission
 
-Status: implementation in progress; runtime admission remains **closed**. This increment is validated only with local fixtures. No real login, native Keychain diagnostic, catalog query, inference, refresh, retry, or paid-API fallback is authorized by installing it.
+Status: backend admission implemented; shipped runtime admission remains **closed**. This increment is validated only with local fixtures. No real login, native Keychain diagnostic, catalog query, inference, refresh, retry, or paid-API fallback is authorized by installing it.
 
 ## Two independent gates
 
@@ -19,6 +19,10 @@ The credential-readiness predicate is trusted host integration, not client-suppl
 
 Approval material expires after 10 minutes. Explicit execution starts a separate maximum 600-second human-login window; individual protocol requests retain their 30-second bound. Admission policy and current material are rechecked at execution. The adapter independently verifies the durable running claim and reserves its single dispatch before callback binding, host registration, credential access, or provider I/O. Duplicate dispatches and recovered/interrupted claims cannot replay.
 
+The trusted integration entry is `acceptance.NewProductionConnection` with an exact stored route, the default official-profile SIWC service, and a host-owned `CredentialReady func() bool`. Each construction creates a new random 128-bit generation. Construction itself never evaluates readiness. Invalid policies still reserve identifiable accounts against legacy HTTP bypass. The default runtime instead constructs `acceptance.New`, explicitly recovers its ledger, and closes it before SIWC/storage shutdown. No operator activation is wired.
+
+Optional material `production_admission` contains `generation` and the fixed profile `openai_siwc_subscription_v1`; empty metadata leaves historical simulation JSON/digests unchanged. Production operations use `source: production_connection` and `live_access: connection_only`, never `local_simulation`. These fields describe the connection approval, not catalog/inference authority or proof of real validation. A durable, immutable dispatch reservation extends the existing claim ledger. Completion compares the original running claim, generation and digest atomically; successful completion additionally requires that reservation and fresh matching authorization. Failed or interrupted work stays consumed.
+
 ## Protocol and evidence
 
 The existing fixed protocol adapter is reused without endpoint customization. It requests `openid profile email offline_access resource.invoke chatgpt.tokens.use.direct` with resource `https://api.openai.com/v1`, uses fresh state/nonce/PKCE S256, and validates the issued client ID and signed identity before credential activation. Account and workspace selection remain the user's browser action. Requested permissions are not proof of granted permissions or available quota. See the [official registration guide](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), checked 2026-10-20.
@@ -36,6 +40,8 @@ Cancellation, login expiry, process shutdown, and receipt failures reuse the own
 - Verify production-profile protocol dispatch offline, and keep every shipped runtime closed by default.
 - Keep navigation/layout unchanged. Show a read-only production-admission preparation summary in the existing account check, including the unperformed native check; do not offer an enable/login action.
 - Run full tests, race checks, secret/vulnerability scans, a clean-source export, and browser acceptance before pushing reviewed public source. Check CI for that exact commit; do not create a Release.
+
+The existing account check may include `openai_preparation.production_admission` with exactly `state: implemented_disabled`, `validation: local_simulation_only`, `native_keychain: not_checked`, and `operator_activation: unavailable`. This read-only diagnostic describes the shipped default policy; it is not an enabled-policy indicator for a trusted embedding, a native readiness report, or permission to execute. Historical history fields remain intact, and production eligibility is never exposed as simulation eligibility.
 
 ## Next operator step (not performed)
 

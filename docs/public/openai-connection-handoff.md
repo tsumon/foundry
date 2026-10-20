@@ -2,7 +2,7 @@
 
 ## Release boundary
 
-This increment connects the existing acceptance ledger to a browser-driven subscription connection session. It prepares the live workflow without opening the live gate. All executable acceptance paths remain constructor-owned, literal-loopback simulations with synthetic credentials. Normal Foundry still rejects real connection before provider traffic, host registration, callback binding or credential access. No environment variable, CLI flag, HTTP field or UI toggle enables it.
+This increment connects the existing acceptance ledger to a browser-driven subscription connection session. The subsequent [production admission backend](openai-production-admission.md) adds a trusted, default-closed connection policy over the same session owner and ledger. Shipped executable acceptance paths remain constructor-owned, literal-loopback simulations with synthetic credentials. Normal Foundry still rejects real connection before provider traffic, host registration, callback binding or credential access. No environment variable, CLI flag, HTTP field or UI toggle enables it.
 
 Real login and this machine's native Keychain check require separate future user confirmation. Directory queries, inference, automatic refresh, automatic retry and paid-API fallback remain closed. Kimi, scripts, Git writes, task approvals and deployment/database approvals are unchanged. The workbench navigation and independent proposal → decision → explicit execution remain intact.
 
@@ -36,7 +36,7 @@ The session is process-owned, not request-owned. Account and acceptance services
 | Process restart | Previously running operation becomes consumed/unknown; no handoff restoration or automatic retry |
 | Credential or receipt persistence failure | Fail closed; retain recoverable cleanup intent, never report success from an incomplete write |
 
-Receipts keep local-simulation provenance, unknown quota, unverified remote billing and blocked live access. Requested permissions and actual grants remain distinct. `offline_access` never activates refresh. Local cleanup does not revoke provider consent, and success does not unlock a directory or inference operation. Uncertain outcomes need review and a fresh independently approved operation, not a repeat of the old one.
+Simulation receipts keep local-simulation provenance, unknown quota, unverified remote billing and blocked live access. The separately admitted production connection uses distinct `production_connection` provenance and `connection_only` access; it is never relabeled a local simulation, and its preparation validation still remains local-only. Requested permissions and actual grants remain distinct. `offline_access` never activates refresh. Local cleanup does not revoke provider consent, and success does not unlock a directory or inference operation. Uncertain outcomes need review and a fresh independently approved operation, not a repeat of the old one.
 
 ## Workbench behavior
 

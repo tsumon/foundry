@@ -11,6 +11,18 @@ const AcceptancePrompt = "Write a pure function that adds two integers. Syntheti
 const AcceptanceSystem = "Return a short coding example. No tools, files, repository context, or external actions."
 const OpenAISubscriptionRequestedResource = "https://api.openai.com/v1"
 
+// ProductionAdmission freezes provenance, not authority. Only a current,
+// constructor-owned controller may admit this generation to the adapter.
+type ProductionAdmission struct {
+	Generation string `json:"generation"`
+	Profile    string `json:"profile"`
+}
+
+func (p ProductionAdmission) Valid() bool {
+	b, err := hex.DecodeString(p.Generation)
+	return err == nil && len(b) == 16 && hex.EncodeToString(b) == p.Generation && p.Profile == "openai_siwc_subscription_v1"
+}
+
 type ModelAcceptanceProposal struct {
 	Phase                   string `json:"phase"`
 	ConnectionPurpose       string `json:"connection_purpose,omitempty"`
@@ -20,30 +32,37 @@ type ModelAcceptanceProposal struct {
 	PrerequisiteID          string `json:"prerequisite_id,omitempty"`
 }
 type ModelAcceptanceMaterial struct {
-	Phase               string              `json:"phase"`
-	ConnectionPurpose   string              `json:"connection_purpose,omitempty"`
-	ConnectionMode      string              `json:"connection_mode,omitempty"`
-	LoginTimeoutSeconds int                 `json:"login_timeout_seconds,omitempty"`
-	RequestedScopes     []string            `json:"requested_scopes,omitempty"`
-	RequestedResource   string              `json:"requested_resource,omitempty"`
-	Account             ModelAccount        `json:"account"`
-	Route               ModelRoute          `json:"route"`
-	CredentialVersion   int64               `json:"credential_version"`
-	Authorization       *ModelAuthorization `json:"authorization,omitempty"`
-	PrerequisiteID      string              `json:"prerequisite_id,omitempty"`
-	ConnectionID        string              `json:"connection_id,omitempty"`
-	Model               string              `json:"model,omitempty"`
-	PromptDigest        string              `json:"prompt_digest,omitempty"`
-	DataSummary         string              `json:"data_summary"`
-	CreatedAt           string              `json:"created_at"`
-	ExpiresAt           string              `json:"expires_at"`
-	DeadlineSeconds     int                 `json:"deadline_seconds"`
-	MaxAttempts         int                 `json:"max_attempts"`
+	ProductionAdmission *ProductionAdmission `json:"production_admission,omitempty"`
+	Phase               string               `json:"phase"`
+	ConnectionPurpose   string               `json:"connection_purpose,omitempty"`
+	ConnectionMode      string               `json:"connection_mode,omitempty"`
+	LoginTimeoutSeconds int                  `json:"login_timeout_seconds,omitempty"`
+	RequestedScopes     []string             `json:"requested_scopes,omitempty"`
+	RequestedResource   string               `json:"requested_resource,omitempty"`
+	Account             ModelAccount         `json:"account"`
+	Route               ModelRoute           `json:"route"`
+	CredentialVersion   int64                `json:"credential_version"`
+	Authorization       *ModelAuthorization  `json:"authorization,omitempty"`
+	PrerequisiteID      string               `json:"prerequisite_id,omitempty"`
+	ConnectionID        string               `json:"connection_id,omitempty"`
+	Model               string               `json:"model,omitempty"`
+	PromptDigest        string               `json:"prompt_digest,omitempty"`
+	DataSummary         string               `json:"data_summary"`
+	CreatedAt           string               `json:"created_at"`
+	ExpiresAt           string               `json:"expires_at"`
+	DeadlineSeconds     int                  `json:"deadline_seconds"`
+	MaxAttempts         int                  `json:"max_attempts"`
 }
 
 // Explicit connection policies are narrower than the route's subscription
 // billing metadata. Empty permission fields preserve historical material.
 func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
+	production := m.ProductionAdmission != nil
+	if production && (!m.ProductionAdmission.Valid() || m.ConnectionPurpose != "subscription_only" || m.ConnectionMode != "browser_handoff" ||
+		!m.Account.Enabled || m.Account.BillingMode != "subscription" || m.Account.BaseURL != OpenAISubscriptionRequestedResource ||
+		m.Route.Environment != "live" || m.Route.BaseURL != OpenAISubscriptionRequestedResource || m.Route.Protocol != "responses" || m.Route.SpendClass != "subscription_only") {
+		return false
+	}
 	if m.ConnectionMode == "" {
 		if m.LoginTimeoutSeconds != 0 {
 			return false
@@ -57,7 +76,7 @@ func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
 	if m.Phase != "connection" || m.Model != "" || m.PrerequisiteID != "" || m.ConnectionID != "" || m.PromptDigest != "" ||
 		m.Account.Provider != "openai" || m.Account.AuthMethod != "openai_siwc" ||
 		m.Route.AccountID != m.Account.ID || m.Route.Adapter != "openai_siwc_responses" ||
-		m.Route.Environment != "simulation" || m.Route.ExtraUsage != "off" {
+		!production && m.Route.Environment != "simulation" || m.Route.ExtraUsage != "off" {
 		return false
 	}
 	switch m.ConnectionPurpose {

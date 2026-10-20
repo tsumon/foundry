@@ -17,8 +17,8 @@ func (s *SIWCService) SubscriptionAdapterPreparation() *domain.OpenAISubscriptio
 }
 
 // validSubscriptionProfile separates the fixed protocol profile from entry
-// admission. Only package-internal offline tests can enter the official core;
-// every exported production start remains denied before reaching this point.
+// admission. The owned production policy can enter the official core only
+// after reserving an approved dispatch; ordinary production starts stay denied.
 func (s *SIWCService) validSubscriptionProfile() bool {
 	if s == nil || s.options.FlowTimeout < 10*time.Millisecond || s.options.FlowTimeout > 10*time.Minute {
 		return false

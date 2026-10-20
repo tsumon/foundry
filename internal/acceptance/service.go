@@ -1,4 +1,5 @@
-// Package acceptance implements inert, single-use local simulation approvals.
+// Package acceptance implements default-closed, single-use connection and
+// local simulation approvals.
 package acceptance
 
 import (
@@ -44,6 +45,7 @@ type Service struct {
 	browserSIWC        *accounts.SIWCService
 	sessionsMu         sync.Mutex
 	sessions           map[string]*connectionSession
+	production         *accounts.ProductionConnectionAdmission
 }
 
 func New(s *store.Store) *Service {
@@ -115,7 +117,7 @@ func (s *Service) OwnsAccount(account string) bool {
 	return s.ownedAccounts[account]
 }
 func (s *Service) SimulationEligible(account string) bool {
-	if s.invalidPolicy || !s.ready.Load() || s.router == nil || s.connect == nil {
+	if s.production != nil || s.invalidPolicy || !s.ready.Load() || s.router == nil || s.connect == nil {
 		return false
 	}
 	for _, r := range s.routes {
@@ -173,6 +175,12 @@ func (s *Service) mutationResult(o domain.ModelAcceptanceOperation, e error) (do
 func (s *Service) Propose(account string, q domain.ModelAcceptanceProposal) (domain.ModelAcceptanceOperation, error) {
 	s.lifecycle.RLock()
 	defer s.lifecycle.RUnlock()
+	if s.production != nil {
+		if !s.ready.Load() || !s.production.Eligible(s.store) || s.routes[q.RouteID].AccountID != account || q.Phase != "connection" || q.ConnectionPurpose != "subscription_only" {
+			return domain.ModelAcceptanceOperation{}, ErrDisabled
+		}
+		return s.mutationResult(s.store.ProposeProductionConnection(account, q, s.production.Metadata(), s.now()))
+	}
 	if !s.SimulationEligible(account) || s.routes[q.RouteID].AccountID != account {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
@@ -182,12 +190,19 @@ func (s *Service) Propose(account string, q domain.ModelAcceptanceProposal) (dom
 	return s.mutationResult(s.store.ProposeModelAcceptanceWithConnectionMode(account, q, s.ConnectionMode(q.RouteID), s.now()))
 }
 func (s *Service) owned(account, id string) (domain.ModelAcceptanceOperation, error) {
-	if !s.SimulationEligible(account) {
+	if s.production == nil && !s.SimulationEligible(account) || s.production != nil && !s.ready.Load() {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
 	o, e := s.Get(account, id)
 	if e != nil {
 		return s.mutationResult(o, e)
+	}
+	if s.production != nil {
+		if !s.production.OwnsClaim(s.store, o) {
+			return domain.ModelAcceptanceOperation{}, ErrDisabled
+		}
+	} else if o.Material.ProductionAdmission != nil || o.Source != "local_simulation" {
+		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
 	r, ok := s.routes[o.Material.Route.ID]
 	if !ok || r.AccountID != account || !reflect.DeepEqual(r, o.Material.Route) || o.Phase != o.Material.Phase || !o.Material.ValidConnectionPurpose() || o.Material.ConnectionMode != s.ConnectionMode(r.ID) || o.Material.ConnectionPurpose != s.ConnectionPurpose(r.ID) || (s.identityRoutes[r.ID] || s.subscriptionRoutes[r.ID]) && o.Phase != "connection" {
@@ -198,6 +213,9 @@ func (s *Service) owned(account, id string) (domain.ModelAcceptanceOperation, er
 func (s *Service) Decide(account, id string, revision int64, digest, decision string) (domain.ModelAcceptanceOperation, error) {
 	s.lifecycle.RLock()
 	defer s.lifecycle.RUnlock()
+	if s.production != nil && !s.production.Eligible(s.store) {
+		return domain.ModelAcceptanceOperation{}, ErrDisabled
+	}
 	if _, e := s.owned(account, id); e != nil {
 		return domain.ModelAcceptanceOperation{}, e
 	}
@@ -206,6 +224,9 @@ func (s *Service) Decide(account, id string, revision int64, digest, decision st
 func (s *Service) Execute(ctx context.Context, account, id string, revision int64, digest string) (domain.ModelAcceptanceOperation, error) {
 	s.lifecycle.RLock()
 	defer s.lifecycle.RUnlock()
+	if s.production != nil && !s.production.Eligible(s.store) {
+		return domain.ModelAcceptanceOperation{}, ErrDisabled
+	}
 	if _, e := s.owned(account, id); e != nil {
 		return domain.ModelAcceptanceOperation{}, e
 	}
@@ -268,10 +289,19 @@ func (s *Service) finish(o domain.ModelAcceptanceOperation, e error, catalog []d
 		catalog = nil
 		result = model.Result{}
 	}
-	saved, writeErr := s.store.FinishModelAcceptance(o.AccountID, o.ID, o.Revision, state, certainty, code, catalog, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now())
+	writeReceipt := func(state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, result model.Result) (domain.ModelAcceptanceOperation, error) {
+		if s.production != nil {
+			if !s.production.OwnsClaim(s.store, o) || len(catalog) != 0 || result.InputTokens != 0 || result.OutputTokens != 0 || result.UsageKnown {
+				return domain.ModelAcceptanceOperation{}, store.ErrConflict
+			}
+			return s.store.FinishProductionConnection(o, state, certainty, code, s.now())
+		}
+		return s.store.FinishModelAcceptance(o.AccountID, o.ID, o.Revision, state, certainty, code, catalog, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now())
+	}
+	saved, writeErr := writeReceipt(state, certainty, code, catalog, result)
 	if writeErr != nil {
 		s.ready.Store(false)
-		_, _ = s.store.FinishModelAcceptance(o.AccountID, o.ID, o.Revision, "unknown", "unknown", "transport_unknown", nil, 0, 0, false, s.now())
+		_, _ = writeReceipt("unknown", "unknown", "transport_unknown", nil, model.Result{})
 		return domain.ModelAcceptanceOperation{}, ErrPersistence
 	}
 	return saved, nil

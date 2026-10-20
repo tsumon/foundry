@@ -31,6 +31,7 @@ cmd/foundry/diagnostic_startup_test.go
 cmd/foundry/local_mcp_test.go
 cmd/foundry/main.go
 cmd/foundry/main_test.go
+cmd/foundry/production_admission_test.go
 docs/media/README.md
 docs/media/model-acceptance.jpg
 docs/media/workbench-plan-approval.jpg
@@ -48,6 +49,8 @@ docs/public/safety.md
 go.mod
 go.sum
 internal/acceptance/connection_session.go
+internal/acceptance/production_connection.go
+internal/acceptance/production_connection_test.go
 internal/acceptance/connection_session_test.go
 internal/acceptance/service.go
 internal/acceptance/service_identity_test.go
@@ -60,6 +63,8 @@ internal/accounts/recovery_test.go
 internal/accounts/service.go
 internal/accounts/service_test.go
 internal/accounts/siwc.go
+internal/accounts/siwc_production_admission.go
+internal/accounts/siwc_production_admission_test.go
 internal/accounts/siwc_handoff_test.go
 internal/accounts/siwc_identity_test.go
 internal/accounts/siwc_operations.go
@@ -90,6 +95,7 @@ internal/domain/mcp_execution.go
 internal/domain/mcp_execution_test.go
 internal/domain/model_acceptance.go
 internal/domain/model_acceptance_operations.go
+internal/domain/model_acceptance_production_test.go
 internal/domain/model_acceptance_subscription_test.go
 internal/domain/model_accounts.go
 internal/domain/model_accounts_test.go
@@ -196,6 +202,7 @@ internal/httpapi/missions.go
 internal/httpapi/model_acceptance.go
 internal/httpapi/model_acceptance_identity_test.go
 internal/httpapi/model_acceptance_operations.go
+internal/httpapi/model_acceptance_production_test.go
 internal/httpapi/model_acceptance_operations_test.go
 internal/httpapi/model_acceptance_subscription_test.go
 internal/httpapi/model_acceptance_test.go
@@ -305,6 +312,8 @@ internal/store/model_acceptance.go
 internal/store/model_acceptance_identity_test.go
 internal/store/model_acceptance_subscription_test.go
 internal/store/model_acceptance_operations.go
+internal/store/model_acceptance_production.go
+internal/store/model_acceptance_production_test.go
 internal/store/model_acceptance_operations_test.go
 internal/store/model_acceptance_test.go
 internal/store/openai_preparation_test.go

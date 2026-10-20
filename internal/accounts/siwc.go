@@ -123,7 +123,7 @@ func NewSIWCService(lifecycle *Service) *SIWCService {
 			JWKSOrigin:          officialSIWCOrigin,
 			RevocationOrigin:    officialSIWCOrigin,
 			Issuer:              officialSIWCIssuer,
-			FlowTimeout:         5 * time.Minute,
+			FlowTimeout:         10 * time.Minute,
 		},
 		http:  newSIWCHTTPClient(),
 		flows: make(map[string]*siwcAttempt),

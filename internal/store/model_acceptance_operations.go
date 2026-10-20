@@ -18,7 +18,10 @@ func (s *Store) initializeModelAcceptanceOperations() error {
  CREATE TABLE IF NOT EXISTS model_acceptance_claims(sequence INTEGER PRIMARY KEY AUTOINCREMENT,operation_id TEXT NOT NULL UNIQUE REFERENCES model_acceptance_operations(id));
  CREATE TRIGGER IF NOT EXISTS acceptance_claim_no_update BEFORE UPDATE ON model_acceptance_claims BEGIN SELECT RAISE(ABORT,'immutable acceptance claim'); END;
  CREATE TRIGGER IF NOT EXISTS acceptance_claim_no_delete BEFORE DELETE ON model_acceptance_claims BEGIN SELECT RAISE(ABORT,'immutable acceptance claim'); END;`)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.initializeProductionConnectionDispatch()
 }
 func acceptanceRead(row modelRowScanner) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
@@ -77,7 +80,7 @@ func acceptanceWrite(tx *sql.Tx, o *domain.ModelAcceptanceOperation) error {
 
 // Capture and revalidation use the same SQLite transaction as proposal/claim.
 // This projection never reads a secret reference or credential value.
-func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, purpose string, now time.Time) (domain.ModelAcceptanceMaterial, error) {
+func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, purpose string, admission *domain.ProductionAdmission, now time.Time) (domain.ModelAcceptanceMaterial, error) {
 	var m domain.ModelAcceptanceMaterial
 	a, e := modelAccountTx(tx, account)
 	if e != nil {
@@ -87,7 +90,7 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, p
 	if e != nil {
 		return m, e
 	}
-	if !a.Enabled || r.Environment != "simulation" || r.ExtraUsage != "off" || (r.Adapter != "openai_siwc_responses" && r.Adapter != "kimi_code_chat") || domain.ValidateModelRoute(r, a) != nil {
+	if !a.Enabled || (admission == nil && r.Environment != "simulation") || r.ExtraUsage != "off" || (r.Adapter != "openai_siwc_responses" && r.Adapter != "kimi_code_chat") || domain.ValidateModelRoute(r, a) != nil {
 		return m, ErrConflict
 	}
 	var unresolved bool
@@ -99,6 +102,14 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, p
 		return m, ErrConflict
 	}
 	m.Account, m.Route, m.CredentialVersion = a, r, a.CurrentCredentialVersion
+	if admission != nil {
+		copy := *admission
+		m.ProductionAdmission = &copy
+		m.ConnectionMode, m.LoginTimeoutSeconds, m.DeadlineSeconds, m.MaxAttempts = "browser_handoff", 600, 30, 1
+		if purpose != "subscription_only" {
+			return m, ErrConflict
+		}
+	}
 	if purpose == "identity_only" {
 		m.Phase, m.ConnectionPurpose, m.RequestedScopes = "connection", purpose, []string{"openid", "profile", "email"}
 		if !m.ValidConnectionPurpose() {
@@ -155,6 +166,9 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, p
 			if !proofCurrent || auth.Binding.AccountID != account || x != nil || !allowed || domain.ValidateModelAuthorizationBinding(auth.Binding) != nil {
 				return m, ErrConflict
 			}
+			if admission != nil && auth.Binding.Issuer != "https://auth.openai.com" {
+				return m, ErrConflict
+			}
 			m.Authorization = &auth
 		} else if connected {
 			return m, ErrConflict
@@ -164,14 +178,15 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, p
 }
 func acceptanceSnapshotDigest(m domain.ModelAcceptanceMaterial) string {
 	return domain.AcceptanceDigest(struct {
-		Account           domain.ModelAccount
-		Route             domain.ModelRoute
-		Credential        int64
-		Authorization     *domain.ModelAuthorization
-		ConnectionPurpose string   `json:"connection_purpose,omitempty"`
-		RequestedScopes   []string `json:"requested_scopes,omitempty"`
-		RequestedResource string   `json:"requested_resource,omitempty"`
-	}{m.Account, m.Route, m.CredentialVersion, m.Authorization, m.ConnectionPurpose, m.RequestedScopes, m.RequestedResource})
+		Account             domain.ModelAccount
+		Route               domain.ModelRoute
+		Credential          int64
+		Authorization       *domain.ModelAuthorization
+		ConnectionPurpose   string                      `json:"connection_purpose,omitempty"`
+		RequestedScopes     []string                    `json:"requested_scopes,omitempty"`
+		RequestedResource   string                      `json:"requested_resource,omitempty"`
+		ProductionAdmission *domain.ProductionAdmission `json:"production_admission,omitempty"`
+	}{m.Account, m.Route, m.CredentialVersion, m.Authorization, m.ConnectionPurpose, m.RequestedScopes, m.RequestedResource, m.ProductionAdmission})
 }
 func acceptancePrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error {
 	if m.Phase == "connection" {
@@ -230,6 +245,10 @@ func (s *Store) ProposeModelAcceptance(account string, q domain.ModelAcceptanceP
 // ProposeModelAcceptanceWithConnectionMode accepts trusted constructor policy,
 // never a field decoded from the public proposal. Historical callers omit it.
 func (s *Store) ProposeModelAcceptanceWithConnectionMode(account string, q domain.ModelAcceptanceProposal, mode string, now time.Time) (domain.ModelAcceptanceOperation, error) {
+	return s.proposeModelAcceptance(account, q, mode, nil, now)
+}
+
+func (s *Store) proposeModelAcceptance(account string, q domain.ModelAcceptanceProposal, mode string, admission *domain.ProductionAdmission, now time.Time) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
 	if !acceptanceIdentifierPattern.MatchString(account) || !acceptanceIdentifierPattern.MatchString(q.RouteID) || q.ExpectedAccountRevision < 1 || (q.Phase != "connection" && q.Phase != "catalog" && q.Phase != "inference") {
 		return o, ErrConflict
@@ -243,7 +262,7 @@ func (s *Store) ProposeModelAcceptanceWithConnectionMode(account string, q domai
 	if _, e = tx.Exec(`UPDATE model_accounts SET revision=revision WHERE id=?`, account); e != nil {
 		return o, e
 	}
-	m, e := acceptanceGateSnapshot(tx, account, q.RouteID, q.Phase != "connection", q.ConnectionPurpose, now)
+	m, e := acceptanceGateSnapshot(tx, account, q.RouteID, q.Phase != "connection", q.ConnectionPurpose, admission, now)
 	if e != nil {
 		return o, e
 	}
@@ -285,6 +304,11 @@ func (s *Store) ProposeModelAcceptanceWithConnectionMode(account string, q domai
 		return o, e
 	}
 	o = domain.ModelAcceptanceOperation{ID: hex.EncodeToString(nonce), AccountID: account, Revision: 1, Phase: q.Phase, State: "pending", Material: m, MaterialDigest: domain.AcceptanceDigest(m), Source: "local_simulation", Certainty: "not_sent", Catalog: []domain.ModelAcceptanceCatalogEntry{}, Quota: "unknown", RemoteBilling: "unverified", LiveAccess: "blocked"}
+	if admission != nil {
+		o.Source, o.LiveAccess = "production_connection", "connection_only"
+		o.Material.DataSummary = "OpenAI subscription connection only; browser account/workspace selection and credential storage. No catalog, inference, refresh, retries or paid fallback."
+		o.MaterialDigest = domain.AcceptanceDigest(o.Material)
+	}
 	raw, e := json.Marshal(o)
 	if e != nil {
 		return o, e
@@ -336,7 +360,7 @@ func (s *Store) transitionModelAcceptance(account, id string, revision int64, di
 	if !expiry.After(now) {
 		invalid = "expired"
 	} else {
-		current, e := acceptanceGateSnapshot(tx, account, o.Material.Route.ID, o.Phase != "connection", o.Material.ConnectionPurpose, now)
+		current, e := acceptanceGateSnapshot(tx, account, o.Material.Route.ID, o.Phase != "connection", o.Material.ConnectionPurpose, o.Material.ProductionAdmission, now)
 		if e != nil {
 			if !errors.Is(e, ErrConflict) && !errors.Is(e, ErrNotFound) {
 				return o, e
@@ -393,6 +417,10 @@ func (s *Store) ClaimModelAcceptance(account, id string, revision int64, digest 
 
 // Finish only accepts bounded evidence; it never accepts provider text or output.
 func (s *Store) FinishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, now time.Time) (domain.ModelAcceptanceOperation, error) {
+	return s.finishModelAcceptance(account, id, revision, state, certainty, code, catalog, input, output, usage, now, nil)
+}
+
+func (s *Store) finishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, now time.Time, expected *domain.ModelAcceptanceOperation) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
 	if state != "succeeded" && state != "failed" && state != "unknown" {
 		return o, ErrConflict
@@ -427,11 +455,20 @@ func (s *Store) FinishModelAcceptance(account, id string, revision int64, state,
 	if o.State != "running" || o.Revision != revision || o.Attempts != 1 || !validAcceptanceMaterial(o) || domain.AcceptanceDigest(o.Material) != o.MaterialDigest {
 		return o, ErrConflict
 	}
+	if o.Material.ProductionAdmission != nil && expected == nil || expected != nil && !reflect.DeepEqual(o, *expected) {
+		return o, ErrConflict
+	}
 	if o.Material.ConnectionPurpose != "" && (len(catalog) != 0 || input != 0 || output != 0 || usage) {
 		return o, ErrConflict
 	}
 	if state == "succeeded" {
-		m, e := acceptanceGateSnapshot(tx, account, o.Material.Route.ID, true, o.Material.ConnectionPurpose, now)
+		if o.Material.ProductionAdmission != nil {
+			var sequence int64
+			if e = tx.QueryRow(`SELECT claim_sequence FROM model_acceptance_dispatches WHERE operation_id=?`, o.ID).Scan(&sequence); e != nil || sequence != o.ClaimSequence {
+				return o, ErrConflict
+			}
+		}
+		m, e := acceptanceGateSnapshot(tx, account, o.Material.Route.ID, true, o.Material.ConnectionPurpose, o.Material.ProductionAdmission, now)
 		if e != nil {
 			return o, e
 		}
@@ -459,6 +496,16 @@ func (s *Store) FinishModelAcceptance(account, id string, revision int64, state,
 
 func validAcceptanceMaterial(o domain.ModelAcceptanceOperation) bool {
 	m := o.Material
+	if m.ProductionAdmission != nil && (o.Source != "production_connection" || o.LiveAccess != "connection_only") || m.ProductionAdmission == nil && o.Source != "local_simulation" {
+		return false
+	}
+	if m.ProductionAdmission != nil {
+		created, createdErr := time.Parse(time.RFC3339Nano, m.CreatedAt)
+		expires, expiresErr := time.Parse(time.RFC3339Nano, m.ExpiresAt)
+		if createdErr != nil || expiresErr != nil || !created.Add(10*time.Minute).Equal(expires) {
+			return false
+		}
+	}
 	return o.Phase == m.Phase && (o.Phase == "connection" || o.Phase == "catalog" || o.Phase == "inference") &&
 		o.AccountID == m.Account.ID && m.Route.AccountID == m.Account.ID &&
 		m.MaxAttempts == 1 && m.DeadlineSeconds > 0 && m.DeadlineSeconds <= 30 && m.ValidConnectionPurpose()

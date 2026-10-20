@@ -43,7 +43,14 @@ func (s *Service) startConnection(o domain.ModelAcceptanceOperation) (domain.Mod
 	// Request cancellation cannot own a human-login session. Constructor policy
 	// has already been checked and the durable claim consumed before this call.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	flow, stop, err := s.browserSIWC.BeginOwnedSubscriptionConnectionSimulation(ctx, o.AccountID, o.Material.Account.Revision)
+	var flow accounts.SIWCFlow
+	var stop func()
+	var err error
+	if s.production != nil {
+		flow, stop, err = s.production.Begin(ctx, o)
+	} else {
+		flow, stop, err = s.browserSIWC.BeginOwnedSubscriptionConnectionSimulation(ctx, o.AccountID, o.Material.Account.Revision)
+	}
 	if err != nil {
 		cancel()
 		return s.finish(o, err, nil, model.Result{})

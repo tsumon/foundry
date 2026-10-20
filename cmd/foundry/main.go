@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"foundry/internal/acceptance"
 	"foundry/internal/accounts"
 	"foundry/internal/domain"
 	"foundry/internal/engine"
@@ -41,9 +42,10 @@ type dataLock struct {
 }
 
 type productionModels struct {
-	accounts *accounts.Service
-	router   *model.Router
-	siwc     *accounts.SIWCService
+	accounts   *accounts.Service
+	router     *model.Router
+	siwc       *accounts.SIWCService
+	acceptance *acceptance.Service
 }
 
 func newProductionModels(s *store.Store, legacy *model.Client, secrets model.Secrets) productionModels {
@@ -52,7 +54,19 @@ func newProductionModels(s *store.Store, legacy *model.Client, secrets model.Sec
 		accounts: accountService,
 		router:   model.NewRouter(legacy, accountService, model.RouterOptions{}),
 		siwc:     accounts.NewSIWCService(accountService),
+		// Deliberately no production policy or native-readiness callback.
+		acceptance: acceptance.New(s),
 	}
+}
+
+func (p productionModels) Recover(ctx context.Context) error {
+	if err := p.accounts.Recover(ctx); err != nil {
+		return errors.New("recover model accounts failed")
+	}
+	if err := p.acceptance.Recover(); err != nil {
+		return errors.New("recover model acceptance failed")
+	}
+	return nil
 }
 
 func main() {
@@ -126,9 +140,10 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	client := model.NewClient(secrets)
 	models := newProductionModels(persistent, client, secrets)
 	defer models.siwc.Close()
+	defer models.acceptance.Close()
 	if !recoveryReadOnly {
-		if err := models.accounts.Recover(context.Background()); err != nil {
-			return errors.New("recover model accounts failed")
+		if err := models.Recover(context.Background()); err != nil {
+			return err
 		}
 	}
 	controller := engine.New(persistent, models.router, engine.Options{DataDir: cfg.dataDir, DockerPath: cfg.dockerPath, DisableControlledReadCreation: cfg.disableControlledReadCreation, LocalMCPTest: descriptor})
@@ -150,7 +165,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, RecoveryReadOnly: recoveryReadOnly})
+	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly})
 	server := &http.Server{
 		Addr: cfg.address, Handler: handler,
 		ReadHeaderTimeout: 5 * time.Second,

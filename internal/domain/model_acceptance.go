@@ -13,6 +13,7 @@ type ModelAccountAcceptance struct {
 	OpenAIPreparation *OpenAIPreparation     `json:"openai_preparation,omitempty"`
 }
 type OpenAIPreparation struct {
+	ProductionAdmission *OpenAIProductionAdmissionPreparation `json:"production_admission,omitempty"`
 	SubscriptionAdapter *OpenAISubscriptionAdapterPreparation `json:"subscription_adapter,omitempty"`
 	Scope               string                                `json:"scope"`
 	EndpointPolicy      string                                `json:"endpoint_policy"`
@@ -22,6 +23,12 @@ type OpenAIPreparation struct {
 	RealConnection      string                                `json:"real_connection"`
 	RealCatalog         string                                `json:"real_catalog"`
 	RealInference       string                                `json:"real_inference"`
+}
+type OpenAIProductionAdmissionPreparation struct {
+	State              string `json:"state"`
+	Validation         string `json:"validation"`
+	NativeKeychain     string `json:"native_keychain"`
+	OperatorActivation string `json:"operator_activation"`
 }
 type OpenAISubscriptionAdapterPreparation struct {
 	State      string `json:"state"`
