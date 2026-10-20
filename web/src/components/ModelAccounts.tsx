@@ -109,7 +109,7 @@ export function ModelAccounts({
     <section className="model-accounts" aria-label="模型账户">
       <h2>模型账户</h2>
       <p className="note">
-        账户只是本地配置记录：身份未验证、额度未知、真实账户调用尚未开放。厂商与计费渠道均为用户声明；不登录、不探测、不自动付费降级。
+        账户只是本地配置记录：身份未验证、额度未知、真实账户调用尚未开放。厂商与计费渠道均为用户声明；保存不会登录、探测或自动付费降级。账户级真实订阅连接需操作员显式启动，并独立审批验收材料。
       </p>
       {(error || readError) && (
         <p role="alert" className="form-error">
@@ -279,7 +279,7 @@ export function ModelAccounts({
             </select>
             <p className="field-help">
               {form.auth_method === "openai_siwc"
-                ? "本次仅保存 OpenAI SIWC 账户元数据；真实登录仍关闭，不会打开授权页。"
+                ? "本次仅保存 OpenAI SIWC 账户元数据；不会启动真实登录或打开授权页。真实连接需在验收卡中独立审批。"
                 : "API Key 仅在账户创建后通过追加式版本管理。"}
               厂商、端点、认证方式、计费声明创建后不可改写；需要变更请新建账户。
             </p>

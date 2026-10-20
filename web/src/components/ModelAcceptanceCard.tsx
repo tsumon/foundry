@@ -68,7 +68,8 @@ function validProductionAdmissionPreparation(value: unknown) {
     preparation.state === "implemented_disabled" &&
     preparation.validation === "local_simulation_only" &&
     preparation.native_keychain === "not_checked" &&
-    preparation.operator_activation === "unavailable"
+    (preparation.operator_activation === "unavailable" ||
+      preparation.operator_activation === "explicit_startup")
   );
 }
 
@@ -209,7 +210,7 @@ function AcceptanceRead(props: Props) {
                   <p>订阅连接适配器：已实现，默认关闭 · 仅通过本地仿真验证</p>
                   <p className="field-help">
                     真实账户、Keychain
-                    与额度均未验证；登录、目录、推理与自动刷新保持关闭。
+                    与额度均未验证；目录、推理与自动刷新保持关闭，连接需独立审批。
                   </p>
                 </>
               )}
@@ -219,7 +220,15 @@ function AcceptanceRead(props: Props) {
                   <p>生产连接准入：已接线，默认关闭</p>
                   <p>验证范围：仅本地仿真，不是实际账户验收</p>
                   <p>原生 Keychain：未检查</p>
-                  <p>操作员启用：不可用；仍需单独确认与审批</p>
+                  <p>
+                    {report.openai_preparation.production_admission
+                      .operator_activation === "explicit_startup"
+                      ? "操作员启用：显式启动；安装与普通启动默认关闭，仍需单独确认与审批"
+                      : "操作员启用：不可用；仍需单独确认与审批"}
+                  </p>
+                  <p>
+                    当前连接许可由验收记录中的进程准入信息决定；此元数据检查不是运行时激活，也不证明主机已经就绪。
+                  </p>
                 </section>
               )}
               <p className="field-help">

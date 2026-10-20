@@ -134,7 +134,7 @@ export function ModelRouteSettings({
         <span className="route-lock">生产真实接入关闭</span>
       </div>
       <p className="note">
-        账户路由的真实授权、目录发现与推理保持关闭，仅适用于账户路由；旧式独立连接的既有行为保持不变。不会自动切换到付费
+        全局账户路由的真实授权、目录发现与推理保持关闭；账户级订阅连接另由独立验收审批处理。旧式独立连接的既有行为保持不变。不会自动切换到付费
         API；每条路由都必须明确选择账户、适配器与额外用量声明。
       </p>
       {!loaded && (
@@ -188,7 +188,7 @@ export function ModelRouteSettings({
           OpenAI 真实登录（未开放）
         </button>
         <p id="live-login-reason" className="field-help">
-          真实登录无可用操作接口，本界面不会打开授权页、复制链接或自动轮询。Claude
+          此直接登录按钮保持禁用；账户级真实连接仅在操作员显式启动后，由验收材料独立审批与执行。本界面不会自动打开授权页或轮询。Claude
           订阅与智谱 Coding Plan 未开放。
         </p>
       </div>

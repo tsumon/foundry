@@ -78,6 +78,55 @@ const session = {
   handoff_url: "http://127.0.0.1:43126/auth/start",
 } satisfies ConnectionSession;
 
+it("distinguishes a production connection handoff and does not render an unsafe direct provider URL", () => {
+  const production = {
+    ...operation,
+    source: "production_connection" as const,
+    live_access: "connection_only" as const,
+    material: {
+      ...operation.material,
+      account: {
+        ...operation.material.account,
+        base_url: "https://api.openai.com/v1",
+      },
+      route: {
+        ...operation.material.route,
+        environment: "live" as const,
+        base_url: "https://api.openai.com/v1",
+      },
+      production_admission: {
+        generation: "a".repeat(32),
+        profile: "openai_siwc_subscription_v1" as const,
+      },
+    },
+  };
+  const props = {
+    operation: production,
+    disabled: false,
+    onRead: vi.fn(),
+    onCancel: vi.fn(),
+    now: () => Date.parse("2026-10-20T00:00:00Z"),
+  };
+  const view = render(<ModelConnectionSession {...props} session={session} />);
+  expect(
+    screen.getByRole("heading", { name: "浏览器连接会话（真实订阅连接）" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "手动打开真实连接授权入口" }),
+  ).toHaveAttribute("href", session.handoff_url);
+  view.rerender(
+    <ModelConnectionSession
+      {...props}
+      session={{
+        ...session,
+        handoff_url: "https://auth.openai.com/authorize?state=private",
+      }}
+    />,
+  );
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(screen.queryByText(/private/)).not.toBeInTheDocument();
+});
+
 it("renders only a manual safe local handoff with separate read and cancel actions", () => {
   const onRead = vi.fn();
   const onCancel = vi.fn();

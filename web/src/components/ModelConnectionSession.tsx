@@ -58,6 +58,21 @@ export function validConnectionSession(
   if (!value || typeof value !== "object") return false;
   const session = value as Record<string, unknown>;
   if (
+    !(
+      (operation.source === "local_simulation" &&
+        operation.live_access === "blocked" &&
+        operation.material.route.environment === "simulation" &&
+        operation.material.production_admission === undefined) ||
+      (operation.source === "production_connection" &&
+        operation.live_access === "connection_only" &&
+        operation.material.route.environment === "live" &&
+        operation.material.route.base_url === "https://api.openai.com/v1" &&
+        operation.material.production_admission?.profile ===
+          "openai_siwc_subscription_v1" &&
+        /^[a-f0-9]{32}$/.test(
+          operation.material.production_admission.generation,
+        ))
+    ) ||
     Object.keys(session).some(
       (key) =>
         ![
@@ -111,6 +126,9 @@ export function ModelConnectionSession({
   onCancel: () => void;
   now?: () => number;
 }) {
+  const production = operation.source === "production_connection";
+  const trustedSession =
+    !!session && validConnectionSession(operation, session, now());
   const [locallyExpired, setLocallyExpired] = useState(
     () => !!session && Date.parse(session.expires_at) <= now(),
   );
@@ -132,16 +150,26 @@ export function ModelConnectionSession({
   }, [session?.operation_id, session?.expires_at, session?.handoff_url, now]);
 
   const liveLink =
-    session?.state === "waiting" && !!session.handoff_url && !locallyExpired;
+    trustedSession &&
+    !disabled &&
+    session?.state === "waiting" &&
+    !!session.handoff_url &&
+    !locallyExpired;
   const cancellable =
+    trustedSession &&
     !!session &&
     !locallyExpired &&
     (session.state === "waiting" || session.state === "exchanging");
 
   return (
     <section className="note" aria-label="浏览器连接会话">
-      <h5>浏览器连接会话（仅合成）</h5>
-      {session ? (
+      <h5>浏览器连接会话（{production ? "真实订阅连接" : "仅合成"}）</h5>
+      {session &&
+      validConnectionSession(
+        operation,
+        { ...session, handoff_url: undefined },
+        now(),
+      ) ? (
         <>
           <p>
             状态：{stateLabels[session.state]} · 人工登录绝对到期：
@@ -153,7 +181,7 @@ export function ModelConnectionSession({
               target="_blank"
               rel="noopener noreferrer"
             >
-              打开本地合成授权页
+              {production ? "手动打开真实连接授权入口" : "打开本地合成授权页"}
             </a>
           )}
           {locallyExpired && (

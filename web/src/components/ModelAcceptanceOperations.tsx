@@ -68,7 +68,35 @@ const scopeMeanings: Record<(typeof subscriptionScopes)[number], string> = {
 };
 
 export type ModelAcceptanceConnectionPolicy =
-  "identity_only" | "subscription_only" | "legacy" | "unavailable";
+  | "identity_only"
+  | "subscription_only"
+  | "production_connection"
+  | "legacy"
+  | "unavailable";
+
+function validAdmission(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Object.keys(record).length === 2 &&
+    typeof record.generation === "string" &&
+    /^[a-f0-9]{32}$/.test(record.generation) &&
+    record.profile === "openai_siwc_subscription_v1"
+  );
+}
+
+function isTrustedProductionRoute(
+  route: ModelAcceptanceHistory["routes"][number],
+): boolean {
+  return (
+    route.environment === "live" &&
+    route.adapter === identityAdapter &&
+    route.spend_class === identitySpendClass &&
+    route.base_url === subscriptionResource &&
+    route.connection_purpose === "subscription_only" &&
+    route.connection_mode === "browser_handoff"
+  );
+}
 
 function validConnectionPurpose(
   value: unknown,
@@ -155,6 +183,15 @@ function validConnectionMaterial(
   const material = value.material as unknown;
   if (!material || typeof material !== "object") return false;
   const record = material as Record<string, unknown>;
+  const production = value.source === "production_connection";
+  if (
+    production
+      ? !validAdmission(record.production_admission) ||
+        record.connection_purpose !== "subscription_only" ||
+        record.connection_mode !== "browser_handoff"
+      : record.production_admission !== undefined
+  )
+    return false;
   if (!validConnectionPurpose(record.connection_purpose)) return false;
   if (record.connection_mode === undefined) {
     if (
@@ -211,7 +248,11 @@ function validConnectionMaterial(
     accountRecord.billing_mode === "subscription" &&
     route.account_id === accountID &&
     route.adapter === identityAdapter &&
-    route.environment === "simulation" &&
+    route.environment === (production ? "live" : "simulation") &&
+    (!production ||
+      (route.base_url === subscriptionResource &&
+        route.protocol === "responses" &&
+        accountRecord.enabled === true)) &&
     route.spend_class === identitySpendClass &&
     route.extra_usage === "off" &&
     Number.isFinite(created) &&
@@ -234,7 +275,7 @@ function validRoute(
   if (!route || typeof route !== "object") return false;
   const record = route as Record<string, unknown>;
   return (
-    record.environment === "simulation" &&
+    (record.environment === "simulation" || record.environment === "live") &&
     typeof record.id === "string" &&
     identifier.test(record.id) &&
     typeof record.adapter === "string" &&
@@ -274,6 +315,12 @@ function isTrustedSubscriptionRoute(
 export function connectionPolicy(
   history: ModelAcceptanceHistory,
 ): ModelAcceptanceConnectionPolicy {
+  if (
+    validAdmission(history.production_admission) &&
+    history.routes.length === 1 &&
+    history.routes.every(isTrustedProductionRoute)
+  )
+    return "production_connection";
   if (!history.simulation_enabled) return "unavailable";
   return routePolicy(history.routes);
 }
@@ -313,8 +360,9 @@ function validOperation(
     Number.isSafeInteger(value.claim_sequence) &&
     value.claim_sequence >= 0 &&
     validAttemptCount(value) &&
-    value.source === "local_simulation" &&
-    value.live_access === "blocked" &&
+    ((value.source === "local_simulation" && value.live_access === "blocked") ||
+      (value.source === "production_connection" &&
+        value.live_access === "connection_only")) &&
     value.quota === "unknown" &&
     value.remote_billing === "unverified" &&
     !!value.material &&
@@ -354,6 +402,18 @@ function validOperationForSnapshot(
   history: ModelAcceptanceHistory,
 ): boolean {
   const policy = connectionPolicy(history);
+  if (policy === "production_connection") {
+    const trustedRoute = operationRoute(operation, history.routes);
+    return (
+      !!trustedRoute &&
+      operation.source === "production_connection" &&
+      validOperation(operation, accountID, trustedRoute) &&
+      operation.material.production_admission?.generation ===
+        history.production_admission?.generation &&
+      operation.material.production_admission?.profile ===
+        history.production_admission?.profile
+    );
+  }
   if (policy === "unavailable") return false;
   const trustedRoute =
     policy === "identity_only" || policy === "subscription_only"
@@ -378,10 +438,39 @@ function validHistory(
     typeof value.simulation_enabled === "boolean" &&
     (value.legacy_siwc_simulation_enabled === undefined ||
       typeof value.legacy_siwc_simulation_enabled === "boolean") &&
+    (value.production_connection_enabled === undefined ||
+      typeof value.production_connection_enabled === "boolean") &&
+    (value.production_admission === undefined ||
+      validAdmission(value.production_admission)) &&
     Array.isArray(value.operations) &&
     Array.isArray(value.routes) &&
     value.routes.every(validRoute) &&
     (() => {
+      if (
+        value.production_admission !== undefined ||
+        value.production_connection_enabled === true ||
+        value.routes.some((route) => route.environment === "live")
+      ) {
+        return (
+          value.simulation_enabled === false &&
+          value.legacy_siwc_simulation_enabled !== true &&
+          validAdmission(value.production_admission) &&
+          value.routes.length === 1 &&
+          value.routes.every(isTrustedProductionRoute) &&
+          value.operations.every(
+            (operation) =>
+              operation.source === "production_connection" &&
+              validOperation(operation, accountID),
+          )
+        );
+      }
+      if (
+        value.simulation_enabled &&
+        value.operations.some(
+          (operation) => operation.source === "production_connection",
+        )
+      )
+        return false;
       const policy = routePolicy(value.routes);
       if (!value.simulation_enabled) {
         if (value.routes.length === 0)
@@ -552,8 +641,13 @@ function AcceptanceOperations({
 
   const operations = snapshot?.operations ?? [];
   const policy = snapshot ? connectionPolicy(snapshot) : "unavailable";
+  const production =
+    policy === "production_connection" ||
+    operations.some(
+      (operation) => operation.source === "production_connection",
+    );
   const identityOnly = policy === "identity_only";
-  const subscriptionOnly = policy === "subscription_only";
+  const subscriptionOnly = policy === "subscription_only" || production;
   const visiblePhases = subscriptionOnly
     ? (["connection"] as ModelAcceptancePhase[])
     : phases;
@@ -592,13 +686,29 @@ function AcceptanceOperations({
     );
   }, [catalog?.id, catalog?.revision]);
 
-  const replaceOperation = (value: unknown) => {
+  const replaceOperation = (value: unknown, expectedOperationID?: string) => {
     const result = requireOperationResponse(value);
     const { operation, connection_session: session } = result;
+    const previous = snapshot?.operations.find(
+      (item) => item.id === (expectedOperationID ?? operation.id),
+    );
     requireValidReceipt(
       () =>
         !!snapshot &&
         validOperationForSnapshot(operation, account.id, snapshot) &&
+        (operation.source !== "production_connection" ||
+          ((expectedOperationID === undefined ||
+            operation.id === expectedOperationID) &&
+            (!previous ||
+              (operation.revision >= previous.revision &&
+                operation.material_digest === previous.material_digest &&
+                operation.attempts >= previous.attempts &&
+                operation.claim_sequence >= previous.claim_sequence &&
+                (operation.revision !== previous.revision ||
+                  (operation.state === previous.state &&
+                    operation.attempts === previous.attempts &&
+                    operation.claim_sequence ===
+                      previous.claim_sequence)))))) &&
         (session === undefined ||
           validConnectionSession(operation, session, Date.now())),
     );
@@ -631,7 +741,7 @@ function AcceptanceOperations({
       const result = await work();
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
         return;
-      const operation = replaceOperation(result);
+      const operation = replaceOperation(result, operationID);
       if (after) {
         try {
           await after(operation);
@@ -700,7 +810,9 @@ function AcceptanceOperations({
         () =>
           !recovered ||
           (validOperation(recovered, account.id) &&
-            (!history.simulation_enabled ||
+            ((!history.simulation_enabled &&
+              recovered.source !== "production_connection" &&
+              !recoveredSession) ||
               validOperationForSnapshot(recovered, account.id, history)) &&
             (recoveredSession === undefined ||
               validConnectionSession(recovered, recoveredSession, Date.now()))),
@@ -777,7 +889,7 @@ function AcceptanceOperations({
       );
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
         return;
-      replaceOperation(result);
+      replaceOperation(result, operation.id);
     } catch (cause) {
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
         return;
@@ -806,7 +918,14 @@ function AcceptanceOperations({
     reading ||
     !!unresolved ||
     !loaded ||
-    !snapshot?.simulation_enabled ||
+    !(production
+      ? snapshot?.production_connection_enabled === true
+      : snapshot?.simulation_enabled) ||
+    (production &&
+      (account.provider !== "openai" ||
+        account.auth_method !== "openai_siwc" ||
+        account.billing_mode !== "subscription" ||
+        account.base_url !== subscriptionResource)) ||
     policy === "unavailable";
   const currentAccountRevision = Math.max(
     account.revision,
@@ -825,7 +944,11 @@ function AcceptanceOperations({
         route_id: routeID,
         expected_account_revision: currentAccountRevision,
         ...(identityOnly || subscriptionOnly
-          ? { connection_purpose: policy }
+          ? {
+              connection_purpose: identityOnly
+                ? ("identity_only" as const)
+                : ("subscription_only" as const),
+            }
           : {}),
         ...(prerequisite ? { prerequisite_id: prerequisite } : {}),
         ...(phase === "inference" ? { model } : {}),
@@ -836,10 +959,13 @@ function AcceptanceOperations({
     operations.find((operation) => operation.id === selected[phase]);
 
   return (
-    <section className="acceptance-operations" aria-label="单次本地模拟验收">
+    <section
+      className="acceptance-operations"
+      aria-label={production ? "单次真实订阅连接" : "单次本地模拟验收"}
+    >
       <div className="section-heading">
         <div>
-          <h4>单次本地模拟验收</h4>
+          <h4>{production ? "单次真实订阅连接" : "单次本地模拟验收"}</h4>
           <p className="muted">
             {subscriptionOnly
               ? "订阅连接材料单独审阅、批准和执行。"
@@ -847,20 +973,26 @@ function AcceptanceOperations({
           </p>
         </div>
         <span className="route-lock">
-          {snapshot?.simulation_enabled ? "仅本地模拟" : "生产真实访问保持关闭"}
+          {production
+            ? snapshot?.production_connection_enabled
+              ? "仅连接可单独审批"
+              : "连接审批不可用 · 历史只读"
+            : snapshot?.simulation_enabled
+              ? "仅本地模拟"
+              : "生产真实访问保持关闭"}
         </span>
       </div>
       <p className="field-help">
-        只使用本进程拥有的合成
-        fixture。不会登录真实账户、读取真实凭据、自动重试、轮询、刷新、付费降级、运行脚本或写入
-        Git。
+        {production
+          ? "此入口仅允许独立审批的真实订阅连接，不开放目录、推理或任务调用。不会自动打开浏览器、重试、轮询、刷新、付费降级、运行脚本或写入 Git。"
+          : "只使用本进程拥有的合成 fixture。不会登录真实账户、读取真实凭据、自动重试、轮询、刷新、付费降级、运行脚本或写入 Git。"}
       </p>
       {identityOnly && (
         <p className="note">
           本地身份专用模拟；请求身份范围：openid、profile、email。真实登录仍待确认；账户与工作区由用户稍后选择；额度和计费未知。身份验证成功不代表模型可用。
         </p>
       )}
-      {subscriptionOnly && (
+      {subscriptionOnly && !production && (
         <p className="note">
           本地订阅连接模拟；额度：未知，真实访问：关闭。成功只记录合成连接证据，不代表真实订阅、工作区或额度已经验证。
         </p>
@@ -885,7 +1017,9 @@ function AcceptanceOperations({
         </div>
       )}
       <div className="acceptance-toolbar">
-        <label htmlFor={`acceptance-route-${account.id}`}>本地模拟路由</label>
+        <label htmlFor={`acceptance-route-${account.id}`}>
+          {production ? "固定真实连接路由" : "本地模拟路由"}
+        </label>
         <select
           id={`acceptance-route-${account.id}`}
           value={routeID}
@@ -912,7 +1046,11 @@ function AcceptanceOperations({
         )}
         <button
           type="button"
-          disabled={reading || busy || snapshot?.simulation_enabled === false}
+          disabled={
+            reading ||
+            busy ||
+            (snapshot?.simulation_enabled === false && !production)
+          }
           onClick={() => void readHistory()}
         >
           重新读取验收记录
@@ -953,7 +1091,8 @@ function AcceptanceOperations({
                   }
                   onClick={() => propose(phase)}
                 >
-                  创建{phaseLabels[phase]}材料
+                  创建{production ? "真实" : ""}
+                  {phaseLabels[phase]}材料
                 </button>
               </div>
               {phase === "catalog" && latestConnection && !connection && (
@@ -1007,7 +1146,33 @@ function AcceptanceOperations({
               {operation && (
                 <OperationReview
                   operation={operation}
-                  disabled={mutationDisabled}
+                  disabled={
+                    mutationDisabled ||
+                    (operation.source === "production_connection" &&
+                      (!snapshot ||
+                        !validOperationForSnapshot(
+                          operation,
+                          account.id,
+                          snapshot,
+                        ) ||
+                        operation.material.account.revision !==
+                          account.revision ||
+                        Date.parse(operation.material.expires_at) <=
+                          Date.now()))
+                  }
+                  sessionDisabled={
+                    busy ||
+                    reading ||
+                    !!unresolved ||
+                    !loaded ||
+                    (operation.source === "production_connection" &&
+                      (!snapshot ||
+                        !validOperationForSnapshot(
+                          operation,
+                          account.id,
+                          snapshot,
+                        )))
+                  }
                   decide={(decision) =>
                     void runMutation(operation.id, () =>
                       modelAcceptanceApi.decide(
@@ -1053,7 +1218,10 @@ function AcceptanceOperations({
         })}
       </ol>
       {operations.length > 0 && (
-        <div className="acceptance-receipts" aria-label="本地模拟回执">
+        <div
+          className="acceptance-receipts"
+          aria-label={production ? "真实订阅连接回执" : "本地模拟回执"}
+        >
           <h5>已保存回执</h5>
           <ul>
             {operations.map((operation) => (
@@ -1070,7 +1238,10 @@ function AcceptanceOperations({
                 >
                   <span>
                     {phaseLabels[operation.phase]} ·{" "}
-                    {stateLabels[operation.state]} · 本地模拟
+                    {stateLabels[operation.state]} ·{" "}
+                    {operation.source === "production_connection"
+                      ? "真实订阅连接"
+                      : "本地模拟"}
                   </span>
                   <code>{operation.id}</code>
                   {operation.code && <code>{operation.code}</code>}
@@ -1087,6 +1258,7 @@ function AcceptanceOperations({
 function OperationReview({
   operation,
   disabled,
+  sessionDisabled,
   decide,
   execute,
   connectionSession,
@@ -1095,6 +1267,7 @@ function OperationReview({
 }: {
   operation: ModelAcceptanceOperation;
   disabled: boolean;
+  sessionDisabled: boolean;
   decide: (decision: "approve" | "reject") => void;
   execute: () => void;
   connectionSession?: ConnectionSession;
@@ -1102,6 +1275,27 @@ function OperationReview({
   cancel: () => void;
 }) {
   const material = operation.material;
+  const production = operation.source === "production_connection";
+  const [deadlineExpired, setDeadlineExpired] = useState(false);
+  useEffect(() => {
+    setDeadlineExpired(false);
+    if (!production || !["pending", "approved"].includes(operation.state))
+      return;
+    const remaining = Date.parse(material.expires_at) - Date.now();
+    if (remaining <= 0) {
+      setDeadlineExpired(true);
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setDeadlineExpired(true),
+      Math.min(remaining, 2_147_483_647),
+    );
+    return () => window.clearTimeout(timeout);
+  }, [operation.id, operation.state, material.expires_at, production]);
+  const reviewDisabled =
+    disabled ||
+    (production &&
+      (deadlineExpired || Date.parse(material.expires_at) <= Date.now()));
   return (
     <div
       className="acceptance-review"
@@ -1112,7 +1306,7 @@ function OperationReview({
         {stateLabels[operation.state]}
       </p>
       <dl>
-        <dt>本地模拟端点</dt>
+        <dt>{production ? "官方连接资源" : "本地模拟端点"}</dt>
         <dd>{material.route.base_url}</dd>
         <dt>账户快照</dt>
         <dd>
@@ -1146,7 +1340,10 @@ function OperationReview({
         {material.connection_purpose === "subscription_only" && (
           <>
             <dt>连接目的</dt>
-            <dd>本地订阅连接模拟；不授予后续模型操作</dd>
+            <dd>
+              {production ? "真实订阅连接" : "本地订阅连接模拟"}
+              ；不授予后续模型操作
+            </dd>
             <dt>请求协议权限</dt>
             <dd>
               <ul>
@@ -1169,7 +1366,11 @@ function OperationReview({
           </>
         )}
         <dt>输入摘要</dt>
-        <dd>{material.data_summary}</dd>
+        <dd>
+          {production
+            ? "仅订阅连接：浏览器账户/工作区选择及凭据存储；无目录、推理、刷新、重试或付费降级。"
+            : material.data_summary}
+        </dd>
         {material.model && (
           <>
             <dt>精确模型</dt>
@@ -1201,18 +1402,45 @@ function OperationReview({
           <code>{operation.material_digest}</code>
         </dd>
       </dl>
+      {production && (
+        <div className="note">
+          <p>
+            账户与工作区由用户在官方浏览器流程中选择；不要在本界面输入密码或验证码。
+          </p>
+          <p>
+            令牌保存在 Foundry 原生
+            Keychain；本地数据库仅保留标识符、授权范围、版本/到期、密钥引用与脱敏审计证据，不保存令牌。
+          </p>
+          <p>
+            远端授权不是单次；一次批准只限制本地一次连接尝试。请求的订阅使用与离线权限不代表本阶段会使用模型或刷新令牌。
+          </p>
+          <p>
+            本地清理不等于远端撤销；本功能不执行远端撤销，可在 ChatGPT
+            设置中断开应用。
+          </p>
+        </div>
+      )}
+      {production &&
+        (operation.state === "failed" || operation.state === "unknown") && (
+          <p className="warning-copy">
+            连接失败或结果未知；清理与凭据提交结果不能确认，不能据此声称已完全回滚。请显式读取并核对原记录，不会重放请求。
+          </p>
+        )}
       {operation.state === "pending" && (
         <div className="actions acceptance-actions">
           <button
             type="button"
-            disabled={disabled}
-            onClick={() => decide("approve")}
+            disabled={reviewDisabled}
+            onClick={() => {
+              if (!production || Date.parse(material.expires_at) > Date.now())
+                decide("approve");
+            }}
           >
             批准{phaseLabels[operation.phase]}材料
           </button>
           <button
             type="button"
-            disabled={disabled}
+            disabled={reviewDisabled}
             onClick={() => decide("reject")}
           >
             拒绝{phaseLabels[operation.phase]}材料
@@ -1220,7 +1448,14 @@ function OperationReview({
         </div>
       )}
       {operation.state === "approved" && operation.attempts === 0 && (
-        <button type="button" disabled={disabled} onClick={execute}>
+        <button
+          type="button"
+          disabled={reviewDisabled}
+          onClick={() => {
+            if (!production || Date.parse(material.expires_at) > Date.now())
+              execute();
+          }}
+        >
           执行{phaseLabels[operation.phase]}
         </button>
       )}
@@ -1234,13 +1469,16 @@ function OperationReview({
           <ModelConnectionSession
             operation={operation}
             session={connectionSession}
-            disabled={disabled}
+            disabled={sessionDisabled}
             onRead={readConnectionStatus}
             onCancel={cancel}
           />
         )}
       <p className="field-help">
-        真实访问：关闭 · 远端计费：未验证 · 额度：未知
+        {production
+          ? "真实连接记录不代表当前执行许可；模型访问：关闭"
+          : "真实访问：关闭"}{" "}
+        · 远端计费：未验证 · 额度：未知
       </p>
     </div>
   );

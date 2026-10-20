@@ -79,7 +79,11 @@ it("reads safe history without mutations and keeps production login and refresh 
   expect(
     screen.getByRole("button", { name: "真实刷新（未开放）" }),
   ).toBeDisabled();
-  expect(screen.getByText(/账户路由的真实登录与刷新保持关闭/)).toBeVisible();
+  expect(
+    screen.getByText(
+      /直接登录与刷新保持关闭；账户级真实订阅连接另由验收材料独立审批/,
+    ),
+  ).toBeVisible();
   expect(fetcher.mock.calls.map(([path]) => path)).toEqual([
     "/api/model-authorizations",
   ]);

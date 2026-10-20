@@ -71,7 +71,9 @@ it("reads route metadata only and keeps every production live control visibly cl
   ).toBeVisible();
   expect(screen.getByText(/本进程未启用本地模拟推理/)).toBeVisible();
   expect(screen.getByText(/不会自动切换到付费 API/)).toBeVisible();
-  expect(screen.getByText(/仅适用于账户路由/)).toBeVisible();
+  expect(
+    screen.getByText(/全局账户路由.*账户级订阅连接另由独立验收审批处理/),
+  ).toBeVisible();
   expect(fetcher.mock.calls.map(([path]) => path)).toEqual([
     "/api/model-routes",
   ]);

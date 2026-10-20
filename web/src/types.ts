@@ -84,7 +84,7 @@ export interface OpenAIProductionAdmissionPreparation {
   state: "implemented_disabled";
   validation: "local_simulation_only";
   native_keychain: "not_checked";
-  operator_activation: "unavailable";
+  operator_activation: "unavailable" | "explicit_startup";
 }
 export interface OpenAIPreparation {
   scope: "openai_subscription_stage0";
@@ -135,7 +135,7 @@ export type ModelAcceptanceState =
 export interface ModelAcceptanceRoute {
   id: string;
   adapter: string;
-  environment: "simulation";
+  environment: "simulation" | "live";
   spend_class: string;
   base_url: string;
   connection_purpose?: "identity_only" | "subscription_only";
@@ -161,6 +161,7 @@ export interface ModelAcceptanceAuthorization {
   expires_at: string;
 }
 export interface ModelAcceptanceMaterial {
+  production_admission?: ModelProductionAdmission;
   phase: ModelAcceptancePhase;
   connection_purpose?: "identity_only" | "subscription_only";
   connection_mode?: "browser_handoff";
@@ -204,7 +205,7 @@ export interface ModelAcceptanceOperation {
   material_digest: string;
   attempts: number;
   claim_sequence: number;
-  source: "local_simulation";
+  source: "local_simulation" | "production_connection";
   certainty: "not_sent" | "completed" | "rejected" | "unknown";
   code?: string;
   started_at?: string;
@@ -217,12 +218,18 @@ export interface ModelAcceptanceOperation {
   usage_known: boolean;
   quota: "unknown";
   remote_billing: "unverified";
-  live_access: "blocked";
+  live_access: "blocked" | "connection_only";
+}
+export interface ModelProductionAdmission {
+  generation: string;
+  profile: "openai_siwc_subscription_v1";
 }
 export interface ModelAcceptanceHistory {
   operations: ModelAcceptanceOperation[];
   simulation_enabled: boolean;
   legacy_siwc_simulation_enabled?: boolean;
+  production_connection_enabled?: boolean;
+  production_admission?: ModelProductionAdmission;
   routes: ModelAcceptanceRoute[];
 }
 export type ConnectionSessionState =

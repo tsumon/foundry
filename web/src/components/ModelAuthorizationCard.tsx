@@ -312,7 +312,9 @@ export function ModelAuthorizationCard({
     });
 
   const identityOnly = connectionPolicy === "identity_only";
-  const subscriptionOnly = connectionPolicy === "subscription_only";
+  const subscriptionOnly =
+    connectionPolicy === "subscription_only" ||
+    connectionPolicy === "production_connection";
   const acceptanceManaged = identityOnly || subscriptionOnly;
   const legacyPolicy = legacySIWCCapability === true;
   const refreshable =
@@ -338,7 +340,7 @@ export function ModelAuthorizationCard({
           <p className="muted">仅管理此账户的安全授权元数据与显式操作。</p>
         </div>
         <span className="route-lock">
-          {simulation ? "本地模拟可用" : "生产真实授权关闭"}
+          {simulation ? "本地模拟可用" : "直接登录与刷新关闭"}
         </span>
       </div>
       <p className="note">
@@ -346,7 +348,7 @@ export function ModelAuthorizationCard({
           ? "本地身份专用模拟仅记录身份验证；不开放模型权限、刷新、目录或推理。不会自动打开浏览器、轮询或切换付费通道。"
           : subscriptionOnly
             ? "订阅连接由验收材料处理。请求 offline_access 不会开放应用刷新；目录、推理、自动轮询与付费通道切换保持禁用。"
-            : "账户路由的真实登录与刷新保持关闭；旧式独立连接的既有行为保持不变。不会自动打开浏览器、轮询或切换付费通道。"}
+            : "直接登录与刷新保持关闭；账户级真实订阅连接另由验收材料独立审批。旧式独立连接的既有行为保持不变。不会自动打开浏览器、轮询或切换付费通道。"}
       </p>
       {!loaded && (
         <p className="warning-copy">授权历史尚未读取，不能视为无授权或可用。</p>

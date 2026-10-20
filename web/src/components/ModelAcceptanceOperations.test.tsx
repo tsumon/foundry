@@ -166,6 +166,523 @@ const handoffSession = (operationID: string) => ({
   handoff_url: "http://127.0.0.1:43126/auth/start",
 });
 
+// Production presentation is tested with offline DTOs only; fetch never leaves this stub.
+const productionAccount = {
+  ...handoffAccount,
+  base_url: "https://api.openai.com/v1",
+};
+const productionRoute = {
+  ...handoffRoute,
+  environment: "live",
+  base_url: productionAccount.base_url,
+};
+const productionAdmission = {
+  generation: "a".repeat(32),
+  profile: "openai_siwc_subscription_v1",
+};
+const productionOperation = (
+  state = "pending",
+  extra: Record<string, unknown> = {},
+) => {
+  const now = Date.now();
+  return {
+    ...handoffOperation("production-connection", state),
+    source: "production_connection",
+    live_access: "connection_only",
+    material: {
+      ...handoffMaterial(),
+      account: productionAccount,
+      route: { ...handoffMaterial().route, ...productionRoute },
+      production_admission: productionAdmission,
+      created_at: new Date(now).toISOString(),
+      expires_at: new Date(now + 600_000).toISOString(),
+    },
+    ...extra,
+  };
+};
+const productionHistory = (
+  operations: unknown[] = [],
+  extra: Record<string, unknown> = {},
+) => ({
+  operations,
+  routes: [productionRoute],
+  simulation_enabled: false,
+  legacy_siwc_simulation_enabled: false,
+  production_connection_enabled: true,
+  production_admission: productionAdmission,
+  ...extra,
+});
+
+it("separates real connection proposal, six-scope approval, execution and manual handoff without model actions", async () => {
+  const writes: Array<{ path: string; body: unknown }> = [];
+  let current = productionOperation();
+  const opened = vi.spyOn(window, "open").mockImplementation(() => null);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      if (!init?.method) return response(productionHistory());
+      writes.push({ path, body: JSON.parse(String(init.body)) });
+      if (path.endsWith("/decision"))
+        current = { ...current, state: "approved", revision: 2 };
+      if (path.endsWith("/execute")) {
+        current = {
+          ...current,
+          state: "running",
+          revision: 3,
+          attempts: 1,
+          claim_sequence: 1,
+        };
+        return response({
+          operation: current,
+          connection_session: handoffSession(current.id),
+        });
+      }
+      return response({ operation: current });
+    }),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  const create = await screen.findByRole("button", {
+    name: "创建真实连接材料",
+  });
+  expect(create).toBeEnabled();
+  expect(
+    screen.queryByRole("button", { name: /创建目录|创建推理/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(create);
+  const approve = await screen.findByRole("button", { name: "批准连接材料" });
+  expect(writes).toEqual([
+    {
+      path: `/api/model-accounts/${productionAccount.id}/acceptance-operations`,
+      body: {
+        phase: "connection",
+        route_id: productionRoute.id,
+        expected_account_revision: 1,
+        connection_purpose: "subscription_only",
+      },
+    },
+  ]);
+  for (const scope of subscriptionScopes)
+    expect(screen.getByText(scope, { selector: "code" })).toBeVisible();
+  expect(screen.getByText(/令牌保存在.*Keychain/)).toBeVisible();
+  expect(screen.getByText(/账户与工作区由用户/)).toBeVisible();
+  expect(screen.getByText(/远端授权不是单次/)).toBeVisible();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  fireEvent.click(approve);
+  const execute = await screen.findByRole("button", { name: "执行连接" });
+  expect(writes).toHaveLength(2);
+  expect(writes[1].body).toEqual({
+    expected_revision: 1,
+    material_digest: digest,
+    decision: "approve",
+  });
+  expect(writes.some((item) => item.path.endsWith("/execute"))).toBe(false);
+  fireEvent.click(execute);
+  expect(
+    await screen.findByRole("link", { name: "手动打开真实连接授权入口" }),
+  ).toHaveAttribute("href", "http://127.0.0.1:43126/auth/start");
+  expect(writes).toHaveLength(3);
+  expect(writes[2].body).toEqual({
+    expected_revision: 2,
+    material_digest: digest,
+  });
+  expect(opened).not.toHaveBeenCalled();
+});
+
+it.each([
+  [
+    "default old receipt",
+    {
+      routes: [],
+      production_connection_enabled: false,
+      production_admission: undefined,
+    },
+  ],
+  ["expired readiness", { production_connection_enabled: false }],
+  [
+    "new generation",
+    {
+      production_admission: {
+        ...productionAdmission,
+        generation: "b".repeat(32),
+      },
+    },
+  ],
+])(
+  "keeps %s readable without reauthorizing a production receipt",
+  async (_name, overrides) => {
+    const old = productionOperation("approved");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response(productionHistory([old], overrides))),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={productionAccount}
+        refreshAccount={async () => {}}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /连接 · 已批准，尚未执行 · 真实订阅连接/,
+      }),
+    );
+    expect(screen.getByRole("button", { name: "执行连接" })).toBeDisabled();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /创建目录|创建推理/ }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it.each([
+  ["boolean alone", { production_admission: undefined }],
+  [
+    "malformed generation",
+    {
+      production_admission: {
+        ...productionAdmission,
+        generation: "A".repeat(32),
+      },
+    },
+  ],
+  [
+    "unknown profile",
+    { production_admission: { ...productionAdmission, profile: "other" } },
+  ],
+  ["mixed simulation", { simulation_enabled: true }],
+  ["mixed legacy authority", { legacy_siwc_simulation_enabled: true }],
+  [
+    "nonofficial route",
+    {
+      routes: [{ ...productionRoute, base_url: "https://attacker.invalid/v1" }],
+    },
+  ],
+  ["duplicate routes", { routes: [productionRoute, productionRoute] }],
+  [
+    "catalog receipt",
+    { operations: [productionOperation("approved", { phase: "catalog" })] },
+  ],
+  [
+    "mixed source",
+    {
+      operations: [
+        productionOperation("approved", { source: "local_simulation" }),
+      ],
+    },
+  ],
+])("fails closed on production %s", async (_name, overrides) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response(productionHistory([], overrides))),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("invalid_receipt");
+  expect(
+    screen.queryByRole("button", { name: "创建真实连接材料" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
+it("allows owned running production status and cancel after readiness expires without restoring a history link", async () => {
+  const running = productionOperation("running", {
+    attempts: 1,
+    claim_sequence: 1,
+  });
+  const requests: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      requests.push(`${init?.method ?? "GET"} ${path}`);
+      if (path.endsWith("/cancel"))
+        return response({
+          operation: {
+            ...running,
+            state: "failed",
+            revision: 4,
+            certainty: "unknown",
+            code: "transport_unknown",
+          },
+        });
+      if (path.endsWith(running.id))
+        return response({
+          operation: running,
+          connection_session: handoffSession(running.id),
+        });
+      return response(
+        productionHistory([running], { production_connection_enabled: false }),
+      );
+    }),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /连接 · 已消耗，执行中 · 真实订阅连接/,
+    }),
+  );
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "读取连接状态" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+  expect(
+    await screen.findByRole("link", { name: "手动打开真实连接授权入口" }),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "取消连接会话" }));
+  expect(await screen.findByText(/清理.*不能确认/)).toBeVisible();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(requests.filter((item) => item.startsWith("POST"))).toHaveLength(1);
+});
+
+it("expires a displayed production approval locally without polling or sending execution", async () => {
+  const approved = productionOperation("approved");
+  const fetcher = vi.fn(async () => response(productionHistory([approved])));
+  vi.stubGlobal("fetch", fetcher);
+  vi.useFakeTimers();
+  try {
+    await act(async () => {
+      render(
+        <ModelAcceptanceOperations
+          account={productionAccount}
+          refreshAccount={async () => {}}
+        />,
+      );
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /连接 · 已批准，尚未执行 · 真实订阅连接/,
+      }),
+    );
+    expect(screen.getByRole("button", { name: "执行连接" })).toBeEnabled();
+    // A rerender is not needed to revoke a deadline-bound approval.
+    act(() => vi.advanceTimersByTime(600_001));
+    expect(screen.getByRole("button", { name: "执行连接" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+    expect(fetcher).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("does not enable a production proposal for a mismatched account snapshot", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response(productionHistory())),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={{ ...productionAccount, provider: "other" }}
+      refreshAccount={async () => {}}
+    />,
+  );
+  expect(
+    await screen.findByRole("button", { name: "创建真实连接材料" }),
+  ).toBeDisabled();
+});
+
+it.each([
+  ["short scopes", { requested_scopes: ["openid", "profile", "email"] }],
+  ["wrong resource", { requested_resource: "https://attacker.invalid/v1" }],
+  ["missing admission", { production_admission: undefined }],
+  ["missing browser mode", { connection_mode: undefined }],
+  ["wrong timeout", { login_timeout_seconds: 30 }],
+  ["unbounded request", { deadline_seconds: 60 }],
+  ["retries", { max_attempts: 2 }],
+])(
+  "rejects malformed production material: %s",
+  async (_name, materialOverrides) => {
+    const receipt = productionOperation();
+    receipt.material = {
+      ...receipt.material,
+      ...materialOverrides,
+    } as typeof receipt.material;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response(productionHistory([receipt]))),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={productionAccount}
+        refreshAccount={async () => {}}
+      />,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "invalid_receipt",
+    );
+    expect(
+      screen.queryByRole("button", { name: "批准连接材料" }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it("rejects a stale-generation proposal response without approval, execution or restoring its link", async () => {
+  const stale = productionOperation();
+  stale.material.production_admission = {
+    ...productionAdmission,
+    generation: "b".repeat(32),
+  };
+  const fetcher = vi.fn(async (_path: string, init?: RequestInit) =>
+    response(init?.method ? { operation: stale } : productionHistory()),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "创建真实连接材料" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("invalid_receipt");
+  expect(
+    screen.queryByRole("button", { name: "批准连接材料" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("keeps arbitrary production receipt text out of the approval disclosure", async () => {
+  const receipt = productionOperation();
+  receipt.material.data_summary =
+    "https://auth.openai.com/authorize?code=private_token_payload";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response(productionHistory([receipt]))),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: /连接 · 待审批 · 真实订阅连接/ }),
+  );
+  expect(screen.queryByText(/private_token_payload/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "批准连接材料" })).toBeEnabled();
+});
+
+it.each(["older revision", "different operation"])(
+  "rejects a production status response with %s",
+  async (kind) => {
+    const running = productionOperation("running", {
+      revision: 3,
+      attempts: 1,
+      claim_sequence: 1,
+    });
+    const returned =
+      kind === "older revision"
+        ? {
+            ...running,
+            state: "approved",
+            revision: 2,
+            attempts: 0,
+            claim_sequence: 0,
+          }
+        : { ...running, id: "other-operation" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: string) =>
+        response(
+          path.endsWith(running.id)
+            ? { operation: returned }
+            : productionHistory([running]),
+        ),
+      ),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={productionAccount}
+        refreshAccount={async () => {}}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /连接 · 已消耗，执行中 · 真实订阅连接/,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "invalid_receipt",
+    );
+    expect(
+      screen.queryByRole("button", { name: "执行连接" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  },
+);
+
+it("ignores a production execution response after switching accounts", async () => {
+  const approved = productionOperation("approved");
+  let resolve!: (value: Response) => void;
+  const pending = new Promise<Response>((done) => {
+    resolve = done;
+  });
+  const otherAccount = { ...productionAccount, id: "other-production-account" };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method) return pending;
+    return response(
+      path.includes(otherAccount.id)
+        ? productionHistory([], {
+            routes: [],
+            production_admission: undefined,
+            production_connection_enabled: false,
+          })
+        : productionHistory([approved]),
+    );
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /连接 · 已批准，尚未执行 · 真实订阅连接/,
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+  view.rerender(
+    <ModelAcceptanceOperations
+      account={otherAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await screen.findByText("生产真实访问保持关闭");
+  await act(async () =>
+    resolve(
+      response({
+        operation: {
+          ...approved,
+          state: "running",
+          revision: 3,
+          attempts: 1,
+          claim_sequence: 1,
+        },
+        connection_session: handoffSession(approved.id),
+      }),
+    ),
+  );
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(screen.queryByText(approved.id)).not.toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
 it("requires a new reviewed permit for connection, catalog, and inference without automatic dispatch", async () => {
   const refreshAccount = vi.fn(async () => {});
   const posts: Array<{ path: string; body: Record<string, unknown> }> = [];

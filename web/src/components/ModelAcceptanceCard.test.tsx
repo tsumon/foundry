@@ -73,6 +73,33 @@ const productionOpenAIReport = {
   },
 };
 
+it("describes explicit startup as installed preparation, not current connection authority", async () => {
+  const fetcher = vi.fn(async () =>
+    response({
+      acceptance: {
+        ...productionOpenAIReport,
+        openai_preparation: {
+          ...openAIPreparation,
+          production_admission: {
+            ...productionAdmission,
+            operator_activation: "explicit_startup",
+          },
+        },
+      },
+    }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+  fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+  expect(await screen.findByText(/操作员启用：显式启动/)).toBeVisible();
+  expect(screen.getByText(/当前连接许可.*验收记录/)).toBeVisible();
+  expect(screen.getByText(/原生 Keychain：未检查/)).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: /登录|启用|激活/ }),
+  ).not.toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledOnce();
+});
+
 it("shows default-closed production admission without claiming native or real validation", async () => {
   vi.stubGlobal(
     "fetch",
