@@ -625,6 +625,63 @@ it.each(["older revision", "different operation"])(
   },
 );
 
+it("rejects another production operation returned by an ambiguous execution recovery read", async () => {
+  const approved = productionOperation("approved", { revision: 2 });
+  const other = {
+    ...approved,
+    id: "other-production-operation",
+    state: "running",
+    revision: 3,
+    attempts: 1,
+    claim_sequence: 1,
+  };
+  const requests: string[] = [];
+  const opened = vi.spyOn(window, "open").mockImplementation(() => null);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      requests.push(`${init?.method ?? "GET"} ${path}`);
+      if (path.endsWith("/execute")) throw new TypeError("lost response");
+      if (path.endsWith(`/${approved.id}`))
+        return response({
+          operation: other,
+          connection_session: handoffSession(other.id),
+        });
+      return response(productionHistory([approved]));
+    }),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /连接 · 已批准，尚未执行 · 真实订阅连接/,
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "仅读取原验收记录" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("invalid_receipt");
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(screen.queryByText(other.id)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "执行连接" }),
+  ).not.toBeInTheDocument();
+  expect(requests.filter((request) => request.startsWith("POST"))).toEqual([
+    `POST /api/model-accounts/${productionAccount.id}/acceptance-operations/${approved.id}/execute`,
+  ]);
+  expect(
+    requests.filter((request) => request.endsWith(`/${approved.id}`)),
+  ).toEqual([
+    `GET /api/model-accounts/${productionAccount.id}/acceptance-operations/${approved.id}`,
+  ]);
+  expect(opened).not.toHaveBeenCalled();
+});
+
 it("ignores a production execution response after switching accounts", async () => {
   const approved = productionOperation("approved");
   let resolve!: (value: Response) => void;

@@ -799,6 +799,9 @@ function AcceptanceOperations({
         );
         if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
           return;
+        requireValidReceipt(
+          () => result.operation.id === unresolved.operationID,
+        );
         recovered = result.operation;
         recoveredSession = result.connection_session;
       }
