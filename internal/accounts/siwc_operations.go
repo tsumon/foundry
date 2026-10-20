@@ -119,12 +119,15 @@ func (s *SIWCService) beginSIWCConnection(ctx, flowParent context.Context, accou
 	host := listener.Addr().String()
 	redirectURI := "http://" + host + siwcCallbackPath
 	expires := time.Now().UTC().Add(s.options.FlowTimeout)
+	if parentDeadline, ok := flowParent.Deadline(); ok && parentDeadline.Before(expires) {
+		expires = parentDeadline
+	}
 	flowContext, cancel := context.WithDeadline(flowParent, expires)
 	attempt := &siwcAttempt{
 		public: SIWCFlow{OperationID: operationID, State: "waiting", HandoffURL: "http://" + host + siwcHandoffPath, ExpiresAt: expires.Format(time.RFC3339)},
 		cancel: cancel, listener: listener, account: account, authorizationID: authorizationID,
 		state: state, nonce: nonce, verifier: verifier, redirectURI: redirectURI, clientID: clientID, purpose: purpose, resource: requestedResource,
-		subscriptionAdapter: subscriptionAdapter,
+		subscriptionAdapter: subscriptionAdapter, terminalDone: make(chan struct{}),
 	}
 	if attempt.resource == "" {
 		attempt.resource = account.BaseURL
@@ -165,7 +168,14 @@ func (s *SIWCService) beginSIWCConnection(ctx, flowParent context.Context, accou
 	if len(s.flows) >= 64 {
 		for id, existing := range s.flows {
 			if existing.public.State != "waiting" && existing.public.State != "exchanging" {
-				delete(s.flows, id)
+				// A canceled callback may still be cleaning up credentials. Keep
+				// its join handle until terminal work actually finishes.
+				select {
+				case <-existing.terminalDone:
+					delete(s.flows, id)
+				default:
+					continue
+				}
 				if len(s.flows) < 64 {
 					break
 				}
@@ -198,6 +208,14 @@ func (s *SIWCService) beginSIWCConnection(ctx, flowParent context.Context, accou
 		if expired {
 			stopSIWCAttempt(attempt, false)
 		}
+		// Admission is closed under mu before joining the exact callback.
+		s.mu.Lock()
+		done := attempt.exchangeDone
+		s.mu.Unlock()
+		if done != nil {
+			<-done
+		}
+		close(attempt.terminalDone)
 	}()
 	return result, nil
 }
@@ -292,7 +310,9 @@ func (s *SIWCService) handleSIWCCallback(ctx context.Context, attempt *siwcAttem
 	s.mu.Unlock()
 	defer close(attempt.exchangeDone)
 
-	err := s.exchangeSIWCCode(ctx, attempt, code, clientID, values.Get("scope"), values.Has("scope"))
+	networkContext, networkCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer networkCancel()
+	err := s.exchangeSIWCCode(networkContext, attempt, code, clientID, values.Get("scope"), values.Has("scope"))
 	s.mu.Lock()
 	if attempt.public.State != "canceled" && attempt.public.State != "expired" {
 		if err == nil {

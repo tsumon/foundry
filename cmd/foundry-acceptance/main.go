@@ -30,6 +30,7 @@ import (
 )
 
 type acceptanceRuntime struct {
+	browserSIWC                 *accounts.SIWCService
 	gates                       *acceptance.Service
 	gateProtocol                *protocolFixture
 	gateSIWC                    *accounts.SIWCService
@@ -187,6 +188,12 @@ func (r *acceptanceRuntime) Close() {
 			_ = r.server.Close()
 		}
 		cancel()
+	}
+	if r.gates != nil {
+		_ = r.gates.Close()
+	}
+	if r.browserSIWC != nil {
+		_ = r.browserSIWC.Close()
 	}
 	if r.siwc != nil {
 		_ = r.siwc.Close()

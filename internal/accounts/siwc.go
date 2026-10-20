@@ -12,6 +12,7 @@ import (
 
 	"foundry/internal/domain"
 	"foundry/internal/model"
+	"foundry/internal/store"
 )
 
 const (
@@ -67,6 +68,7 @@ type siwcAttempt struct {
 	resource            string
 	subscriptionAdapter bool
 	exchangeDone        chan struct{}
+	terminalDone        chan struct{}
 }
 
 func stopSIWCAttempt(attempt *siwcAttempt, graceful bool) {
@@ -152,6 +154,26 @@ func validSIWCLoopbackOrigin(origin string) bool {
 
 func (s *SIWCService) SimulationEnabled() bool { return s != nil && s.simulation }
 
+// BrowserHandoffEligible is constructor policy, not a live-access switch.
+func (s *SIWCService) BrowserHandoffEligible(ledger *store.Store) bool {
+	return s != nil && s.simulation && s.lifecycle != nil && s.lifecycle.store == ledger && s.options.FlowTimeout == 10*time.Minute
+}
+
+// Wait joins terminal callback/credential work without polling. The flow id
+// remains internal to the owning acceptance controller.
+func (s *SIWCService) Wait(operationID string) (SIWCFlow, error) {
+	s.mu.Lock()
+	attempt := s.flows[operationID]
+	s.mu.Unlock()
+	if attempt == nil {
+		return SIWCFlow{}, ErrUnavailable
+	}
+	<-attempt.terminalDone
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return attempt.public, nil
+}
+
 // LegacySimulationEligible is the side-effect-free portion of the legacy
 // subscription SIWC start guard. HTTP adds its owned-account and recovery
 // gates before exposing this as an affirmative capability.
@@ -217,7 +239,8 @@ func (s *SIWCService) BeginOwnedIdentitySimulation(ctx context.Context, accountI
 
 func (s *SIWCService) stopOwnedSIWCAttempt(attempt *siwcAttempt) {
 	s.mu.Lock()
-	if attempt.public.State == "waiting" || attempt.public.State == "exchanging" {
+	active := attempt.public.State == "waiting" || attempt.public.State == "exchanging"
+	if active {
 		attempt.public.State = "canceled"
 		attempt.public.HandoffURL = ""
 	}
@@ -225,7 +248,13 @@ func (s *SIWCService) stopOwnedSIWCAttempt(attempt *siwcAttempt) {
 	// lock: no credential-writing callback can start after this point.
 	done := attempt.exchangeDone
 	s.mu.Unlock()
-	stopSIWCAttempt(attempt, false)
+	if active {
+		stopSIWCAttempt(attempt, false)
+	} else {
+		// A terminal callback already started graceful shutdown. Closing its
+		// socket here can race net/http's response flush after handler return.
+		attempt.cancel()
+	}
 	if done != nil {
 		<-done
 	}
@@ -273,15 +302,12 @@ func (s *SIWCService) Close() error {
 	s.mu.Lock()
 	active := make([]*siwcAttempt, 0, len(s.flows))
 	for _, attempt := range s.flows {
-		if attempt.public.State == "waiting" || attempt.public.State == "exchanging" {
-			attempt.public.State = "canceled"
-			attempt.public.HandoffURL = ""
-			active = append(active, attempt)
-		}
+		active = append(active, attempt)
 	}
 	s.mu.Unlock()
 	for _, attempt := range active {
-		stopSIWCAttempt(attempt, false)
+		s.stopOwnedSIWCAttempt(attempt)
+		<-attempt.terminalDone
 	}
 	return nil
 }

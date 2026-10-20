@@ -20,28 +20,37 @@ type ModelAcceptanceProposal struct {
 	PrerequisiteID          string `json:"prerequisite_id,omitempty"`
 }
 type ModelAcceptanceMaterial struct {
-	Phase             string              `json:"phase"`
-	ConnectionPurpose string              `json:"connection_purpose,omitempty"`
-	RequestedScopes   []string            `json:"requested_scopes,omitempty"`
-	RequestedResource string              `json:"requested_resource,omitempty"`
-	Account           ModelAccount        `json:"account"`
-	Route             ModelRoute          `json:"route"`
-	CredentialVersion int64               `json:"credential_version"`
-	Authorization     *ModelAuthorization `json:"authorization,omitempty"`
-	PrerequisiteID    string              `json:"prerequisite_id,omitempty"`
-	ConnectionID      string              `json:"connection_id,omitempty"`
-	Model             string              `json:"model,omitempty"`
-	PromptDigest      string              `json:"prompt_digest,omitempty"`
-	DataSummary       string              `json:"data_summary"`
-	CreatedAt         string              `json:"created_at"`
-	ExpiresAt         string              `json:"expires_at"`
-	DeadlineSeconds   int                 `json:"deadline_seconds"`
-	MaxAttempts       int                 `json:"max_attempts"`
+	Phase               string              `json:"phase"`
+	ConnectionPurpose   string              `json:"connection_purpose,omitempty"`
+	ConnectionMode      string              `json:"connection_mode,omitempty"`
+	LoginTimeoutSeconds int                 `json:"login_timeout_seconds,omitempty"`
+	RequestedScopes     []string            `json:"requested_scopes,omitempty"`
+	RequestedResource   string              `json:"requested_resource,omitempty"`
+	Account             ModelAccount        `json:"account"`
+	Route               ModelRoute          `json:"route"`
+	CredentialVersion   int64               `json:"credential_version"`
+	Authorization       *ModelAuthorization `json:"authorization,omitempty"`
+	PrerequisiteID      string              `json:"prerequisite_id,omitempty"`
+	ConnectionID        string              `json:"connection_id,omitempty"`
+	Model               string              `json:"model,omitempty"`
+	PromptDigest        string              `json:"prompt_digest,omitempty"`
+	DataSummary         string              `json:"data_summary"`
+	CreatedAt           string              `json:"created_at"`
+	ExpiresAt           string              `json:"expires_at"`
+	DeadlineSeconds     int                 `json:"deadline_seconds"`
+	MaxAttempts         int                 `json:"max_attempts"`
 }
 
 // Explicit connection policies are narrower than the route's subscription
 // billing metadata. Empty permission fields preserve historical material.
 func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
+	if m.ConnectionMode == "" {
+		if m.LoginTimeoutSeconds != 0 {
+			return false
+		}
+	} else if m.ConnectionMode != "browser_handoff" || m.ConnectionPurpose != "subscription_only" || m.LoginTimeoutSeconds != 600 || m.DeadlineSeconds != 30 || m.MaxAttempts != 1 {
+		return false
+	}
 	if m.ConnectionPurpose == "" {
 		return len(m.RequestedScopes) == 0 && m.RequestedResource == ""
 	}

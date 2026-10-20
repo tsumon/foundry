@@ -12,6 +12,7 @@ SECURITY.md
 THIRD_PARTY_NOTICES.md
 cmd/foundry-acceptance/acceptance_gates.go
 cmd/foundry-acceptance/acceptance_gates_test.go
+cmd/foundry-acceptance/acceptance_handoff_test.go
 cmd/foundry-acceptance/acceptance_identity_test.go
 cmd/foundry-acceptance/acceptance_subscription_test.go
 cmd/foundry-acceptance/main.go
@@ -45,6 +46,8 @@ docs/public/openai-subscription-connection.md
 docs/public/safety.md
 go.mod
 go.sum
+internal/acceptance/connection_session.go
+internal/acceptance/connection_session_test.go
 internal/acceptance/service.go
 internal/acceptance/service_identity_test.go
 internal/acceptance/service_subscription_test.go
@@ -56,6 +59,7 @@ internal/accounts/recovery_test.go
 internal/accounts/service.go
 internal/accounts/service_test.go
 internal/accounts/siwc.go
+internal/accounts/siwc_handoff_test.go
 internal/accounts/siwc_identity_test.go
 internal/accounts/siwc_operations.go
 internal/accounts/siwc_protocol_test.go
@@ -89,6 +93,7 @@ internal/domain/model_acceptance_subscription_test.go
 internal/domain/model_accounts.go
 internal/domain/model_accounts_test.go
 internal/domain/model_authorizations.go
+internal/domain/model_connection_handoff_test.go
 internal/domain/model_receipts.go
 internal/domain/model_routes.go
 internal/domain/model_routes_test.go
@@ -200,6 +205,7 @@ internal/httpapi/model_accounts_test.go
 internal/httpapi/model_authorization_mutations_test.go
 internal/httpapi/model_authorizations.go
 internal/httpapi/model_authorizations_test.go
+internal/httpapi/model_connection_handoff_test.go
 internal/httpapi/model_routes.go
 internal/httpapi/model_routes_test.go
 internal/httpapi/plan_revisions_test.go

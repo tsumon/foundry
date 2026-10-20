@@ -15,6 +15,7 @@ type acceptanceRouteView struct {
 	SpendClass        string `json:"spend_class"`
 	BaseURL           string `json:"base_url"`
 	ConnectionPurpose string `json:"connection_purpose,omitempty"`
+	ConnectionMode    string `json:"connection_mode,omitempty"`
 }
 
 // legacySIWCSimulationEligible is deliberately independent from acceptance
@@ -71,7 +72,7 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 			}
 			routes := []acceptanceRouteView{}
 			for _, v := range s.acceptance.Routes(account) {
-				routes = append(routes, acceptanceRouteView{v.ID, v.Adapter, v.Environment, v.SpendClass, v.BaseURL, s.acceptance.ConnectionPurpose(v.ID)})
+				routes = append(routes, acceptanceRouteView{v.ID, v.Adapter, v.Environment, v.SpendClass, v.BaseURL, s.acceptance.ConnectionPurpose(v.ID), s.acceptance.ConnectionMode(v.ID)})
 			}
 			writeJSON(w, 200, map[string]any{"operations": items, "simulation_enabled": s.acceptance.SimulationEligible(account) && !s.recoveryReadOnly, "legacy_siwc_simulation_enabled": s.legacySIWCSimulationEligible(account), "routes": routes})
 			return
@@ -96,12 +97,12 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if len(parts) == 3 && r.Method == http.MethodGet {
-		o, e := s.acceptance.Get(account, parts[2])
+		o, session, e := s.acceptance.Read(account, parts[2])
 		if e != nil {
 			writeAcceptanceError(w, e)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"operation": o})
+		writeAcceptanceOperation(w, o, session)
 		return
 	}
 	if len(parts) == 4 && r.Method == http.MethodPost {
@@ -123,7 +124,7 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 				return
 			}
 			o, e = s.acceptance.Decide(account, parts[2], q.ExpectedRevision, q.MaterialDigest, q.Decision)
-		case "execute":
+		case "execute", "cancel":
 			var q struct {
 				ExpectedRevision int64  `json:"expected_revision"`
 				MaterialDigest   string `json:"material_digest"`
@@ -136,7 +137,11 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 				writeError(w, 400, "validation", "invalid acceptance execution")
 				return
 			}
-			o, e = s.acceptance.Execute(r.Context(), account, parts[2], q.ExpectedRevision, q.MaterialDigest)
+			if parts[3] == "cancel" {
+				o, e = s.acceptance.Cancel(account, parts[2], q.ExpectedRevision, q.MaterialDigest)
+			} else {
+				o, e = s.acceptance.Execute(r.Context(), account, parts[2], q.ExpectedRevision, q.MaterialDigest)
+			}
 		default:
 			writeError(w, 404, "not_found", "route not found")
 			return
@@ -145,8 +150,23 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 			writeAcceptanceError(w, e)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"operation": o})
+		// Re-read the pair under the controller's completion lock so a fast
+		// callback cannot combine a terminal receipt with a usable link.
+		o, session, e := s.acceptance.Read(account, o.ID)
+		if e != nil {
+			writeAcceptanceError(w, e)
+			return
+		}
+		writeAcceptanceOperation(w, o, session)
 		return
 	}
 	writeError(w, 404, "not_found", "route not found")
+}
+
+func writeAcceptanceOperation(w http.ResponseWriter, o domain.ModelAcceptanceOperation, session *acceptance.ConnectionSession) {
+	payload := map[string]any{"operation": o}
+	if session != nil {
+		payload["connection_session"] = session
+	}
+	writeJSON(w, 200, payload)
 }

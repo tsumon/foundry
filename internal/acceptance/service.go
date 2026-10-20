@@ -4,6 +4,7 @@ package acceptance
 import (
 	"context"
 	"errors"
+	"foundry/internal/accounts"
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/store"
@@ -21,6 +22,8 @@ type Options struct {
 	Routes                         []domain.ModelRoute
 	IdentityOnlyRouteIDs           []string
 	SubscriptionConnectionRouteIDs []string
+	BrowserHandoffRouteIDs         []string
+	BrowserSIWC                    *accounts.SIWCService
 	Router                         *model.Router
 	Connect                        Connector
 	Now                            func() time.Time
@@ -37,10 +40,14 @@ type Service struct {
 	now                func() time.Time
 	ready              atomic.Bool
 	lifecycle          sync.RWMutex
+	browserRoutes      map[string]bool
+	browserSIWC        *accounts.SIWCService
+	sessionsMu         sync.Mutex
+	sessions           map[string]*connectionSession
 }
 
 func New(s *store.Store) *Service {
-	return &Service{store: s, routes: map[string]domain.ModelRoute{}, identityRoutes: map[string]bool{}, subscriptionRoutes: map[string]bool{}, ownedAccounts: map[string]bool{}, now: time.Now}
+	return &Service{store: s, routes: map[string]domain.ModelRoute{}, identityRoutes: map[string]bool{}, subscriptionRoutes: map[string]bool{}, ownedAccounts: map[string]bool{}, browserRoutes: map[string]bool{}, sessions: map[string]*connectionSession{}, now: time.Now}
 }
 
 // NewSimulation only accepts constructor-owned account/route pairs. Recovery is
@@ -49,6 +56,7 @@ func NewSimulation(s *store.Store, options Options) *Service {
 	svc := New(s)
 	svc.router = options.Router
 	svc.connect = options.Connect
+	svc.browserSIWC = options.BrowserSIWC
 	if options.Now != nil {
 		svc.now = options.Now
 	}
@@ -87,6 +95,15 @@ func NewSimulation(s *store.Store, options Options) *Service {
 	}
 	registerPolicy(options.IdentityOnlyRouteIDs, "identity_only", svc.identityRoutes)
 	registerPolicy(options.SubscriptionConnectionRouteIDs, "subscription_only", svc.subscriptionRoutes)
+	for _, id := range options.BrowserHandoffRouteIDs {
+		if !svc.subscriptionRoutes[id] || svc.browserRoutes[id] || !svc.browserSIWC.BrowserHandoffEligible(s) {
+			svc.invalidPolicy = true
+		}
+		if saved, e := s.GetModelRoute(id); e == nil {
+			svc.ownedAccounts[saved.AccountID] = true
+		}
+		svc.browserRoutes[id] = true
+	}
 	for _, r := range options.Routes {
 		if purpose := policyAccounts[r.AccountID]; purpose != "" && (purpose == "identity_only" && !svc.identityRoutes[r.ID] || purpose == "subscription_only" && !svc.subscriptionRoutes[r.ID]) {
 			svc.invalidPolicy = true
@@ -132,6 +149,7 @@ func (s *Service) Recover() error {
 	s.lifecycle.Lock()
 	defer s.lifecycle.Unlock()
 	s.ready.Store(false)
+	s.stopConnections()
 	if e := s.store.RecoverModelAcceptance(s.now()); e != nil {
 		return ErrPersistence
 	}
@@ -161,7 +179,7 @@ func (s *Service) Propose(account string, q domain.ModelAcceptanceProposal) (dom
 	if q.ConnectionPurpose != s.ConnectionPurpose(q.RouteID) || (s.identityRoutes[q.RouteID] || s.subscriptionRoutes[q.RouteID]) && q.Phase != "connection" {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
-	return s.mutationResult(s.store.ProposeModelAcceptance(account, q, s.now()))
+	return s.mutationResult(s.store.ProposeModelAcceptanceWithConnectionMode(account, q, s.ConnectionMode(q.RouteID), s.now()))
 }
 func (s *Service) owned(account, id string) (domain.ModelAcceptanceOperation, error) {
 	if !s.SimulationEligible(account) {
@@ -172,7 +190,7 @@ func (s *Service) owned(account, id string) (domain.ModelAcceptanceOperation, er
 		return s.mutationResult(o, e)
 	}
 	r, ok := s.routes[o.Material.Route.ID]
-	if !ok || r.AccountID != account || !reflect.DeepEqual(r, o.Material.Route) || o.Phase != o.Material.Phase || !o.Material.ValidConnectionPurpose() || o.Material.ConnectionPurpose != s.ConnectionPurpose(r.ID) || (s.identityRoutes[r.ID] || s.subscriptionRoutes[r.ID]) && o.Phase != "connection" {
+	if !ok || r.AccountID != account || !reflect.DeepEqual(r, o.Material.Route) || o.Phase != o.Material.Phase || !o.Material.ValidConnectionPurpose() || o.Material.ConnectionMode != s.ConnectionMode(r.ID) || o.Material.ConnectionPurpose != s.ConnectionPurpose(r.ID) || (s.identityRoutes[r.ID] || s.subscriptionRoutes[r.ID]) && o.Phase != "connection" {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
 	return o, nil
@@ -194,6 +212,9 @@ func (s *Service) Execute(ctx context.Context, account, id string, revision int6
 	o, e := s.store.ClaimModelAcceptance(account, id, revision, digest, s.now())
 	if e != nil {
 		return s.mutationResult(domain.ModelAcceptanceOperation{}, e)
+	}
+	if o.Material.ConnectionMode == "browser_handoff" {
+		return s.startConnection(o)
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(o.Material.DeadlineSeconds)*time.Second)
 	defer cancel()
@@ -222,8 +243,15 @@ func (s *Service) Execute(ctx context.Context, account, id string, revision int6
 		selection := o.Material.Selection()
 		result, e = s.router.Complete(ctx, model.Request{SnapshotSchema: 2, Selection: &selection, Profile: selection.Profile, System: domain.AcceptanceSystem, Prompt: domain.AcceptancePrompt, MaxOutputTokens: 128})
 	}
+	if e == nil {
+		e = ctx.Err()
+	}
+	return s.finish(o, e, catalog, result)
+}
+
+func (s *Service) finish(o domain.ModelAcceptanceOperation, e error, catalog []domain.ModelAcceptanceCatalogEntry, result model.Result) (domain.ModelAcceptanceOperation, error) {
 	state, certainty, code := "succeeded", "completed", ""
-	if e != nil || ctx.Err() != nil {
+	if e != nil {
 		state, certainty, code = "unknown", "unknown", "transport_unknown"
 		var pe *model.ProviderError
 		if errors.As(e, &pe) {
@@ -240,10 +268,10 @@ func (s *Service) Execute(ctx context.Context, account, id string, revision int6
 		catalog = nil
 		result = model.Result{}
 	}
-	saved, writeErr := s.store.FinishModelAcceptance(account, id, o.Revision, state, certainty, code, catalog, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now())
+	saved, writeErr := s.store.FinishModelAcceptance(o.AccountID, o.ID, o.Revision, state, certainty, code, catalog, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now())
 	if writeErr != nil {
 		s.ready.Store(false)
-		_, _ = s.store.FinishModelAcceptance(account, id, o.Revision, "unknown", "unknown", "transport_unknown", nil, 0, 0, false, s.now())
+		_, _ = s.store.FinishModelAcceptance(o.AccountID, o.ID, o.Revision, "unknown", "unknown", "transport_unknown", nil, 0, 0, false, s.now())
 		return domain.ModelAcceptanceOperation{}, ErrPersistence
 	}
 	return saved, nil

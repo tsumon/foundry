@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 )
 
 func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service) error {
@@ -27,12 +28,18 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 	if e != nil {
 		return e
 	}
+	browserOptions := r.gateProtocol.siwcOptions()
+	browserOptions.FlowTimeout = 10 * time.Minute
+	r.browserSIWC, e = accounts.NewSIWCSimulation(accountService, browserOptions)
+	if e != nil {
+		return e
+	}
 	routes := []domain.ModelRoute{}
 	identityRoutes := []string{}
 	subscriptionRoutes := []string{}
-	for _, fixture := range []string{"openai", "kimi", "openai-identity", "openai-subscription"} {
+	for _, fixture := range []string{"openai", "kimi", "openai-identity", "openai-subscription", "openai-handoff"} {
 		provider := fixture
-		if fixture == "openai-identity" || fixture == "openai-subscription" {
+		if fixture == "openai-identity" || fixture == "openai-subscription" || fixture == "openai-handoff" {
 			provider = "openai"
 		}
 		a := domain.ModelAccount{ID: "acceptance-gate-" + provider, Name: "SYNTHETIC acceptance gates — " + provider, Provider: provider, BaseURL: r.gateProtocol.modelBaseURL(), AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true}
@@ -42,6 +49,9 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 		} else if fixture == "openai-subscription" {
 			a.ID = "acceptance-gate-openai-subscription"
 			a.Name = "SYNTHETIC OpenAI — subscription connection"
+		} else if fixture == "openai-handoff" {
+			a.ID = "acceptance-gate-openai-handoff"
+			a.Name = "SYNTHETIC OpenAI — browser connection"
 		}
 		route := domain.ModelRoute{ID: a.ID + "-route", AccountID: a.ID, Adapter: "openai_siwc_responses", Protocol: "responses", Environment: "simulation", SpendClass: "subscription_only", ExtraUsage: "off"}
 		if provider == "kimi" {
@@ -62,12 +72,12 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 		routes = append(routes, route)
 		if fixture == "openai-identity" {
 			identityRoutes = append(identityRoutes, route.ID)
-		} else if fixture == "openai-subscription" {
+		} else if fixture == "openai-subscription" || fixture == "openai-handoff" {
 			subscriptionRoutes = append(subscriptionRoutes, route.ID)
 		}
 	}
 	router := model.NewRouter(nil, accountService, model.RouterOptions{SimulationOrigins: []string{r.gateProtocol.modelOrigin()}})
-	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, IdentityOnlyRouteIDs: identityRoutes, SubscriptionConnectionRouteIDs: subscriptionRoutes, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
+	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, IdentityOnlyRouteIDs: identityRoutes, SubscriptionConnectionRouteIDs: subscriptionRoutes, BrowserHandoffRouteIDs: []string{"acceptance-gate-openai-handoff-route"}, BrowserSIWC: r.browserSIWC, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
 		switch m.Account.Provider {
 		case "openai":
 			if m.ConnectionPurpose == "identity_only" {

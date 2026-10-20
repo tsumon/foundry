@@ -224,6 +224,12 @@ func acceptancePrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error 
 	return nil
 }
 func (s *Store) ProposeModelAcceptance(account string, q domain.ModelAcceptanceProposal, now time.Time) (domain.ModelAcceptanceOperation, error) {
+	return s.ProposeModelAcceptanceWithConnectionMode(account, q, "", now)
+}
+
+// ProposeModelAcceptanceWithConnectionMode accepts trusted constructor policy,
+// never a field decoded from the public proposal. Historical callers omit it.
+func (s *Store) ProposeModelAcceptanceWithConnectionMode(account string, q domain.ModelAcceptanceProposal, mode string, now time.Time) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
 	if !acceptanceIdentifierPattern.MatchString(account) || !acceptanceIdentifierPattern.MatchString(q.RouteID) || q.ExpectedAccountRevision < 1 || (q.Phase != "connection" && q.Phase != "catalog" && q.Phase != "inference") {
 		return o, ErrConflict
@@ -266,6 +272,13 @@ func (s *Store) ProposeModelAcceptance(account string, q domain.ModelAcceptanceP
 	m.ExpiresAt = now.Add(10 * time.Minute).UTC().Format(time.RFC3339Nano)
 	m.DeadlineSeconds = 30
 	m.MaxAttempts = 1
+	m.ConnectionMode = mode
+	if mode != "" {
+		m.LoginTimeoutSeconds = 600
+	}
+	if !m.ValidConnectionPurpose() {
+		return o, ErrConflict
+	}
 	m.DataSummary = "Fixed synthetic local fixture data only; no tools or repository context."
 	nonce := make([]byte, 16)
 	if _, e = rand.Read(nonce); e != nil {
