@@ -682,6 +682,164 @@ it("rejects another production operation returned by an ambiguous execution reco
   expect(opened).not.toHaveBeenCalled();
 });
 
+it.each(["default restart", "new-generation restart"])(
+  "reads the consumed original production receipt after %s without restoring authority",
+  async (restart) => {
+    const approved = productionOperation("approved", { revision: 2 });
+    const recovered = {
+      ...approved,
+      revision: 4,
+      state: "unknown",
+      attempts: 1,
+      claim_sequence: 1,
+      certainty: "unknown",
+      code: "transport_unknown",
+    };
+    let executeSent = false;
+    const writes: string[] = [];
+    const opened = vi.spyOn(window, "open").mockImplementation(() => null);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: string, init?: RequestInit) => {
+        if (init?.method) {
+          writes.push(path);
+          executeSent = true;
+          throw new TypeError("lost execute response before restart");
+        }
+        if (path.endsWith(`/${approved.id}`))
+          return response({ operation: recovered });
+        if (!executeSent) return response(productionHistory([approved]));
+        return response(
+          productionHistory(
+            [recovered],
+            restart === "default restart"
+              ? {
+                  routes: [],
+                  production_connection_enabled: false,
+                  production_admission: undefined,
+                }
+              : {
+                  production_admission: {
+                    ...productionAdmission,
+                    generation: "b".repeat(32),
+                  },
+                },
+          ),
+        );
+      }),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={productionAccount}
+        refreshAccount={async () => {}}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /连接 · 已批准，尚未执行 · 真实订阅连接/,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "仅读取原验收记录" }),
+    );
+    expect(
+      await screen.findByRole("button", {
+        name: /连接 · 结果未知 · 真实订阅连接/,
+      }),
+    ).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "仅读取原验收记录" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "批准连接材料" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "执行连接" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "读取连接状态" })).toBeDisabled();
+    expect(writes).toEqual([
+      `/api/model-accounts/${productionAccount.id}/acceptance-operations/${approved.id}/execute`,
+    ]);
+    expect(opened).not.toHaveBeenCalled();
+  },
+);
+
+it.each([
+  "changed original material",
+  "conflicting newer history material",
+  "unowned session",
+])("rejects restart reconciliation with %s", async (kind) => {
+  const approved = productionOperation("approved", { revision: 2 });
+  const recovered = {
+    ...approved,
+    revision: 4,
+    state: kind === "unowned session" ? "running" : "unknown",
+    attempts: 1,
+    claim_sequence: 1,
+    certainty: "unknown",
+    code: "transport_unknown",
+    material_digest:
+      kind === "changed original material" ? "b".repeat(64) : digest,
+  };
+  const historical =
+    kind === "conflicting newer history material"
+      ? { ...recovered, revision: 5, material_digest: "b".repeat(64) }
+      : recovered;
+  let executeSent = false;
+  const writes: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method) {
+        writes.push(path);
+        executeSent = true;
+        throw new TypeError("lost response");
+      }
+      if (path.endsWith(`/${approved.id}`))
+        return response({
+          operation: recovered,
+          ...(kind === "unowned session"
+            ? { connection_session: handoffSession(recovered.id) }
+            : {}),
+        });
+      return response(
+        executeSent
+          ? productionHistory([historical], {
+              production_admission: {
+                ...productionAdmission,
+                generation: "b".repeat(32),
+              },
+            })
+          : productionHistory([approved]),
+      );
+    }),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /连接 · 已批准，尚未执行 · 真实订阅连接/,
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "仅读取原验收记录" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("invalid_receipt");
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "执行连接" }),
+  ).not.toBeInTheDocument();
+  expect(writes).toHaveLength(1);
+});
+
 it("ignores a production execution response after switching accounts", async () => {
   const approved = productionOperation("approved");
   let resolve!: (value: Response) => void;

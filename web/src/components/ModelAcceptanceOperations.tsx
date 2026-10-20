@@ -573,6 +573,7 @@ function AcceptanceOperations({
   >({});
   const [unresolved, setUnresolved] = useState<{
     operationID?: string;
+    materialDigest?: string;
   }>();
   const lifecycle = useRef({ active: true, epoch: 0, locked: false });
 
@@ -769,7 +770,12 @@ function AcceptanceOperations({
         onConnectionPolicy?.("unavailable");
         onLegacySIWCCapability?.(false);
       }
-      if (decoded.requiresRead) setUnresolved({ operationID });
+      if (decoded.requiresRead)
+        setUnresolved({
+          operationID,
+          materialDigest: operations.find((item) => item.id === operationID)
+            ?.material_digest,
+        });
     } finally {
       lifecycle.current.locked = false;
       if (lifecycle.current.active && lifecycle.current.epoch === epoch)
@@ -800,7 +806,9 @@ function AcceptanceOperations({
         if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
           return;
         requireValidReceipt(
-          () => result.operation.id === unresolved.operationID,
+          () =>
+            result.operation.id === unresolved.operationID &&
+            result.operation.material_digest === unresolved.materialDigest,
         );
         recovered = result.operation;
         recoveredSession = result.connection_session;
@@ -813,9 +821,7 @@ function AcceptanceOperations({
         () =>
           !recovered ||
           (validOperation(recovered, account.id) &&
-            ((!history.simulation_enabled &&
-              recovered.source !== "production_connection" &&
-              !recoveredSession) ||
+            ((!history.simulation_enabled && !recoveredSession) ||
               validOperationForSnapshot(recovered, account.id, history)) &&
             (recoveredSession === undefined ||
               validConnectionSession(recovered, recoveredSession, Date.now()))),
@@ -826,11 +832,11 @@ function AcceptanceOperations({
       if (
         historyReceipt &&
         recovered &&
-        historyReceipt.revision === recovered.revision &&
-        (historyReceipt.state !== recovered.state ||
-          historyReceipt.material_digest !== recovered.material_digest ||
-          historyReceipt.claim_sequence !== recovered.claim_sequence ||
-          historyReceipt.attempts !== recovered.attempts)
+        (historyReceipt.material_digest !== recovered.material_digest ||
+          (historyReceipt.revision === recovered.revision &&
+            (historyReceipt.state !== recovered.state ||
+              historyReceipt.claim_sequence !== recovered.claim_sequence ||
+              historyReceipt.attempts !== recovered.attempts)))
       )
         throw invalidReceipt();
       const historyIsNewer =

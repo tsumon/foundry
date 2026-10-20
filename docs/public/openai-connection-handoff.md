@@ -40,7 +40,7 @@ Simulation receipts keep local-simulation provenance, unknown quota, unverified 
 
 ## Workbench behavior
 
-Keep the connection controls in Settings → Models → account detail. Extend the existing approval material with the human-login and network limits. For a running handoff show a local-simulation label, absolute expiry, safe “open local authorization” action, explicit status read and cancellation. Terminal or missing sessions have no usable handoff action. Unknown or malformed responses disable mutations and require explicit reconciliation. Do not add navigation, charts or live login controls.
+Keep the connection controls in Settings → Models → account detail. Extend the existing approval material with the human-login and network limits. In the original fixture-only increment, a running handoff shows a local-simulation label, absolute expiry, safe “open local authorization” action, explicit status read and cancellation; that increment adds no live-login controls. The subsequent [operator entry](openai-operator-entry.md) uses the same cards with distinct real-connection provenance and independently gated proposal, approval and execution. Terminal or missing sessions have no usable handoff action. Unknown or malformed responses disable mutations and require explicit reconciliation. Do not add navigation or charts.
 
 Use an additional disposable synthetic account for manual-browser acceptance so existing automated fixtures retain their meaning. Its authorization page must clearly identify itself as synthetic and never ask for a real email, password, OTP or account selection. The future real provider page, once separately authorized, is where the user will select their own account/workspace.
 
@@ -54,6 +54,6 @@ Use an additional disposable synthetic account for manual-browser acceptance so 
 
 ## Remaining live acceptance gates
 
-These tests do not certify OpenAI eligibility, real subscription consent, native Keychain readiness, quota or billing. Before any real execution the user must separately confirm the requested subscription scopes, account/workspace selection, native storage check and a one-attempt connection approval. A later release must explicitly enable the reviewed live admission path; this release has no such switch. Directory, inference and refresh remain separate and unauthorized.
+These tests do not certify OpenAI eligibility, real subscription consent, native Keychain readiness, quota or billing. Before any real execution the user must separately confirm the requested subscription scopes, account/workspace selection, native storage check and a one-attempt connection approval. The original fixture-only increment had no live-admission switch. The subsequent [operator entry](openai-operator-entry.md) provides paired, nonpersistent startup options for the reviewed connection path; installation and ordinary startup remain closed, and no real run is authorized by this implementation or its local verification. Directory, inference and refresh remain separate and unauthorized.
 
 Protocol references, checked 2026-10-20: [official local-app sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in) and [errors and recovery](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery). The human-login lifetime is Foundry policy, not a claimed provider guarantee.
