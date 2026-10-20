@@ -135,6 +135,8 @@ The command creates a fresh temporary Git repository and SQLite state, then uses
 
 Model access follows a “prepare first, approve each later stage” design. In addition to read-only local metadata inspection, the disposable acceptance environment now provides three separately proposed, approved, and explicitly executed local synthetic gates for connection, catalog, and inference. They contact only process-owned loopback fixtures. Real sign-in, real catalog discovery, real inference, and task acceptance remain separately closed. See [Model acceptance: preparation, not live access](docs/public/model-acceptance.md).
 
+A separate browser-connection simulation supports explicit execution after approval, a ten-minute human-login window, manual status reads and cancellation, with one-attempt and failure-recovery evidence. It does not enable real sign-in or a native Keychain check. See [connection approval handoff and human-login lifetime](docs/public/openai-connection-handoff.md).
+
 <details>
 <summary>Local development and runtime entrypoints</summary>
 

@@ -135,6 +135,8 @@ go run ./cmd/foundry-acceptance --web-dir web/dist
 
 模型接入采用“先准备、后逐阶段批准”的设计。除只读本地元数据检查外，一次性验收环境现提供连接、目录和推理三道分别提案、批准并显式执行的本地合成模拟门禁；它们只访问进程拥有的 loopback fixture。真实登录、真实目录发现、真实推理和任务验收仍分别关闭。参阅[模型验收：准备，不是实时接入](docs/public/model-acceptance.md)。
 
+独立的浏览器连接模拟现支持审批后手动执行、10 分钟人工登录时限、显式读取与取消，并保留单次尝试和故障恢复记录。它不开放真实登录或本机 Keychain 检查。参阅[连接审批接线与人工登录时限](docs/public/openai-connection-handoff.md)。
+
 <details>
 <summary>本地开发与运行入口</summary>
 
