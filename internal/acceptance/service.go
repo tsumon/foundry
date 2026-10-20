@@ -46,6 +46,7 @@ type Service struct {
 	sessionsMu         sync.Mutex
 	sessions           map[string]*connectionSession
 	production         *accounts.ProductionConnectionAdmission
+	catalog            *productionCatalog
 }
 
 func New(s *store.Store) *Service {
@@ -117,7 +118,7 @@ func (s *Service) OwnsAccount(account string) bool {
 	return s.ownedAccounts[account]
 }
 func (s *Service) SimulationEligible(account string) bool {
-	if s.production != nil || s.invalidPolicy || !s.ready.Load() || s.router == nil || s.connect == nil {
+	if s.catalog != nil || s.production != nil || s.invalidPolicy || !s.ready.Load() || s.router == nil || s.connect == nil {
 		return false
 	}
 	for _, r := range s.routes {
@@ -138,7 +139,7 @@ func (s *Service) ConnectionPurpose(route string) string {
 }
 func (s *Service) Routes(account string) []domain.ModelRoute {
 	out := []domain.ModelRoute{}
-	if s.SimulationEligible(account) || s.production != nil && s.OwnsAccount(account) && s.production.Metadata().Generation != "" {
+	if s.SimulationEligible(account) || s.catalog != nil && s.OwnsAccount(account) && s.catalog.admission.Valid() || s.production != nil && s.OwnsAccount(account) && s.production.Metadata().Generation != "" {
 		for _, r := range s.routes {
 			if r.AccountID == account {
 				out = append(out, r)
@@ -175,6 +176,12 @@ func (s *Service) mutationResult(o domain.ModelAcceptanceOperation, e error) (do
 func (s *Service) Propose(account string, q domain.ModelAcceptanceProposal) (domain.ModelAcceptanceOperation, error) {
 	s.lifecycle.RLock()
 	defer s.lifecycle.RUnlock()
+	if s.catalog != nil {
+		if !s.ProductionCatalogStatus(account).Enabled || s.catalog.route.ID != q.RouteID || q.Phase != "catalog" || q.ConnectionPurpose != "" || q.Model != "" {
+			return domain.ModelAcceptanceOperation{}, ErrDisabled
+		}
+		return s.mutationResult(s.store.ProposeProductionCatalog(account, q, s.catalog.admission, s.now()))
+	}
 	if s.production != nil {
 		if !s.ready.Load() || !s.production.Eligible(s.store) || s.routes[q.RouteID].AccountID != account || q.Phase != "connection" || q.ConnectionPurpose != "subscription_only" {
 			return domain.ModelAcceptanceOperation{}, ErrDisabled
@@ -190,6 +197,9 @@ func (s *Service) Propose(account string, q domain.ModelAcceptanceProposal) (dom
 	return s.mutationResult(s.store.ProposeModelAcceptanceWithConnectionMode(account, q, s.ConnectionMode(q.RouteID), s.now()))
 }
 func (s *Service) owned(account, id string) (domain.ModelAcceptanceOperation, error) {
+	if s.catalog != nil {
+		return s.ownedCatalog(account, id)
+	}
 	if s.production == nil && !s.SimulationEligible(account) || s.production != nil && !s.ready.Load() {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
@@ -236,6 +246,9 @@ func (s *Service) Execute(ctx context.Context, account, id string, revision int6
 	}
 	if o.Material.ConnectionMode == "browser_handoff" {
 		return s.startConnection(o)
+	}
+	if s.catalog != nil {
+		return s.executeCatalog(ctx, o)
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(o.Material.DeadlineSeconds)*time.Second)
 	defer cancel()
@@ -294,6 +307,12 @@ func (s *Service) finishWithDiagnostic(o domain.ModelAcceptanceOperation, e erro
 		result = model.Result{}
 	}
 	writeReceipt := func(state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, result model.Result, diagnostic *domain.ConnectionDiagnostic) (domain.ModelAcceptanceOperation, error) {
+		if s.catalog != nil {
+			if o.Material.ProductionAdmission == nil || *o.Material.ProductionAdmission != s.catalog.admission {
+				return domain.ModelAcceptanceOperation{}, store.ErrConflict
+			}
+			return s.store.FinishProductionCatalog(o, state, certainty, code, catalog, s.now())
+		}
 		if s.production != nil {
 			if !s.production.OwnsClaim(s.store, o) || len(catalog) != 0 || result.InputTokens != 0 || result.OutputTokens != 0 || result.UsageKnown {
 				return domain.ModelAcceptanceOperation{}, store.ErrConflict

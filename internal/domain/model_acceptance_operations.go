@@ -5,6 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"reflect"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 const AcceptancePrompt = "Write a pure function that adds two integers. Synthetic acceptance data only."
@@ -20,7 +23,7 @@ type ProductionAdmission struct {
 
 func (p ProductionAdmission) Valid() bool {
 	b, err := hex.DecodeString(p.Generation)
-	return err == nil && len(b) == 16 && hex.EncodeToString(b) == p.Generation && p.Profile == "openai_siwc_subscription_v1"
+	return err == nil && len(b) == 16 && hex.EncodeToString(b) == p.Generation && (p.Profile == "openai_siwc_subscription_v1" || p.Profile == "openai_siwc_catalog_v1")
 }
 
 type ModelAcceptanceProposal struct {
@@ -32,6 +35,8 @@ type ModelAcceptanceProposal struct {
 	PrerequisiteID          string `json:"prerequisite_id,omitempty"`
 }
 type ModelAcceptanceMaterial struct {
+	RequestMethod       string               `json:"request_method,omitempty"`
+	RequestURL          string               `json:"request_url,omitempty"`
 	ProductionAdmission *ProductionAdmission `json:"production_admission,omitempty"`
 	Phase               string               `json:"phase"`
 	ConnectionPurpose   string               `json:"connection_purpose,omitempty"`
@@ -57,8 +62,14 @@ type ModelAcceptanceMaterial struct {
 // Explicit connection policies are narrower than the route's subscription
 // billing metadata. Empty permission fields preserve historical material.
 func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
+	if m.ProductionAdmission != nil && m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" {
+		return false
+	}
+	if m.RequestMethod != "" || m.RequestURL != "" {
+		return false
+	}
 	production := m.ProductionAdmission != nil
-	if production && (!m.ProductionAdmission.Valid() || m.ConnectionPurpose != "subscription_only" || m.ConnectionMode != "browser_handoff" ||
+	if production && (!m.ProductionAdmission.Valid() || m.ProductionAdmission.Profile != "openai_siwc_subscription_v1" || m.ConnectionPurpose != "subscription_only" || m.ConnectionMode != "browser_handoff" ||
 		!m.Account.Enabled || m.Account.BillingMode != "subscription" || m.Account.BaseURL != OpenAISubscriptionRequestedResource ||
 		m.Route.Environment != "live" || m.Route.BaseURL != OpenAISubscriptionRequestedResource || m.Route.Protocol != "responses" || m.Route.SpendClass != "subscription_only") {
 		return false
@@ -87,6 +98,36 @@ func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
 	default:
 		return false
 	}
+}
+
+const OpenAICatalogURL = "https://api.openai.com/v1/models"
+
+func (m ModelAcceptanceMaterial) ValidAcceptancePurpose() bool {
+	return m.ValidProductionCatalog() || m.ValidConnectionPurpose()
+}
+
+func (m ModelAcceptanceMaterial) ValidProductionCatalog() bool {
+	return m.ProductionAdmission != nil && m.ProductionAdmission.Valid() && m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" &&
+		m.Phase == "catalog" && m.RequestMethod == "GET" && m.RequestURL == OpenAICatalogURL && m.ConnectionPurpose == "" && m.ConnectionMode == "" && m.LoginTimeoutSeconds == 0 && len(m.RequestedScopes) == 0 && m.RequestedResource == "" && m.Model == "" && m.PromptDigest == "" &&
+		m.Account.Enabled && m.Account.Provider == "openai" && m.Account.AuthMethod == "openai_siwc" && m.Account.BillingMode == "subscription" && m.Account.BaseURL == OpenAISubscriptionRequestedResource &&
+		m.Route.AccountID == m.Account.ID && m.Route.Environment == "live" && m.Route.Adapter == "openai_siwc_responses" && m.Route.Protocol == "responses" && m.Route.BaseURL == OpenAISubscriptionRequestedResource && m.Route.SpendClass == "subscription_only" && m.Route.ExtraUsage == "off" &&
+		m.CredentialVersion == 0 && m.Authorization != nil && m.Authorization.State == "available" && m.Authorization.Generation > 0 && m.Authorization.Binding.AccountID == m.Account.ID && m.Authorization.Binding.Issuer == "https://auth.openai.com" && ValidateModelAuthorizationBinding(m.Authorization.Binding) == nil && ModelAuthorizationAllowsInference(m.Authorization.Binding) && m.DeadlineSeconds == 30 && m.MaxAttempts == 1
+}
+
+func ValidModelCatalogName(s string) bool {
+	return utf8.ValidString(s) && strings.TrimSpace(s) != "" && utf8.RuneCountInString(s) <= 200 && !strings.ContainsAny(s, "<>") && strings.IndexFunc(s, unicode.IsControl) < 0
+}
+
+func ValidModelCatalogIdentifier(s string) bool {
+	if s == "" || len(s) > 128 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("-_.:/", c)) {
+			return false
+		}
+	}
+	return true
 }
 
 type ModelAcceptanceCatalogEntry struct {

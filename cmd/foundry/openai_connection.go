@@ -23,6 +23,14 @@ func nativeOpenAIConnectionDeps() openaiConnectionDeps {
 }
 
 func validateOpenAIStartupOptions(cfg config) error {
+	if cfg.openaiCatalogRoute != "" {
+		if cfg.openaiSubscriptionRoute != "" || cfg.openaiKeychainJournal != "" {
+			return errors.New("--openai-catalog-route is mutually exclusive with connection startup options")
+		}
+		if domain.ValidateModelCredentialOperation(cfg.openaiCatalogRoute) != nil {
+			return errors.New("invalid OpenAI catalog route identifier")
+		}
+	}
 	if (cfg.openaiSubscriptionRoute == "") != (cfg.openaiKeychainJournal == "") {
 		return errors.New("--openai-subscription-route and --openai-keychain-journal must be supplied together")
 	}

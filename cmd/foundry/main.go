@@ -37,6 +37,7 @@ type config struct {
 	dockerPath                    string
 	openaiSubscriptionRoute       string
 	openaiKeychainJournal         string
+	openaiCatalogRoute            string
 }
 
 type dataLock struct {
@@ -44,10 +45,11 @@ type dataLock struct {
 }
 
 type productionModels struct {
-	accounts   *accounts.Service
-	router     *model.Router
-	siwc       *accounts.SIWCService
-	acceptance *acceptance.Service
+	accounts    *accounts.Service
+	router      *model.Router
+	siwc        *accounts.SIWCService
+	acceptance  *acceptance.Service
+	catalogMode bool
 }
 
 func newProductionModels(s *store.Store, legacy *model.Client, secrets model.Secrets) productionModels {
@@ -62,8 +64,12 @@ func newProductionModels(s *store.Store, legacy *model.Client, secrets model.Sec
 }
 
 func (p productionModels) Recover(ctx context.Context) error {
-	if err := p.accounts.Recover(ctx); err != nil {
-		return errors.New("recover model accounts failed")
+	// Catalog startup is metadata-only, including when abandoned credential
+	// cleanup exists. Such intents remain blockers, never native deletions.
+	if !p.catalogMode {
+		if err := p.accounts.Recover(ctx); err != nil {
+			return errors.New("recover model accounts failed")
+		}
 	}
 	if err := p.acceptance.Recover(); err != nil {
 		return errors.New("recover model acceptance failed")
@@ -96,8 +102,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	flags.BoolVar(&cfg.localMCPTest, "local-mcp-test", false, "enable the controller-owned synthetic local MCP reference service")
 	flags.StringVar(&cfg.openaiSubscriptionRoute, "openai-subscription-route", "", "explicitly enable one existing OpenAI subscription connection route")
 	flags.StringVar(&cfg.openaiKeychainJournal, "openai-keychain-journal", "", "new absolute private journal for the native startup probe")
+	flags.StringVar(&cfg.openaiCatalogRoute, "openai-catalog-route", "", "enable independent single-request catalog approvals for one existing OpenAI subscription route")
 	if err = flags.Parse(args); err != nil {
-		return errors.New("invalid startup options; supported options: --local-mcp-test, --openai-subscription-route, --openai-keychain-journal")
+		return errors.New("invalid startup options; supported options: --local-mcp-test, --openai-subscription-route, --openai-keychain-journal, --openai-catalog-route")
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected startup arguments")
@@ -148,6 +155,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	models := newProductionModels(persistent, client, secrets)
 	defer models.siwc.Close()
 	if err := activateOpenAIConnection(cfg, persistent, &models, recoveryReadOnly, nativeOpenAIConnectionDeps()); err != nil {
+		return err
+	}
+	if err := activateOpenAICatalog(cfg, persistent, &models, recoveryReadOnly); err != nil {
 		return err
 	}
 	defer models.acceptance.Close()

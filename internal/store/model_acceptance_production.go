@@ -17,7 +17,7 @@ CREATE TRIGGER IF NOT EXISTS acceptance_dispatch_no_delete BEFORE DELETE ON mode
 // Admission metadata is provenance, never an independently dispatchable permit.
 // Generic simulation proposal helpers cannot construct live material.
 func (s *Store) ProposeProductionConnection(account string, q domain.ModelAcceptanceProposal, admission domain.ProductionAdmission, now time.Time) (domain.ModelAcceptanceOperation, error) {
-	if !admission.Valid() || q.Phase != "connection" || q.ConnectionPurpose != "subscription_only" {
+	if !admission.Valid() || admission.Profile != "openai_siwc_subscription_v1" || q.Phase != "connection" || q.ConnectionPurpose != "subscription_only" {
 		return domain.ModelAcceptanceOperation{}, ErrConflict
 	}
 	return s.proposeModelAcceptance(account, q, "browser_handoff", &admission, now)
@@ -30,7 +30,7 @@ func (s *Store) FinishProductionConnection(claim domain.ModelAcceptanceOperation
 }
 
 func (s *Store) FinishProductionConnectionWithDiagnostic(claim domain.ModelAcceptanceOperation, state, certainty, code string, diagnostic *domain.ConnectionDiagnostic, now time.Time) (domain.ModelAcceptanceOperation, error) {
-	if claim.Material.ProductionAdmission == nil || !validAcceptanceMaterial(claim) {
+	if claim.Material.ProductionAdmission == nil || claim.Phase != "connection" || !validAcceptanceMaterial(claim) {
 		return domain.ModelAcceptanceOperation{}, ErrConflict
 	}
 	return s.finishModelAcceptance(claim.AccountID, claim.ID, claim.Revision, state, certainty, code, nil, 0, 0, false, diagnostic, now, &claim)
@@ -52,7 +52,7 @@ func (s *Store) ReserveProductionConnectionDispatch(claim domain.ModelAcceptance
 	if err != nil {
 		return err
 	}
-	if !admission.Valid() || !reflect.DeepEqual(o, claim) || o.State != "running" || o.Attempts != 1 || o.ClaimSequence < 1 ||
+	if !admission.Valid() || admission.Profile != "openai_siwc_subscription_v1" || !reflect.DeepEqual(o, claim) || o.State != "running" || o.Attempts != 1 || o.ClaimSequence < 1 ||
 		!validAcceptanceMaterial(o) || domain.AcceptanceDigest(o.Material) != o.MaterialDigest || o.Material.ProductionAdmission == nil || *o.Material.ProductionAdmission != admission {
 		return ErrConflict
 	}

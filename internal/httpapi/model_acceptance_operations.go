@@ -75,7 +75,18 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 				routes = append(routes, acceptanceRouteView{v.ID, v.Adapter, v.Environment, v.SpendClass, v.BaseURL, s.acceptance.ConnectionPurpose(v.ID), s.acceptance.ConnectionMode(v.ID)})
 			}
 			production := s.acceptance.ProductionConnectionStatus(account)
+			catalog := s.acceptance.ProductionCatalogStatus(account)
 			payload := map[string]any{"operations": items, "simulation_enabled": s.acceptance.SimulationEligible(account) && !s.recoveryReadOnly, "legacy_siwc_simulation_enabled": s.legacySIWCSimulationEligible(account), "routes": routes, "production_connection_enabled": production.Enabled && !s.recoveryReadOnly}
+			payload["production_catalog_enabled"] = catalog.Enabled && !s.recoveryReadOnly
+			if catalog.Admission != nil {
+				payload["production_admission"] = catalog.Admission
+			}
+			if s.recoveryReadOnly && catalog.Admission != nil {
+				catalog.Blocker = "admission_unavailable"
+			}
+			if catalog.Blocker != "" {
+				payload["production_catalog_blocker"] = catalog.Blocker
+			}
 			if production.Admission != nil {
 				payload["production_admission"] = production.Admission
 			}
