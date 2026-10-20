@@ -86,31 +86,48 @@ func TestAcceptanceDiagnosticRejectsUntrustedOrContradictoryEvidence(t *testing.
 }
 
 func TestAcceptanceReadDropsMalformedStoredDiagnosticWithoutRewritingHistory(t *testing.T) {
-	s, account, o := claimedGateOperation(t)
-	before := `{"version":99,"stage":"provider-secret","code":"provider-secret","credential_commit":"committed","cleanup":"completed"}`
-	var raw []byte
-	if err := s.db.QueryRow(`SELECT data FROM model_acceptance_operations WHERE id=?`, o.ID).Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	var record map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &record); err != nil {
-		t.Fatal(err)
-	}
-	record["connection_diagnostic"] = json.RawMessage(before)
-	corrupt, _ := json.Marshal(record)
-	if _, err := s.db.Exec(`UPDATE model_acceptance_operations SET data=? WHERE id=?`, corrupt, o.ID); err != nil {
-		t.Fatal(err)
-	}
-	got, err := s.GetModelAcceptance(account.ID, o.ID)
-	if err != nil || got.ConnectionDiagnostic != nil {
-		t.Fatalf("malformed diagnostic reflected: %+v %v", got.ConnectionDiagnostic, err)
-	}
-	var after []byte
-	if err = s.db.QueryRow(`SELECT data FROM model_acceptance_operations WHERE id=?`, o.ID).Scan(&after); err != nil {
-		t.Fatal(err)
-	}
-	if string(after) != string(corrupt) {
-		t.Fatal("read projection rewrote historical JSON")
+	for _, diagnostic := range []string{
+		`{"version":99,"stage":"provider-secret","code":"provider-secret","credential_commit":"committed","cleanup":"completed"}`,
+		`"bad"`,
+		`[]`,
+		`{"version":"1","stage":"token_exchange","code":"auth_invalid","credential_commit":"not_committed","cleanup":"completed"}`,
+	} {
+		t.Run(diagnostic, func(t *testing.T) {
+			s, account, o := claimedGateOperation(t)
+			var err error
+			o, err = s.FinishModelAcceptance(account.ID, o.ID, o.Revision, "failed", "rejected", "auth_invalid", nil, 0, 0, false, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var raw []byte
+			if err := s.db.QueryRow(`SELECT data FROM model_acceptance_operations WHERE id=?`, o.ID).Scan(&raw); err != nil {
+				t.Fatal(err)
+			}
+			var record map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			record["connection_diagnostic"] = json.RawMessage(diagnostic)
+			corrupt, _ := json.Marshal(record)
+			if _, err := s.db.Exec(`UPDATE model_acceptance_operations SET data=? WHERE id=?`, corrupt, o.ID); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.GetModelAcceptance(account.ID, o.ID)
+			if err != nil || got.ID != o.ID || got.State != "failed" || got.ConnectionDiagnostic != nil {
+				t.Fatalf("malformed diagnostic reflected: %+v %v", got.ConnectionDiagnostic, err)
+			}
+			listed, err := s.ListModelAcceptance(account.ID)
+			if err != nil || len(listed) != 1 || listed[0].ID != o.ID || listed[0].State != "failed" || listed[0].ConnectionDiagnostic != nil {
+				t.Fatalf("malformed diagnostic hid valid receipt: %+v %v", listed, err)
+			}
+			var after []byte
+			if err = s.db.QueryRow(`SELECT data FROM model_acceptance_operations WHERE id=?`, o.ID).Scan(&after); err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(corrupt) {
+				t.Fatal("read projection rewrote historical JSON")
+			}
+		})
 	}
 }
 

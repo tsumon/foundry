@@ -32,9 +32,7 @@ it("renders only static labels for a bounded recorded token failure", () => {
 
 it("uses a conservative historical fallback when no diagnostic was recorded", () => {
   render(<ConnectionDiagnostic />);
-  expect(screen.getByLabelText("连接失败诊断")).toHaveTextContent(
-    "阶段未记录",
-  );
+  expect(screen.getByLabelText("连接失败诊断")).toHaveTextContent("阶段未记录");
   expect(screen.getByText(/较早的连接回执没有保存诊断阶段/)).toBeVisible();
 });
 
@@ -77,23 +75,59 @@ it("renders bounded post-commit failure and cleanup evidence", () => {
   expect(view).not.toHaveTextContent("阶段未记录");
 });
 
-it.each([
-  "callback_validation",
-  "oidc_discovery",
-  "identity_validation",
-])("does not attribute local %s failures to a provider rejection", (stage) => {
+it.each(["callback_validation", "oidc_discovery", "identity_validation"])(
+  "does not attribute local %s failures to a provider rejection",
+  (stage) => {
+    render(
+      <ConnectionDiagnostic
+        diagnostic={{
+          version: 1,
+          stage,
+          code: "auth_invalid",
+          credential_commit: "not_committed",
+          cleanup: "completed",
+        }}
+      />,
+    );
+    const view = screen.getByLabelText("连接失败诊断");
+    expect(view).toHaveTextContent("授权信息未通过安全校验");
+    expect(view).not.toHaveTextContent("提供方拒绝了授权凭据");
+  },
+);
+
+it("describes a consent decline without claiming account ineligibility", () => {
   render(
     <ConnectionDiagnostic
       diagnostic={{
         version: 1,
-        stage,
-        code: "auth_invalid",
+        stage: "browser_authorization",
+        code: "entitlement_denied",
         credential_commit: "not_committed",
-        cleanup: "completed",
+        cleanup: "not_required",
       }}
     />,
   );
   const view = screen.getByLabelText("连接失败诊断");
-  expect(view).toHaveTextContent("授权信息未通过安全校验");
-  expect(view).not.toHaveTextContent("提供方拒绝了授权凭据");
+  expect(view).toHaveTextContent("这次连接未获所需授权");
+  expect(view).not.toHaveTextContent("当前账户不符合这次连接要求");
+  expect(view).toHaveTextContent("未提交");
+});
+
+it("describes post-commit cleanup failure without denying the recorded commit", () => {
+  render(
+    <ConnectionDiagnostic
+      diagnostic={{
+        version: 1,
+        stage: "credential_commit",
+        code: "storage_error",
+        credential_commit: "committed",
+        cleanup: "unknown",
+      }}
+    />,
+  );
+  const view = screen.getByLabelText("连接失败诊断");
+  expect(view).toHaveTextContent("本地凭据处理遇到错误");
+  expect(view).not.toHaveTextContent("本地凭据存储未能完成");
+  expect(view).toHaveTextContent("已提交");
+  expect(view).toHaveTextContent("未知");
 });

@@ -29,11 +29,18 @@ func acceptanceRead(row modelRowScanner) (domain.ModelAcceptanceOperation, error
 	if e := row.Scan(&raw); e != nil {
 		return o, modelStoreError(e)
 	}
-	if e := json.Unmarshal(raw, &o); e != nil {
+	// Optional diagnostic evidence must not make an otherwise valid historical
+	// receipt unreadable. Decode it separately and never rewrite the stored row.
+	projection := struct {
+		*domain.ModelAcceptanceOperation
+		ConnectionDiagnostic json.RawMessage `json:"connection_diagnostic"`
+	}{ModelAcceptanceOperation: &o}
+	if e := json.Unmarshal(raw, &projection); e != nil {
 		return o, e
 	}
-	if o.ConnectionDiagnostic != nil && !validStoredConnectionDiagnostic(o, o.ConnectionDiagnostic) {
-		o.ConnectionDiagnostic = nil
+	var diagnostic domain.ConnectionDiagnostic
+	if json.Unmarshal(projection.ConnectionDiagnostic, &diagnostic) == nil && validStoredConnectionDiagnostic(o, &diagnostic) {
+		o.ConnectionDiagnostic = &diagnostic
 	}
 	return o, nil
 }

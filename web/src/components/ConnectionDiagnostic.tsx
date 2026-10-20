@@ -14,7 +14,7 @@ const stageLabels: Record<ModelConnectionDiagnostic["stage"], string> = {
 
 const codeLabels: Record<ModelConnectionDiagnostic["code"], string> = {
   auth_invalid: "授权信息未通过安全校验",
-  entitlement_denied: "当前账户不符合这次连接要求",
+  entitlement_denied: "这次连接未获所需授权",
   quota_exhausted: "提供方报告额度不可用",
   rate_limited: "提供方限制了这次请求",
   request_rejected: "请求在发送前被拒绝",
@@ -23,7 +23,7 @@ const codeLabels: Record<ModelConnectionDiagnostic["code"], string> = {
   response_incomplete: "提供方响应不完整或无法验证",
   canceled: "连接由本地取消",
   expired: "连接窗口已过期",
-  storage_error: "本地凭据存储未能完成",
+  storage_error: "本地凭据处理遇到错误",
 };
 
 const credentialLabels: Record<

@@ -167,3 +167,51 @@ func TestOwnedHandoffTerminalDuringExchangeWithUnavailableDurableEvidenceIsUnkno
 		})
 	}
 }
+
+func TestOwnedHandoffLateAccountRevalidationWithUnavailableDurableEvidenceIsUnknown(t *testing.T) {
+	lifecycle, db, secrets, _ := setupAccounts(t)
+	issuer := newSIWCIssuerFixture(t, "https://api.openai.com/v1")
+	account := newSIWCAccount(t, lifecycle, issuer.server.URL+"/v1")
+	s, err := NewSIWCSimulation(lifecycle, issuer.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	flow, stop, err := s.BeginOwnedSubscriptionConnectionSimulation(context.Background(), account.ID, account.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	query := openHandoff(t, flow)
+	issuer.mu.Lock()
+	issuer.nonce = query.Get("nonce")
+	issuer.mu.Unlock()
+	transport := s.http.Transport
+	closedAfterIntent := false
+	s.http.Transport = subscriptionRoundTrip(func(req *http.Request) (*http.Response, error) {
+		response, err := transport.RoundTrip(req)
+		if err == nil && req.URL.Path == "/jwks" {
+			op, readErr := db.GetModelAuthorizationOperation(flow.OperationID)
+			if readErr != nil || op.State != "pending" {
+				t.Errorf("durable intent missing before late failure: %+v %v", op, readErr)
+			}
+			if closeErr := db.Close(); closeErr != nil {
+				t.Error(closeErr)
+			}
+			closedAfterIntent = true
+		}
+		return response, err
+	})
+	response, err := http.Get(query.Get("redirect_uri") + "?" + url.Values{"state": {query.Get("state")}, "code": {"synthetic"}, "client_id": {"oaiapp_synthetic"}}.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	terminal, err := s.Wait(flow.OperationID)
+	if err != nil || terminal.State != "failed" || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Stage != "authorization_intent" || terminal.ConnectionDiagnostic.Code != "auth_invalid" || terminal.ConnectionDiagnostic.CredentialCommit != "unknown" || terminal.ConnectionDiagnostic.Cleanup != "unknown" {
+		t.Fatalf("late revalidation diagnostic=%+v err=%v", terminal.ConnectionDiagnostic, err)
+	}
+	if !closedAfterIntent || issuer.tokenCalls.Load() != 1 || secrets.sets != 0 || secrets.gets != 0 || secrets.deletes != 0 {
+		t.Fatal("late failure retried, accessed credentials, or did not reach durable intent")
+	}
+}

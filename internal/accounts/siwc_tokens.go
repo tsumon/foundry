@@ -83,8 +83,14 @@ func (s *SIWCService) siwcConnectionDiagnostic(attempt *siwcAttempt, defaultStag
 		d.ProviderCode = provider.ProviderCode
 	}
 	switch d.Stage {
-	case "callback_validation", "browser_authorization", "authorization_intent":
+	case "callback_validation", "browser_authorization":
 		d.CredentialCommit, d.Cleanup = "not_committed", "not_required"
+	case "authorization_intent":
+		// Account revalidation can report this stage after a durable intent and
+		// token exchange. A failed durable read then cannot prove local cleanup.
+		if attempt != nil && !attempt.intentStarted {
+			d.CredentialCommit, d.Cleanup = "not_committed", "not_required"
+		}
 	case "session":
 		if attempt != nil && attempt.exchangeDone == nil {
 			d.CredentialCommit, d.Cleanup = "not_committed", "not_required"
@@ -159,6 +165,7 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 	if _, err := s.lifecycle.BeginModelAuthorization(ctx, attempt.account.ID, attempt.public.OperationID, "sign_in", attempt.authorizationID); err != nil {
 		return siwcAtStage("authorization_intent", "storage_error", err)
 	}
+	attempt.intentStarted = true
 	committed := false
 	defer func() {
 		if !committed {

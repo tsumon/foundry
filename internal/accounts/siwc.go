@@ -68,6 +68,7 @@ type siwcAttempt struct {
 	purpose             string
 	resource            string
 	subscriptionAdapter bool
+	intentStarted       bool // Owned by the exchange; observers join before reading.
 	exchangeDone        chan struct{}
 	terminalDone        chan struct{}
 }

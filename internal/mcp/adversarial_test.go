@@ -155,6 +155,59 @@ func TestDiscoverDisconnectAndCancelAreUnknown(t *testing.T) {
 	}
 }
 
+type cancellationResponseTransport func(*http.Request) (*http.Response, error)
+
+func (f cancellationResponseTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+type cancellationResponseBody struct {
+	io.Reader
+	closed bool
+}
+
+func (b *cancellationResponseBody) Close() error { b.closed = true; return nil }
+
+// A canceled request may still yield a response from net/http. The response
+// must not turn an interrupted exchange into a definite protocol rejection.
+func TestDiscoveryCancellationWinsConcurrentResponse(t *testing.T) {
+	for _, callStarted := range []bool{false, true} {
+		t.Run(fmt.Sprint(callStarted), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			body := &cancellationResponseBody{Reader: strings.NewReader("")}
+			requests := 0
+			d := &discovery{ctx: ctx, endpoint: "http://127.0.0.1/mcp", session: "synthetic-session", callStarted: callStarted}
+			d.client = &http.Client{Transport: cancellationResponseTransport(func(*http.Request) (*http.Response, error) {
+				requests++
+				cancel()
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: body}, nil
+			})}
+			method := "tools/list"
+			if callStarted {
+				method = "tools/call"
+			}
+			_, err := d.post(2, method, nil)
+			var protocolError *Error
+			if !errors.As(err, &protocolError) || protocolError.Code != "canceled" || !protocolError.Unknown || protocolError.CallMayHaveBeenSent || d.callResponseReceived {
+				t.Fatalf("err=%#v responseReceived=%v", err, d.callResponseReceived)
+			}
+			var boundaryError *Error
+			mapped := preflightError(err)
+			if callStarted {
+				mapped = sentError(err)
+			}
+			if !errors.As(mapped, &boundaryError) || boundaryError.Unknown != callStarted || boundaryError.CallMayHaveBeenSent != callStarted {
+				t.Fatalf("dispatch classification changed: %#v", mapped)
+			}
+			d.cleanup()
+			if requests != 1 || d.result.Requests != 1 || !body.closed {
+				t.Fatalf("retried or leaked response: requests=%d counted=%d closed=%v", requests, d.result.Requests, body.closed)
+			}
+		})
+	}
+}
+
 func TestDiscoveryDeadlineAndNoRequestWhenAlreadyCanceled(t *testing.T) {
 	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -267,6 +267,12 @@ func (d *discovery) send(ctx context.Context, method string, body []byte) (*http
 		}
 		return nil, failure("transport_error", true)
 	}
+	// A response can win the transport's race with cancellation. Do not parse
+	// that interrupted exchange as a definite rejection, and retain body ownership.
+	if ctx.Err() != nil {
+		response.Body.Close()
+		return nil, failure("canceled", true)
+	}
 	return response, nil
 }
 
