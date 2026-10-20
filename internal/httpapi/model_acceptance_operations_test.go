@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"foundry/internal/acceptance"
 	"foundry/internal/accounts"
 	"foundry/internal/domain"
@@ -181,11 +182,35 @@ func TestAcceptanceOperationsSecurityAndReadDoesNotRecover(t *testing.T) {
 			t.Fatalf("%s accepted", kind)
 		}
 	}
-	for _, action := range []string{"decision", "execute"} {
+	for _, action := range []string{"decision", "execute", "cancel"} {
 		for _, body := range []string{`{"expected_revision":1,"expected_revision":2,"material_digest":"x"}`, `{"expected_revision":1,"material_digest":"x","unknown":true}`} {
 			rr := f.request("POST", path+"/"+action, body, true)
 			if rr.Code != 400 {
 				t.Fatalf("strict %s %d", action, rr.Code)
+			}
+		}
+	}
+	// Otherwise valid requests must reject output-only evidence at every write
+	// boundary; an invalid digest must not accidentally make this test pass.
+	for _, action := range []string{"proposal", "decision", "execute", "cancel"} {
+		for _, field := range []string{"identity_check", "connection_diagnostic"} {
+			body := map[string]any{"expected_revision": o.Revision, "material_digest": o.MaterialDigest}
+			target := path + "/" + action
+			if action == "decision" {
+				body["decision"] = "approve"
+			}
+			if action == "proposal" {
+				body = map[string]any{"phase": "connection", "route_id": route.ID, "expected_account_revision": a.Revision}
+				target = "/api/model-accounts/gate/acceptance-operations"
+			}
+			if field == "identity_check" {
+				body[field] = "audience"
+			} else {
+				body[field] = map[string]any{"version": 1, "stage": "identity_validation", "code": "auth_invalid", "identity_check": "audience", "credential_commit": "not_committed", "cleanup": "completed"}
+			}
+			raw, _ := json.Marshal(body)
+			if rr := f.request("POST", target, string(raw), true); rr.Code != 400 {
+				t.Fatalf("output-only %s on %s: %d %s", field, action, rr.Code, rr.Body.String())
 			}
 		}
 	}

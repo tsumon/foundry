@@ -12,6 +12,8 @@ A version-1 `connection_diagnostic` is optional, output-only, and separate from 
 
 Record only an allowlisted stage and code, optional bounded HTTP status and allowlisted provider error code, and independently derived local credential/cleanup outcomes. No free-form error messages. Stages distinguish callback validation, browser authorization, authorization intent, token exchange, scope/grant validation, OIDC discovery, signed identity validation, credential commit and session termination. Known provider codes may include `invalid_client`, `invalid_grant`, `subscription_sharing_user_not_eligible` and known refresh-token failures; unknown values are omitted rather than echoed.
 
+New identity-validation failures may also record a static, output-only `identity_check`. Its closed vocabulary and compatibility boundaries are specified in [OpenAI identity validation compatibility](openai-identity-validation.md). Older receipts remain unchanged and do not establish a specific failed identity predicate.
+
 Do not store or display tokens, authorization codes, callback query strings, state, nonce, PKCE, authorization URLs, account identity claims, email addresses, Keychain references, response bodies, arbitrary headers or raw exception strings in diagnostic records. Provider-controlled strings must not become a log format. UI copy is selected from static labels, never interpolated from an unknown diagnostic value.
 
 Preserve conservative terminal-state semantics: diagnostic detail alone must not turn an unknown outcome into a success or prove a remote rollback. Cancellation, expiry and interrupted processes remain consumed. An incomplete response remains unknown even if local cleanup succeeds. An invalid proof never becomes a usable credential.

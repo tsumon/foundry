@@ -1433,7 +1433,7 @@ function OperationReview({
       {production &&
         (operation.state === "failed" || operation.state === "unknown") && (
           <p className="warning-copy">
-            连接失败或结果未知；清理与凭据提交结果不能确认，不能据此声称已完全回滚。请显式读取并核对原记录，不会重放请求。
+            连接失败或结果未知；请核对已记录的本地凭据提交与清理证据。未记录的结果仍无法确认，远端授权状态仍未验证。请显式读取原记录，不会重放请求。
           </p>
         )}
       {operation.phase === "connection" &&

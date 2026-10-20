@@ -41,6 +41,7 @@ docs/public/architecture.md
 docs/public/model-acceptance-gates.md
 docs/public/model-acceptance.md
 docs/public/openai-connection-diagnostics.md
+docs/public/openai-identity-validation.md
 docs/public/openai-connection-handoff.md
 docs/public/openai-operator-entry.md
 docs/public/openai-production-admission.md
@@ -70,6 +71,7 @@ internal/accounts/siwc_production_admission.go
 internal/accounts/siwc_production_admission_test.go
 internal/accounts/siwc_handoff_test.go
 internal/accounts/siwc_identity_test.go
+internal/accounts/siwc_identity_validation_test.go
 internal/accounts/siwc_operations.go
 internal/accounts/siwc_protocol_test.go
 internal/accounts/siwc_subscription_adapter.go

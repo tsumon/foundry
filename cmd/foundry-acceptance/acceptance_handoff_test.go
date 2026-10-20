@@ -23,10 +23,10 @@ import (
 
 const handoffAccount = "acceptance-gate-openai-handoff"
 
-func TestDeterministicTokenFailureFixtureIsPersistedForWorkbenchInspection(t *testing.T) {
+func TestDeterministicIdentityFailureFixtureIsPersistedForWorkbenchInspection(t *testing.T) {
 	r := startProtocolAcceptanceForTest(t)
 	account, err := r.store.GetModelAccount(diagnosticAccount)
-	if err != nil || account.Name != "SYNTHETIC OpenAI — recorded token failure" {
+	if err != nil || account.Name != "SYNTHETIC OpenAI — recorded identity failure" {
 		t.Fatalf("diagnostic account missing: %+v %v", account, err)
 	}
 	operations, err := r.gates.List(account.ID)
@@ -34,7 +34,7 @@ func TestDeterministicTokenFailureFixtureIsPersistedForWorkbenchInspection(t *te
 		t.Fatalf("diagnostic fixture history=%d %v", len(operations), err)
 	}
 	o := operations[0]
-	if o.State != "unknown" || o.Attempts != 1 || o.ConnectionDiagnostic == nil || o.ConnectionDiagnostic.Stage != "token_exchange" || o.ConnectionDiagnostic.Code != "auth_invalid" || o.ConnectionDiagnostic.HTTPStatus != http.StatusForbidden || o.ConnectionDiagnostic.ProviderCode != "invalid_grant" || o.ConnectionDiagnostic.CredentialCommit != "not_committed" || o.ConnectionDiagnostic.Cleanup != "completed" {
+	if o.State != "unknown" || o.Attempts != 1 || o.ConnectionDiagnostic == nil || o.ConnectionDiagnostic.Stage != "identity_validation" || o.ConnectionDiagnostic.IdentityCheck != "audience" || o.ConnectionDiagnostic.Code != "auth_invalid" || o.ConnectionDiagnostic.HTTPStatus != 0 || o.ConnectionDiagnostic.ProviderCode != "" || o.ConnectionDiagnostic.CredentialCommit != "not_committed" || o.ConnectionDiagnostic.Cleanup != "completed" {
 		t.Fatalf("diagnostic fixture receipt=%+v", o)
 	}
 	if r.gateProtocol.tokenCount() != 0 || r.gateProtocol.directoryCount() != 0 || r.gateProtocol.refreshCalls != 0 {

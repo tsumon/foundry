@@ -220,6 +220,22 @@ export interface ModelConnectionDiagnostic {
     | "expired"
     | "storage_error";
   http_status?: number;
+  identity_check?:
+    | "token_format"
+    | "jwt_header"
+    | "signing_key_fetch"
+    | "signing_key_invalid"
+    | "signing_key_not_found"
+    | "signature"
+    | "claims_format"
+    | "issuer"
+    | "audience"
+    | "subject"
+    | "nonce"
+    | "expiry"
+    | "not_before"
+    | "identity_binding"
+    | "metadata_reflection";
   provider_code?:
     | "invalid_client"
     | "invalid_grant"

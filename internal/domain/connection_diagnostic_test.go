@@ -1,6 +1,33 @@
 package domain
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestConnectionDiagnosticIdentityCheckIsBoundedAndStageSpecific(t *testing.T) {
+	for _, tc := range []struct {
+		stage, check string
+		valid        bool
+	}{
+		{"identity_validation", "audience", true},
+		{"identity_validation", "nonce", true},
+		{"identity_validation", "SYNTHETIC-PRIVATE-CHECK", false},
+		{"token_exchange", "audience", false},
+	} {
+		raw, _ := json.Marshal(map[string]any{"version": 1, "stage": tc.stage, "code": "auth_invalid", "identity_check": tc.check, "credential_commit": "not_committed", "cleanup": "completed"})
+		var d ConnectionDiagnostic
+		if err := json.Unmarshal(raw, &d); err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ := json.Marshal(d)
+		var projected map[string]any
+		_ = json.Unmarshal(encoded, &projected)
+		if d.Valid() != tc.valid || tc.valid && projected["identity_check"] != tc.check {
+			t.Fatalf("identity evidence lost or accepted unsafely: %s valid=%v want=%v", encoded, d.Valid(), tc.valid)
+		}
+	}
+}
 
 func TestConnectionDiagnosticValidAcceptsOnlyBoundedEvidence(t *testing.T) {
 	valid := ConnectionDiagnostic{

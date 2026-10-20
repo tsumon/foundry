@@ -441,7 +441,8 @@ it("allows owned running production status and cancel after readiness expires wi
     await screen.findByRole("link", { name: "手动打开真实连接授权入口" }),
   ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "取消连接会话" }));
-  expect(await screen.findByText(/清理.*不能确认/)).toBeVisible();
+  expect(await screen.findByText(/未记录的结果仍无法确认/)).toBeVisible();
+  expect(screen.getByLabelText("连接失败诊断")).toHaveTextContent("阶段未记录");
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
   expect(requests.filter((item) => item.startsWith("POST"))).toHaveLength(1);
 });
@@ -1241,9 +1242,55 @@ it("shows a recorded safe connection failure without adding retry or approval ac
   const diagnostic = await screen.findByLabelText("连接失败诊断");
   expect(diagnostic).toHaveTextContent("令牌交换");
   expect(diagnostic).toHaveTextContent("当前尝试不会重试");
+  expect(diagnostic).toHaveTextContent("未提交");
+  expect(diagnostic).toHaveTextContent("已完成");
+  expect(screen.queryByText(/清理与凭据提交结果不能确认/)).toBeNull();
   expect(screen.queryByRole("button", { name: /重试|重新连接/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /批准连接材料/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /执行连接/ })).toBeNull();
+});
+
+it("defers the production failure notice to recorded local identity evidence", async () => {
+  const failed = productionOperation("unknown", {
+    revision: 4,
+    attempts: 1,
+    claim_sequence: 9,
+    certainty: "unknown",
+    code: "transport_unknown",
+    connection_diagnostic: {
+      version: 1,
+      stage: "identity_validation",
+      code: "auth_invalid",
+      identity_check: "audience",
+      credential_commit: "not_committed",
+      cleanup: "completed",
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response(productionHistory([failed]))),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={productionAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /连接 · 结果未知 · 真实订阅连接/,
+    }),
+  );
+  expect(screen.getByLabelText("连接失败诊断")).toHaveTextContent("令牌受众");
+  expect(screen.queryByText(/清理与凭据提交结果不能确认/)).toBeNull();
+  expect(
+    screen.getByText(/请核对已记录的本地凭据提交与清理证据/),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("button", {
+      name: /重试|重新连接|批准连接材料|执行连接/,
+    }),
+  ).toBeNull();
 });
 
 it("reconciles a lost browser execute response with one explicit detail read and never replays execution", async () => {

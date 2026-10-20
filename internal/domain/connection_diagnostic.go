@@ -8,6 +8,7 @@ type ConnectionDiagnostic struct {
 	Code             string `json:"code"`
 	HTTPStatus       int    `json:"http_status,omitempty"`
 	ProviderCode     string `json:"provider_code,omitempty"`
+	IdentityCheck    string `json:"identity_check,omitempty"`
 	CredentialCommit string `json:"credential_commit"`
 	Cleanup          string `json:"cleanup"`
 }
@@ -16,6 +17,7 @@ func (d ConnectionDiagnostic) Valid() bool {
 	if d.Version != 1 || !connectionDiagnosticStage(d.Stage) || !connectionDiagnosticCode(d.Code) ||
 		(d.HTTPStatus != 0 && (d.HTTPStatus < 400 || d.HTTPStatus > 599)) ||
 		!connectionDiagnosticProviderCode(d.ProviderCode) ||
+		(d.IdentityCheck != "" && (d.Stage != "identity_validation" || !connectionDiagnosticIdentityCheck(d.IdentityCheck))) ||
 		(d.ProviderCode != "" && d.HTTPStatus == 0) {
 		return false
 	}
@@ -33,6 +35,15 @@ func (d ConnectionDiagnostic) Valid() bool {
 	// cleanup outcome. Conversely, pending cleanup means a partial write may
 	// exist, so the credential outcome cannot truthfully be "not committed".
 	return d.CredentialCommit != "not_committed" || d.Cleanup != "pending"
+}
+
+func connectionDiagnosticIdentityCheck(check string) bool {
+	switch check {
+	case "token_format", "jwt_header", "signing_key_fetch", "signing_key_invalid", "signing_key_not_found", "signature", "claims_format", "issuer", "audience", "subject", "nonce", "expiry", "not_before", "identity_binding", "metadata_reflection":
+		return true
+	default:
+		return false
+	}
 }
 
 func connectionDiagnosticStage(stage string) bool {

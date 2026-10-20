@@ -59,6 +59,20 @@ type siwcConnectionStageError struct {
 func (e *siwcConnectionStageError) Error() string { return e.code }
 func (e *siwcConnectionStageError) Unwrap() error { return e.err }
 
+// Only a static check and an already-sanitized failure cross this boundary.
+// Never attach token, claim, key, URL or transport-error text here.
+type siwcIdentityCheckError struct {
+	check string
+	err   error
+}
+
+func (e *siwcIdentityCheckError) Error() string { return e.err.Error() }
+func (e *siwcIdentityCheckError) Unwrap() error { return e.err }
+
+func siwcIdentityFailure(check string) error {
+	return &siwcIdentityCheckError{check: check, err: siwcFailure("auth_invalid", "rejected")}
+}
+
 func siwcAtStage(stage, code string, err error) error {
 	if err == nil {
 		return nil
@@ -71,6 +85,10 @@ func (s *SIWCService) siwcConnectionDiagnostic(attempt *siwcAttempt, defaultStag
 	var staged *siwcConnectionStageError
 	if errors.As(failure, &staged) {
 		d.Stage, d.Code = staged.stage, staged.code
+	}
+	var identity *siwcIdentityCheckError
+	if d.Stage == "identity_validation" && errors.As(failure, &identity) {
+		d.IdentityCheck = identity.check
 	}
 	var provider *model.ProviderError
 	if errors.As(failure, &provider) {
@@ -146,7 +164,7 @@ func validateSIWCMetadataNoTokenReflection(binding domain.ModelAuthorizationBind
 		}
 		for _, value := range metadata {
 			if value == token {
-				return siwcFailure("auth_invalid", "rejected")
+				return siwcIdentityFailure("metadata_reflection")
 			}
 		}
 	}
@@ -211,7 +229,7 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 	}
 	if current, currentErr := s.lifecycle.store.CurrentModelAuthorization(attempt.account.ID); currentErr == nil {
 		if current.Binding.Issuer != claims.Issuer || current.Binding.Subject != claims.Subject || current.Binding.ClientID != clientID || current.Binding.SpendClass != attempt.purpose {
-			return siwcAtStage("identity_validation", "auth_invalid", siwcFailure("auth_invalid", "rejected"))
+			return siwcAtStage("identity_validation", "auth_invalid", siwcIdentityFailure("identity_binding"))
 		}
 	}
 	binding := domain.ModelAuthorizationBinding{ID: attempt.authorizationID, AccountID: attempt.account.ID, Issuer: claims.Issuer, Subject: claims.Subject, ClientID: clientID, SpendClass: attempt.purpose, Scopes: scopes}
@@ -524,15 +542,20 @@ func urlAtSIWCOrigin(raw, origin string) bool {
 func (s *SIWCService) validateSIWCIDToken(ctx context.Context, jwksURI, token, clientID, nonce string) (siwcJWTClaims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 || len(token) > 65536 {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+		return siwcJWTClaims{}, siwcIdentityFailure("token_format")
 	}
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+		return siwcJWTClaims{}, siwcIdentityFailure("jwt_header")
 	}
-	var header struct{ Alg, Kid, Typ string }
-	if json.Unmarshal(headerBytes, &header) != nil || header.Alg != "RS256" || header.Kid == "" || header.Typ != "JWT" {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+	var header struct {
+		Alg  string          `json:"alg"`
+		Kid  string          `json:"kid"`
+		Typ  json.RawMessage `json:"typ"`
+		Crit json.RawMessage `json:"crit"`
+	}
+	if json.Unmarshal(headerBytes, &header) != nil || header.Alg != "RS256" || header.Kid == "" || !siwcOptionalString(header.Typ, "JWT") || len(header.Crit) != 0 {
+		return siwcJWTClaims{}, siwcIdentityFailure("jwt_header")
 	}
 	key, err := s.fetchSIWCKey(ctx, jwksURI, header.Kid)
 	if err != nil {
@@ -540,95 +563,142 @@ func (s *SIWCService) validateSIWCIDToken(ctx context.Context, jwksURI, token, c
 	}
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+		return siwcJWTClaims{}, siwcIdentityFailure("signature")
 	}
 	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
 	if rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], signature) != nil {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+		return siwcJWTClaims{}, siwcIdentityFailure("signature")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+		return siwcJWTClaims{}, siwcIdentityFailure("claims_format")
 	}
-	var raw struct {
-		Issuer    string      `json:"iss"`
-		Audience  string      `json:"aud"`
-		Subject   string      `json:"sub"`
-		Nonce     string      `json:"nonce"`
-		Expires   json.Number `json:"exp"`
-		NotBefore json.Number `json:"nbf"`
+	var raw *struct {
+		Issuer          string          `json:"iss"`
+		Audience        json.RawMessage `json:"aud"`
+		AuthorizedParty json.RawMessage `json:"azp"`
+		Subject         string          `json:"sub"`
+		Nonce           string          `json:"nonce"`
+		Expires         json.RawMessage `json:"exp"`
+		NotBefore       json.RawMessage `json:"nbf"`
 	}
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.UseNumber()
-	if decoder.Decode(&raw) != nil {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+	if json.Unmarshal(payload, &raw) != nil || raw == nil {
+		return siwcJWTClaims{}, siwcIdentityFailure("claims_format")
+	}
+	if raw.Issuer != s.options.Issuer {
+		return siwcJWTClaims{}, siwcIdentityFailure("issuer")
+	}
+	var audience string
+	if json.Unmarshal(raw.Audience, &audience) != nil {
+		var audiences []string
+		if json.Unmarshal(raw.Audience, &audiences) != nil || len(audiences) != 1 {
+			return siwcJWTClaims{}, siwcIdentityFailure("audience")
+		}
+		audience = audiences[0]
+	}
+	if clientID == "" || audience != clientID || !siwcOptionalString(raw.AuthorizedParty, clientID) {
+		return siwcJWTClaims{}, siwcIdentityFailure("audience")
+	}
+	if raw.Subject == "" || len(raw.Subject) > 2048 || strings.ContainsAny(raw.Subject, "\r\n\x00") {
+		return siwcJWTClaims{}, siwcIdentityFailure("subject")
+	}
+	if raw.Nonce != nonce {
+		return siwcJWTClaims{}, siwcIdentityFailure("nonce")
 	}
 	expires, err := strconv.ParseInt(string(raw.Expires), 10, 64)
-	if err != nil {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+	if err != nil || expires <= time.Now().Unix() {
+		return siwcJWTClaims{}, siwcIdentityFailure("expiry")
 	}
 	var notBefore int64
-	if raw.NotBefore != "" {
+	if len(raw.NotBefore) != 0 {
 		notBefore, err = strconv.ParseInt(string(raw.NotBefore), 10, 64)
-		if err != nil {
-			return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+		if err != nil || notBefore > time.Now().Unix() {
+			return siwcJWTClaims{}, siwcIdentityFailure("not_before")
 		}
 	}
-	now := time.Now().Unix()
-	if raw.Issuer != s.options.Issuer || raw.Audience != clientID || raw.Subject == "" || len(raw.Subject) > 2048 || strings.ContainsAny(raw.Subject, "\r\n\x00") || raw.Nonce != nonce || expires <= now || notBefore > now {
-		return siwcJWTClaims{}, siwcFailure("auth_invalid", "rejected")
+	return siwcJWTClaims{Issuer: raw.Issuer, Audience: audience, Subject: raw.Subject, Nonce: raw.Nonce, Expires: expires, NotBefore: notBefore}, nil
+}
+
+// Absent optional metadata differs from an explicit null, empty or wrong type.
+func siwcOptionalString(raw json.RawMessage, expected string) bool {
+	if len(raw) == 0 {
+		return true
 	}
-	return siwcJWTClaims{Issuer: raw.Issuer, Audience: raw.Audience, Subject: raw.Subject, Nonce: raw.Nonce, Expires: expires, NotBefore: notBefore}, nil
+	var value string
+	return json.Unmarshal(raw, &value) == nil && value != "" && value == expected
+}
+
+func siwcVerificationOperations(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var operations []string
+	if json.Unmarshal(raw, &operations) != nil || len(operations) == 0 {
+		return false
+	}
+	seen := make(map[string]bool)
+	for _, operation := range operations {
+		if (operation != "verify" && operation != "sign") || seen[operation] {
+			return false
+		}
+		seen[operation] = true
+	}
+	return seen["verify"]
 }
 
 func (s *SIWCService) fetchSIWCKey(ctx context.Context, jwksURI, kid string) (*rsa.PublicKey, error) {
 	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, jwksURI, nil)
 	response, err := s.http.Do(request)
 	if err != nil {
-		return nil, siwcFailure("transport_unknown", "unknown")
+		return nil, &siwcIdentityCheckError{check: "signing_key_fetch", err: siwcFailure("transport_unknown", "unknown")}
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK || !isSIWCJSON(response.Header.Get("Content-Type")) {
-		return nil, siwcFailure("auth_invalid", "rejected")
+		return nil, siwcIdentityFailure("signing_key_fetch")
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, siwcJSONLimit+1))
 	if err != nil || len(body) > siwcJSONLimit {
-		return nil, siwcFailure("response_incomplete", "unknown")
+		return nil, &siwcIdentityCheckError{check: "signing_key_fetch", err: siwcFailure("response_incomplete", "unknown")}
 	}
 	var set struct {
 		Keys []struct {
-			Kty string `json:"kty"`
-			Kid string `json:"kid"`
-			Use string `json:"use"`
-			Alg string `json:"alg"`
-			N   string `json:"n"`
-			E   string `json:"e"`
+			Kty    string          `json:"kty"`
+			Kid    string          `json:"kid"`
+			Use    json.RawMessage `json:"use"`
+			Alg    json.RawMessage `json:"alg"`
+			KeyOps json.RawMessage `json:"key_ops"`
+			N      string          `json:"n"`
+			E      string          `json:"e"`
 		} `json:"keys"`
 	}
 	if json.Unmarshal(body, &set) != nil || len(set.Keys) > 64 {
-		return nil, siwcFailure("auth_invalid", "rejected")
+		return nil, siwcIdentityFailure("signing_key_invalid")
 	}
 	var selected *rsa.PublicKey
 	for _, candidate := range set.Keys {
-		if candidate.Kid != kid || candidate.Kty != "RSA" || candidate.Alg != "RS256" || candidate.Use != "sig" {
+		if candidate.Kid != kid {
 			continue
+		}
+		if selected != nil || candidate.Kty != "RSA" || !siwcOptionalString(candidate.Alg, "RS256") || !siwcOptionalString(candidate.Use, "sig") || !siwcVerificationOperations(candidate.KeyOps) {
+			return nil, siwcIdentityFailure("signing_key_invalid")
 		}
 		nBytes, nErr := base64.RawURLEncoding.DecodeString(candidate.N)
 		eBytes, eErr := base64.RawURLEncoding.DecodeString(candidate.E)
 		if nErr != nil || eErr != nil || len(nBytes) < 256 || len(eBytes) == 0 || len(eBytes) > 4 {
-			return nil, siwcFailure("auth_invalid", "rejected")
+			return nil, siwcIdentityFailure("signing_key_invalid")
 		}
 		e := 0
 		for _, value := range eBytes {
 			e = e<<8 | int(value)
 		}
-		if e < 3 || e%2 == 0 || selected != nil {
-			return nil, siwcFailure("auth_invalid", "rejected")
+		n := new(big.Int).SetBytes(nBytes)
+		if e < 3 || e%2 == 0 || n.BitLen() < 2048 {
+			return nil, siwcIdentityFailure("signing_key_invalid")
 		}
-		selected = &rsa.PublicKey{N: new(big.Int).SetBytes(nBytes), E: e}
+		selected = &rsa.PublicKey{N: n, E: e}
 	}
 	if selected == nil {
-		return nil, siwcFailure("auth_invalid", "rejected")
+		return nil, siwcIdentityFailure("signing_key_not_found")
 	}
 	return selected, nil
 }

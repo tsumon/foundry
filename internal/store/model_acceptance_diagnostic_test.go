@@ -62,8 +62,42 @@ func TestAcceptanceDiagnosticPersistsAtomicallyAndProjectsACopy(t *testing.T) {
 	}
 }
 
+func TestAcceptanceIdentityDiagnosticSurvivesRestartWithoutChangingApproval(t *testing.T) {
+	s, account, o := claimedGateOperation(t)
+	var sequence int
+	var name, path string
+	if err := s.db.QueryRow(`PRAGMA database_list`).Scan(&sequence, &name, &path); err != nil {
+		t.Fatal(err)
+	}
+	diagnostic := &domain.ConnectionDiagnostic{Version: 1, Stage: "identity_validation", Code: "auth_invalid", IdentityCheck: "audience", CredentialCommit: "not_committed", Cleanup: "completed"}
+	got, err := s.FinishModelAcceptanceWithDiagnostic(account.ID, o.ID, o.Revision, "unknown", "unknown", "transport_unknown", nil, 0, 0, false, diagnostic, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MaterialDigest != o.MaterialDigest {
+		t.Fatal("diagnostic changed approval digest")
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	stored, err := reopened.GetModelAcceptance(account.ID, o.ID)
+	if err != nil || stored.ConnectionDiagnostic == nil || stored.ConnectionDiagnostic.IdentityCheck != "audience" || stored.ConnectionDiagnostic.CredentialCommit != "not_committed" || stored.ConnectionDiagnostic.Cleanup != "completed" || stored.Attempts != 1 || stored.MaterialDigest != o.MaterialDigest {
+		t.Fatalf("restart evidence=%+v %v", stored, err)
+	}
+	if _, err = reopened.ClaimModelAcceptance(account.ID, stored.ID, stored.Revision, stored.MaterialDigest, time.Now()); err == nil {
+		t.Fatal("diagnostic enabled replay")
+	}
+}
+
 func TestAcceptanceDiagnosticRejectsUntrustedOrContradictoryEvidence(t *testing.T) {
 	cases := []domain.ConnectionDiagnostic{
+		{Version: 1, Stage: "identity_validation", Code: "auth_invalid", IdentityCheck: "SYNTHETIC-PRIVATE-CHECK", CredentialCommit: "not_committed", Cleanup: "completed"},
+		{Version: 1, Stage: "token_exchange", Code: "auth_invalid", IdentityCheck: "audience", CredentialCommit: "not_committed", Cleanup: "completed"},
 		{Version: 2, Stage: "token_exchange", Code: "auth_invalid", CredentialCommit: "not_committed", Cleanup: "completed"},
 		{Version: 1, Stage: "raw-stage", Code: "auth_invalid", CredentialCommit: "not_committed", Cleanup: "completed"},
 		{Version: 1, Stage: "token_exchange", Code: "raw-error", CredentialCommit: "not_committed", Cleanup: "completed"},
@@ -87,6 +121,8 @@ func TestAcceptanceDiagnosticRejectsUntrustedOrContradictoryEvidence(t *testing.
 
 func TestAcceptanceReadDropsMalformedStoredDiagnosticWithoutRewritingHistory(t *testing.T) {
 	for _, diagnostic := range []string{
+		`{"version":1,"stage":"identity_validation","code":"auth_invalid","identity_check":"SYNTHETIC-PRIVATE-CHECK","credential_commit":"not_committed","cleanup":"completed"}`,
+		`{"version":1,"stage":"token_exchange","code":"auth_invalid","identity_check":"nonce","credential_commit":"not_committed","cleanup":"completed"}`,
 		`{"version":99,"stage":"provider-secret","code":"provider-secret","credential_commit":"committed","cleanup":"completed"}`,
 		`"bad"`,
 		`[]`,

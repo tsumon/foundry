@@ -26,6 +26,27 @@ const codeLabels: Record<ModelConnectionDiagnostic["code"], string> = {
   storage_error: "本地凭据处理遇到错误",
 };
 
+const identityCheckLabels: Record<
+  NonNullable<ModelConnectionDiagnostic["identity_check"]>,
+  string
+> = {
+  token_format: "令牌格式",
+  jwt_header: "签名头声明",
+  signing_key_fetch: "签名密钥获取",
+  signing_key_invalid: "签名密钥有效性",
+  signing_key_not_found: "签名密钥匹配",
+  signature: "令牌签名",
+  claims_format: "身份声明格式",
+  issuer: "令牌签发方",
+  audience: "令牌受众",
+  subject: "身份主体",
+  nonce: "本次连接随机值绑定",
+  expiry: "令牌到期时间",
+  not_before: "令牌生效时间",
+  identity_binding: "已有身份绑定",
+  metadata_reflection: "元数据令牌隔离",
+};
+
 const credentialLabels: Record<
   ModelConnectionDiagnostic["credential_commit"],
   string
@@ -69,6 +90,11 @@ function validDiagnostic(value: unknown): value is ModelConnectionDiagnostic {
   const credentialCleanupValid =
     record.credential_commit !== "not_committed" ||
     record.cleanup !== "pending";
+  const identityValid =
+    record.identity_check === undefined ||
+    (record.stage === "identity_validation" &&
+      typeof record.identity_check === "string" &&
+      Object.hasOwn(identityCheckLabels, record.identity_check));
   return (
     record.version === 1 &&
     typeof record.stage === "string" &&
@@ -81,6 +107,7 @@ function validDiagnostic(value: unknown): value is ModelConnectionDiagnostic {
     Object.hasOwn(cleanupLabels, record.cleanup) &&
     statusValid &&
     providerValid &&
+    identityValid &&
     credentialCleanupValid
   );
 }
@@ -96,6 +123,12 @@ export function ConnectionDiagnostic({ diagnostic }: { diagnostic?: unknown }) {
           <dd>{stageLabels[safe.stage]}</dd>
           <dt>安全说明</dt>
           <dd>{codeLabels[safe.code]}</dd>
+          {safe.identity_check !== undefined && (
+            <>
+              <dt>身份检查项</dt>
+              <dd>{identityCheckLabels[safe.identity_check]}</dd>
+            </>
+          )}
           {safe.http_status !== undefined && (
             <>
               <dt>提供方状态</dt>

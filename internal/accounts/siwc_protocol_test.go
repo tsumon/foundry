@@ -58,6 +58,7 @@ type siwcIssuerFixture struct {
 	refreshToken      string
 	identityOnlyToken bool
 	identityResponse  func(client, nonce string) map[string]any
+	jwksResponse      func(map[string]any) any
 	lastToken         url.Values
 	lastRevoke        url.Values
 }
@@ -94,7 +95,12 @@ func (f *siwcIssuerFixture) handle(w http.ResponseWriter, r *http.Request) {
 	case "/jwks":
 		w.Header().Set("Content-Type", "application/json")
 		e := big.NewInt(int64(f.key.PublicKey.E)).Bytes()
-		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]any{"kty": "RSA", "kid": "key-1", "use": "sig", "alg": "RS256", "n": base64.RawURLEncoding.EncodeToString(f.key.PublicKey.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(e)}}})
+		key := map[string]any{"kty": "RSA", "kid": "key-1", "use": "sig", "alg": "RS256", "n": base64.RawURLEncoding.EncodeToString(f.key.PublicKey.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(e)}
+		var body any = map[string]any{"keys": []any{key}}
+		if f.jwksResponse != nil {
+			body = f.jwksResponse(key)
+		}
+		_ = json.NewEncoder(w).Encode(body)
 	case "/api/accounts/oauth/token":
 		f.tokenCalls.Add(1)
 		if err := r.ParseForm(); err != nil {
@@ -407,6 +413,9 @@ func TestSIWCRejectsExactTokenReflectionBeforeMetadataCommit(t *testing.T) {
 			if statusErr != nil || status.State != "failed" || status.HandoffURL != "" {
 				t.Fatalf("unsafe failure status: %+v %v", status, statusErr)
 			}
+			if status.ConnectionDiagnostic == nil || status.ConnectionDiagnostic.IdentityCheck != "metadata_reflection" {
+				t.Fatalf("missing reflection check: %+v", status.ConnectionDiagnostic)
+			}
 			if _, currentErr := db.CurrentModelAuthorization(account.ID); currentErr == nil {
 				t.Fatal("token-reflecting metadata was committed")
 			}
@@ -696,6 +705,10 @@ func TestSIWCReauthorizationRejectsDifferentSubjectBeforeSecretWrite(t *testing.
 	current, currentErr := db.CurrentModelAuthorization(account.ID)
 	if response.StatusCode == http.StatusOK || currentErr != nil || current.Binding.ID != initial.Binding.ID || secrets.sets != sets {
 		t.Fatalf("different subject changed binding: status=%d current=%+v err=%v sets=%d", response.StatusCode, current.Binding, currentErr, secrets.sets-sets)
+	}
+	status, err := siwc.Status(flow.OperationID)
+	if err != nil || status.ConnectionDiagnostic == nil || status.ConnectionDiagnostic.IdentityCheck != "identity_binding" {
+		t.Fatalf("missing identity binding check: %+v %v", status.ConnectionDiagnostic, err)
 	}
 }
 

@@ -2,6 +2,64 @@ import { render, screen } from "@testing-library/react";
 import { expect, it } from "vitest";
 import { ConnectionDiagnostic } from "./ConnectionDiagnostic";
 
+it("shows a static identity sub-check without revealing claims or adding controls", () => {
+  render(
+    <ConnectionDiagnostic
+      diagnostic={{
+        version: 1,
+        stage: "identity_validation",
+        code: "auth_invalid",
+        identity_check: "audience",
+        credential_commit: "not_committed",
+        cleanup: "completed",
+      }}
+    />,
+  );
+  const view = screen.getByLabelText("连接失败诊断");
+  expect(view).toHaveTextContent("身份检查项");
+  expect(view).toHaveTextContent("令牌受众");
+  expect(view).toHaveTextContent("未提交");
+  expect(view).toHaveTextContent("已完成");
+  expect(screen.queryByRole("button")).toBeNull();
+});
+
+it.each(["SYNTHETIC-PRIVATE-CHECK", "", null, 1, "__proto__"])(
+  "fails closed for unknown identity check %s",
+  (identity_check) => {
+    render(
+      <ConnectionDiagnostic
+        diagnostic={{
+          version: 1,
+          stage: "identity_validation",
+          code: "auth_invalid",
+          identity_check,
+          credential_commit: "not_committed",
+          cleanup: "completed",
+        }}
+      />,
+    );
+    const view = screen.getByLabelText("连接失败诊断");
+    expect(view).toHaveTextContent("阶段未记录");
+    expect(view).not.toHaveTextContent("SYNTHETIC-PRIVATE-CHECK");
+  },
+);
+
+it("rejects an identity check attached to a different stage", () => {
+  render(
+    <ConnectionDiagnostic
+      diagnostic={{
+        version: 1,
+        stage: "token_exchange",
+        code: "auth_invalid",
+        identity_check: "nonce",
+        credential_commit: "not_committed",
+        cleanup: "completed",
+      }}
+    />,
+  );
+  expect(screen.getByLabelText("连接失败诊断")).toHaveTextContent("阶段未记录");
+});
+
 it("renders only static labels for a bounded recorded token failure", () => {
   render(
     <ConnectionDiagnostic

@@ -56,7 +56,7 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 			a.Name = "SYNTHETIC OpenAI — browser connection"
 		} else if fixture == "openai-diagnostic" {
 			a.ID = diagnosticAccount
-			a.Name = "SYNTHETIC OpenAI — recorded token failure"
+			a.Name = "SYNTHETIC OpenAI — recorded identity failure"
 		}
 		route := domain.ModelRoute{ID: a.ID + "-route", AccountID: a.ID, Adapter: "openai_siwc_responses", Protocol: "responses", Environment: "simulation", SpendClass: "subscription_only", ExtraUsage: "off"}
 		if provider == "kimi" {
@@ -128,7 +128,7 @@ func seedConnectionDiagnosticFixture(r *acceptanceRuntime) error {
 	if err != nil {
 		return err
 	}
-	diagnostic := &domain.ConnectionDiagnostic{Version: 1, Stage: "token_exchange", Code: "auth_invalid", HTTPStatus: http.StatusForbidden, ProviderCode: "invalid_grant", CredentialCommit: "not_committed", Cleanup: "completed"}
+	diagnostic := &domain.ConnectionDiagnostic{Version: 1, Stage: "identity_validation", Code: "auth_invalid", IdentityCheck: "audience", CredentialCommit: "not_committed", Cleanup: "completed"}
 	_, err = r.store.FinishModelAcceptanceWithDiagnostic(account.ID, o.ID, o.Revision, "unknown", "unknown", "transport_unknown", nil, 0, 0, false, diagnostic, time.Now())
 	return err
 }
