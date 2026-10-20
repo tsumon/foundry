@@ -18,7 +18,7 @@ The server freezes these exact values in the material and its digest:
 | Requested resource | `https://api.openai.com/v1` — the protocol audience, **not** the simulation transport destination |
 | Connection purpose | `subscription_only` |
 | Route / account | Exact owned simulation route, provider, account revision, credential/authorization snapshot and loopback endpoint |
-| Attempt budget | One explicit execution after separate approval; ten-minute approval expiry and at most thirty-second execution deadline |
+| Attempt budget | One explicit execution after separate approval; ten-minute approval expiry and at most thirty-second synchronous execution deadline. The separate browser-handoff fixture adds a server-owned ten-minute human-login window; see [handoff design](openai-connection-handoff.md). |
 
 Scopes and resource are server-owned. The browser cannot customize, omit, append or override them. The local protocol fixture verifies the scope/resource contract at authorization and code exchange. New optional fields are omitted from old serialized material so old digests are not silently rewritten.
 
@@ -49,6 +49,6 @@ Keep the card in **Settings → Models → account detail**. Show connection pur
 
 ## Official protocol references
 
-The next implementation increment is specified in [the closed subscription adapter design](openai-subscription-adapter.md); it does not authorize real login.
+The adapter and manual-browser preparation are specified in [the closed subscription adapter design](openai-subscription-adapter.md) and [approval handoff design](openai-connection-handoff.md); neither authorizes real login.
 
 Checked 2026-10-20: [Open-source/local-app sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations), and [errors and recovery](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery). The application restrictions above are intentionally stricter than protocol capabilities. Eligibility, real consent, account/workspace selection and any real call still need a future separately approved acceptance step.

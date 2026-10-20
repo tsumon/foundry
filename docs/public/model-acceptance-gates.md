@@ -24,7 +24,7 @@ The OpenAI fixture drives the existing SIWC implementation against its owned aut
 
 ## Immutable materials and state
 
-An operation stores an opaque ID, monotonic revision, phase, account revision, route snapshot, credential/authorization snapshot where applicable, prerequisite evidence IDs, material digest, fixed data summary, model when applicable, creation/expiry timestamps, deadline duration and `max_attempts:1`. Server-owned fields cannot be supplied or overridden by the browser. Default approval expiry is ten minutes; execution deadline is thirty seconds. A local deadline is not a real-provider billing cap.
+An operation stores an opaque ID, monotonic revision, phase, account revision, route snapshot, credential/authorization snapshot where applicable, prerequisite evidence IDs, material digest, fixed data summary, model when applicable, creation/expiry timestamps, deadline duration and `max_attempts:1`. Server-owned fields cannot be supplied or overridden by the browser. Default approval expiry is ten minutes; synchronous execution is bounded to thirty seconds. The separate [browser-handoff connection](openai-connection-handoff.md) freezes a ten-minute human-login lifetime starting at explicit execution, with a separate thirty-second network bound. A local deadline is not a real-provider billing cap.
 
 The material digest is a SHA-256 of a canonical typed structure, not a browser-computed string. Review and execution both compare the exact digest and operation revision. An account or credential change, route mismatch, unresolved credential/authorization operation, disabled account, expired authorization, unknown local extra usage, missing prerequisite or non-catalog model fails closed. Only the OpenAI subscription and Kimi interactive-package adapters are eligible; explicit paid API routes and accountless profiles are excluded.
 
@@ -57,6 +57,7 @@ All endpoints inherit launch-session authentication, exact Host, same-origin JSO
 - `GET .../acceptance-operations/{operation_id}`: fetch a saved receipt without network activity.
 - `POST .../{operation_id}/decision`: `{expected_revision, material_digest, decision:"approve"|"reject"}`.
 - `POST .../{operation_id}/execute`: `{expected_revision, material_digest}`. Consumes and dispatches once.
+- Browser-handoff connection operations add an optional, sanitized `connection_session` to individual read/execute responses. A running operation may be canceled with `POST .../{operation_id}/cancel`, also bound to `{expected_revision, material_digest}`. Reads never reopen a session, and cancellation does not authorize another attempt.
 
 Unknown fields, duplicates, wrong-account operation IDs, unsupported phases/routes, query strings and unsafe identifiers are rejected. Production mutation attempts fail before secret access or network use, including when a caller fabricates a simulation route. The gate runtime cannot be switched through these endpoints.
 
