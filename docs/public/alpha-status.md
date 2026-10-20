@@ -19,6 +19,8 @@ FOUNDRY is an experimental, source-only macOS arm64 (Apple Silicon) alpha. This 
 
 The [OpenAI operator entry](openai-operator-entry.md) is implemented and default-closed, with a paired startup opt-in, fresh journaled native readiness prerequisite and independent workbench connection approval. This is locally simulated implementation evidence, not real-provider acceptance. Installing or starting the default build never grants real-login permission.
 
+The [independent OpenAI catalog gate](openai-catalog-gate.md) adds a separate default-closed operator mode for one approved `GET /v1/models`. It requires a current successful real connection receipt and unexpired matching authorization; connection permission never implies catalog permission. Preparation is metadata-only. Inference, automatic refresh/retry and paid fallback remain closed. Local synthetic tests are implementation evidence only; actual catalog/entitlement/quota acceptance remains unverified.
+
 ## Deliberately not implemented
 
 - Automatic patch application, source-repository writes, commits, pushes, releases, deployment, or database migration.

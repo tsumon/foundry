@@ -137,7 +137,9 @@ go run ./cmd/foundry-acceptance --web-dir web/dist
 
 独立的浏览器连接模拟现支持审批后手动执行、10 分钟人工登录时限、显式读取与取消，并保留单次尝试和故障恢复记录。它不开放真实登录或本机 Keychain 检查。参阅[连接审批接线与人工登录时限](docs/public/openai-connection-handoff.md)。
 
-OpenAI 订阅连接的[操作员入口](docs/public/openai-operator-entry.md)已接线，但普通启动仍关闭。未来经单独确认后，操作员需显式绑定一个官方路由，并完成本进程新的专用 Keychain 测试项检查；工作台随后仍要求独立提案、审批、执行和手动打开登录页。本次只用本地模拟验证，未进行真实登录；目录、推理、刷新、自动重试和收费 API 切换继续关闭。
+OpenAI 订阅连接的[操作员入口](docs/public/openai-operator-entry.md)已接线，但普通启动仍关闭。经单独确认后，操作员需显式绑定一个官方路由，并完成本进程新的专用 Keychain 测试项检查；工作台随后仍要求独立提案、审批、执行和手动打开登录页。公开实现验收使用本地模拟；连接模式不开放目录、推理、刷新、自动重试或收费 API 切换。
+
+[独立目录查询门禁](docs/public/openai-catalog-gate.md)与连接审批分开：仅在专用操作员模式下，允许为当前有效订阅凭据准备一次固定 `GET /v1/models` 的材料，再单独批准和执行。普通启动仍关闭；凭据过期就停止，不刷新、不重试、不调用模型、不自动更改角色策略。本阶段验证仅使用本地模拟，目录返回不代表推理、额度或计费已验收。
 
 <details>
 <summary>本地开发与运行入口</summary>
@@ -172,6 +174,7 @@ FOUNDRY_DATA_DIR="$FOUNDRY_MCP_DATA" ./bin/foundry --local-mcp-test
 | `FOUNDRY_GO` | `scripts/build.sh` 和 Makefile 使用的 Go 命令，默认 `go`。 |
 | `--local-mcp-test` | 显式启动合成 MCP fixture，默认关闭。 |
 | `--openai-subscription-route` + `--openai-keychain-journal` | 操作员成对使用，指定一个已有官方订阅路由和新的私有检查日志。会执行新的本机专用测试项检查；真实使用须另行确认，不能替代工作台单次连接审批。见[操作员入口](docs/public/openai-operator-entry.md)。 |
+| `--openai-catalog-route` | 独立目录模式，与连接启动参数互斥。仅检查指定路由的本地元数据；准备/批准不读取令牌、不联网。一次真实 GET 仍须独立审批并显式执行。见[目录门禁](docs/public/openai-catalog-gate.md)。 |
 
 </details>
 
