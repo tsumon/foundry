@@ -195,6 +195,43 @@ export interface ModelAcceptanceCatalogEntry {
   id: string;
   display_name: string;
 }
+export interface ModelConnectionDiagnostic {
+  version: 1;
+  stage:
+    | "callback_validation"
+    | "browser_authorization"
+    | "authorization_intent"
+    | "token_exchange"
+    | "grant_validation"
+    | "oidc_discovery"
+    | "identity_validation"
+    | "credential_commit"
+    | "session";
+  code:
+    | "auth_invalid"
+    | "entitlement_denied"
+    | "quota_exhausted"
+    | "rate_limited"
+    | "request_rejected"
+    | "server_error"
+    | "transport_unknown"
+    | "response_incomplete"
+    | "canceled"
+    | "expired"
+    | "storage_error";
+  http_status?: number;
+  provider_code?:
+    | "invalid_client"
+    | "invalid_grant"
+    | "subscription_sharing_user_not_eligible"
+    | "invalid_refresh_token"
+    | "token_expired"
+    | "refresh_token_expired"
+    | "refresh_token_invalidated"
+    | "refresh_token_reused";
+  credential_commit: "not_committed" | "committed" | "unknown";
+  cleanup: "not_required" | "completed" | "pending" | "unknown";
+}
 export interface ModelAcceptanceOperation {
   id: string;
   account_id: string;
@@ -219,6 +256,7 @@ export interface ModelAcceptanceOperation {
   quota: "unknown";
   remote_billing: "unverified";
   live_access: "blocked" | "connection_only";
+  connection_diagnostic?: ModelConnectionDiagnostic;
 }
 export interface ModelProductionAdmission {
   generation: string;

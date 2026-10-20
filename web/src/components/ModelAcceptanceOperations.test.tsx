@@ -1201,6 +1201,51 @@ it("keeps browser handoff proposal, approval, execution, manual open, read, and 
   ).not.toBeInTheDocument();
 });
 
+it("shows a recorded safe connection failure without adding retry or approval actions", async () => {
+  const failed = handoffOperation("recorded-token-failure", "unknown", {
+    revision: 4,
+    attempts: 1,
+    claim_sequence: 9,
+    certainty: "unknown",
+    code: "transport_unknown",
+    connection_diagnostic: {
+      version: 1,
+      stage: "token_exchange",
+      code: "auth_invalid",
+      http_status: 403,
+      provider_code: "invalid_grant",
+      credential_commit: "not_committed",
+      cleanup: "completed",
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        operations: [failed],
+        simulation_enabled: true,
+        routes: [handoffRoute],
+      }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={handoffAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+    target: { value: failed.id },
+  });
+  const diagnostic = await screen.findByLabelText("连接失败诊断");
+  expect(diagnostic).toHaveTextContent("令牌交换");
+  expect(diagnostic).toHaveTextContent("当前尝试不会重试");
+  expect(screen.queryByRole("button", { name: /重试|重新连接/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /批准连接材料/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /执行连接/ })).toBeNull();
+});
+
 it("reconciles a lost browser execute response with one explicit detail read and never replays execution", async () => {
   const approved = handoffOperation("lost-browser-execute", "approved", {
     revision: 2,

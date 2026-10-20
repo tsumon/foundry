@@ -38,10 +38,11 @@ type SIWCOptions struct {
 // SIWCFlow is the complete safe coordination DTO. OAuth state, nonce, PKCE,
 // authorization URLs, callbacks and tokens remain private.
 type SIWCFlow struct {
-	OperationID string `json:"operation_id"`
-	State       string `json:"state"`
-	HandoffURL  string `json:"handoff_url"`
-	ExpiresAt   string `json:"expires_at"`
+	OperationID          string                       `json:"operation_id"`
+	State                string                       `json:"state"`
+	HandoffURL           string                       `json:"handoff_url"`
+	ExpiresAt            string                       `json:"expires_at"`
+	ConnectionDiagnostic *domain.ConnectionDiagnostic `json:"-"`
 }
 
 type SIWCRevokeResult struct {
@@ -171,7 +172,12 @@ func (s *SIWCService) Wait(operationID string) (SIWCFlow, error) {
 	<-attempt.terminalDone
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return attempt.public, nil
+	return cloneSIWCFlow(attempt.public), nil
+}
+
+func cloneSIWCFlow(flow SIWCFlow) SIWCFlow {
+	flow.ConnectionDiagnostic = domain.CloneConnectionDiagnostic(flow.ConnectionDiagnostic)
+	return flow
 }
 
 // LegacySimulationEligible is the side-effect-free portion of the legacy
@@ -270,7 +276,7 @@ func (s *SIWCService) Status(operationID string) (SIWCFlow, error) {
 	if !ok {
 		return SIWCFlow{}, ErrUnavailable
 	}
-	return attempt.public, nil
+	return cloneSIWCFlow(attempt.public), nil
 }
 
 func (s *SIWCService) Cancel(ctx context.Context, operationID string) (SIWCFlow, error) {
@@ -288,7 +294,7 @@ func (s *SIWCService) Cancel(ctx context.Context, operationID string) (SIWCFlow,
 		attempt.public.HandoffURL = ""
 		stopSIWCAttempt(attempt, false)
 	}
-	result := attempt.public
+	result := cloneSIWCFlow(attempt.public)
 	s.mu.Unlock()
 	return result, nil
 }

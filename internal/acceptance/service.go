@@ -271,6 +271,10 @@ func (s *Service) Execute(ctx context.Context, account, id string, revision int6
 }
 
 func (s *Service) finish(o domain.ModelAcceptanceOperation, e error, catalog []domain.ModelAcceptanceCatalogEntry, result model.Result) (domain.ModelAcceptanceOperation, error) {
+	return s.finishWithDiagnostic(o, e, catalog, result, nil)
+}
+
+func (s *Service) finishWithDiagnostic(o domain.ModelAcceptanceOperation, e error, catalog []domain.ModelAcceptanceCatalogEntry, result model.Result, diagnostic *domain.ConnectionDiagnostic) (domain.ModelAcceptanceOperation, error) {
 	state, certainty, code := "succeeded", "completed", ""
 	if e != nil {
 		state, certainty, code = "unknown", "unknown", "transport_unknown"
@@ -289,19 +293,19 @@ func (s *Service) finish(o domain.ModelAcceptanceOperation, e error, catalog []d
 		catalog = nil
 		result = model.Result{}
 	}
-	writeReceipt := func(state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, result model.Result) (domain.ModelAcceptanceOperation, error) {
+	writeReceipt := func(state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, result model.Result, diagnostic *domain.ConnectionDiagnostic) (domain.ModelAcceptanceOperation, error) {
 		if s.production != nil {
 			if !s.production.OwnsClaim(s.store, o) || len(catalog) != 0 || result.InputTokens != 0 || result.OutputTokens != 0 || result.UsageKnown {
 				return domain.ModelAcceptanceOperation{}, store.ErrConflict
 			}
-			return s.store.FinishProductionConnection(o, state, certainty, code, s.now())
+			return s.store.FinishProductionConnectionWithDiagnostic(o, state, certainty, code, diagnostic, s.now())
 		}
-		return s.store.FinishModelAcceptance(o.AccountID, o.ID, o.Revision, state, certainty, code, catalog, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now())
+		return s.store.FinishModelAcceptanceWithDiagnostic(o.AccountID, o.ID, o.Revision, state, certainty, code, catalog, result.InputTokens, result.OutputTokens, result.UsageKnown, diagnostic, s.now())
 	}
-	saved, writeErr := writeReceipt(state, certainty, code, catalog, result)
+	saved, writeErr := writeReceipt(state, certainty, code, catalog, result, diagnostic)
 	if writeErr != nil {
 		s.ready.Store(false)
-		_, _ = writeReceipt("unknown", "unknown", "transport_unknown", nil, model.Result{})
+		_, _ = writeReceipt("unknown", "unknown", "transport_unknown", nil, model.Result{}, nil)
 		return domain.ModelAcceptanceOperation{}, ErrPersistence
 	}
 	return saved, nil

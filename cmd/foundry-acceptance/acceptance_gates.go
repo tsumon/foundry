@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const diagnosticAccount = "acceptance-gate-openai-diagnostic"
+
 func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service) error {
 	var e error
 	r.gateProtocol, e = newProtocolFixture()
@@ -37,9 +39,9 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 	routes := []domain.ModelRoute{}
 	identityRoutes := []string{}
 	subscriptionRoutes := []string{}
-	for _, fixture := range []string{"openai", "kimi", "openai-identity", "openai-subscription", "openai-handoff"} {
+	for _, fixture := range []string{"openai", "kimi", "openai-identity", "openai-subscription", "openai-handoff", "openai-diagnostic"} {
 		provider := fixture
-		if fixture == "openai-identity" || fixture == "openai-subscription" || fixture == "openai-handoff" {
+		if fixture == "openai-identity" || fixture == "openai-subscription" || fixture == "openai-handoff" || fixture == "openai-diagnostic" {
 			provider = "openai"
 		}
 		a := domain.ModelAccount{ID: "acceptance-gate-" + provider, Name: "SYNTHETIC acceptance gates — " + provider, Provider: provider, BaseURL: r.gateProtocol.modelBaseURL(), AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true}
@@ -52,6 +54,9 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 		} else if fixture == "openai-handoff" {
 			a.ID = "acceptance-gate-openai-handoff"
 			a.Name = "SYNTHETIC OpenAI — browser connection"
+		} else if fixture == "openai-diagnostic" {
+			a.ID = diagnosticAccount
+			a.Name = "SYNTHETIC OpenAI — recorded token failure"
 		}
 		route := domain.ModelRoute{ID: a.ID + "-route", AccountID: a.ID, Adapter: "openai_siwc_responses", Protocol: "responses", Environment: "simulation", SpendClass: "subscription_only", ExtraUsage: "off"}
 		if provider == "kimi" {
@@ -72,12 +77,12 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 		routes = append(routes, route)
 		if fixture == "openai-identity" {
 			identityRoutes = append(identityRoutes, route.ID)
-		} else if fixture == "openai-subscription" || fixture == "openai-handoff" {
+		} else if fixture == "openai-subscription" || fixture == "openai-handoff" || fixture == "openai-diagnostic" {
 			subscriptionRoutes = append(subscriptionRoutes, route.ID)
 		}
 	}
 	router := model.NewRouter(nil, accountService, model.RouterOptions{SimulationOrigins: []string{r.gateProtocol.modelOrigin()}})
-	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, IdentityOnlyRouteIDs: identityRoutes, SubscriptionConnectionRouteIDs: subscriptionRoutes, BrowserHandoffRouteIDs: []string{"acceptance-gate-openai-handoff-route"}, BrowserSIWC: r.browserSIWC, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
+	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: routes, IdentityOnlyRouteIDs: identityRoutes, SubscriptionConnectionRouteIDs: subscriptionRoutes, BrowserHandoffRouteIDs: []string{"acceptance-gate-openai-handoff-route", diagnosticAccount + "-route"}, BrowserSIWC: r.browserSIWC, Router: router, Connect: func(ctx context.Context, m domain.ModelAcceptanceMaterial) error {
 		switch m.Account.Provider {
 		case "openai":
 			if m.ConnectionPurpose == "identity_only" {
@@ -100,7 +105,32 @@ func startAcceptanceGates(r *acceptanceRuntime, accountService *accounts.Service
 		}
 		return errors.New("unsupported synthetic connection")
 	}})
-	return r.gates.Recover()
+	if e = r.gates.Recover(); e != nil {
+		return e
+	}
+	return seedConnectionDiagnosticFixture(r)
+}
+
+func seedConnectionDiagnosticFixture(r *acceptanceRuntime) error {
+	account, err := r.store.GetModelAccount(diagnosticAccount)
+	if err != nil {
+		return err
+	}
+	o, err := r.gates.Propose(account.ID, domain.ModelAcceptanceProposal{Phase: "connection", ConnectionPurpose: "subscription_only", RouteID: account.ID + "-route", ExpectedAccountRevision: account.Revision})
+	if err != nil {
+		return err
+	}
+	o, err = r.gates.Decide(account.ID, o.ID, o.Revision, o.MaterialDigest, "approve")
+	if err != nil {
+		return err
+	}
+	o, err = r.store.ClaimModelAcceptance(account.ID, o.ID, o.Revision, o.MaterialDigest, time.Now())
+	if err != nil {
+		return err
+	}
+	diagnostic := &domain.ConnectionDiagnostic{Version: 1, Stage: "token_exchange", Code: "auth_invalid", HTTPStatus: http.StatusForbidden, ProviderCode: "invalid_grant", CredentialCommit: "not_committed", Cleanup: "completed"}
+	_, err = r.store.FinishModelAcceptanceWithDiagnostic(account.ID, o.ID, o.Revision, "unknown", "unknown", "transport_unknown", nil, 0, 0, false, diagnostic, time.Now())
+	return err
 }
 
 var gateCatalog = []string{"synthetic-siwc-success-gate", "synthetic-quota-exhausted", "synthetic-permission-denied", "synthetic-rate-limited", "synthetic-sse-outcome-unknown"}

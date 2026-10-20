@@ -26,10 +26,14 @@ func (s *Store) ProposeProductionConnection(account string, q domain.ModelAccept
 // FinishProductionConnection binds the receipt to the original running claim,
 // including its process generation and digest, in the receipt transaction.
 func (s *Store) FinishProductionConnection(claim domain.ModelAcceptanceOperation, state, certainty, code string, now time.Time) (domain.ModelAcceptanceOperation, error) {
+	return s.FinishProductionConnectionWithDiagnostic(claim, state, certainty, code, nil, now)
+}
+
+func (s *Store) FinishProductionConnectionWithDiagnostic(claim domain.ModelAcceptanceOperation, state, certainty, code string, diagnostic *domain.ConnectionDiagnostic, now time.Time) (domain.ModelAcceptanceOperation, error) {
 	if claim.Material.ProductionAdmission == nil || !validAcceptanceMaterial(claim) {
 		return domain.ModelAcceptanceOperation{}, ErrConflict
 	}
-	return s.finishModelAcceptance(claim.AccountID, claim.ID, claim.Revision, state, certainty, code, nil, 0, 0, false, now, &claim)
+	return s.finishModelAcceptance(claim.AccountID, claim.ID, claim.Revision, state, certainty, code, nil, 0, 0, false, diagnostic, now, &claim)
 }
 
 // ReserveProductionConnectionDispatch independently checks the current durable

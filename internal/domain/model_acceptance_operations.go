@@ -117,6 +117,7 @@ type ModelAcceptanceOperation struct {
 	Quota                 string                        `json:"quota"`
 	RemoteBilling         string                        `json:"remote_billing"`
 	LiveAccess            string                        `json:"live_access"`
+	ConnectionDiagnostic  *ConnectionDiagnostic         `json:"connection_diagnostic,omitempty"`
 }
 
 func AcceptanceDigest(v any) string {

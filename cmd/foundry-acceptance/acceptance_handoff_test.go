@@ -23,6 +23,28 @@ import (
 
 const handoffAccount = "acceptance-gate-openai-handoff"
 
+func TestDeterministicTokenFailureFixtureIsPersistedForWorkbenchInspection(t *testing.T) {
+	r := startProtocolAcceptanceForTest(t)
+	account, err := r.store.GetModelAccount(diagnosticAccount)
+	if err != nil || account.Name != "SYNTHETIC OpenAI — recorded token failure" {
+		t.Fatalf("diagnostic account missing: %+v %v", account, err)
+	}
+	operations, err := r.gates.List(account.ID)
+	if err != nil || len(operations) != 1 {
+		t.Fatalf("diagnostic fixture history=%d %v", len(operations), err)
+	}
+	o := operations[0]
+	if o.State != "unknown" || o.Attempts != 1 || o.ConnectionDiagnostic == nil || o.ConnectionDiagnostic.Stage != "token_exchange" || o.ConnectionDiagnostic.Code != "auth_invalid" || o.ConnectionDiagnostic.HTTPStatus != http.StatusForbidden || o.ConnectionDiagnostic.ProviderCode != "invalid_grant" || o.ConnectionDiagnostic.CredentialCommit != "not_committed" || o.ConnectionDiagnostic.Cleanup != "completed" {
+		t.Fatalf("diagnostic fixture receipt=%+v", o)
+	}
+	if r.gateProtocol.tokenCount() != 0 || r.gateProtocol.directoryCount() != 0 || r.gateProtocol.refreshCalls != 0 {
+		t.Fatal("recorded failure fixture invoked provider capabilities")
+	}
+	if _, err = r.gates.Execute(context.Background(), account.ID, o.ID, o.Revision, o.MaterialDigest); err == nil {
+		t.Fatal("recorded failure fixture became replayable")
+	}
+}
+
 func TestBrowserHandoffRequiresIndependentApprovalAndReturnsRunning(t *testing.T) {
 	r := startProtocolAcceptanceForTest(t)
 	a, err := r.store.GetModelAccount(handoffAccount)
@@ -188,6 +210,15 @@ func TestBrowserHandoffConsentDeclineAndCancelAreSingleAttempt(t *testing.T) {
 			}
 			if _, session, err := r.gates.Read(handoffAccount, o.ID); err != nil || session != nil {
 				t.Fatal("terminal session retained handoff")
+			}
+			if outcome == "approve" && o.ConnectionDiagnostic != nil {
+				t.Fatal("successful connection retained a failure diagnostic")
+			}
+			if outcome == "decline" && (o.ConnectionDiagnostic == nil || o.ConnectionDiagnostic.Stage != "browser_authorization" || o.ConnectionDiagnostic.Code != "entitlement_denied" || o.ConnectionDiagnostic.CredentialCommit != "not_committed" || o.ConnectionDiagnostic.Cleanup != "not_required") {
+				t.Fatalf("decline diagnostic=%+v", o.ConnectionDiagnostic)
+			}
+			if outcome == "cancel" && (o.ConnectionDiagnostic == nil || o.ConnectionDiagnostic.Stage != "session" || o.ConnectionDiagnostic.Code != "canceled" || o.ConnectionDiagnostic.CredentialCommit != "not_committed" || o.ConnectionDiagnostic.Cleanup != "not_required") {
+				t.Fatalf("cancel diagnostic=%+v", o.ConnectionDiagnostic)
 			}
 			if _, err := r.gates.Cancel(handoffAccount, o.ID, o.Revision, o.MaterialDigest); err == nil {
 				t.Fatal("cancel replay accepted")
@@ -390,5 +421,93 @@ func TestBrowserHandoffCredentialFailureRetainsCleanupWithoutSuccess(t *testing.
 	}
 	if r.gateProtocol.tokenCount() != 1 {
 		t.Fatal("credential failure retried exchange")
+	}
+}
+
+func TestBrowserHandoffTokenRejectionPersistsBoundedDiagnosticJSON(t *testing.T) {
+	r := startProtocolAcceptanceForTest(t)
+	_ = r.gates.Close()
+	_ = r.browserSIWC.Close()
+	var calls atomic.Int32
+	token := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(w, `{"error":"invalid_grant","authorization":"SYNTHETIC-PRIVATE-AUTHORIZATION","code":"SYNTHETIC-PRIVATE-CODE","access_token":"SYNTHETIC-PRIVATE-TOKEN"}`)
+	}))
+	defer token.Close()
+	options := r.gateProtocol.siwcOptions()
+	options.FlowTimeout, options.TokenOrigin = 10*time.Minute, token.URL
+	secrets := &ephemeralSecrets{values: map[string]string{}}
+	var err error
+	r.browserSIWC, err = accounts.NewSIWCSimulation(accounts.New(r.store, secrets), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, _ := r.store.GetModelRoute(handoffAccount + "-route")
+	r.gates = acceptance.NewSimulation(r.store, acceptance.Options{Routes: []domain.ModelRoute{route}, SubscriptionConnectionRouteIDs: []string{route.ID}, BrowserHandoffRouteIDs: []string{route.ID}, BrowserSIWC: r.browserSIWC, Router: model.NewRouter(nil, nil, model.RouterOptions{}), Connect: func(context.Context, domain.ModelAcceptanceMaterial) error {
+		t.Error("legacy connector called")
+		return nil
+	}})
+	if err = r.gates.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	o := beginHandoff(t, r)
+	callback := handoffCallback(t, r, o, "approve")
+	response, err := http.Get(callback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callbackBody, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("callback status=%d", response.StatusCode)
+	}
+	if text := string(callbackBody); !strings.Contains(text, "attempt has stopped") || !strings.Contains(text, "workbench") || !strings.Contains(text, "will not retry") || strings.Contains(text, "SYNTHETIC-PRIVATE") || strings.Contains(text, "synthetic-code") {
+		t.Fatalf("unsafe callback guidance: %q", text)
+	}
+	if err = r.gates.Close(); err != nil {
+		t.Fatal(err)
+	}
+	o, err = r.gates.Get(handoffAccount, o.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]any{"operation": o})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt struct {
+		Operation struct {
+			State      string `json:"state"`
+			Attempts   int    `json:"attempts"`
+			Diagnostic *struct {
+				Version          int    `json:"version"`
+				Stage            string `json:"stage"`
+				Code             string `json:"code"`
+				HTTPStatus       int    `json:"http_status"`
+				ProviderCode     string `json:"provider_code"`
+				CredentialCommit string `json:"credential_commit"`
+				Cleanup          string `json:"cleanup"`
+			} `json:"connection_diagnostic"`
+		} `json:"operation"`
+	}
+	if err = json.Unmarshal(raw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	diagnostic := receipt.Operation.Diagnostic
+	if receipt.Operation.State != "unknown" || receipt.Operation.Attempts != 1 || diagnostic == nil || diagnostic.Version != 1 || diagnostic.Stage != "token_exchange" || diagnostic.Code != "auth_invalid" || diagnostic.HTTPStatus != http.StatusForbidden || diagnostic.ProviderCode != "invalid_grant" || diagnostic.CredentialCommit != "not_committed" || diagnostic.Cleanup != "completed" {
+		t.Fatalf("unsafe diagnostic receipt: %s", raw)
+	}
+	for _, forbidden := range []string{"SYNTHETIC-PRIVATE-AUTHORIZATION", "SYNTHETIC-PRIVATE-CODE", "SYNTHETIC-PRIVATE-TOKEN", "access_token", "authorization"} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Fatalf("secret reflected in receipt: %q %s", forbidden, raw)
+		}
+	}
+	if calls.Load() != 1 || r.gateProtocol.directoryCount() != 0 || r.gateProtocol.inferenceCount("synthetic-siwc-success-gate") != 0 || r.gateProtocol.refreshCalls != 0 || len(secrets.values) != 0 {
+		t.Fatal("diagnostic path retried or used downstream capabilities")
 	}
 }

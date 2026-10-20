@@ -29,8 +29,13 @@ func acceptanceRead(row modelRowScanner) (domain.ModelAcceptanceOperation, error
 	if e := row.Scan(&raw); e != nil {
 		return o, modelStoreError(e)
 	}
-	e := json.Unmarshal(raw, &o)
-	return o, e
+	if e := json.Unmarshal(raw, &o); e != nil {
+		return o, e
+	}
+	if o.ConnectionDiagnostic != nil && !validStoredConnectionDiagnostic(o, o.ConnectionDiagnostic) {
+		o.ConnectionDiagnostic = nil
+	}
+	return o, nil
 }
 func acceptanceTx(tx *sql.Tx, account, id string) (domain.ModelAcceptanceOperation, error) {
 	return acceptanceRead(tx.QueryRow(`SELECT data FROM model_acceptance_operations WHERE id=? AND account_id=?`, id, account))
@@ -417,10 +422,16 @@ func (s *Store) ClaimModelAcceptance(account, id string, revision int64, digest 
 
 // Finish only accepts bounded evidence; it never accepts provider text or output.
 func (s *Store) FinishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, now time.Time) (domain.ModelAcceptanceOperation, error) {
-	return s.finishModelAcceptance(account, id, revision, state, certainty, code, catalog, input, output, usage, now, nil)
+	return s.finishModelAcceptance(account, id, revision, state, certainty, code, catalog, input, output, usage, nil, now, nil)
 }
 
-func (s *Store) finishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, now time.Time, expected *domain.ModelAcceptanceOperation) (domain.ModelAcceptanceOperation, error) {
+// FinishModelAcceptanceWithDiagnostic is reserved for the trusted connection
+// controller. Public proposal/decision/execution bodies never reach this API.
+func (s *Store) FinishModelAcceptanceWithDiagnostic(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, diagnostic *domain.ConnectionDiagnostic, now time.Time) (domain.ModelAcceptanceOperation, error) {
+	return s.finishModelAcceptance(account, id, revision, state, certainty, code, catalog, input, output, usage, diagnostic, now, nil)
+}
+
+func (s *Store) finishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, diagnostic *domain.ConnectionDiagnostic, now time.Time, expected *domain.ModelAcceptanceOperation) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
 	if state != "succeeded" && state != "failed" && state != "unknown" {
 		return o, ErrConflict
@@ -455,6 +466,9 @@ func (s *Store) finishModelAcceptance(account, id string, revision int64, state,
 	if o.State != "running" || o.Revision != revision || o.Attempts != 1 || !validAcceptanceMaterial(o) || domain.AcceptanceDigest(o.Material) != o.MaterialDigest {
 		return o, ErrConflict
 	}
+	if diagnostic != nil && !validStoredConnectionDiagnosticForFinish(o, state, diagnostic) {
+		return o, ErrConflict
+	}
 	if o.Material.ProductionAdmission != nil && expected == nil || expected != nil && !reflect.DeepEqual(o, *expected) {
 		return o, ErrConflict
 	}
@@ -487,11 +501,31 @@ func (s *Store) finishModelAcceptance(account, id string, revision int64, state,
 	o.State, o.Certainty, o.Code = state, certainty, code
 	o.Catalog = append([]domain.ModelAcceptanceCatalogEntry{}, catalog...)
 	o.InputTokens, o.OutputTokens, o.UsageKnown = input, output, usage
+	o.ConnectionDiagnostic = domain.CloneConnectionDiagnostic(diagnostic)
 	o.FinishedAt = now.UTC().Format(time.RFC3339Nano)
 	if e = acceptanceWrite(tx, &o); e != nil {
 		return o, e
 	}
 	return o, tx.Commit()
+}
+
+func validStoredConnectionDiagnosticForFinish(o domain.ModelAcceptanceOperation, state string, diagnostic *domain.ConnectionDiagnostic) bool {
+	if diagnostic == nil {
+		return true
+	}
+	if state != "failed" && state != "unknown" {
+		return false
+	}
+	copy := o
+	copy.State = state
+	return validStoredConnectionDiagnostic(copy, diagnostic)
+}
+
+func validStoredConnectionDiagnostic(o domain.ModelAcceptanceOperation, diagnostic *domain.ConnectionDiagnostic) bool {
+	if diagnostic == nil || !diagnostic.Valid() || o.Phase != "connection" || o.Material.ConnectionMode != "browser_handoff" || o.Material.ConnectionPurpose != "subscription_only" || (o.State != "failed" && o.State != "unknown") {
+		return false
+	}
+	return true
 }
 
 func validAcceptanceMaterial(o domain.ModelAcceptanceOperation) bool {

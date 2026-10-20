@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"strings"
@@ -374,11 +375,16 @@ func TestSubscriptionDiscoveryPinsIssuerAndJWKSWithoutRequiringRevocation(t *tes
 // completion. Reopening the durable lifecycle cannot replay the request.
 func TestSubscriptionConnectionFailureNeverRetriesOrReplaysAfterRestart(t *testing.T) {
 	for _, tc := range []struct {
-		name               string
-		status             int
-		drop, partialWrite bool
+		name                                       string
+		status                                     int
+		drop, partialWrite                         bool
+		wantStage, wantCode, wantCommit, wantClean string
 	}{
-		{"eligibility", 403, false, false}, {"rate-limit", 429, false, false}, {"server", 503, false, false}, {"lost-response", 0, true, false}, {"partial-credential-write", 0, false, true},
+		{"eligibility", 403, false, false, "token_exchange", "auth_invalid", "not_committed", "completed"},
+		{"rate-limit", 429, false, false, "token_exchange", "rate_limited", "not_committed", "completed"},
+		{"server", 503, false, false, "token_exchange", "server_error", "not_committed", "completed"},
+		{"lost-response", 0, true, false, "token_exchange", "transport_unknown", "not_committed", "completed"},
+		{"partial-credential-write", 0, false, true, "credential_commit", "storage_error", "unknown", "pending"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			lifecycle, db, secrets, path := setupAccounts(t)
@@ -406,6 +412,10 @@ func TestSubscriptionConnectionFailureNeverRetriesOrReplaysAfterRestart(t *testi
 			}
 			response.Body.Close()
 			stop()
+			terminal, waitErr := s.Wait(flow.OperationID)
+			if waitErr != nil || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Stage != tc.wantStage || terminal.ConnectionDiagnostic.Code != tc.wantCode || terminal.ConnectionDiagnostic.CredentialCommit != tc.wantCommit || terminal.ConnectionDiagnostic.Cleanup != tc.wantClean {
+				t.Fatalf("diagnostic=%+v %v", terminal.ConnectionDiagnostic, waitErr)
+			}
 			if response.StatusCode != 400 || issuer.tokenCalls.Load() != 1 {
 				t.Fatal("failure retried or reported success")
 			}
@@ -444,5 +454,97 @@ func TestSubscriptionConnectionFailureNeverRetriesOrReplaysAfterRestart(t *testi
 				t.Fatal("failure lost consumed state", err)
 			}
 		})
+	}
+}
+
+func TestSubscriptionConnectionDiagnosticStagesForBoundedProtocolFaults(t *testing.T) {
+	for _, tc := range []struct {
+		name, stage, code string
+		configure         func(*siwcIssuerFixture, *SIWCOptions)
+	}{
+		{"malformed-token", "token_exchange", "response_incomplete", func(issuer *siwcIssuerFixture, _ *SIWCOptions) {
+			issuer.identityResponse = func(_, _ string) map[string]any {
+				return map[string]any{"access_token": "SYNTHETIC", "expires_in": "not-a-number"}
+			}
+		}},
+		{"oversized-token", "token_exchange", "response_incomplete", func(issuer *siwcIssuerFixture, _ *SIWCOptions) {
+			issuer.accessToken = strings.Repeat("x", 65537)
+		}},
+		{"grant-mismatch", "grant_validation", "entitlement_denied", func(issuer *siwcIssuerFixture, _ *SIWCOptions) {
+			issuer.scopes = append(issuer.scopes, "provider.private.scope")
+		}},
+		{"discovery-failure", "oidc_discovery", "auth_invalid", func(_ *siwcIssuerFixture, options *SIWCOptions) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) }))
+			t.Cleanup(server.Close)
+			options.OIDCOrigin = server.URL
+		}},
+		{"invalid-jwt", "identity_validation", "auth_invalid", func(issuer *siwcIssuerFixture, _ *SIWCOptions) {
+			issuer.identityResponse = func(_, _ string) map[string]any {
+				return map[string]any{"access_token": "SYNTHETIC-ACCESS", "refresh_token": "SYNTHETIC-REFRESH", "id_token": "not-a-signed-jwt", "token_type": "Bearer", "expires_in": 3600, "scope": strings.Join(requestedSIWCScopes, " ")}
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lifecycle, db, secrets, _ := setupAccounts(t)
+			issuer := newSIWCIssuerFixture(t, "https://api.openai.com/v1")
+			options := issuer.options()
+			tc.configure(issuer, &options)
+			account := newSIWCAccount(t, lifecycle, issuer.server.URL+"/v1")
+			s, err := NewSIWCSimulation(lifecycle, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			flow, stop, err := s.BeginOwnedSubscriptionConnectionSimulation(context.Background(), account.ID, account.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stop()
+			query := openHandoff(t, flow)
+			issuer.mu.Lock()
+			issuer.nonce = query.Get("nonce")
+			issuer.mu.Unlock()
+			callback := query.Get("redirect_uri") + "?" + url.Values{"code": {"synthetic-code"}, "state": {query.Get("state")}, "client_id": {"oaiapp_synthetic"}}.Encode()
+			response, err := http.Get(callback)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			stop()
+			terminal, err := s.Wait(flow.OperationID)
+			if err != nil || terminal.State != "failed" || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Stage != tc.stage || terminal.ConnectionDiagnostic.Code != tc.code || terminal.ConnectionDiagnostic.CredentialCommit != "not_committed" || terminal.ConnectionDiagnostic.Cleanup != "completed" {
+				t.Fatalf("terminal=%+v %v", terminal, err)
+			}
+			if issuer.tokenCalls.Load() != 1 || len(secrets.values) != 0 {
+				t.Fatal("fault retried or retained a credential")
+			}
+			if _, err = db.CurrentModelAuthorization(account.ID); err == nil {
+				t.Fatal("invalid proof became current")
+			}
+		})
+	}
+}
+
+func TestSubscriptionPostCommitCleanupFailurePreservesCommittedDiagnostic(t *testing.T) {
+	lifecycle, db, secrets, _ := setupAccounts(t)
+	selection := selectionFixture(t, lifecycle, db, true)
+	first := commitAuthorization(t, lifecycle, &selection, "initial-sign-in", "sign_in", []string{"openid", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"})
+	const operationID = "post-commit-cleanup-failure"
+	if _, err := lifecycle.BeginModelAuthorization(context.Background(), first.Binding.AccountID, operationID, "sign_in", first.Binding.ID); err != nil {
+		t.Fatal(err)
+	}
+	secrets.deleteErr = errors.New("SYNTHETIC-PRIVATE-CLEANUP-FAILURE")
+	_, failure := lifecycle.CommitModelAuthorization(context.Background(), operationID, first.Binding, ModelTokenBundle{AccessToken: "SYNTHETIC-REPLACEMENT-ACCESS", RefreshToken: "SYNTHETIC-REPLACEMENT-REFRESH", IDToken: "SYNTHETIC-REPLACEMENT-ID", ExpiresAt: "2099-01-01T00:00:00Z", EarliestRefreshAt: "2098-01-01T00:00:00Z", Resource: selection.Route.BaseURL})
+	if failure == nil || strings.Contains(failure.Error(), "SYNTHETIC-PRIVATE") {
+		t.Fatalf("post-commit cleanup failure was missing or unsafe: %v", failure)
+	}
+	op, err := db.GetModelAuthorizationOperation(operationID)
+	if err != nil || op.State != "available" {
+		t.Fatalf("successful credential commit was lost: %+v %v", op, err)
+	}
+	service := NewSIWCService(lifecycle)
+	attempt := &siwcAttempt{public: SIWCFlow{OperationID: operationID}}
+	diagnostic := service.siwcConnectionDiagnostic(attempt, "session", "transport_unknown", siwcAtStage("credential_commit", "storage_error", failure))
+	if diagnostic == nil || diagnostic.Stage != "credential_commit" || diagnostic.Code != "storage_error" || diagnostic.CredentialCommit != "committed" || diagnostic.Cleanup != "unknown" {
+		t.Fatalf("post-commit diagnostic=%+v", diagnostic)
 	}
 }

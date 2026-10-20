@@ -50,6 +50,74 @@ type siwcJWTClaims struct {
 	NotBefore int64
 }
 
+type siwcConnectionStageError struct {
+	stage string
+	code  string
+	err   error
+}
+
+func (e *siwcConnectionStageError) Error() string { return e.code }
+func (e *siwcConnectionStageError) Unwrap() error { return e.err }
+
+func siwcAtStage(stage, code string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &siwcConnectionStageError{stage: stage, code: code, err: err}
+}
+
+func (s *SIWCService) siwcConnectionDiagnostic(attempt *siwcAttempt, defaultStage, defaultCode string, failure error) *domain.ConnectionDiagnostic {
+	d := &domain.ConnectionDiagnostic{Version: 1, Stage: defaultStage, Code: defaultCode, CredentialCommit: "not_committed", Cleanup: "not_required"}
+	var staged *siwcConnectionStageError
+	if errors.As(failure, &staged) {
+		d.Stage, d.Code = staged.stage, staged.code
+	}
+	var provider *model.ProviderError
+	if errors.As(failure, &provider) {
+		if provider.Error() != "model_provider_error" {
+			d.Code = provider.Error()
+		}
+		if provider.HTTPStatus >= 400 && provider.HTTPStatus <= 599 {
+			d.HTTPStatus = provider.HTTPStatus
+		}
+		d.ProviderCode = provider.ProviderCode
+	}
+	if attempt != nil {
+		op, err := s.lifecycle.store.GetModelAuthorizationOperation(attempt.public.OperationID)
+		if err == nil {
+			switch op.State {
+			case "available":
+				d.CredentialCommit = "committed"
+				d.Cleanup = "unknown"
+			case "failed", "revoked", "refresh_unknown":
+				if op.CleanupPending || op.WriteClaimed {
+					d.CredentialCommit = "unknown"
+					d.Cleanup = "pending"
+				} else {
+					d.CredentialCommit = "not_committed"
+					d.Cleanup = "completed"
+				}
+			default:
+				d.CredentialCommit = "unknown"
+				d.Cleanup = "unknown"
+			}
+		} else if d.Stage != "callback_validation" && d.Stage != "browser_authorization" && d.Stage != "authorization_intent" && d.Stage != "session" {
+			d.CredentialCommit = "unknown"
+			d.Cleanup = "unknown"
+		}
+	}
+	if !d.Valid() {
+		d.ProviderCode = ""
+		if !d.Valid() {
+			d.HTTPStatus = 0
+		}
+	}
+	if !d.Valid() {
+		return &domain.ConnectionDiagnostic{Version: 1, Stage: "session", Code: "transport_unknown", CredentialCommit: "unknown", Cleanup: "unknown"}
+	}
+	return d
+}
+
 func siwcFailure(code, certainty string) *model.ProviderError {
 	return &model.ProviderError{Code: code, Certainty: certainty}
 }
@@ -84,7 +152,7 @@ func (s *SIWCService) revalidateSIWCAccount(expected domain.ModelAccount) error 
 
 func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt, code, clientID, callbackScope string, callbackScopePresent bool) (resultErr error) {
 	if _, err := s.lifecycle.BeginModelAuthorization(ctx, attempt.account.ID, attempt.public.OperationID, "sign_in", attempt.authorizationID); err != nil {
-		return err
+		return siwcAtStage("authorization_intent", "storage_error", err)
 	}
 	committed := false
 	defer func() {
@@ -104,42 +172,42 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 	}
 	tokens, err := s.requestSIWCToken(ctx, form, attempt.purpose)
 	if err != nil {
-		return err
+		return siwcAtStage("token_exchange", "transport_unknown", err)
 	}
 	var scopes []string
 	if attempt.purpose == siwcPurposeIdentity {
 		if tokens.RefreshToken != "" {
-			return siwcFailure("entitlement_denied", "rejected")
+			return siwcAtStage("grant_validation", "entitlement_denied", siwcFailure("entitlement_denied", "rejected"))
 		}
 		scopes, err = validateSIWCIdentityGrant(tokens.Scope, tokens.ScopePresent, callbackScope, callbackScopePresent)
 	} else {
 		scopes, err = validateSIWCGrant(tokens.Scope, callbackScope, nil)
 	}
 	if err != nil {
-		return err
+		return siwcAtStage("grant_validation", "entitlement_denied", err)
 	}
 	if attempt.purpose != siwcPurposeIdentity && hasSIWCScope(scopes, "offline_access") && tokens.RefreshToken == "" {
-		return siwcFailure("response_incomplete", "unknown")
+		return siwcAtStage("grant_validation", "response_incomplete", siwcFailure("response_incomplete", "unknown"))
 	}
 	discovery, err := s.readSIWCDiscovery(ctx, attempt.subscriptionAdapter)
 	if err != nil {
-		return err
+		return siwcAtStage("oidc_discovery", "transport_unknown", err)
 	}
 	claims, err := s.validateSIWCIDToken(ctx, discovery.JWKSURI, tokens.IDToken, clientID, attempt.nonce)
 	if err != nil {
-		return err
+		return siwcAtStage("identity_validation", "auth_invalid", err)
 	}
 	if current, currentErr := s.lifecycle.store.CurrentModelAuthorization(attempt.account.ID); currentErr == nil {
 		if current.Binding.Issuer != claims.Issuer || current.Binding.Subject != claims.Subject || current.Binding.ClientID != clientID || current.Binding.SpendClass != attempt.purpose {
-			return siwcFailure("auth_invalid", "rejected")
+			return siwcAtStage("identity_validation", "auth_invalid", siwcFailure("auth_invalid", "rejected"))
 		}
 	}
 	binding := domain.ModelAuthorizationBinding{ID: attempt.authorizationID, AccountID: attempt.account.ID, Issuer: claims.Issuer, Subject: claims.Subject, ClientID: clientID, SpendClass: attempt.purpose, Scopes: scopes}
 	if err = validateSIWCMetadataNoTokenReflection(binding, tokens); err != nil {
-		return err
+		return siwcAtStage("identity_validation", "auth_invalid", err)
 	}
 	if err = s.revalidateSIWCAccount(attempt.account); err != nil {
-		return err
+		return siwcAtStage("authorization_intent", "auth_invalid", err)
 	}
 	expiresAt := time.Now().UTC().Add(time.Duration(tokens.ExpiresIn) * time.Second).Format(time.RFC3339)
 	bundle := ModelTokenBundle{AccessToken: tokens.AccessToken, RefreshToken: tokens.RefreshToken, IDToken: tokens.IDToken, ExpiresAt: expiresAt, EarliestRefreshAt: tokens.EarliestRefreshAt, Resource: attempt.account.BaseURL}
@@ -152,7 +220,7 @@ func (s *SIWCService) exchangeSIWCCode(ctx context.Context, attempt *siwcAttempt
 	}
 	_, err = s.lifecycle.CommitModelAuthorization(ctx, attempt.public.OperationID, binding, bundle)
 	if err != nil {
-		return err
+		return siwcAtStage("credential_commit", "storage_error", err)
 	}
 	committed = true
 	return nil
@@ -180,10 +248,14 @@ func (s *SIWCService) requestSIWCToken(ctx context.Context, form url.Values, pur
 		var envelope struct {
 			Error string `json:"error"`
 		}
-		if json.Unmarshal(body, &envelope) == nil && (envelope.Error == "invalid_client" || envelope.Error == "invalid_grant" || envelope.Error == "invalid_refresh_token" || envelope.Error == "token_expired" || envelope.Error == "refresh_token_expired" || envelope.Error == "refresh_token_invalidated" || envelope.Error == "refresh_token_reused") {
+		if json.Unmarshal(body, &envelope) == nil && (envelope.Error == "invalid_client" || envelope.Error == "invalid_grant" || envelope.Error == "subscription_sharing_user_not_eligible" || envelope.Error == "invalid_refresh_token" || envelope.Error == "token_expired" || envelope.Error == "refresh_token_expired" || envelope.Error == "refresh_token_invalidated" || envelope.Error == "refresh_token_reused") {
 			provider.ProviderCode = envelope.Error
 		}
-		if response.StatusCode >= 500 {
+		if envelope.Error == "subscription_sharing_user_not_eligible" {
+			provider.Code = "entitlement_denied"
+		} else if response.StatusCode == http.StatusTooManyRequests {
+			provider.Code = "rate_limited"
+		} else if response.StatusCode >= 500 {
 			provider.Code = "server_error"
 		}
 		return siwcTokenResponse{}, provider

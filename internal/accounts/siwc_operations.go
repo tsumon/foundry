@@ -188,7 +188,7 @@ func (s *SIWCService) beginSIWCConnection(ctx, flowParent context.Context, accou
 		}
 	}
 	s.flows[operationID] = attempt
-	result := attempt.public
+	result := cloneSIWCFlow(attempt.public)
 	s.mu.Unlock()
 
 	if ownedStop != nil {
@@ -215,6 +215,11 @@ func (s *SIWCService) beginSIWCConnection(ctx, flowParent context.Context, accou
 		if done != nil {
 			<-done
 		}
+		s.mu.Lock()
+		if attempt.public.State == "canceled" || attempt.public.State == "expired" {
+			attempt.public.ConnectionDiagnostic = s.siwcConnectionDiagnostic(attempt, "session", attempt.public.State, nil)
+		}
+		s.mu.Unlock()
 		close(attempt.terminalDone)
 	}()
 	return result, nil
@@ -258,6 +263,12 @@ func singleSIWCQuery(raw string, allowed map[string]bool) (url.Values, bool) {
 	return values, true
 }
 
+func writeSIWCStopped(w http.ResponseWriter, status int) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte("This connection attempt has stopped. Return to the Foundry workbench for recorded details. Foundry will not retry this attempt.\n"))
+}
+
 func (s *SIWCService) handleSIWCCallback(ctx context.Context, attempt *siwcAttempt, host string, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet || r.Host != host || r.URL.Path != siwcCallbackPath {
 		http.Error(w, "invalid callback", http.StatusBadRequest)
@@ -282,9 +293,10 @@ func (s *SIWCService) handleSIWCCallback(ctx context.Context, attempt *siwcAttem
 	if values.Get("error") != "" {
 		attempt.public.State = "declined"
 		attempt.public.HandoffURL = ""
+		attempt.public.ConnectionDiagnostic = s.siwcConnectionDiagnostic(attempt, "browser_authorization", "entitlement_denied", nil)
 		s.mu.Unlock()
 		stopSIWCAttempt(attempt, true)
-		w.WriteHeader(http.StatusOK)
+		writeSIWCStopped(w, http.StatusOK)
 		return
 	}
 	code := values.Get("code")
@@ -296,9 +308,10 @@ func (s *SIWCService) handleSIWCCallback(ctx context.Context, attempt *siwcAttem
 		attempt.clientID != "dynamic_agent_client" && clientID != "" && clientID != attempt.clientID {
 		attempt.public.State = "failed"
 		attempt.public.HandoffURL = ""
+		attempt.public.ConnectionDiagnostic = s.siwcConnectionDiagnostic(attempt, "callback_validation", "auth_invalid", nil)
 		s.mu.Unlock()
 		stopSIWCAttempt(attempt, true)
-		http.Error(w, "invalid callback", http.StatusBadRequest)
+		writeSIWCStopped(w, http.StatusBadRequest)
 		return
 	}
 	if attempt.clientID != "dynamic_agent_client" {
@@ -319,12 +332,13 @@ func (s *SIWCService) handleSIWCCallback(ctx context.Context, attempt *siwcAttem
 			attempt.public.State = "available"
 		} else {
 			attempt.public.State = "failed"
+			attempt.public.ConnectionDiagnostic = s.siwcConnectionDiagnostic(attempt, "session", "transport_unknown", err)
 		}
 	}
 	s.mu.Unlock()
 	stopSIWCAttempt(attempt, true)
 	if err != nil {
-		http.Error(w, "authorization failed", http.StatusBadRequest)
+		writeSIWCStopped(w, http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

@@ -29,7 +29,7 @@ func TestOwnedHandoffWaitJoinsExpiryAndRejectsLateCallback(t *testing.T) {
 	defer stop()
 	query := openHandoff(t, flow)
 	terminal, err := s.Wait(flow.OperationID)
-	if err != nil || terminal.State != "expired" || terminal.HandoffURL != "" {
+	if err != nil || terminal.State != "expired" || terminal.HandoffURL != "" || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Stage != "session" || terminal.ConnectionDiagnostic.Code != "expired" || terminal.ConnectionDiagnostic.CredentialCommit != "not_committed" || terminal.ConnectionDiagnostic.Cleanup != "not_required" {
 		t.Fatalf("terminal=%+v %v", terminal, err)
 	}
 	if response, err := http.Get(query.Get("redirect_uri") + "?state=" + query.Get("state") + "&code=synthetic&client_id=oaiapp_synthetic"); err == nil {
@@ -82,7 +82,7 @@ func TestOwnedHandoffExchangeHasThirtySecondBoundInsideHumanWindow(t *testing.T)
 		t.Fatalf("wrong network bound: %v", remaining)
 	}
 	terminal, err := s.Wait(flow.OperationID)
-	if err != nil || terminal.State != "failed" {
+	if err != nil || terminal.State != "failed" || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Stage != "token_exchange" || terminal.ConnectionDiagnostic.Code != "transport_unknown" {
 		t.Fatal("failed exchange not terminal")
 	}
 }

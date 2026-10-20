@@ -90,6 +90,8 @@ internal/domain/capabilities.go
 internal/domain/catalog.go
 internal/domain/catalog_test.go
 internal/domain/catalog_validation.go
+internal/domain/connection_diagnostic.go
+internal/domain/connection_diagnostic_test.go
 internal/domain/controlled.go
 internal/domain/controlled_test.go
 internal/domain/history_test.go
@@ -314,6 +316,7 @@ internal/store/mcp_snapshots.go
 internal/store/mcp_snapshots_test.go
 internal/store/mcp_transitions.go
 internal/store/model_acceptance.go
+internal/store/model_acceptance_diagnostic_test.go
 internal/store/model_acceptance_identity_test.go
 internal/store/model_acceptance_subscription_test.go
 internal/store/model_acceptance_operations.go
@@ -495,6 +498,8 @@ web/src/components/CreateMission.tsx
 web/src/components/DecisionPanel.tsx
 web/src/components/DecisionQueue.test.tsx
 web/src/components/DecisionQueue.tsx
+web/src/components/ConnectionDiagnostic.test.tsx
+web/src/components/ConnectionDiagnostic.tsx
 web/src/components/DeliveryOverview.test.tsx
 web/src/components/DeliveryOverview.tsx
 web/src/components/DemoWorkspace.tsx

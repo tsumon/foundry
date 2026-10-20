@@ -16,6 +16,7 @@ import {
   ModelConnectionSession,
   validConnectionSession,
 } from "./ModelConnectionSession";
+import { ConnectionDiagnostic } from "./ConnectionDiagnostic";
 
 const phaseLabels: Record<ModelAcceptancePhase, string> = {
   connection: "连接",
@@ -1434,6 +1435,12 @@ function OperationReview({
           <p className="warning-copy">
             连接失败或结果未知；清理与凭据提交结果不能确认，不能据此声称已完全回滚。请显式读取并核对原记录，不会重放请求。
           </p>
+        )}
+      {operation.phase === "connection" &&
+        (operation.state === "failed" || operation.state === "unknown") && (
+          <ConnectionDiagnostic
+            diagnostic={operation.connection_diagnostic as unknown}
+          />
         )}
       {operation.state === "pending" && (
         <div className="actions acceptance-actions">
