@@ -5,11 +5,17 @@ import {
   type ModelAcceptanceError,
 } from "../modelAcceptanceApi";
 import type {
+  ConnectionSession,
   ModelAccount,
   ModelAcceptanceHistory,
   ModelAcceptanceOperation,
+  ModelAcceptanceOperationResponse,
   ModelAcceptancePhase,
 } from "../types";
+import {
+  ModelConnectionSession,
+  validConnectionSession,
+} from "./ModelConnectionSession";
 
 const phaseLabels: Record<ModelAcceptancePhase, string> = {
   connection: "连接",
@@ -126,6 +132,18 @@ function validConnectionMaterial(
   if (!material || typeof material !== "object") return false;
   const record = material as Record<string, unknown>;
   if (!validConnectionPurpose(record.connection_purpose)) return false;
+  if (record.connection_mode === undefined) {
+    if (
+      record.login_timeout_seconds !== undefined &&
+      record.login_timeout_seconds !== 0
+    )
+      return false;
+  } else if (
+    record.connection_mode !== "browser_handoff" ||
+    record.connection_purpose !== "subscription_only" ||
+    record.login_timeout_seconds !== 600
+  )
+    return false;
   if (record.connection_purpose === undefined)
     return (
       record.requested_scopes === undefined &&
@@ -181,7 +199,8 @@ function validConnectionMaterial(
     route.adapter === trustedRoute.adapter &&
     route.environment === trustedRoute.environment &&
     route.spend_class === trustedRoute.spend_class &&
-    route.base_url === trustedRoute.base_url
+    route.base_url === trustedRoute.base_url &&
+    record.connection_mode === trustedRoute.connection_mode
   );
 }
 
@@ -197,7 +216,10 @@ function validRoute(
     typeof record.adapter === "string" &&
     typeof record.spend_class === "string" &&
     typeof record.base_url === "string" &&
-    validConnectionPurpose(record.connection_purpose)
+    validConnectionPurpose(record.connection_purpose) &&
+    (record.connection_mode === undefined ||
+      (record.connection_mode === "browser_handoff" &&
+        record.connection_purpose === "subscription_only"))
   );
 }
 
@@ -429,6 +451,8 @@ function AcceptanceOperations({
   const [reading, setReading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ModelAcceptanceError>();
+  const [connectionSession, setConnectionSession] =
+    useState<ConnectionSession>();
   const [routeID, setRouteID] = useState("");
   const [model, setModel] = useState("");
   const [selected, setSelected] = useState<
@@ -444,6 +468,7 @@ function AcceptanceOperations({
     setSelected({});
     setRouteID("");
     setModel("");
+    setConnectionSession(undefined);
   };
   const acceptHistory = (history: ModelAcceptanceHistory) => {
     if (!validHistory(history, account.id)) throw new Error("invalid receipt");
@@ -542,10 +567,13 @@ function AcceptanceOperations({
     );
   }, [catalog?.id, catalog?.revision]);
 
-  const replaceOperation = (operation: ModelAcceptanceOperation) => {
+  const replaceOperation = (result: ModelAcceptanceOperationResponse) => {
+    const { operation, connection_session: session } = result;
     if (
       !snapshot ||
-      !validOperationForSnapshot(operation, account.id, snapshot)
+      !validOperationForSnapshot(operation, account.id, snapshot) ||
+      (session !== undefined &&
+        !validConnectionSession(operation, session, Date.now()))
     )
       throw new Error("invalid receipt");
     setSnapshot((current) =>
@@ -559,11 +587,12 @@ function AcceptanceOperations({
           }
         : current,
     );
+    setConnectionSession(session);
     setSelected((current) => ({ ...current, [operation.phase]: operation.id }));
   };
   const runMutation = async (
     operationID: string | undefined,
-    work: () => Promise<{ operation: ModelAcceptanceOperation }>,
+    work: () => Promise<ModelAcceptanceOperationResponse>,
     after?: (operation: ModelAcceptanceOperation) => Promise<void>,
   ) => {
     if (lifecycle.current.locked || unresolved) return;
@@ -575,7 +604,7 @@ function AcceptanceOperations({
       const result = await work();
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
         return;
-      replaceOperation(result.operation);
+      replaceOperation(result);
       if (after) {
         try {
           await after(result.operation);
@@ -623,6 +652,7 @@ function AcceptanceOperations({
     onLegacySIWCCapability?.(false);
     try {
       let recovered: ModelAcceptanceOperation | undefined;
+      let recoveredSession: ConnectionSession | undefined;
       if (unresolved.operationID) {
         const result = await modelAcceptanceApi.operation(
           account.id,
@@ -631,6 +661,12 @@ function AcceptanceOperations({
         if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
           return;
         recovered = result.operation;
+        recoveredSession = result.connection_session;
+        if (
+          recoveredSession !== undefined &&
+          !validConnectionSession(recovered, recoveredSession, Date.now())
+        )
+          throw new Error("invalid receipt");
       }
       const history = await modelAcceptanceApi.history(account.id);
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
@@ -647,12 +683,22 @@ function AcceptanceOperations({
       const historyReceipt = recovered
         ? history.operations.find((item) => item.id === recovered.id)
         : undefined;
-      const recoveredReceipt =
+      if (
         historyReceipt &&
         recovered &&
-        historyReceipt.revision >= recovered.revision
-          ? historyReceipt
-          : recovered;
+        historyReceipt.revision === recovered.revision &&
+        (historyReceipt.state !== recovered.state ||
+          historyReceipt.material_digest !== recovered.material_digest ||
+          historyReceipt.claim_sequence !== recovered.claim_sequence ||
+          historyReceipt.attempts !== recovered.attempts)
+      )
+        throw new Error("invalid receipt");
+      const historyIsNewer =
+        !!historyReceipt &&
+        !!recovered &&
+        historyReceipt.revision > recovered.revision;
+      const recoveredReceipt = historyIsNewer ? historyReceipt : recovered;
+      if (historyIsNewer) recoveredSession = undefined;
       acceptHistory(
         recoveredReceipt
           ? {
@@ -671,6 +717,7 @@ function AcceptanceOperations({
           ...current,
           [recoveredReceipt.phase]: recoveredReceipt.id,
         }));
+      setConnectionSession(recoveredSession);
       setUnresolved(undefined);
     } catch (cause) {
       if (lifecycle.current.active && lifecycle.current.epoch === epoch) {
@@ -683,6 +730,44 @@ function AcceptanceOperations({
             ? { ...modelAcceptanceError(cause), code: "invalid_receipt" }
             : modelAcceptanceError(cause),
         );
+      }
+    } finally {
+      lifecycle.current.locked = false;
+      if (lifecycle.current.active && lifecycle.current.epoch === epoch)
+        setBusy(false);
+    }
+  };
+
+  const readConnectionStatus = async (operation: ModelAcceptanceOperation) => {
+    if (lifecycle.current.locked) return;
+    lifecycle.current.locked = true;
+    const epoch = lifecycle.current.epoch;
+    setBusy(true);
+    setError(undefined);
+    setConnectionSession(undefined);
+    try {
+      const result = await modelAcceptanceApi.operation(
+        account.id,
+        operation.id,
+      );
+      if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
+        return;
+      replaceOperation(result);
+    } catch (cause) {
+      if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
+        return;
+      const invalid =
+        cause instanceof Error && cause.message === "invalid receipt";
+      setError(
+        invalid
+          ? { ...modelAcceptanceError(cause), code: "invalid_receipt" }
+          : modelAcceptanceError(cause),
+      );
+      if (invalid) {
+        clearSnapshot();
+        setLoaded(false);
+        onConnectionPolicy?.("unavailable");
+        onLegacySIWCCapability?.(false);
       }
     } finally {
       lifecycle.current.locked = false;
@@ -795,6 +880,9 @@ function AcceptanceOperations({
             {snapshot.routes.find((route) => route.id === routeID)!.spend_class}
             {identityOnly && " · 仅身份验证，不授予模型权限"}
             {subscriptionOnly && " · 仅订阅连接，不授予目录或推理权限"}
+            {snapshot.routes.find((route) => route.id === routeID)!
+              .connection_mode === "browser_handoff" &&
+              " · 浏览器交接需手动打开"}
           </p>
         )}
         <button
@@ -919,6 +1007,20 @@ function AcceptanceOperations({
                       },
                     )
                   }
+                  connectionSession={
+                    connectionSession?.operation_id === operation.id
+                      ? connectionSession
+                      : undefined
+                  }
+                  readConnectionStatus={() =>
+                    void readConnectionStatus(operation)
+                  }
+                  cancel={() => {
+                    setConnectionSession(undefined);
+                    void runMutation(operation.id, () =>
+                      modelAcceptanceApi.cancel(account.id, operation),
+                    );
+                  }}
                 />
               )}
             </li>
@@ -962,11 +1064,17 @@ function OperationReview({
   disabled,
   decide,
   execute,
+  connectionSession,
+  readConnectionStatus,
+  cancel,
 }: {
   operation: ModelAcceptanceOperation;
   disabled: boolean;
   decide: (decision: "approve" | "reject") => void;
   execute: () => void;
+  connectionSession?: ConnectionSession;
+  readConnectionStatus: () => void;
+  cancel: () => void;
 }) {
   const material = operation.material;
   return (
@@ -1053,9 +1161,11 @@ function OperationReview({
         )}
         <dt>期限</dt>
         <dd>
-          {material.connection_purpose === "subscription_only"
-            ? `批准有效期 10 分钟 · 执行期限 ${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`
-            : `${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`}
+          {material.connection_mode === "browser_handoff"
+            ? `批准有效期 10 分钟 · 人工登录窗口 ${material.login_timeout_seconds} 秒（执行后开始） · 网络操作期限 ${material.deadline_seconds} 秒 · 批准到期 ${material.expires_at}`
+            : material.connection_purpose === "subscription_only"
+              ? `批准有效期 10 分钟 · 执行期限 ${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`
+              : `${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`}
         </dd>
         <dt>尝试预算</dt>
         <dd>
@@ -1094,6 +1204,16 @@ function OperationReview({
           单次尝试已消耗；没有重试操作。结果未知也不会重放请求。
         </p>
       )}
+      {material.connection_mode === "browser_handoff" &&
+        operation.attempts > 0 && (
+          <ModelConnectionSession
+            operation={operation}
+            session={connectionSession}
+            disabled={disabled}
+            onRead={readConnectionStatus}
+            onCancel={cancel}
+          />
+        )}
       <p className="field-help">
         真实访问：关闭 · 远端计费：未验证 · 额度：未知
       </p>

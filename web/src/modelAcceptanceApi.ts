@@ -2,6 +2,7 @@ import { APIError, request } from "./api";
 import type {
   ModelAcceptanceHistory,
   ModelAcceptanceOperation,
+  ModelAcceptanceOperationResponse,
   ModelAcceptanceProposal,
 } from "./types";
 
@@ -18,20 +19,15 @@ export const modelAcceptanceApi = {
   history: (accountID: string) =>
     request<ModelAcceptanceHistory>(base(accountID)),
   propose: (accountID: string, proposal: ModelAcceptanceProposal) =>
-    request<{ operation: ModelAcceptanceOperation }>(
-      base(accountID),
-      json(proposal),
-    ),
+    request<ModelAcceptanceOperationResponse>(base(accountID), json(proposal)),
   operation: (accountID: string, operationID: string) =>
-    request<{ operation: ModelAcceptanceOperation }>(
-      detail(accountID, operationID),
-    ),
+    request<ModelAcceptanceOperationResponse>(detail(accountID, operationID)),
   decide: (
     accountID: string,
     operation: ModelAcceptanceOperation,
     decision: "approve" | "reject",
   ) =>
-    request<{ operation: ModelAcceptanceOperation }>(
+    request<ModelAcceptanceOperationResponse>(
       `${detail(accountID, operation.id)}/decision`,
       json({
         expected_revision: operation.revision,
@@ -40,8 +36,16 @@ export const modelAcceptanceApi = {
       }),
     ),
   execute: (accountID: string, operation: ModelAcceptanceOperation) =>
-    request<{ operation: ModelAcceptanceOperation }>(
+    request<ModelAcceptanceOperationResponse>(
       `${detail(accountID, operation.id)}/execute`,
+      json({
+        expected_revision: operation.revision,
+        material_digest: operation.material_digest,
+      }),
+    ),
+  cancel: (accountID: string, operation: ModelAcceptanceOperation) =>
+    request<ModelAcceptanceOperationResponse>(
+      `${detail(accountID, operation.id)}/cancel`,
       json({
         expected_revision: operation.revision,
         material_digest: operation.material_digest,

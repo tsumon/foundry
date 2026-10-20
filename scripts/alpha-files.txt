@@ -495,6 +495,8 @@ web/src/components/ModelAcceptanceCard.test.tsx
 web/src/components/ModelAcceptanceCard.tsx
 web/src/components/ModelAcceptanceOperations.test.tsx
 web/src/components/ModelAcceptanceOperations.tsx
+web/src/components/ModelConnectionSession.test.tsx
+web/src/components/ModelConnectionSession.tsx
 web/src/components/ModelAccountCredentials.test.tsx
 web/src/components/ModelAccountCredentials.tsx
 web/src/components/ModelAccounts.tsx

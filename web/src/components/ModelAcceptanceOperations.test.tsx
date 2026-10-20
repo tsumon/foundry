@@ -125,6 +125,47 @@ const subscriptionOperation = (
   ...extra,
 });
 
+const handoffAccount = {
+  ...subscriptionAccount,
+  id: "acceptance-gate-openai-handoff",
+  name: "SYNTHETIC OpenAI — browser connection",
+};
+const handoffRoute = {
+  ...subscriptionRoute,
+  id: "acceptance-gate-openai-handoff-route",
+  connection_mode: "browser_handoff" as const,
+};
+const handoffMaterial = () => ({
+  ...subscriptionMaterial(),
+  account: handoffAccount,
+  route: {
+    ...handoffRoute,
+    account_id: handoffAccount.id,
+    protocol: "responses",
+    extra_usage: "off",
+    created_at: "2026-10-19T00:00:00Z",
+  },
+  connection_mode: "browser_handoff" as const,
+  login_timeout_seconds: 600 as const,
+});
+const handoffOperation = (
+  id: string,
+  state: string,
+  extra: Record<string, unknown> = {},
+) => ({
+  ...subscriptionOperation(id, state, extra),
+  account_id: handoffAccount.id,
+  material: handoffMaterial(),
+  ...extra,
+});
+const handoffSession = (operationID: string) => ({
+  operation_id: operationID,
+  account_id: handoffAccount.id,
+  state: "waiting",
+  expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  handoff_url: "http://127.0.0.1:43126/auth/start",
+});
+
 it("requires a new reviewed permit for connection, catalog, and inference without automatic dispatch", async () => {
   const refreshAccount = vi.fn(async () => {});
   const posts: Array<{ path: string; body: Record<string, unknown> }> = [];
@@ -318,6 +359,405 @@ it("reviews the exact subscription permission contract and exposes only the inde
   expect(await screen.findByText(/连接 · 已成功 · 本地模拟/)).toBeVisible();
   expect(screen.queryByText("目录")).not.toBeInTheDocument();
   expect(screen.queryByText("推理")).not.toBeInTheDocument();
+});
+
+it("keeps browser handoff proposal, approval, execution, manual open, read, and cancellation separate", async () => {
+  let current: ReturnType<typeof handoffOperation> & { code?: string } =
+    handoffOperation("browser-handoff", "pending");
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (!init?.method) {
+      if (path.endsWith(`/${current.id}`))
+        return response({
+          operation: current,
+          ...(current.state === "running"
+            ? { connection_session: handoffSession(current.id) }
+            : {}),
+        });
+      return response({
+        operations: [],
+        simulation_enabled: true,
+        routes: [handoffRoute],
+      });
+    }
+    const body = JSON.parse(String(init.body));
+    if (path.endsWith("/acceptance-operations")) {
+      expect(body).toEqual({
+        phase: "connection",
+        route_id: handoffRoute.id,
+        expected_account_revision: 1,
+        connection_purpose: "subscription_only",
+      });
+      return response({ operation: current });
+    }
+    if (path.endsWith("/decision")) {
+      current = { ...current, revision: 2, state: "approved" };
+      return response({ operation: current });
+    }
+    if (path.endsWith("/execute")) {
+      current = {
+        ...current,
+        revision: 3,
+        state: "running",
+        attempts: 1,
+        claim_sequence: 1,
+      };
+      return response({
+        operation: current,
+        connection_session: handoffSession(current.id),
+      });
+    }
+    if (path.endsWith("/cancel")) {
+      expect(body).toEqual({
+        expected_revision: 3,
+        material_digest: digest,
+      });
+      current = {
+        ...current,
+        revision: 4,
+        state: "unknown",
+        certainty: "unknown",
+        code: "transport_unknown",
+      };
+      return response({ operation: current });
+    }
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={handoffAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: "创建连接材料" }));
+  const review = await screen.findByLabelText("连接材料审阅");
+  expect(within(review).getByText(/批准有效期 10 分钟/)).toBeVisible();
+  expect(within(review).getByText(/人工登录窗口 600 秒/)).toBeVisible();
+  expect(within(review).getByText(/网络操作期限 30 秒/)).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: "打开本地合成授权页" }),
+  ).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "批准连接材料" }));
+  await screen.findByRole("button", { name: "执行连接" });
+  expect(
+    fetcher.mock.calls.filter(([path]) => String(path).endsWith("/execute")),
+  ).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+
+  const link = await screen.findByRole("link", {
+    name: "打开本地合成授权页",
+  });
+  expect(link).toHaveAttribute("href", handoffSession(current.id).handoff_url);
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(5));
+  expect(
+    fetcher.mock.calls.filter(([, init]) => init?.method === "POST"),
+  ).toHaveLength(3);
+
+  fireEvent.click(screen.getByRole("button", { name: "取消连接会话" }));
+  expect(
+    await screen.findByText(/再次尝试需要创建并独立批准新材料/),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: "打开本地合成授权页" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "取消连接会话" }),
+  ).not.toBeInTheDocument();
+});
+
+it("reconciles a lost browser execute response with one explicit detail read and never replays execution", async () => {
+  const approved = handoffOperation("lost-browser-execute", "approved", {
+    revision: 2,
+  });
+  const running = {
+    ...approved,
+    revision: 3,
+    state: "running",
+    attempts: 1,
+    claim_sequence: 4,
+  };
+  let historyReads = 0;
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method) throw new Error("synthetic lost execute response");
+    if (path.endsWith(`/${approved.id}`))
+      return response({
+        operation: running,
+        connection_session: handoffSession(approved.id),
+      });
+    historyReads++;
+    return response({
+      operations: [historyReads === 1 ? approved : running],
+      simulation_enabled: true,
+      routes: [handoffRoute],
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={handoffAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+    target: { value: approved.id },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "仅读取原验收记录" }),
+  );
+
+  expect(
+    await screen.findByRole("link", { name: "打开本地合成授权页" }),
+  ).toBeVisible();
+  expect(
+    fetcher.mock.calls.filter(([path]) => String(path).endsWith("/execute")),
+  ).toHaveLength(1);
+});
+
+it("reconciles a lost browser cancellation response by reading and never repeats cancellation", async () => {
+  const running = handoffOperation("lost-browser-cancel", "running", {
+    revision: 3,
+    attempts: 1,
+    claim_sequence: 5,
+  });
+  const terminal = {
+    ...running,
+    revision: 4,
+    state: "unknown",
+    certainty: "unknown",
+    code: "transport_unknown",
+  };
+  let current = running;
+  let historyReads = 0;
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (!init?.method) {
+      if (path.endsWith(`/${running.id}`))
+        return response({
+          operation: current,
+          ...(current.state === "running"
+            ? { connection_session: handoffSession(current.id) }
+            : {}),
+        });
+      historyReads++;
+      return response({
+        operations: [current],
+        simulation_enabled: true,
+        routes: [handoffRoute],
+      });
+    }
+    if (path.endsWith("/cancel")) {
+      current = terminal;
+      throw new Error("synthetic lost cancel response");
+    }
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={handoffAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+    target: { value: running.id },
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+  expect(
+    await screen.findByRole("link", { name: "打开本地合成授权页" }),
+  ).toBeVisible();
+  expect(historyReads).toBe(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "取消连接会话" }));
+  expect(
+    await screen.findByRole("button", { name: "仅读取原验收记录" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: "打开本地合成授权页" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "仅读取原验收记录" }));
+
+  expect(
+    await screen.findByText(/再次尝试需要创建并独立批准新材料/),
+  ).toBeVisible();
+  expect(
+    fetcher.mock.calls.filter(([path]) => String(path).endsWith("/cancel")),
+  ).toHaveLength(1);
+  expect(
+    screen.queryByRole("link", { name: "打开本地合成授权页" }),
+  ).not.toBeInTheDocument();
+});
+
+it("fails closed on a mismatched browser session and never renders its URL", async () => {
+  const approved = handoffOperation("unsafe-browser-session", "approved", {
+    revision: 2,
+  });
+  const running = {
+    ...approved,
+    revision: 3,
+    state: "running",
+    attempts: 1,
+    claim_sequence: 3,
+  };
+  const unsafe = "http://127.0.0.1:43126/auth/start?state=secret";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_path: string, init?: RequestInit) =>
+      init?.method
+        ? response({
+            operation: running,
+            connection_session: {
+              ...handoffSession(running.id),
+              account_id: "different-account",
+              handoff_url: unsafe,
+            },
+          })
+        : response({
+            operations: [approved],
+            simulation_enabled: true,
+            routes: [handoffRoute],
+          }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={handoffAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+    target: { value: approved.id },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "执行连接" }));
+
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(document.body.textContent).not.toContain(unsafe);
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+});
+
+it("removes a previously safe link before failing closed on a malformed status response", async () => {
+  const running = handoffOperation("status-turns-malformed", "running", {
+    revision: 3,
+    attempts: 1,
+    claim_sequence: 6,
+  });
+  let detailReads = 0;
+  const fetcher = vi.fn(async (path: string) => {
+    if (path.endsWith(`/${running.id}`)) {
+      detailReads++;
+      return response({
+        operation: running,
+        connection_session:
+          detailReads === 1
+            ? handoffSession(running.id)
+            : {
+                ...handoffSession(running.id),
+                handoff_url: "http://127.0.0.1:43126/auth/start?secret=1",
+              },
+      });
+    }
+    return response({
+      operations: [running],
+      simulation_enabled: true,
+      routes: [handoffRoute],
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={handoffAccount}
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+    target: { value: running.id },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+  expect(
+    await screen.findByRole("link", { name: "打开本地合成授权页" }),
+  ).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: "打开本地合成授权页" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+});
+
+it.each([
+  {
+    name: "browser route attached to identity-only purpose",
+    routes: [{ ...handoffRoute, connection_purpose: "identity_only" }],
+    operations: [],
+  },
+  {
+    name: "browser material missing its server-owned mode",
+    routes: [handoffRoute],
+    operations: [
+      handoffOperation("handoff-mode-missing", "pending", {
+        material: {
+          ...handoffMaterial(),
+          connection_mode: undefined,
+          login_timeout_seconds: undefined,
+        },
+      }),
+    ],
+  },
+  {
+    name: "browser material with a short human-login timeout",
+    routes: [handoffRoute],
+    operations: [
+      handoffOperation("handoff-timeout-short", "pending", {
+        material: { ...handoffMaterial(), login_timeout_seconds: 30 },
+      }),
+    ],
+  },
+  {
+    name: "legacy subscription material carrying a login timeout",
+    routes: [subscriptionRoute],
+    operations: [
+      subscriptionOperation("subscription-timeout-injected", "pending", {
+        material: { ...subscriptionMaterial(), login_timeout_seconds: 600 },
+      }),
+    ],
+  },
+])("fails closed for $name", async ({ routes, operations }) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({ operations, simulation_enabled: true, routes }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={
+        routes[0] &&
+        "connection_mode" in routes[0] &&
+        routes[0].connection_mode === "browser_handoff"
+          ? handoffAccount
+          : subscriptionAccount
+      }
+      refreshAccount={async () => {}}
+    />,
+  );
+
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "执行连接" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "打开本地合成授权页" }),
+  ).not.toBeInTheDocument();
 });
 
 it.each([

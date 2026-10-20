@@ -132,6 +132,7 @@ export interface ModelAcceptanceRoute {
   spend_class: string;
   base_url: string;
   connection_purpose?: "identity_only" | "subscription_only";
+  connection_mode?: "browser_handoff";
 }
 export interface ModelAcceptanceAccount {
   id: string;
@@ -155,6 +156,8 @@ export interface ModelAcceptanceAuthorization {
 export interface ModelAcceptanceMaterial {
   phase: ModelAcceptancePhase;
   connection_purpose?: "identity_only" | "subscription_only";
+  connection_mode?: "browser_handoff";
+  login_timeout_seconds?: 600;
   requested_scopes?:
     | ["openid", "profile", "email"]
     | [
@@ -214,6 +217,25 @@ export interface ModelAcceptanceHistory {
   simulation_enabled: boolean;
   legacy_siwc_simulation_enabled?: boolean;
   routes: ModelAcceptanceRoute[];
+}
+export type ConnectionSessionState =
+  | "waiting"
+  | "exchanging"
+  | "available"
+  | "declined"
+  | "failed"
+  | "canceled"
+  | "expired";
+export interface ConnectionSession {
+  operation_id: string;
+  account_id: string;
+  state: ConnectionSessionState;
+  expires_at: string;
+  handoff_url?: string;
+}
+export interface ModelAcceptanceOperationResponse {
+  operation: ModelAcceptanceOperation;
+  connection_session?: ConnectionSession;
 }
 export interface ModelAcceptanceProposal {
   phase: ModelAcceptancePhase;
