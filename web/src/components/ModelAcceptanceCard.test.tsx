@@ -49,6 +49,12 @@ const openAIPreparation = {
     validation: "local_simulation_only",
   },
 };
+const productionAdmission = {
+  state: "implemented_disabled",
+  validation: "local_simulation_only",
+  native_keychain: "not_checked",
+  operator_activation: "unavailable",
+};
 const openAIReport = {
   ...report,
   routes: [
@@ -59,6 +65,101 @@ const openAIReport = {
   ],
   openai_preparation: openAIPreparation,
 };
+const productionOpenAIReport = {
+  ...openAIReport,
+  openai_preparation: {
+    ...openAIPreparation,
+    production_admission: productionAdmission,
+  },
+};
+
+it("shows default-closed production admission without claiming native or real validation", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response({ acceptance: productionOpenAIReport })),
+  );
+  render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+  fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "OpenAI 生产准入准备" }),
+  ).toBeVisible();
+  expect(screen.getByText(/生产连接准入：已接线，默认关闭/)).toBeVisible();
+  expect(screen.getByText(/验证范围：仅本地仿真/)).toHaveTextContent(
+    /不是实际账户验收/,
+  );
+  expect(screen.getByText(/原生 Keychain：未检查/)).toBeVisible();
+  expect(screen.getByText(/操作员启用：不可用/)).toHaveTextContent(
+    /仍需单独确认与审批/,
+  );
+  expect(screen.queryByText(/订阅资格.*已验证/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/实时验证.*成功/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /登录|启用|激活/ }),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  null,
+  { ...productionAdmission, state: "enabled" },
+  { ...productionAdmission, validation: "live_account" },
+  { ...productionAdmission, native_keychain: "checked" },
+  { ...productionAdmission, operator_activation: "available" },
+  { ...productionAdmission, ready: true },
+])(
+  "fails closed on unsafe production admission metadata: %j",
+  async (value) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          acceptance: {
+            ...openAIReport,
+            openai_preparation: {
+              ...openAIPreparation,
+              production_admission: value,
+            },
+          },
+        }),
+      ),
+    );
+    render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/读取失败/);
+    expect(screen.queryByText("synthetic-route")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "OpenAI 生产准入准备" }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it.each([
+  { ...productionOpenAIReport, account_revision: 2 },
+  { ...productionOpenAIReport, routes: null },
+])(
+  "clears prior production admission on a stale or malformed report",
+  async (unsafeReport) => {
+    let reads = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          acceptance: ++reads === 1 ? productionOpenAIReport : unsafeReport,
+        }),
+      ),
+    );
+    render(<ModelAcceptanceCard accountId="synthetic" accountRevision={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+    await screen.findByRole("heading", { name: "OpenAI 生产准入准备" });
+
+    fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/读取失败/);
+    expect(
+      screen.queryByRole("heading", { name: "OpenAI 生产准入准备" }),
+    ).not.toBeInTheDocument();
+  },
+);
 
 it("shows honest OpenAI stage-zero preparation without promoting metadata to permission", async () => {
   vi.stubGlobal(

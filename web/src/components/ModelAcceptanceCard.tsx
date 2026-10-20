@@ -60,6 +60,18 @@ function validSubscriptionAdapterPreparation(value: unknown) {
   );
 }
 
+function validProductionAdmissionPreparation(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const preparation = value as Record<string, unknown>;
+  return (
+    Object.keys(preparation).length === 4 &&
+    preparation.state === "implemented_disabled" &&
+    preparation.validation === "local_simulation_only" &&
+    preparation.native_keychain === "not_checked" &&
+    preparation.operator_activation === "unavailable"
+  );
+}
+
 function validOpenAIPreparation(value: unknown): value is OpenAIPreparation {
   if (!value || typeof value !== "object") return false;
   const preparation = value as Record<string, unknown>;
@@ -74,7 +86,9 @@ function validOpenAIPreparation(value: unknown): value is OpenAIPreparation {
     preparation.real_catalog === "blocked" &&
     preparation.real_inference === "blocked" &&
     (preparation.subscription_adapter === undefined ||
-      validSubscriptionAdapterPreparation(preparation.subscription_adapter))
+      validSubscriptionAdapterPreparation(preparation.subscription_adapter)) &&
+    (preparation.production_admission === undefined ||
+      validProductionAdmissionPreparation(preparation.production_admission))
   );
 }
 
@@ -198,6 +212,15 @@ function AcceptanceRead(props: Props) {
                     与额度均未验证；登录、目录、推理与自动刷新保持关闭。
                   </p>
                 </>
+              )}
+              {report.openai_preparation.production_admission && (
+                <section aria-label="OpenAI 生产准入准备">
+                  <h6>OpenAI 生产准入准备</h6>
+                  <p>生产连接准入：已接线，默认关闭</p>
+                  <p>验证范围：仅本地仿真，不是实际账户验收</p>
+                  <p>原生 Keychain：未检查</p>
+                  <p>操作员启用：不可用；仍需单独确认与审批</p>
+                </section>
               )}
               <p className="field-help">
                 Keychain：本页未检查。此读取不运行 Keychain

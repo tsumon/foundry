@@ -80,6 +80,12 @@ export interface OpenAISubscriptionAdapterPreparation {
   state: "implemented_disabled";
   validation: "local_simulation_only";
 }
+export interface OpenAIProductionAdmissionPreparation {
+  state: "implemented_disabled";
+  validation: "local_simulation_only";
+  native_keychain: "not_checked";
+  operator_activation: "unavailable";
+}
 export interface OpenAIPreparation {
   scope: "openai_subscription_stage0";
   endpoint_policy: "exact_official" | "owned_simulation_required" | "invalid";
@@ -90,6 +96,7 @@ export interface OpenAIPreparation {
   real_catalog: "blocked";
   real_inference: "blocked";
   subscription_adapter?: OpenAISubscriptionAdapterPreparation;
+  production_admission?: OpenAIProductionAdmissionPreparation;
 }
 export interface ModelAccountAcceptance {
   account_id: string;
