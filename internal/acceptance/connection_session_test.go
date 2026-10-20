@@ -2,11 +2,14 @@ package acceptance
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"foundry/internal/accounts"
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/store"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -122,6 +125,153 @@ func TestBrowserHandoffConstructorPolicyCannotBeForgedOrDowngraded(t *testing.T)
 				t.Fatal("policy validation produced effects")
 			}
 		})
+	}
+}
+
+func retainedSessionFixture(t *testing.T) (*Service, domain.ModelAccount, domain.ModelRoute, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "handoff.db")
+	ledger, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	a, err := ledger.SaveModelAccount(domain.ModelAccount{ID: "retention", Name: "retention", Provider: "openai", AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true, BaseURL: "http://127.0.0.1:1/v1"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := ledger.CreateModelRoute(domain.ModelRoute{ID: "retention-route", AccountID: a.ID, Adapter: "openai_siwc_responses", Protocol: "responses", BaseURL: a.BaseURL, Environment: "simulation", SpendClass: "subscription_only", ExtraUsage: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const origin = "http://127.0.0.1:1"
+	siwc, err := accounts.NewSIWCSimulation(accounts.New(ledger, gateSecrets{}), accounts.SIWCOptions{AuthorizationOrigin: origin, TokenOrigin: origin, OIDCOrigin: origin, JWKSOrigin: origin, RevocationOrigin: origin, Issuer: origin, FlowTimeout: 10 * time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = siwc.Close() })
+	svc := NewSimulation(ledger, Options{Routes: []domain.ModelRoute{r}, SubscriptionConnectionRouteIDs: []string{r.ID}, BrowserHandoffRouteIDs: []string{r.ID}, BrowserSIWC: siwc, Router: model.NewRouter(nil, nil, model.RouterOptions{}), Connect: func(context.Context, domain.ModelAcceptanceMaterial) error {
+		t.Error("legacy connector called")
+		return nil
+	}})
+	t.Cleanup(func() { _ = svc.Close() })
+	if err = svc.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	return svc, a, r, path
+}
+
+func startRetainedSession(t *testing.T, svc *Service, a domain.ModelAccount, r domain.ModelRoute) domain.ModelAcceptanceOperation {
+	t.Helper()
+	o, err := svc.Propose(a.ID, domain.ModelAcceptanceProposal{Phase: "connection", ConnectionPurpose: "subscription_only", RouteID: r.ID, ExpectedAccountRevision: a.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err = svc.Decide(a.ID, o.ID, o.Revision, o.MaterialDigest, "approve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err = svc.Execute(context.Background(), a.ID, o.ID, o.Revision, o.MaterialDigest)
+	if err != nil || o.State != "running" {
+		t.Fatal("session did not start", err)
+	}
+	return o
+}
+
+func TestBrowserHandoffTerminalSessionsReleaseOwnedAttempt(t *testing.T) {
+	for _, receiptFault := range []bool{false, true} {
+		t.Run(map[bool]string{false: "completed receipt", true: "failed receipt"}[receiptFault], func(t *testing.T) {
+			svc, a, r, path := retainedSessionFixture(t)
+			o := startRetainedSession(t, svc, a, r)
+			svc.sessionsMu.Lock()
+			captured := svc.sessions[o.ID]
+			svc.sessionsMu.Unlock()
+			if captured == nil {
+				t.Fatal("missing active join handle")
+			}
+			if receiptFault {
+				db, err := sql.Open("sqlite3", path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer db.Close()
+				if _, err = db.Exec(`CREATE TRIGGER retention_receipt_fault BEFORE UPDATE ON model_acceptance_operations WHEN OLD.state='running' AND NEW.state!='running' BEGIN SELECT RAISE(ABORT,'synthetic receipt fault'); END`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := svc.Cancel(a.ID, o.ID, o.Revision, o.MaterialDigest)
+			if receiptFault && !errors.Is(err, ErrPersistence) || !receiptFault && err != nil {
+				t.Fatalf("cancel result=%v", err)
+			}
+			<-captured.done
+			if receiptFault && !errors.Is(captured.err, ErrPersistence) || !receiptFault && captured.err != nil {
+				t.Fatal("eviction lost captured waiter result")
+			}
+			svc.sessionsMu.Lock()
+			retained := len(svc.sessions)
+			svc.sessionsMu.Unlock()
+			if retained != 0 {
+				t.Fatalf("terminal controller retains %d owned protocol attempt(s)", retained)
+			}
+			got, view, readErr := svc.Read(a.ID, o.ID)
+			if readErr != nil || view != nil || got.Attempts != 1 {
+				t.Fatal("eviction broke durable read reconciliation")
+			}
+			if receiptFault && got.State != "running" || !receiptFault && got.State != "unknown" {
+				t.Fatal("eviction changed durable outcome")
+			}
+		})
+	}
+}
+
+func TestBrowserHandoffTerminalEvictionRacesReadCancelAndClose(t *testing.T) {
+	for i := 0; i < 8; i++ {
+		svc, a, r, _ := retainedSessionFixture(t)
+		o := startRetainedSession(t, svc, a, r)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := svc.Cancel(a.ID, o.ID, o.Revision, o.MaterialDigest)
+			if err != nil && !errors.Is(err, ErrDisabled) && !errors.Is(err, store.ErrConflict) {
+				t.Errorf("cancel race=%v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			if err := svc.Close(); err != nil {
+				t.Errorf("close race=%v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			got, view, err := svc.Read(a.ID, o.ID)
+			if err != nil || got.State != "running" && view != nil {
+				t.Error("read race exposed terminal session")
+			}
+		}()
+		close(start)
+		wg.Wait()
+		svc.sessionsMu.Lock()
+		retained := len(svc.sessions)
+		svc.sessionsMu.Unlock()
+		if retained != 0 {
+			t.Fatalf("joined close retained %d sessions", retained)
+		}
+		got, view, err := svc.Read(a.ID, o.ID)
+		if err != nil || got.State != "unknown" || got.Attempts != 1 || view != nil {
+			t.Fatal("close lost durable terminal read")
+		}
+		if err = svc.Recover(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = svc.Execute(context.Background(), a.ID, o.ID, got.Revision, got.MaterialDigest); err == nil {
+			t.Fatal("eviction enabled replay")
+		}
 	}
 }
 

@@ -72,6 +72,14 @@ func (s *Service) startConnection(o domain.ModelAcceptanceOperation) (domain.Mod
 			waitErr = &model.ProviderError{Code: "transport_unknown", Certainty: "unknown"}
 		}
 		_, session.err = s.finish(o, waitErr, nil, model.Result{})
+		// Only active work belongs in the controller. Keep captured waiters
+		// valid, but release the stop closure (and its private SIWC attempt)
+		// after both callback cleanup and the sole receipt writer have joined.
+		s.sessionsMu.Lock()
+		if s.sessions[o.ID] == session {
+			delete(s.sessions, o.ID)
+		}
+		s.sessionsMu.Unlock()
 	}()
 	return o, nil
 }
