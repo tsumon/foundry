@@ -642,26 +642,108 @@ it("fails closed on a mismatched browser session and never renders its URL", asy
   expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
 });
 
-it("removes a previously safe link before failing closed on a malformed status response", async () => {
-  const running = handoffOperation("status-turns-malformed", "running", {
+it.each([
+  ["null envelope", () => null],
+  ["empty envelope", () => ({})],
+  ["null operation", () => ({ operation: null })],
+  [
+    "malformed nested material",
+    (running: ReturnType<typeof handoffOperation>) => ({
+      operation: { ...running, material: null },
+    }),
+  ],
+  [
+    "malformed catalog entry",
+    (running: ReturnType<typeof handoffOperation>) => ({
+      operation: { ...running, catalog: [null] },
+    }),
+  ],
+  [
+    "unsafe session",
+    (running: ReturnType<typeof handoffOperation>) => ({
+      operation: running,
+      connection_session: {
+        ...handoffSession(running.id),
+        handoff_url: "http://127.0.0.1:43126/auth/start?secret=1",
+      },
+    }),
+  ],
+] as const)(
+  "removes a previously safe link and disables every mutation for a %s status response",
+  async (_name, malformed) => {
+    const running = handoffOperation("status-turns-malformed", "running", {
+      revision: 3,
+      attempts: 1,
+      claim_sequence: 6,
+    });
+    let detailReads = 0;
+    const fetcher = vi.fn(async (path: string) => {
+      if (path.endsWith(`/${running.id}`)) {
+        detailReads++;
+        return response(
+          detailReads === 1
+            ? {
+                operation: running,
+                connection_session: handoffSession(running.id),
+              }
+            : malformed(running),
+        );
+      }
+      return response({
+        operations: [running],
+        simulation_enabled: true,
+        routes: [handoffRoute],
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={handoffAccount}
+        refreshAccount={async () => {}}
+      />,
+    );
+
+    fireEvent.change(await screen.findByLabelText("连接已保存材料"), {
+      target: { value: running.id },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+    expect(
+      await screen.findByRole("link", { name: "打开本地合成授权页" }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
+    expect(await screen.findByText("invalid_receipt")).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: "打开本地合成授权页" }),
+    ).not.toBeInTheDocument();
+    for (const name of ["创建连接材料", "创建目录材料", "创建推理材料"])
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /^(批准|拒绝|执行|取消)/ }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it("fails closed when explicit reconciliation receives a malformed operation envelope", async () => {
+  const running = handoffOperation("reconcile-malformed", "running", {
     revision: 3,
     attempts: 1,
     claim_sequence: 6,
   });
   let detailReads = 0;
-  const fetcher = vi.fn(async (path: string) => {
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path.endsWith("/cancel") && init?.method)
+      throw new Error("synthetic lost cancellation response");
     if (path.endsWith(`/${running.id}`)) {
       detailReads++;
-      return response({
-        operation: running,
-        connection_session:
-          detailReads === 1
-            ? handoffSession(running.id)
-            : {
-                ...handoffSession(running.id),
-                handoff_url: "http://127.0.0.1:43126/auth/start?secret=1",
-              },
-      });
+      return response(
+        detailReads === 1
+          ? {
+              operation: running,
+              connection_session: handoffSession(running.id),
+            }
+          : {},
+      );
     }
     return response({
       operations: [running],
@@ -681,16 +763,18 @@ it("removes a previously safe link before failing closed on a malformed status r
     target: { value: running.id },
   });
   fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
-  expect(
-    await screen.findByRole("link", { name: "打开本地合成授权页" }),
-  ).toBeVisible();
+  await screen.findByRole("link", { name: "打开本地合成授权页" });
+  fireEvent.click(screen.getByRole("button", { name: "取消连接会话" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "仅读取原验收记录" }),
+  );
 
-  fireEvent.click(screen.getByRole("button", { name: "读取连接状态" }));
   expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  for (const name of ["创建连接材料", "创建目录材料", "创建推理材料"])
+    expect(screen.getByRole("button", { name })).toBeDisabled();
   expect(
-    screen.queryByRole("link", { name: "打开本地合成授权页" }),
+    screen.queryByRole("button", { name: "取消连接会话" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
 });
 
 it.each(["waiting", "exchanging", "failed"] as const)(

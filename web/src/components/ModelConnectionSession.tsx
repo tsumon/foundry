@@ -30,6 +30,7 @@ function safeHandoffURL(value: string): boolean {
   try {
     const url = new URL(value);
     const port = Number(url.port);
+    const canonical = `http://127.0.0.1:${port}/auth/start`;
     return (
       url.protocol === "http:" &&
       url.hostname === "127.0.0.1" &&
@@ -41,6 +42,7 @@ function safeHandoffURL(value: string): boolean {
       url.pathname === "/auth/start" &&
       url.search === "" &&
       url.hash === "" &&
+      value === canonical &&
       url.href === value
     );
   } catch {

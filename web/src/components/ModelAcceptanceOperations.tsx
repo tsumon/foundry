@@ -110,6 +110,30 @@ function canonicalLoopbackV1(value: string): boolean {
   }
 }
 
+function invalidReceipt(): Error {
+  return new Error("invalid receipt");
+}
+
+function requireValidReceipt(validate: () => boolean): void {
+  try {
+    if (validate()) return;
+  } catch {
+    // Runtime response data is untrusted; validator exceptions are invalid DTOs.
+  }
+  throw invalidReceipt();
+}
+
+function requireOperationResponse(
+  value: unknown,
+): ModelAcceptanceOperationResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw invalidReceipt();
+  const operation = (value as Record<string, unknown>).operation;
+  if (!operation || typeof operation !== "object" || Array.isArray(operation))
+    throw invalidReceipt();
+  return value as ModelAcceptanceOperationResponse;
+}
+
 function validAttemptCount(value: ModelAcceptanceOperation): boolean {
   switch (value.state) {
     case "pending":
@@ -470,8 +494,9 @@ function AcceptanceOperations({
     setModel("");
     setConnectionSession(undefined);
   };
-  const acceptHistory = (history: ModelAcceptanceHistory) => {
-    if (!validHistory(history, account.id)) throw new Error("invalid receipt");
+  const acceptHistory = (value: unknown) => {
+    const history = value as ModelAcceptanceHistory;
+    requireValidReceipt(() => validHistory(history, account.id));
     setSnapshot(history);
     setLoaded(true);
     onConnectionPolicy?.(connectionPolicy(history));
@@ -567,15 +592,16 @@ function AcceptanceOperations({
     );
   }, [catalog?.id, catalog?.revision]);
 
-  const replaceOperation = (result: ModelAcceptanceOperationResponse) => {
+  const replaceOperation = (value: unknown) => {
+    const result = requireOperationResponse(value);
     const { operation, connection_session: session } = result;
-    if (
-      !snapshot ||
-      !validOperationForSnapshot(operation, account.id, snapshot) ||
-      (session !== undefined &&
-        !validConnectionSession(operation, session, Date.now()))
-    )
-      throw new Error("invalid receipt");
+    requireValidReceipt(
+      () =>
+        !!snapshot &&
+        validOperationForSnapshot(operation, account.id, snapshot) &&
+        (session === undefined ||
+          validConnectionSession(operation, session, Date.now())),
+    );
     setSnapshot((current) =>
       current
         ? {
@@ -589,6 +615,7 @@ function AcceptanceOperations({
     );
     setConnectionSession(session);
     setSelected((current) => ({ ...current, [operation.phase]: operation.id }));
+    return operation;
   };
   const runMutation = async (
     operationID: string | undefined,
@@ -604,10 +631,10 @@ function AcceptanceOperations({
       const result = await work();
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
         return;
-      replaceOperation(result);
+      const operation = replaceOperation(result);
       if (after) {
         try {
-          await after(result.operation);
+          await after(operation);
         } catch {
           if (lifecycle.current.active && lifecycle.current.epoch === epoch)
             setError({
@@ -654,32 +681,30 @@ function AcceptanceOperations({
       let recovered: ModelAcceptanceOperation | undefined;
       let recoveredSession: ConnectionSession | undefined;
       if (unresolved.operationID) {
-        const result = await modelAcceptanceApi.operation(
-          account.id,
-          unresolved.operationID,
+        const result = requireOperationResponse(
+          await modelAcceptanceApi.operation(
+            account.id,
+            unresolved.operationID,
+          ),
         );
         if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
           return;
         recovered = result.operation;
         recoveredSession = result.connection_session;
-        if (
-          recoveredSession !== undefined &&
-          !validConnectionSession(recovered, recoveredSession, Date.now())
-        )
-          throw new Error("invalid receipt");
       }
       const history = await modelAcceptanceApi.history(account.id);
       if (!lifecycle.current.active || lifecycle.current.epoch !== epoch)
         return;
-      if (!validHistory(history, account.id))
-        throw new Error("invalid receipt");
-      if (
-        recovered &&
-        (!validOperation(recovered, account.id) ||
-          (history.simulation_enabled &&
-            !validOperationForSnapshot(recovered, account.id, history)))
-      )
-        throw new Error("invalid receipt");
+      requireValidReceipt(() => validHistory(history, account.id));
+      requireValidReceipt(
+        () =>
+          !recovered ||
+          (validOperation(recovered, account.id) &&
+            (!history.simulation_enabled ||
+              validOperationForSnapshot(recovered, account.id, history)) &&
+            (recoveredSession === undefined ||
+              validConnectionSession(recovered, recoveredSession, Date.now()))),
+      );
       const historyReceipt = recovered
         ? history.operations.find((item) => item.id === recovered.id)
         : undefined;
@@ -692,7 +717,7 @@ function AcceptanceOperations({
           historyReceipt.claim_sequence !== recovered.claim_sequence ||
           historyReceipt.attempts !== recovered.attempts)
       )
-        throw new Error("invalid receipt");
+        throw invalidReceipt();
       const historyIsNewer =
         !!historyReceipt &&
         !!recovered &&

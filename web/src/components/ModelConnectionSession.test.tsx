@@ -158,8 +158,16 @@ it.each([
     },
   ],
   [
+    "empty query delimiter",
+    { ...session, handoff_url: "http://127.0.0.1:43126/auth/start?" },
+  ],
+  [
     "fragment",
     { ...session, handoff_url: "http://127.0.0.1:43126/auth/start#secret" },
+  ],
+  [
+    "empty fragment delimiter",
+    { ...session, handoff_url: "http://127.0.0.1:43126/auth/start#" },
   ],
   [
     "escaped path",
