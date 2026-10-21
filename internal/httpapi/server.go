@@ -197,6 +197,8 @@ func (s *server) validMutation(r *http.Request) bool {
 
 func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.URL.Path == "/api/repository-imports/inspections":
+		s.repositoryInspections(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/mcp-local-test":
 		s.localMCPTest(w)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/health":

@@ -16,6 +16,12 @@ func AcceptanceInputs(base string, commands []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return acceptanceInputs(files, commands)
+}
+
+// The same bounded grammar operates on committed bytes during admission and on
+// the historical materialized base during mission creation.
+func acceptanceInputs(files map[string][]byte, commands []string) ([]string, error) {
 	frozen, visiting := map[string]bool{}, map[string]bool{}
 	var check func(string, int) error
 	check = func(command string, depth int) error {

@@ -117,6 +117,9 @@ func (s *Store) initialize() error {
 	if err := s.initializeModelAcceptanceOperations(); err != nil {
 		return err
 	}
+	if err := s.initializeRepositoryInspections(); err != nil {
+		return err
+	}
 	return s.initializeRolePolicy()
 }
 
