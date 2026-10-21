@@ -7,9 +7,89 @@ import (
 	"fmt"
 	"foundry/internal/domain"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+// Initial lookup and transaction recheck must both reject contradictory registry
+// evidence. Removing either check must fail without creating a receipt.
+func TestRepositoryInspectionRejectsCorruptRegistryEvidence(t *testing.T) {
+	for _, kind := range []string{"missing_id", "foreign_id", "column_revision", "json_revision", "unknown_field", "duplicate_id", "oversized"} {
+		t.Run(kind, func(t *testing.T) {
+			s, err := Open(filepath.Join(t.TempDir(), "db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			repo, err := s.SaveGitRepository(domain.GitRepository{ID: "repo", Name: "fixture", Path: "/must-not-be-read"}, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.GetGitRepositoryForInspection(context.Background(), repo.ID); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := json.Marshal(repo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]any
+			if err = json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal(err)
+			}
+			columnRevision := repo.Revision
+			switch kind {
+			case "missing_id":
+				delete(fields, "id")
+			case "foreign_id":
+				fields["id"] = "foreign"
+			case "column_revision":
+				columnRevision++
+			case "json_revision":
+				fields["revision"] = float64(2)
+			case "unknown_field":
+				fields["unknown_authority"] = true
+			case "oversized":
+				fields["name"] = strings.Repeat("x", 1<<20)
+			}
+			raw, err = json.Marshal(fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kind == "duplicate_id" {
+				raw = append([]byte(`{"id":"repo",`), raw[1:]...)
+			}
+			// Simulate damaged persisted evidence, including contradictions normally
+			// prevented by SQLite CHECK constraints (missing fields already bypass them).
+			if _, err = s.db.Exec(`PRAGMA ignore_check_constraints=ON`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.db.Exec(`UPDATE git_repositories SET revision=?,data=? WHERE id=?`, columnRevision, raw, repo.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.db.Exec(`PRAGMA ignore_check_constraints=OFF`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.GetGitRepositoryForInspection(context.Background(), repo.ID); !errors.Is(err, domain.ImportInvalidRecord) {
+				t.Errorf("lookup accepted corrupt %s: %v", kind, err)
+			}
+			v := storedInspection("receipt")
+			v.RepositoryID = repo.ID
+			v.RepositoryRevision = repo.Revision
+			if kind == "json_revision" {
+				v.RepositoryRevision = 2
+			}
+			v.Digest = domain.RepositoryInspectionDigest(v)
+			if _, err = s.SaveRepositoryInspectionContext(context.Background(), v, repo.Path); !errors.Is(err, domain.ImportInvalidRecord) {
+				t.Errorf("transaction accepted corrupt %s: %v", kind, err)
+			}
+			rows, err := s.ListRepositoryInspections()
+			if err != nil || len(rows) != 0 {
+				t.Fatalf("corrupt evidence created receipt: %v %v", rows, err)
+			}
+		})
+	}
+}
 
 // A transaction occupies the only connection: deadline/cancel must stop waiting,
 // and releasing it afterward must not allow an abandoned receipt to appear.

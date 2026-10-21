@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,62 @@ import (
 	"testing"
 	"time"
 )
+
+func TestInspectRepositoryCorruptRegistryRefusesWithoutReceipt(t *testing.T) {
+	_, _, repo, _ := importFixture(t)
+	dbPath := filepath.Join(t.TempDir(), "db")
+	s, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	registered, err := s.SaveGitRepository(domain.GitRepository{ID: "repo", Name: "fixture", Path: repo}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corrupt, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer corrupt.Close()
+	raw, err := json.Marshal(registered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err = json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	delete(fields, "id")
+	raw, err = json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = corrupt.Exec(`UPDATE git_repositories SET data=? WHERE id='repo'`, raw); err != nil {
+		t.Fatal(err)
+	}
+	data := t.TempDir()
+	e := New(s, &scripted{}, Options{DataDir: data, Runner: &fakeRunner{err: errors.New("runner forbidden")}})
+	r := importRequest("")
+	r.RepositoryID = "repo"
+	r.RepositoryRevision = 1
+	before := importSourceDigest(t, repo)
+	v, err := e.InspectRepository(context.Background(), r)
+	if err != domain.ImportStorageFailed || v.ID != "" {
+		t.Fatalf("corrupt registry admitted: %+v %v", v, err)
+	}
+	rows, err := s.ListRepositoryInspections()
+	if err != nil || len(rows) != 0 {
+		t.Fatal(rows, err)
+	}
+	entries, err := os.ReadDir(data)
+	if err != nil || len(entries) != 0 {
+		t.Fatal(entries, err)
+	}
+	if before != importSourceDigest(t, repo) {
+		t.Fatal("source changed")
+	}
+}
 
 func importFixture(t *testing.T) (*Engine, *store.Store, string, string) {
 	t.Helper()

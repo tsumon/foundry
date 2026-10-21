@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"foundry/internal/domain"
+	"path/filepath"
 )
 
 func (s *Store) initializeRepositoryInspections() error {
@@ -32,14 +33,8 @@ func (s *Store) SaveRepositoryInspectionContext(ctx context.Context, v domain.Re
 	}
 	defer tx.Rollback()
 	if v.RepositoryID != "" {
-		var raw []byte
-		if err = tx.QueryRowContext(ctx, `SELECT data FROM git_repositories WHERE id=?`, v.RepositoryID).Scan(&raw); errors.Is(err, sql.ErrNoRows) {
-			return zero, ErrNotFound
-		} else if err != nil {
-			return zero, err
-		}
-		var repo domain.GitRepository
-		if err = json.Unmarshal(raw, &repo); err != nil {
+		repo, err := readGitRepositoryForInspection(ctx, tx, v.RepositoryID)
+		if err != nil {
 			return zero, err
 		}
 		if repo.Revision != v.RepositoryRevision || repo.Path != sourcePath {
@@ -60,8 +55,20 @@ func (s *Store) SaveRepositoryInspectionContext(ctx context.Context, v domain.Re
 }
 
 func (s *Store) GetGitRepositoryForInspection(ctx context.Context, id string) (domain.GitRepository, error) {
+	return readGitRepositoryForInspection(ctx, s.db, id)
+}
+
+type inspectionRegistryReader interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// Both admission lookup and insertion recheck bind strictly decoded payloads to
+// authoritative SQLite columns. Bound transfer before decoding damaged data.
+func readGitRepositoryForInspection(ctx context.Context, q inspectionRegistryReader, id string) (domain.GitRepository, error) {
 	var raw []byte
-	err := s.db.QueryRowContext(ctx, `SELECT data FROM git_repositories WHERE id=?`, id).Scan(&raw)
+	var rowID string
+	var revision int64
+	err := q.QueryRowContext(ctx, `SELECT id,revision,CASE WHEN length(data)<=65536 THEN data ELSE NULL END FROM git_repositories WHERE id=?`, id).Scan(&rowID, &revision, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.GitRepository{}, ErrNotFound
 	}
@@ -69,8 +76,8 @@ func (s *Store) GetGitRepositoryForInspection(ctx context.Context, id string) (d
 		return domain.GitRepository{}, err
 	}
 	var repo domain.GitRepository
-	if err = json.Unmarshal(raw, &repo); err != nil {
-		return domain.GitRepository{}, err
+	if decodeStoredJSON(raw, &repo) != nil || rowID != id || repo.ID != rowID || !catalogID(repo.ID) || revision < 1 || repo.Revision != revision || !validCapabilityText(repo.Name, 200, true) || !validCapabilityText(repo.Path, 4096, true) || !filepath.IsAbs(repo.Path) || repo.ProjectID != "" && !catalogID(repo.ProjectID) || !validCatalogTime(repo.CreatedAt) || !validCatalogTime(repo.UpdatedAt) {
+		return domain.GitRepository{}, domain.ImportInvalidRecord
 	}
 	return repo, nil
 }
