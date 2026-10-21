@@ -622,3 +622,6 @@ internal/store/model_acceptance_inference.go
 internal/store/model_acceptance_inference_test.go
 web/src/components/ModelAcceptanceCatalog.test.tsx
 web/src/test/catalogFixtures.ts
+internal/acceptance/inference_browser_export_test.go
+internal/acceptance/inference_browser_test.go
+web/src/components/inferenceReview.ts

@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { response } from "../test/fixtures";
+import { catalogFixture } from "../test/catalogFixtures";
 import { ModelAcceptanceOperations } from "./ModelAcceptanceOperations";
 
 const account = {
@@ -81,6 +82,507 @@ const history = (operations: unknown[] = [], enabled = true) =>
     simulation_enabled: enabled,
     routes: enabled ? [route] : [],
   });
+
+function inferenceFixture() {
+  const f = catalogFixture();
+  const catalog = {
+    ...f.pending,
+    state: "succeeded",
+    revision: 4,
+    attempts: 1,
+    claim_sequence: 2,
+    certainty: "completed",
+    result_account_revision: f.account.revision,
+    result_snapshot_digest: "c".repeat(64),
+    catalog: [{ id: "gpt-6.1-sol", display_name: "Fixed model" }],
+  };
+  const admission = {
+    generation: "e".repeat(32),
+    profile: "openai_siwc_inference_v1",
+  };
+  const pending = {
+    ...f.pending,
+    id: "synthetic-inference",
+    phase: "inference",
+    source: "production_inference",
+    live_access: "inference_once",
+    material: {
+      ...f.pending.material,
+      phase: "inference",
+      production_admission: admission,
+      request_method: "POST",
+      request_url: "https://api.openai.com/v1/responses",
+      model: "gpt-6.1-sol",
+      inference_prompt: "Reply exactly: FOUNDRY_INFERENCE_OK",
+      prompt_digest:
+        "90f75a47756b44fbcfe856df18999e6c3666e9045e0a95dca5f3bce873a2f8bb",
+      catalog_digest: "a".repeat(64),
+      prerequisite_id: catalog.id,
+      response_byte_limit: 1048576,
+    },
+  };
+  return {
+    ...f,
+    catalog,
+    pending,
+    history: {
+      ...f.history,
+      operations: [f.connection, catalog, pending],
+      production_catalog_enabled: false,
+      production_inference_enabled: true,
+      production_admission: admission,
+    },
+  };
+}
+async function selectInference() {
+  await screen.findByRole("option", { name: /^synthetic-inference ·/ });
+  fireEvent.change(screen.getByLabelText("推理已保存材料"), {
+    target: { value: "synthetic-inference" },
+  });
+}
+
+it("reports a consumed pre-send credential failure as not sent, without retry controls", async () => {
+  const f = inferenceFixture();
+  const failed = {
+    ...f.pending,
+    state: "failed",
+    attempts: 1,
+    claim_sequence: 3,
+    certainty: "not_sent",
+    code: "auth_invalid",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({ ...f.history, operations: [f.connection, f.catalog, failed] }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await selectInference();
+  expect(screen.getByText("传输：未发送")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "执行推理" }),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  [
+    "usage on unconfirmed failure",
+    {
+      state: "failed",
+      certainty: "not_sent",
+      code: "auth_invalid",
+      usage_known: true,
+    },
+  ],
+  [
+    "terminal on unconfirmed failure",
+    {
+      state: "failed",
+      certainty: "not_sent",
+      code: "auth_invalid",
+      terminal_event: "response.failed",
+    },
+  ],
+  [
+    "usage on nonterminal rejection",
+    {
+      state: "failed",
+      certainty: "rejected",
+      code: "auth_invalid",
+      usage_known: true,
+    },
+  ],
+])(
+  "rejects %s instead of inventing provider evidence",
+  async (_name, extra) => {
+    const f = inferenceFixture();
+    const failed = { ...f.pending, attempts: 1, claim_sequence: 3, ...extra };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          ...f.history,
+          operations: [f.connection, f.catalog, failed],
+        }),
+      ),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  },
+);
+it("independently creates, approves and executes fixed production inference without automatic mutations", async () => {
+  const f = inferenceFixture();
+  let current = { ...f.pending, state: "pending" };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (!init?.method)
+      return response({ ...f.history, operations: [f.connection, f.catalog] });
+    if (path.endsWith("/decision"))
+      current = { ...current, revision: 2, state: "approved" };
+    if (path.endsWith("/execute"))
+      return response({
+        operation: {
+          ...current,
+          revision: 4,
+          state: "succeeded",
+          attempts: 1,
+          claim_sequence: 3,
+          certainty: "completed",
+          terminal_event: "response.completed",
+          resolved_model: "gpt-6.1-sol",
+          output_matched: true,
+          output_digest: digest,
+          usage_known: true,
+        },
+      });
+    return response({ operation: current });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  const create = await screen.findByRole("button", {
+    name: "创建真实推理材料",
+  });
+  await waitFor(() => expect(create).toBeEnabled());
+  expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
+  expect(
+    screen.queryByRole("button", { name: /创建真实连接|创建真实目录/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(create);
+  const approve = await screen.findByRole("button", { name: "批准推理材料" });
+  expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({
+    phase: "inference",
+    route_id: f.route.id,
+    expected_account_revision: 2,
+    model: "gpt-6.1-sol",
+    prerequisite_id: f.catalog.id,
+  });
+  expect(screen.getByText("Reply exactly: FOUNDRY_INFERENCE_OK")).toBeVisible();
+  expect(screen.getByText(/未设置 max_output_tokens/)).toBeVisible();
+  expect(
+    screen.getByText("POST https://api.openai.com/v1/responses"),
+  ).toBeVisible();
+  fireEvent.click(approve);
+  const execute = await screen.findByRole("button", { name: "执行推理" });
+  expect(
+    fetcher.mock.calls.filter(([path]) => path.endsWith("/execute")),
+  ).toHaveLength(0);
+  fireEvent.click(execute);
+  expect(await screen.findByText("输出校验：匹配")).toBeVisible();
+  expect(screen.getByText("实际用量：输入 0 · 输出 0 tokens")).toBeVisible();
+  expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(3);
+});
+it.each([
+  ["false", { production_inference_enabled: false }],
+  ["absent", { production_inference_enabled: undefined }],
+  ["mixed", { production_catalog_enabled: true }],
+  ["simulation", { simulation_enabled: true }],
+  ["missing admission", { production_admission: undefined }],
+  [
+    "wrong profile",
+    {
+      production_admission: {
+        generation: "e".repeat(32),
+        profile: "openai_siwc_catalog_v1",
+      },
+    },
+  ],
+])("denies inference with %s capability", async (_name, extra) => {
+  const f = inferenceFixture();
+  const fetcher = vi.fn(async () => response({ ...f.history, ...extra }));
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("正在读取验收记录…")).not.toBeInTheDocument(),
+  );
+  for (const button of screen.queryAllByRole("button", {
+    name: /创建.*材料|批准推理|执行推理/,
+  }))
+    expect(button).toBeDisabled();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+it.each([
+  "stale generation",
+  "expired",
+  "wrong model",
+  "missing model",
+  "stale catalog",
+  "expired credential",
+  "stale catalog result",
+  "malformed catalog result",
+])("closes inference for %s material or lineage", async (kind) => {
+  const f = inferenceFixture();
+  const p = structuredClone(f.pending);
+  if (kind === "stale generation")
+    p.material.production_admission.generation = "b".repeat(32);
+  if (kind === "wrong model") p.material.model = "other";
+  if (kind === "expired" || kind === "expired credential") {
+    p.material.created_at = new Date(Date.now() - 700000).toISOString();
+    p.material.expires_at = new Date(
+      Date.parse(p.material.created_at) + 600000,
+    ).toISOString();
+    if (kind === "expired credential")
+      p.material.authorization.expires_at = p.material.expires_at;
+  }
+  if (kind === "missing model") f.catalog.catalog = [];
+  if (kind === "stale catalog") f.catalog.material.account.revision = 1;
+  if (kind === "stale catalog result") f.catalog.result_account_revision = 1;
+  if (kind === "malformed catalog result")
+    f.catalog.result_snapshot_digest = "broken";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({ ...f.history, operations: [f.connection, f.catalog, p] }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("正在读取验收记录…")).not.toBeInTheDocument(),
+  );
+  if (screen.queryByRole("option", { name: /^synthetic-inference ·/ }))
+    await selectInference();
+  const approve = screen.queryByRole("button", { name: "批准推理材料" });
+  if (approve) expect(approve).toBeDisabled();
+  else expect(screen.getByRole("alert")).toBeVisible();
+});
+it.each([true, false])(
+  "reports completed inference match=%s separately from unknown usage",
+  async (matched) => {
+    const f = inferenceFixture();
+    const terminal = {
+      ...f.pending,
+      state: "succeeded",
+      attempts: 1,
+      claim_sequence: 3,
+      certainty: "completed",
+      terminal_event: "response.completed",
+      resolved_model: "gpt-6.1-sol",
+      output_matched: matched,
+      output_digest: digest,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          ...f.history,
+          operations: [f.connection, f.catalog, terminal],
+        }),
+      ),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    await selectInference();
+    expect(screen.getByText("传输：已完成")).toBeVisible();
+    expect(
+      screen.getByText(
+        matched ? "输出校验：匹配" : "输出校验：不匹配（不重试）",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("实际用量：未知；不能报告零消耗或零费用"),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "执行推理" }),
+    ).not.toBeInTheDocument();
+  },
+);
+it.each(["lost", "stale", "changed material"])(
+  "locks %s inference decision responses until explicit read, never replaying",
+  async (kind) => {
+    const f = inferenceFixture();
+    const pending = { ...f.pending, revision: 2 };
+    const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method) {
+        if (kind === "lost") throw new Error("synthetic lost response");
+        return response({
+          operation: {
+            ...pending,
+            revision: kind === "stale" ? 1 : 3,
+            state: "approved",
+            material: {
+              ...pending.material,
+              ...(kind === "changed material"
+                ? { data_summary: "changed frozen data" }
+                : {}),
+            },
+          },
+        });
+      }
+      if (path.endsWith(`/${pending.id}`))
+        return response({
+          operation: {
+            ...pending,
+            revision: 4,
+            state: "unknown",
+            attempts: 1,
+            claim_sequence: 3,
+            certainty: "unknown",
+          },
+        });
+      return response({
+        ...f.history,
+        operations: [f.connection, f.catalog, pending],
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    await selectInference();
+    fireEvent.click(screen.getByRole("button", { name: "批准推理材料" }));
+    const read = await screen.findByRole("button", {
+      name: "仅读取原验收记录",
+    });
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(
+      1,
+    );
+    fireEvent.click(read);
+    await waitFor(() =>
+      expect(
+        fetcher.mock.calls.filter(([, init]) => !init?.method).length,
+      ).toBe(3),
+    );
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(
+      1,
+    );
+    expect(
+      screen.queryByRole("button", { name: "执行推理" }),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText("传输：结果未知")).toBeVisible();
+  },
+);
+
+it("keeps inference history readable and execution closed without process admission", async () => {
+  const f = inferenceFixture();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        ...f.history,
+        production_admission: undefined,
+        production_inference_enabled: false,
+        routes: [],
+        operations: [
+          f.connection,
+          f.catalog,
+          { ...f.pending, state: "approved" },
+        ],
+      }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await selectInference();
+  expect(screen.getByText("Reply exactly: FOUNDRY_INFERENCE_OK")).toBeVisible();
+  expect(screen.getByRole("button", { name: "执行推理" })).toBeDisabled();
+});
+
+it("expires inference and credential controls locally without polling or secret-triggering calls", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = inferenceFixture();
+    const expiry = new Date(Date.now() + 1000).toISOString();
+    f.pending.material.authorization.expires_at = expiry;
+    f.pending.material.expires_at = expiry;
+    f.catalog.material.authorization.expires_at = expiry;
+    f.catalog.material.expires_at = expiry;
+    const fetcher = vi.fn(async () => response(f.history));
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText("推理已保存材料"), {
+      target: { value: f.pending.id },
+    });
+    expect(screen.getByRole("button", { name: "批准推理材料" })).toBeEnabled();
+    await act(async () => {
+      vi.advanceTimersByTime(1001);
+    });
+    expect(screen.getByRole("button", { name: "批准推理材料" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "创建真实推理材料" }),
+    ).toBeDisabled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each([
+  ["endpoint", { request_url: "https://example.invalid" }],
+  ["token cap override", { max_output_tokens: 128 }],
+  ["prompt override", { inference_prompt: "different prompt" }],
+  ["digest", { prompt_digest: "e".repeat(64) }],
+  ["missing prerequisite", { prerequisite_id: undefined }],
+  ["response bound", { response_byte_limit: 2048 }],
+])(
+  "rejects malformed inference %s without rendering mutation controls",
+  async (_name, change) => {
+    const f = inferenceFixture();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          ...f.history,
+          operations: [
+            f.connection,
+            f.catalog,
+            { ...f.pending, material: { ...f.pending.material, ...change } },
+          ],
+        }),
+      ),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    expect(await screen.findByText("invalid_receipt")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "批准推理材料" }),
+    ).not.toBeInTheDocument();
+  },
+);
 
 const subscriptionAccount = {
   ...account,

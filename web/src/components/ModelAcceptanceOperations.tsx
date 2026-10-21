@@ -17,6 +17,13 @@ import {
   validConnectionSession,
 } from "./ModelConnectionSession";
 import { ConnectionDiagnostic } from "./ConnectionDiagnostic";
+import {
+  inferenceModel,
+  inferencePrompt,
+  inferenceProfile,
+  validInferenceMaterial,
+  validInferenceReceipt,
+} from "./inferenceReview";
 
 const phaseLabels: Record<ModelAcceptancePhase, string> = {
   connection: "连接",
@@ -73,6 +80,7 @@ export type ModelAcceptanceConnectionPolicy =
   | "subscription_only"
   | "production_connection"
   | "production_catalog"
+  | "production_inference"
   | "legacy"
   | "unavailable";
 
@@ -493,6 +501,12 @@ export function connectionPolicy(
   history: ModelAcceptanceHistory,
 ): ModelAcceptanceConnectionPolicy {
   if (
+    validAdmission(history.production_admission, inferenceProfile) &&
+    history.routes.length === 1 &&
+    history.routes.every(isTrustedCatalogRoute)
+  )
+    return "production_inference";
+  if (
     validAdmission(history.production_admission, "openai_siwc_catalog_v1") &&
     history.routes.length === 1 &&
     history.routes.every(isTrustedCatalogRoute)
@@ -547,26 +561,34 @@ function validOperation(
       (value.source === "production_connection" &&
         value.live_access === "connection_only") ||
       (value.source === "production_catalog" &&
-        value.live_access === "catalog_only")) &&
+        value.live_access === "catalog_only") ||
+      (value.source === "production_inference" &&
+        value.live_access === "inference_once")) &&
     value.quota === "unknown" &&
     value.remote_billing === "unverified" &&
     !!value.material &&
-    (value.source === "production_catalog"
-      ? validCatalogMaterial(value, accountID, trustedRoute)
-      : validConnectionMaterial(value, accountID, trustedRoute)) &&
+    (value.source === "production_inference"
+      ? validInferenceMaterial(value, (projected) =>
+          validCatalogMaterial(projected, accountID, trustedRoute),
+        )
+      : value.source === "production_catalog"
+        ? validCatalogMaterial(value, accountID, trustedRoute)
+        : validConnectionMaterial(value, accountID, trustedRoute)) &&
     value.material.phase === value.phase &&
     value.material.account.id === accountID &&
     digest.test(value.material_digest) &&
     (value.code === undefined || receiptCodes.has(value.code)) &&
     Array.isArray(value.catalog) &&
-    (value.source === "production_catalog"
-      ? validCatalogEntries(value)
-      : value.catalog.every(
-          (entry) =>
-            identifier.test(entry.id) &&
-            typeof entry.display_name === "string" &&
-            entry.display_name.length <= 256,
-        )) &&
+    (value.source === "production_inference"
+      ? validInferenceReceipt(value)
+      : value.source === "production_catalog"
+        ? validCatalogEntries(value)
+        : value.catalog.every(
+            (entry) =>
+              identifier.test(entry.id) &&
+              typeof entry.display_name === "string" &&
+              entry.display_name.length <= 256,
+          )) &&
     (value.material.connection_purpose !== "subscription_only" ||
       (value.catalog.length === 0 &&
         value.usage_known === false &&
@@ -591,6 +613,43 @@ function validOperationForSnapshot(
   history: ModelAcceptanceHistory,
 ): boolean {
   const policy = connectionPolicy(history);
+  if (policy === "production_inference") {
+    const connection = latestClaimed(history.operations, "connection");
+    const catalog = history.operations.find(
+      (entry) => entry.id === operation.material.prerequisite_id,
+    );
+    return (
+      operation.source === "production_inference" &&
+      !!operationRoute(operation, history.routes) &&
+      validOperation(
+        operation,
+        accountID,
+        operationRoute(operation, history.routes),
+      ) &&
+      operation.material.production_admission?.generation ===
+        history.production_admission?.generation &&
+      connection?.source === "production_connection" &&
+      connection.state === "succeeded" &&
+      connection.certainty === "completed" &&
+      connection.result_account_revision ===
+        operation.material.account.revision &&
+      digest.test(connection.result_snapshot_digest ?? "") &&
+      catalog?.source === "production_catalog" &&
+      catalog.state === "succeeded" &&
+      catalog.certainty === "completed" &&
+      catalog.result_account_revision === operation.material.account.revision &&
+      digest.test(catalog.result_snapshot_digest ?? "") &&
+      catalog.material.connection_id === connection.id &&
+      operation.material.connection_id === connection.id &&
+      catalog.material.account.revision ===
+        operation.material.account.revision &&
+      catalog.material.route.id === operation.material.route.id &&
+      connection.material.route.id === operation.material.route.id &&
+      JSON.stringify(catalog.material.authorization) ===
+        JSON.stringify(operation.material.authorization) &&
+      catalog.catalog.some((entry) => entry.id === inferenceModel)
+    );
+  }
   if (policy === "production_catalog") {
     const prerequisite = latestClaimed(history.operations, "connection");
     return (
@@ -653,17 +712,52 @@ function validHistory(
       typeof value.production_connection_enabled === "boolean") &&
     (value.production_catalog_enabled === undefined ||
       typeof value.production_catalog_enabled === "boolean") &&
+    (value.production_inference_enabled === undefined ||
+      typeof value.production_inference_enabled === "boolean") &&
+    (value.production_inference_blocker === undefined ||
+      Object.hasOwn(catalogBlockers, value.production_inference_blocker)) &&
     (value.production_catalog_blocker === undefined ||
       Object.hasOwn(catalogBlockers, value.production_catalog_blocker)) &&
     (value.production_admission === undefined ||
       validAdmission(value.production_admission) ||
-      validAdmission(value.production_admission, "openai_siwc_catalog_v1")) &&
+      validAdmission(value.production_admission, "openai_siwc_catalog_v1") ||
+      validAdmission(value.production_admission, inferenceProfile)) &&
     Array.isArray(value.operations) &&
     Array.isArray(value.routes) &&
     value.routes.every(validRoute) &&
     new Set(value.operations.map((operation) => operation.id)).size ===
       value.operations.length &&
     (() => {
+      if (validAdmission(value.production_admission, inferenceProfile)) {
+        return (
+          value.simulation_enabled === false &&
+          value.legacy_siwc_simulation_enabled !== true &&
+          value.production_connection_enabled === false &&
+          value.production_catalog_enabled === false &&
+          typeof value.production_inference_enabled === "boolean" &&
+          !(
+            value.production_inference_enabled &&
+            value.production_inference_blocker !== undefined
+          ) &&
+          value.production_catalog_blocker === undefined &&
+          value.routes.length === 1 &&
+          value.routes.every(isTrustedCatalogRoute) &&
+          value.operations.every(
+            (operation) =>
+              [
+                "production_connection",
+                "production_catalog",
+                "production_inference",
+              ].includes(operation.source) &&
+              validOperation(operation, accountID),
+          )
+        );
+      }
+      if (
+        value.production_inference_enabled === true ||
+        value.production_inference_blocker !== undefined
+      )
+        return false;
       if (
         validAdmission(value.production_admission, "openai_siwc_catalog_v1")
       ) {
@@ -809,7 +903,7 @@ function AcceptanceOperations({
   // Retain only the last validated presentation when an uncertain read clears
   // authority. The account/revision key remounts this state for a new account.
   const [productionPresentation, setProductionPresentation] = useState<
-    "production_connection" | "production_catalog"
+    "production_connection" | "production_catalog" | "production_inference"
   >();
   const [loaded, setLoaded] = useState(false);
   const [reading, setReading] = useState(true);
@@ -843,6 +937,7 @@ function AcceptanceOperations({
     const nextPolicy = connectionPolicy(history);
     setProductionPresentation(
       nextPolicy === "production_connection" ||
+        nextPolicy === "production_inference" ||
         nextPolicy === "production_catalog"
         ? nextPolicy
         : undefined,
@@ -900,10 +995,18 @@ function AcceptanceOperations({
 
   const operations = snapshot?.operations ?? [];
   const policy = snapshot ? connectionPolicy(snapshot) : "unavailable";
+  const productionInference =
+    policy === "production_inference" ||
+    (!snapshot && productionPresentation === "production_inference") ||
+    (policy === "unavailable" &&
+      operations.some(
+        (operation) => operation.source === "production_inference",
+      ));
   const productionCatalog =
     policy === "production_catalog" ||
     (!snapshot && productionPresentation === "production_catalog");
   const production =
+    productionInference ||
     productionCatalog ||
     (!snapshot && productionPresentation === "production_connection") ||
     policy === "production_connection" ||
@@ -912,12 +1015,14 @@ function AcceptanceOperations({
     );
   const identityOnly = policy === "identity_only";
   const subscriptionOnly =
-    policy === "subscription_only" || (production && !productionCatalog);
+    policy === "subscription_only" ||
+    (production && !productionCatalog && !productionInference);
   const historicalCatalog =
     policy === "production_connection" &&
     operations.some((operation) => operation.source === "production_catalog");
-  const visiblePhases =
-    productionCatalog || historicalCatalog
+  const visiblePhases = productionInference
+    ? phases
+    : productionCatalog || historicalCatalog
       ? (["connection", "catalog"] as ModelAcceptancePhase[])
       : subscriptionOnly
         ? (["connection"] as ModelAcceptancePhase[])
@@ -932,7 +1037,7 @@ function AcceptanceOperations({
     latestConnection?.state === "succeeded" &&
     typeof latestResultAccountRevision === "number" &&
     Number.isSafeInteger(latestResultAccountRevision) &&
-    (productionCatalog
+    (productionCatalog || productionInference
       ? latestResultAccountRevision === account.revision &&
         latestConnection.source === "production_connection" &&
         latestConnection.certainty === "completed" &&
@@ -949,12 +1054,35 @@ function AcceptanceOperations({
             "catalog",
             (operation) =>
               operation.state === "succeeded" &&
+              (!productionInference ||
+                (operation.source === "production_catalog" &&
+                  operation.material.account.revision === account.revision &&
+                  operation.result_account_revision === account.revision &&
+                  digest.test(operation.result_snapshot_digest ?? "") &&
+                  operation.material.route.id === routeID &&
+                  Date.parse(
+                    operation.material.authorization?.expires_at ?? "",
+                  ) > Date.now())) &&
               operation.material.connection_id === connection.id,
           )
         : undefined,
-    [operations, connection?.id],
+    [
+      operations,
+      connection?.id,
+      productionInference,
+      account.revision,
+      routeID,
+    ],
   );
   useEffect(() => {
+    if (productionInference) {
+      setModel(
+        catalog?.catalog.some((entry) => entry.id === inferenceModel)
+          ? inferenceModel
+          : "",
+      );
+      return;
+    }
     if (productionCatalog) {
       setModel("");
       return;
@@ -965,27 +1093,31 @@ function AcceptanceOperations({
         ? current
         : (models[0]?.id ?? ""),
     );
-  }, [catalog?.id, catalog?.revision, productionCatalog]);
+  }, [catalog?.id, catalog?.revision, productionCatalog, productionInference]);
 
   // No polling: the local timer only closes controls at the known credential expiry.
-  const catalogAuthorizationExpiry = productionCatalog
-    ? operations
-        .filter(
-          (operation) =>
-            operation.source === "production_catalog" &&
-            operation.material.production_admission?.generation ===
-              snapshot?.production_admission?.generation &&
-            operation.material.account.revision === account.revision,
-        )
-        .reduce(
-          (earliest, operation) =>
-            Math.min(
-              earliest,
-              Date.parse(operation.material.authorization!.expires_at),
-            ),
-          Infinity,
-        )
-    : Infinity;
+  const catalogAuthorizationExpiry =
+    productionCatalog || productionInference
+      ? operations
+          .filter(
+            (operation) =>
+              (productionInference
+                ? operation.source === "production_inference" ||
+                  operation.id === catalog?.id
+                : operation.source === "production_catalog" &&
+                  operation.material.production_admission?.generation ===
+                    snapshot?.production_admission?.generation) &&
+              operation.material.account.revision === account.revision,
+          )
+          .reduce(
+            (earliest, operation) =>
+              Math.min(
+                earliest,
+                Date.parse(operation.material.authorization!.expires_at),
+              ),
+            Infinity,
+          )
+      : Infinity;
   const [authorizationExpired, setAuthorizationExpired] = useState(false);
   useEffect(() => {
     setAuthorizationExpired(catalogAuthorizationExpiry <= Date.now());
@@ -1017,6 +1149,9 @@ function AcceptanceOperations({
             (!previous ||
               (operation.revision >= previous.revision &&
                 operation.material_digest === previous.material_digest &&
+                (operation.source !== "production_inference" ||
+                  JSON.stringify(operation.material) ===
+                    JSON.stringify(previous.material)) &&
                 operation.attempts >= previous.attempts &&
                 operation.claim_sequence >= previous.claim_sequence &&
                 (operation.revision !== previous.revision ||
@@ -1026,6 +1161,7 @@ function AcceptanceOperations({
                       previous.claim_sequence)))))) &&
         (session === undefined ||
           (!productionCatalog &&
+            !productionInference &&
             validConnectionSession(operation, session, Date.now()))),
     );
     setSnapshot((current) =>
@@ -1243,11 +1379,13 @@ function AcceptanceOperations({
     !!unresolved ||
     !loaded ||
     authorizationExpired ||
-    !(productionCatalog
-      ? snapshot?.production_catalog_enabled === true
-      : production
-        ? snapshot?.production_connection_enabled === true
-        : snapshot?.simulation_enabled) ||
+    !(productionInference
+      ? snapshot?.production_inference_enabled === true
+      : productionCatalog
+        ? snapshot?.production_catalog_enabled === true
+        : production
+          ? snapshot?.production_connection_enabled === true
+          : snapshot?.simulation_enabled) ||
     (production &&
       (!account.enabled ||
         account.provider !== "openai" ||
@@ -1290,49 +1428,71 @@ function AcceptanceOperations({
     <section
       className="acceptance-operations"
       aria-label={
-        productionCatalog
-          ? "单次真实模型目录"
-          : production
-            ? "单次真实订阅连接"
-            : "单次本地模拟验收"
+        productionInference
+          ? "单次真实推理"
+          : productionCatalog
+            ? "单次真实模型目录"
+            : production
+              ? "单次真实订阅连接"
+              : "单次本地模拟验收"
       }
     >
       <div className="section-heading">
         <div>
           <h4>
-            {productionCatalog
-              ? "单次真实模型目录"
-              : production
-                ? "单次真实订阅连接"
-                : "单次本地模拟验收"}
+            {productionInference
+              ? "单次真实推理"
+              : productionCatalog
+                ? "单次真实模型目录"
+                : production
+                  ? "单次真实订阅连接"
+                  : "单次本地模拟验收"}
           </h4>
           <p className="muted">
-            {productionCatalog
-              ? "连接历史只读；目录材料独立创建、批准和执行。"
-              : subscriptionOnly
-                ? "订阅连接材料单独审阅、批准和执行。"
-                : "连接、目录与推理分别审阅、批准和执行。"}
+            {productionInference
+              ? "连接与目录历史只读；推理材料独立创建、批准和执行。"
+              : productionCatalog
+                ? "连接历史只读；目录材料独立创建、批准和执行。"
+                : subscriptionOnly
+                  ? "订阅连接材料单独审阅、批准和执行。"
+                  : "连接、目录与推理分别审阅、批准和执行。"}
           </p>
         </div>
         <span className="route-lock">
-          {productionCatalog
-            ? "仅目录可单独审批 · 推理关闭"
-            : production
-              ? snapshot?.production_connection_enabled
-                ? "仅连接可单独审批"
-                : "连接审批不可用 · 历史只读"
-              : snapshot?.simulation_enabled
-                ? "仅本地模拟"
-                : "生产真实访问保持关闭"}
+          {productionInference
+            ? snapshot?.production_inference_enabled === true
+              ? "仅固定单次推理 · 不授权任务调用"
+              : "推理审批不可用 · 历史只读"
+            : productionCatalog
+              ? "仅目录可单独审批 · 推理关闭"
+              : production
+                ? snapshot?.production_connection_enabled
+                  ? "仅连接可单独审批"
+                  : "连接审批不可用 · 历史只读"
+                : snapshot?.simulation_enabled
+                  ? "仅本地模拟"
+                  : "生产真实访问保持关闭"}
         </span>
       </div>
       <p className="field-help">
-        {productionCatalog
-          ? "仅允许 GET https://api.openai.com/v1/models；不发送提示词、源代码、任务上下文或对话。最多一次请求，无自动查询、重试、轮询、刷新、重新登录或付费回退；不修改任务模型和角色策略。"
-          : production
-            ? "此入口仅允许独立审批的真实订阅连接，不开放目录、推理或任务调用。不会自动打开浏览器、重试、轮询、刷新、付费降级、运行脚本或写入 Git。"
-            : "只使用本进程拥有的合成 fixture。不会登录真实账户、读取真实凭据、自动重试、轮询、刷新、付费降级、运行脚本或写入 Git。"}
+        {productionInference
+          ? "仅发送固定合成提示词；不发送源代码、任务上下文或对话。单次请求，无自动重试、轮询、刷新、重新登录、付费回退；不修改任务模型或角色策略。"
+          : productionCatalog
+            ? "仅允许 GET https://api.openai.com/v1/models；不发送提示词、源代码、任务上下文或对话。最多一次请求，无自动查询、重试、轮询、刷新、重新登录或付费回退；不修改任务模型和角色策略。"
+            : production
+              ? "此入口仅允许独立审批的真实订阅连接，不开放目录、推理或任务调用。不会自动打开浏览器、重试、轮询、刷新、付费降级、运行脚本或写入 Git。"
+              : "只使用本进程拥有的合成 fixture。不会登录真实账户、读取真实凭据、自动重试、轮询、刷新、付费降级、运行脚本或写入 Git。"}
       </p>
+      {productionInference &&
+        (snapshot?.production_inference_blocker || authorizationExpired) && (
+          <p className="warning-copy">
+            推理保持关闭，不刷新、不重新登录。
+            <code>
+              {snapshot?.production_inference_blocker ??
+                "authorization_expired"}
+            </code>
+          </p>
+        )}
       {productionCatalog &&
         (snapshot?.production_catalog_blocker || authorizationExpired) && (
           <p className="warning-copy">
@@ -1377,11 +1537,13 @@ function AcceptanceOperations({
       )}
       <div className="acceptance-toolbar">
         <label htmlFor={`acceptance-route-${account.id}`}>
-          {productionCatalog
-            ? "固定真实目录路由"
-            : production
-              ? "固定真实连接路由"
-              : "本地模拟路由"}
+          {productionInference
+            ? "固定真实推理路由"
+            : productionCatalog
+              ? "固定真实目录路由"
+              : production
+                ? "固定真实连接路由"
+                : "本地模拟路由"}
         </label>
         <select
           id={`acceptance-route-${account.id}`}
@@ -1442,6 +1604,7 @@ function AcceptanceOperations({
             (phase === "inference" && (!catalog || !model));
           const identityClosedPhase = identityOnly && phase !== "connection";
           const historicalPhase =
+            (productionInference && phase !== "inference") ||
             (productionCatalog && phase === "connection") ||
             (historicalCatalog && phase === "catalog");
           return (
@@ -1484,14 +1647,21 @@ function AcceptanceOperations({
                   <select
                     aria-label="推理模型"
                     value={model}
-                    disabled={mutationDisabled || !catalog}
+                    disabled={
+                      productionInference || mutationDisabled || !catalog
+                    }
                     onChange={(event) => setModel(event.target.value)}
                   >
-                    {(catalog?.catalog ?? []).map((entry) => (
-                      <option key={entry.id} value={entry.id}>
-                        {entry.display_name} · {entry.id}
-                      </option>
-                    ))}
+                    {(catalog?.catalog ?? [])
+                      .filter(
+                        (entry) =>
+                          !productionInference || entry.id === inferenceModel,
+                      )
+                      .map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.display_name} · {entry.id}
+                        </option>
+                      ))}
                   </select>
                 </label>
               )}
@@ -1540,6 +1710,7 @@ function AcceptanceOperations({
                     !!unresolved ||
                     !loaded ||
                     productionCatalog ||
+                    productionInference ||
                     (operation.source === "production_connection" &&
                       (!snapshot ||
                         !validOperationForSnapshot(
@@ -1596,11 +1767,13 @@ function AcceptanceOperations({
         <div
           className="acceptance-receipts"
           aria-label={
-            productionCatalog
-              ? "真实目录与连接回执"
-              : production
-                ? "真实订阅连接回执"
-                : "本地模拟回执"
+            productionInference
+              ? "真实推理与前提回执"
+              : productionCatalog
+                ? "真实目录与连接回执"
+                : production
+                  ? "真实订阅连接回执"
+                  : "本地模拟回执"
           }
         >
           <h5>已保存回执</h5>
@@ -1620,11 +1793,13 @@ function AcceptanceOperations({
                   <span>
                     {phaseLabels[operation.phase]} ·{" "}
                     {stateLabels[operation.state]} ·{" "}
-                    {operation.source === "production_catalog"
-                      ? "真实模型目录"
-                      : operation.source === "production_connection"
-                        ? "真实订阅连接"
-                        : "本地模拟"}
+                    {operation.source === "production_inference"
+                      ? "真实单次推理"
+                      : operation.source === "production_catalog"
+                        ? "真实模型目录"
+                        : operation.source === "production_connection"
+                          ? "真实订阅连接"
+                          : "本地模拟"}
                   </span>
                   <code>{operation.id}</code>
                   {operation.code && <code>{operation.code}</code>}
@@ -1661,7 +1836,9 @@ function OperationReview({
 }) {
   const material = operation.material;
   const catalog = operation.source === "production_catalog";
-  const production = operation.source === "production_connection" || catalog;
+  const inference = operation.source === "production_inference";
+  const production =
+    operation.source === "production_connection" || catalog || inference;
   const [deadlineExpired, setDeadlineExpired] = useState(false);
   useEffect(() => {
     setDeadlineExpired(false);
@@ -1693,14 +1870,16 @@ function OperationReview({
       </p>
       <dl>
         <dt>
-          {catalog
-            ? "精确目录请求"
-            : production
-              ? "官方连接资源"
-              : "本地模拟端点"}
+          {inference
+            ? "精确推理请求"
+            : catalog
+              ? "精确目录请求"
+              : production
+                ? "官方连接资源"
+                : "本地模拟端点"}
         </dt>
         <dd>
-          {catalog
+          {catalog || inference
             ? `${material.request_method} ${material.request_url}`
             : material.route.base_url}
         </dd>
@@ -1718,7 +1897,9 @@ function OperationReview({
               {" "}
               · 授权 {material.authorization.binding.id} · generation{" "}
               {material.authorization.generation}
-              {catalog && <> · 授权到期 {material.authorization.expires_at}</>}
+              {(catalog || inference) && (
+                <> · 授权到期 {material.authorization.expires_at}</>
+              )}
             </>
           )}
         </dd>
@@ -1733,6 +1914,27 @@ function OperationReview({
             </dd>
             <dt>应用能力</dt>
             <dd>仅目录 · 推理：禁用 · 应用刷新：禁用 · 付费回退：禁用</dd>
+          </>
+        )}
+        {inference && (
+          <>
+            <dt>完整固定提示词</dt>
+            <dd>{inferencePrompt}</dd>
+            <dt>目录前提</dt>
+            <dd>{material.prerequisite_id}</dd>
+            <dt>目录摘要</dt>
+            <dd>
+              <code>{material.catalog_digest}</code>
+            </dd>
+            <dt>连接前提</dt>
+            <dd>{material.connection_id}</dd>
+            <dt>本进程推理准入</dt>
+            <dd>
+              {material.production_admission?.profile} ·{" "}
+              {material.production_admission?.generation}
+            </dd>
+            <dt>请求选项</dt>
+            <dd>store:false · stream:true · 响应上限 1 MiB</dd>
           </>
         )}
         <dt>计费边界</dt>
@@ -1777,11 +1979,13 @@ function OperationReview({
         )}
         <dt>输入摘要</dt>
         <dd>
-          {catalog
-            ? "不发送提示词、源代码、任务上下文或对话；不修改凭据、任务模型或角色策略。创建与批准不发送目录请求。"
-            : production
-              ? "仅订阅连接：浏览器账户/工作区选择及凭据存储；无目录、推理、刷新、重试或付费降级。"
-              : material.data_summary}
+          {inference
+            ? "仅一次固定合成提示词；创建和批准不发送请求。成功不授予任务、角色、MCP、Skills、脚本、Git 或再次执行权限。"
+            : catalog
+              ? "不发送提示词、源代码、任务上下文或对话；不修改凭据、任务模型或角色策略。创建与批准不发送目录请求。"
+              : production
+                ? "仅订阅连接：浏览器账户/工作区选择及凭据存储；无目录、推理、刷新、重试或付费降级。"
+                : material.data_summary}
         </dd>
         {material.model && (
           <>
@@ -1814,7 +2018,55 @@ function OperationReview({
           <code>{operation.material_digest}</code>
         </dd>
       </dl>
-      {production && !catalog && (
+      {inference && (
+        <div className="note">
+          <p>
+            未设置 max_output_tokens；没有精确 token
+            或金额上限。可能消耗套餐额度；额度未知、远端计费未验证。执行前请核对提供方设置并接受可能的套餐消耗。
+          </p>
+          <p>
+            30 秒本地超时与 1 MiB 接收限制不保证远端取消或退款。store:false
+            不承诺提供方不保留运营数据。这是连接测试，不是编码质量评估。
+          </p>
+        </div>
+      )}
+      {inference && operation.attempts > 0 && (
+        <div aria-label="推理回执">
+          <p>
+            {operation.certainty === "completed"
+              ? "传输：已完成"
+              : operation.certainty === "rejected"
+                ? "传输：已拒绝"
+                : operation.certainty === "not_sent" &&
+                    operation.state === "failed"
+                  ? "传输：未发送"
+                  : "传输：结果未知"}
+          </p>
+          <p>
+            {operation.output_matched === true
+              ? "输出校验：匹配"
+              : operation.output_matched === false
+                ? "输出校验：不匹配（不重试）"
+                : "输出校验：未知"}
+          </p>
+          <p>
+            {operation.usage_known
+              ? `实际用量：输入 ${operation.input_tokens ?? 0} · 输出 ${operation.output_tokens ?? 0} tokens`
+              : "实际用量：未知；不能报告零消耗或零费用"}
+          </p>
+          {operation.terminal_event && (
+            <p>终止事件：{operation.terminal_event}</p>
+          )}
+          {operation.code && <p>错误分类：{operation.code}</p>}
+          {operation.provider_code && (
+            <p>提供方代码：{operation.provider_code}</p>
+          )}
+          <p>
+            实际用量不是剩余额度或价格；不重试、不刷新、不重新登录、不付费回退。
+          </p>
+        </div>
+      )}
+      {production && !catalog && !inference && (
         <div className="note">
           <p>
             账户与工作区由用户在官方浏览器流程中选择；不要在本界面输入密码或验证码。
@@ -1834,6 +2086,7 @@ function OperationReview({
       )}
       {production &&
         !catalog &&
+        !inference &&
         (operation.state === "failed" || operation.state === "unknown") && (
           <p className="warning-copy">
             连接失败或结果未知；请核对已记录的本地凭据提交与清理证据。未记录的结果仍无法确认，远端授权状态仍未验证。请显式读取原记录，不会重放请求。
@@ -1923,11 +2176,13 @@ function OperationReview({
           />
         )}
       <p className="field-help">
-        {catalog
-          ? "目录记录不是可复用执行许可；推理访问：关闭"
-          : production
-            ? "真实连接记录不代表当前执行许可；模型访问：关闭"
-            : "真实访问：关闭"}{" "}
+        {inference
+          ? "单次推理记录不是可复用执行许可；任务访问：关闭"
+          : catalog
+            ? "目录记录不是可复用执行许可；推理访问：关闭"
+            : production
+              ? "真实连接记录不代表当前执行许可；模型访问：关闭"
+              : "真实访问：关闭"}{" "}
         · 远端计费：未验证 · 额度：未知
       </p>
     </div>
