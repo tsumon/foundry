@@ -39,6 +39,13 @@ func (e *Engine) ReadDelivery(id, kind string) ([]byte, error) {
 			return nil, err
 		}
 		relative = filepath.Join("missions", id, "exports", m.Delivery.OperationID, name)
+	} else if m.Delivery.ReportSHA256 != "" {
+		// New ordinary exports bind current evidence/reviews to their report.
+		// Historical deliveries with no hash retain their original read behavior.
+		h := sha256.Sum256([]byte(marshalReport(m)))
+		if hex.EncodeToString(h[:]) != m.Delivery.ReportSHA256 {
+			return nil, errors.New("delivery evidence/report binding changed")
+		}
 	}
 	dir := filepath.Dir(filepath.Join(e.options.DataDir, relative))
 	if m.Delivery.PatchPath != filepath.Join(dir, "changes.patch") || m.Delivery.ReportPath != filepath.Join(dir, "report.md") {
@@ -86,7 +93,7 @@ func (e *Engine) ReadDelivery(id, kind string) ([]byte, error) {
 	if int64(len(b)) > limit {
 		return nil, errors.New("artifact exceeds bounds")
 	}
-	if domain.UsesGenerations(m.WorkspaceMode) {
+	if domain.UsesGenerations(m.WorkspaceMode) || expected != "" {
 		h := sha256.Sum256(b)
 		if hex.EncodeToString(h[:]) != expected {
 			return nil, errors.New("artifact digest changed")

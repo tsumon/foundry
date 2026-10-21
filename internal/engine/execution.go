@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"foundry/internal/domain"
 	"foundry/internal/sandbox"
@@ -281,13 +283,15 @@ func (e *Engine) Deliver(ctx context.Context, id string, revision int64) (domain
 		return e.deliverGeneration(ctx, m)
 	}
 	return e.s.UpdateMission(id, revision, "delivery.exported", func(m *domain.Mission) error {
-		patch, report, err := workspace.Export(ctx, e.dir(id), marshalReport(*m))
+		reportInput := marshalReport(*m)
+		patch, report, err := workspace.Export(ctx, e.dir(id), reportInput)
 		if err != nil {
 			return err
 		}
 		m.State = "delivered"
 		m.Stage = "deliver"
-		m.Delivery = &domain.Delivery{PatchPath: patch, ReportPath: report, CandidateDigest: digest, CreatedAt: now()}
+		reportHash := sha256.Sum256([]byte(reportInput))
+		m.Delivery = &domain.Delivery{PatchPath: patch, ReportPath: report, ReportSHA256: hex.EncodeToString(reportHash[:]), CandidateDigest: digest, CreatedAt: now()}
 		m.Approvals = append(m.Approvals, domain.Approval{Kind: "deliver", Digest: digest, Revision: revision, CreatedAt: now()})
 		return nil
 	})

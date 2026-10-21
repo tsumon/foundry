@@ -153,6 +153,92 @@ func TestVerificationCommittedExportRejectsChangedSource(t *testing.T) {
 	}
 }
 
+func TestVerificationOrdinaryExportBindsSourceAndReport(t *testing.T) {
+	for _, variant := range []string{"source", "version", "remove", "report_bytes"} {
+		t.Run(variant, func(t *testing.T) {
+			e, s, _, _, m := setup(t, research, plan, edit, review, review)
+			if _, err := e.Plan(context.Background(), m.ID, m.Revision); err != nil {
+				t.Fatal(err)
+			}
+			m = wait(t, s, m.ID, "awaiting_approval")
+			if _, err := e.Approve(context.Background(), m.ID, m.Revision); err != nil {
+				t.Fatal(err)
+			}
+			m = wait(t, s, m.ID, "awaiting_delivery")
+			m, err := e.Deliver(context.Background(), m.ID, m.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = e.ReadDelivery(m.ID, "report"); err != nil {
+				t.Fatal("new ordinary report unreadable", err)
+			}
+			if variant == "report_bytes" {
+				if err = os.WriteFile(m.Delivery.ReportPath, []byte("tampered report"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				_, err = s.UpdateMission(m.ID, m.Revision, "fixture.corruption", func(current *domain.Mission) error {
+					switch variant {
+					case "source":
+						current.Evidence[0].SourceKind = "isolated_execution"
+					case "version":
+						current.Evidence[0].SourceVersion = 99
+					case "remove":
+						current.Evidence[0].SourceVersion, current.Evidence[0].SourceKind = 0, ""
+					}
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = e.ReadDelivery(m.ID, "patch"); err == nil {
+					t.Error("source mutation left ordinary patch downloadable")
+				}
+			}
+			if _, err = e.ReadDelivery(m.ID, "report"); err == nil {
+				t.Fatal("ordinary report accepted changed provenance or bytes")
+			}
+		})
+	}
+}
+
+func TestVerificationOrdinaryHistoricalDeliveryWithoutHashRemainsReadable(t *testing.T) {
+	e, s, _, _, m := setup(t, research, plan, edit, review, review)
+	if _, err := e.Plan(context.Background(), m.ID, m.Revision); err != nil {
+		t.Fatal(err)
+	}
+	m = wait(t, s, m.ID, "awaiting_approval")
+	if _, err := e.Approve(context.Background(), m.ID, m.Revision); err != nil {
+		t.Fatal(err)
+	}
+	m = wait(t, s, m.ID, "awaiting_delivery")
+	m, err := e.Deliver(context.Background(), m.ID, m.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.UpdateMission(m.ID, m.Revision, "fixture.legacy", func(current *domain.Mission) error {
+		current.Delivery.ReportSHA256 = ""
+		for i := range current.Evidence {
+			current.Evidence[i].SourceVersion, current.Evidence[i].SourceKind = 0, ""
+		}
+		for i := range current.Reviews {
+			current.Reviews[i].EvidenceDigest = ""
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const historical = "historical report without source metadata or hash\n"
+	if err = os.WriteFile(m.Delivery.ReportPath, []byte(historical), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.ReadDelivery(m.ID, "report")
+	if err != nil || string(got) != historical {
+		t.Fatal("legacy report no longer readable unchanged", err)
+	}
+}
+
 func TestVerificationLegacyBytesAndPreparedExportCompatibility(t *testing.T) {
 	const raw = `{"id":"old","candidate_digest":"c","image_id":"i","created_at":"t","acceptance_revision":1,"results":[],"passed":true}`
 	var old domain.Verification

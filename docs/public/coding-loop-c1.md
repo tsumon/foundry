@@ -64,6 +64,10 @@ version/kind, through `evidence_digest`. Source edits, removal, unknown versions
 and added mixed-source attempts invalidate those reviews. Export intents and
 reports also bind this material, and committed generation exports reject a
 changed evidence/report binding on download.
+New ordinary-mode exports store the SHA-256 of the source-aware report and
+check it against both current report material and downloaded report bytes.
+Historical ordinary deliveries with no stored report hash remain readable
+without retroactive claims that their material was bound.
 
 Compatibility deliberately has a small cost: absent/zero provenance and review
 digest fields stay omitted, preserving historical JSON and seals. Historical
