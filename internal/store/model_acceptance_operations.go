@@ -117,8 +117,11 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, p
 	if admission != nil {
 		copy := *admission
 		m.ProductionAdmission = &copy
-		if admission.Profile == "openai_siwc_catalog_v1" {
+		if admission.Profile == "openai_siwc_catalog_v1" || admission.Profile == "openai_siwc_inference_v1" {
 			m.Phase, m.RequestMethod, m.RequestURL = "catalog", "GET", domain.OpenAICatalogURL
+			if admission.Profile == "openai_siwc_inference_v1" {
+				freezeInferenceMaterial(&m)
+			}
 			m.DeadlineSeconds, m.MaxAttempts = 30, 1
 			if purpose != "" || !connected {
 				return m, ErrConflict
@@ -197,6 +200,9 @@ func acceptanceGateSnapshot(tx *sql.Tx, account, route string, connected bool, p
 	if admission != nil && admission.Profile == "openai_siwc_catalog_v1" && !m.ValidProductionCatalog() {
 		return m, ErrConflict
 	}
+	if admission != nil && admission.Profile == "openai_siwc_inference_v1" && !m.ValidProductionInference() {
+		return m, ErrConflict
+	}
 	return m, nil
 }
 func acceptanceSnapshotDigest(m domain.ModelAcceptanceMaterial) string {
@@ -212,6 +218,9 @@ func acceptanceSnapshotDigest(m domain.ModelAcceptanceMaterial) string {
 	}{m.Account, m.Route, m.CredentialVersion, m.Authorization, m.ConnectionPurpose, m.RequestedScopes, m.RequestedResource, m.ProductionAdmission})
 }
 func acceptancePrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error {
+	if m.ProductionAdmission != nil && m.ProductionAdmission.Profile == "openai_siwc_inference_v1" {
+		return inferencePrerequisite(tx, m)
+	}
 	if m.ProductionAdmission != nil && m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" {
 		return catalogPrerequisite(tx, m)
 	}
@@ -308,14 +317,18 @@ func (s *Store) proposeModelAcceptance(account string, q domain.ModelAcceptanceP
 			return o, ErrConflict
 		}
 		m.ConnectionID = p.Material.ConnectionID
-		m.PromptDigest = domain.AcceptanceDigest([]string{domain.AcceptanceSystem, domain.AcceptancePrompt})
+		if admission != nil && admission.Profile == "openai_siwc_inference_v1" {
+			m.CatalogDigest = domain.AcceptanceDigest(p)
+		} else {
+			m.PromptDigest = domain.AcceptanceDigest([]string{domain.AcceptanceSystem, domain.AcceptancePrompt})
+		}
 	}
 	if e = acceptancePrerequisite(tx, m); e != nil {
 		return o, e
 	}
 	m.CreatedAt = now.UTC().Format(time.RFC3339Nano)
 	m.ExpiresAt = now.Add(10 * time.Minute).UTC().Format(time.RFC3339Nano)
-	if admission != nil && admission.Profile == "openai_siwc_catalog_v1" {
+	if admission != nil && (admission.Profile == "openai_siwc_catalog_v1" || admission.Profile == "openai_siwc_inference_v1") {
 		expiry, err := time.Parse(time.RFC3339Nano, m.Authorization.ExpiresAt)
 		if err != nil || !expiry.After(now) {
 			return o, ErrConflict
@@ -345,6 +358,10 @@ func (s *Store) proposeModelAcceptance(account string, q domain.ModelAcceptanceP
 		if admission.Profile == "openai_siwc_catalog_v1" {
 			o.Source, o.LiveAccess = "production_catalog", "catalog_only"
 			o.Material.DataSummary = "Single OpenAI model directory GET only. No prompt, code, files or conversation data; no login, credential writes, refresh, inference, retry or paid fallback."
+		}
+		if admission.Profile == "openai_siwc_inference_v1" {
+			o.Source, o.LiveAccess = "production_inference", "inference_once"
+			o.Material.DataSummary = "Single fixed synthetic prompt only; no tools, history, files, refresh, retry or paid fallback. No provider token or monetary cap; plan consumption possible; quota unknown."
 		}
 		o.MaterialDigest = domain.AcceptanceDigest(o.Material)
 	}
@@ -465,7 +482,7 @@ func (s *Store) FinishModelAcceptanceWithDiagnostic(account, id string, revision
 	return s.finishModelAcceptance(account, id, revision, state, certainty, code, catalog, input, output, usage, diagnostic, now, nil)
 }
 
-func (s *Store) finishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, diagnostic *domain.ConnectionDiagnostic, now time.Time, expected *domain.ModelAcceptanceOperation) (domain.ModelAcceptanceOperation, error) {
+func (s *Store) finishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, diagnostic *domain.ConnectionDiagnostic, now time.Time, expected *domain.ModelAcceptanceOperation, inference ...domain.InferenceEvidence) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
 	if state != "succeeded" && state != "failed" && state != "unknown" {
 		return o, ErrConflict
@@ -510,9 +527,27 @@ func (s *Store) finishModelAcceptance(account, id string, revision int64, state,
 	if o.Material.ConnectionPurpose != "" && (len(catalog) != 0 || input != 0 || output != 0 || usage) {
 		return o, ErrConflict
 	}
+	if o.Source == "production_inference" {
+		if len(inference) != 1 || len(catalog) != 0 || diagnostic != nil || !validInferenceEvidence(state, certainty, code, inference[0], input, output, usage) {
+			return o, ErrConflict
+		}
+		o.InferenceEvidence = inference[0]
+		if certainty == "rejected" {
+			var sequence int64
+			if e = tx.QueryRow(`SELECT claim_sequence FROM model_acceptance_dispatches WHERE operation_id=?`, o.ID).Scan(&sequence); e != nil || sequence != o.ClaimSequence {
+				return o, ErrConflict
+			}
+		}
+	} else if len(inference) != 0 {
+		return o, ErrConflict
+	}
 	if state == "succeeded" {
-		if o.Source == "production_catalog" {
-			if e = validateCatalogClaim(tx, o, *o.Material.ProductionAdmission, now); e != nil {
+		if o.Source == "production_catalog" || o.Source == "production_inference" {
+			claim := o
+			if expected != nil {
+				claim = *expected
+			}
+			if e = validateSingleRequestClaim(tx, claim, *o.Material.ProductionAdmission, now); e != nil {
 				return o, e
 			}
 		}
@@ -570,10 +605,10 @@ func validStoredConnectionDiagnostic(o domain.ModelAcceptanceOperation, diagnost
 
 func validAcceptanceMaterial(o domain.ModelAcceptanceOperation) bool {
 	m := o.Material
-	if m.ProductionAdmission != nil && m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" {
+	if m.ProductionAdmission != nil && (m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" || m.ProductionAdmission.Profile == "openai_siwc_inference_v1") {
 		created, ce := time.Parse(time.RFC3339Nano, m.CreatedAt)
 		expires, ee := time.Parse(time.RFC3339Nano, m.ExpiresAt)
-		if !m.ValidProductionCatalog() || ce != nil || ee != nil {
+		if (!m.ValidProductionCatalog() && !m.ValidProductionInference()) || ce != nil || ee != nil {
 			return false
 		}
 		authExpiry, ae := time.Parse(time.RFC3339Nano, m.Authorization.ExpiresAt)
@@ -581,7 +616,11 @@ func validAcceptanceMaterial(o domain.ModelAcceptanceOperation) bool {
 		if authExpiry.Before(want) {
 			want = authExpiry
 		}
-		return ae == nil && expires.Equal(want) && expires.After(created) && o.Source == "production_catalog" && o.LiveAccess == "catalog_only" && o.Phase == "catalog" && o.AccountID == m.Account.ID && m.ConnectionID != "" && m.ConnectionID == m.PrerequisiteID
+		valid := ae == nil && expires.Equal(want) && expires.After(created) && o.AccountID == m.Account.ID && m.ConnectionID != ""
+		if m.ValidProductionInference() {
+			return valid && o.Source == "production_inference" && o.LiveAccess == "inference_once" && o.Phase == "inference" && m.PrerequisiteID != "" && validDigest(m.CatalogDigest)
+		}
+		return valid && o.Source == "production_catalog" && o.LiveAccess == "catalog_only" && o.Phase == "catalog" && m.ConnectionID == m.PrerequisiteID
 	}
 	if m.ProductionAdmission != nil && (o.Source != "production_connection" || o.LiveAccess != "connection_only") || m.ProductionAdmission == nil && o.Source != "local_simulation" {
 		return false

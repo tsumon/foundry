@@ -75,12 +75,14 @@ func (s *Store) ProductionCatalogReadiness(account, route string, admission doma
 	return ""
 }
 
-func validateCatalogClaim(tx *sql.Tx, claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, now time.Time) error {
+// validateSingleRequestClaim is shared by the independently admitted catalog and
+// inference controllers; each public entry point still pins its own profile.
+func validateSingleRequestClaim(tx *sql.Tx, claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, now time.Time) error {
 	o, e := acceptanceTx(tx, claim.AccountID, claim.ID)
 	if e != nil {
 		return e
 	}
-	if !reflect.DeepEqual(o, claim) || !validAcceptanceMaterial(o) || o.Source != "production_catalog" || o.State != "running" || o.Attempts != 1 || o.ClaimSequence < 1 || o.Material.ProductionAdmission == nil || *o.Material.ProductionAdmission != admission || domain.AcceptanceDigest(o.Material) != o.MaterialDigest {
+	if !reflect.DeepEqual(o, claim) || !validAcceptanceMaterial(o) || (o.Source != "production_catalog" && o.Source != "production_inference") || o.State != "running" || o.Attempts != 1 || o.ClaimSequence < 1 || o.Material.ProductionAdmission == nil || *o.Material.ProductionAdmission != admission || domain.AcceptanceDigest(o.Material) != o.MaterialDigest {
 		return ErrConflict
 	}
 	expiry, e := time.Parse(time.RFC3339Nano, o.Material.ExpiresAt)
@@ -102,10 +104,17 @@ func validateCatalogClaim(tx *sql.Tx, claim domain.ModelAcceptanceOperation, adm
 	if acceptanceSnapshotDigest(current) != acceptanceSnapshotDigest(o.Material) {
 		return ErrConflict
 	}
-	return catalogPrerequisite(tx, o.Material)
+	return acceptancePrerequisite(tx, o.Material)
 }
 
 func (s *Store) ReserveProductionCatalogDispatch(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, now time.Time) error {
+	if claim.Source != "production_catalog" || admission.Profile != "openai_siwc_catalog_v1" {
+		return ErrConflict
+	}
+	return s.reserveProductionDispatch(claim, admission, now)
+}
+
+func (s *Store) reserveProductionDispatch(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, now time.Time) error {
 	tx, e := s.db.Begin()
 	if e != nil {
 		return e
@@ -114,7 +123,7 @@ func (s *Store) ReserveProductionCatalogDispatch(claim domain.ModelAcceptanceOpe
 	if _, e = tx.Exec(`UPDATE model_acceptance_operations SET revision=revision WHERE id=?`, claim.ID); e != nil {
 		return e
 	}
-	if e = validateCatalogClaim(tx, claim, admission, now); e != nil {
+	if e = validateSingleRequestClaim(tx, claim, admission, now); e != nil {
 		return e
 	}
 	if _, e = tx.Exec(`INSERT INTO model_acceptance_dispatches(operation_id,claim_sequence) VALUES(?,?)`, claim.ID, claim.ClaimSequence); e != nil {
@@ -124,12 +133,19 @@ func (s *Store) ReserveProductionCatalogDispatch(claim domain.ModelAcceptanceOpe
 }
 
 func (s *Store) ValidateProductionCatalogDispatch(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, now time.Time) error {
+	if claim.Source != "production_catalog" || admission.Profile != "openai_siwc_catalog_v1" {
+		return ErrConflict
+	}
+	return s.validateProductionDispatch(claim, admission, now)
+}
+
+func (s *Store) validateProductionDispatch(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, now time.Time) error {
 	tx, e := s.db.Begin()
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
-	if e = validateCatalogClaim(tx, claim, admission, now); e != nil {
+	if e = validateSingleRequestClaim(tx, claim, admission, now); e != nil {
 		return e
 	}
 	var sequence int64

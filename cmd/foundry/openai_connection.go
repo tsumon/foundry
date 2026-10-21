@@ -23,6 +23,14 @@ func nativeOpenAIConnectionDeps() openaiConnectionDeps {
 }
 
 func validateOpenAIStartupOptions(cfg config) error {
+	if cfg.openaiInferenceRoute != "" {
+		if cfg.openaiSubscriptionRoute != "" || cfg.openaiKeychainJournal != "" || cfg.openaiCatalogRoute != "" {
+			return errors.New("--openai-inference-route is mutually exclusive with connection, catalog and native probe startup options")
+		}
+		if domain.ValidateModelCredentialOperation(cfg.openaiInferenceRoute) != nil {
+			return errors.New("invalid OpenAI inference route identifier")
+		}
+	}
 	if cfg.openaiCatalogRoute != "" {
 		if cfg.openaiSubscriptionRoute != "" || cfg.openaiKeychainJournal != "" {
 			return errors.New("--openai-catalog-route is mutually exclusive with connection startup options")

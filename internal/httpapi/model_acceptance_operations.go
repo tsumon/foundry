@@ -76,8 +76,19 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 			}
 			production := s.acceptance.ProductionConnectionStatus(account)
 			catalog := s.acceptance.ProductionCatalogStatus(account)
+			inference := s.acceptance.ProductionInferenceStatus(account)
 			payload := map[string]any{"operations": items, "simulation_enabled": s.acceptance.SimulationEligible(account) && !s.recoveryReadOnly, "legacy_siwc_simulation_enabled": s.legacySIWCSimulationEligible(account), "routes": routes, "production_connection_enabled": production.Enabled && !s.recoveryReadOnly}
 			payload["production_catalog_enabled"] = catalog.Enabled && !s.recoveryReadOnly
+			payload["production_inference_enabled"] = inference.Enabled && !s.recoveryReadOnly
+			if inference.Admission != nil {
+				payload["production_admission"] = inference.Admission
+			}
+			if s.recoveryReadOnly && inference.Admission != nil {
+				inference.Blocker = "admission_unavailable"
+			}
+			if inference.Blocker != "" {
+				payload["production_inference_blocker"] = inference.Blocker
+			}
 			if catalog.Admission != nil {
 				payload["production_admission"] = catalog.Admission
 			}
@@ -99,7 +110,8 @@ func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Reques
 				writeDecodeError(w, e)
 				return
 			}
-			if q.Phase != "connection" && q.Phase != "catalog" && q.Phase != "inference" || domain.ValidateModelCredentialOperation(q.RouteID) != nil || q.ExpectedAccountRevision < 1 || q.PrerequisiteID != "" && domain.ValidateModelCredentialOperation(q.PrerequisiteID) != nil || q.Model != "" && domain.ValidateModelCredentialOperation(q.Model) != nil {
+			fixedInferenceModel := q.Phase == "inference" && q.Model == domain.OpenAIInferenceModel
+			if q.Phase != "connection" && q.Phase != "catalog" && q.Phase != "inference" || domain.ValidateModelCredentialOperation(q.RouteID) != nil || q.ExpectedAccountRevision < 1 || q.PrerequisiteID != "" && domain.ValidateModelCredentialOperation(q.PrerequisiteID) != nil || q.Model != "" && !fixedInferenceModel && domain.ValidateModelCredentialOperation(q.Model) != nil {
 				writeError(w, 400, "validation", "invalid acceptance proposal")
 				return
 			}

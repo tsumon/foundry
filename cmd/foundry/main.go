@@ -38,6 +38,7 @@ type config struct {
 	openaiSubscriptionRoute       string
 	openaiKeychainJournal         string
 	openaiCatalogRoute            string
+	openaiInferenceRoute          string
 }
 
 type dataLock struct {
@@ -45,11 +46,12 @@ type dataLock struct {
 }
 
 type productionModels struct {
-	accounts    *accounts.Service
-	router      *model.Router
-	siwc        *accounts.SIWCService
-	acceptance  *acceptance.Service
-	catalogMode bool
+	accounts      *accounts.Service
+	router        *model.Router
+	siwc          *accounts.SIWCService
+	acceptance    *acceptance.Service
+	catalogMode   bool
+	inferenceMode bool
 }
 
 func newProductionModels(s *store.Store, legacy *model.Client, secrets model.Secrets) productionModels {
@@ -64,9 +66,9 @@ func newProductionModels(s *store.Store, legacy *model.Client, secrets model.Sec
 }
 
 func (p productionModels) Recover(ctx context.Context) error {
-	// Catalog startup is metadata-only, including when abandoned credential
+	// Catalog/inference startup is metadata-only, including abandoned credential
 	// cleanup exists. Such intents remain blockers, never native deletions.
-	if !p.catalogMode {
+	if !p.catalogMode && !p.inferenceMode {
 		if err := p.accounts.Recover(ctx); err != nil {
 			return errors.New("recover model accounts failed")
 		}
@@ -103,8 +105,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	flags.StringVar(&cfg.openaiSubscriptionRoute, "openai-subscription-route", "", "explicitly enable one existing OpenAI subscription connection route")
 	flags.StringVar(&cfg.openaiKeychainJournal, "openai-keychain-journal", "", "new absolute private journal for the native startup probe")
 	flags.StringVar(&cfg.openaiCatalogRoute, "openai-catalog-route", "", "enable independent single-request catalog approvals for one existing OpenAI subscription route")
+	flags.StringVar(&cfg.openaiInferenceRoute, "openai-inference-route", "", "enable independent fixed single-request inference approvals for one existing OpenAI subscription route")
 	if err = flags.Parse(args); err != nil {
-		return errors.New("invalid startup options; supported options: --local-mcp-test, --openai-subscription-route, --openai-keychain-journal, --openai-catalog-route")
+		return errors.New("invalid startup options; supported options: --local-mcp-test, --openai-subscription-route, --openai-keychain-journal, --openai-catalog-route, --openai-inference-route")
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected startup arguments")
@@ -158,6 +161,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 		return err
 	}
 	if err := activateOpenAICatalog(cfg, persistent, &models, recoveryReadOnly); err != nil {
+		return err
+	}
+	if err := activateOpenAIInference(cfg, persistent, &models, recoveryReadOnly); err != nil {
 		return err
 	}
 	defer models.acceptance.Close()

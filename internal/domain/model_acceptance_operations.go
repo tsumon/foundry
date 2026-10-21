@@ -23,7 +23,7 @@ type ProductionAdmission struct {
 
 func (p ProductionAdmission) Valid() bool {
 	b, err := hex.DecodeString(p.Generation)
-	return err == nil && len(b) == 16 && hex.EncodeToString(b) == p.Generation && (p.Profile == "openai_siwc_subscription_v1" || p.Profile == "openai_siwc_catalog_v1")
+	return err == nil && len(b) == 16 && hex.EncodeToString(b) == p.Generation && (p.Profile == "openai_siwc_subscription_v1" || p.Profile == "openai_siwc_catalog_v1" || p.Profile == "openai_siwc_inference_v1")
 }
 
 type ModelAcceptanceProposal struct {
@@ -35,6 +35,9 @@ type ModelAcceptanceProposal struct {
 	PrerequisiteID          string `json:"prerequisite_id,omitempty"`
 }
 type ModelAcceptanceMaterial struct {
+	InferencePrompt     string               `json:"inference_prompt,omitempty"`
+	ResponseByteLimit   int                  `json:"response_byte_limit,omitempty"`
+	CatalogDigest       string               `json:"catalog_digest,omitempty"`
 	RequestMethod       string               `json:"request_method,omitempty"`
 	RequestURL          string               `json:"request_url,omitempty"`
 	ProductionAdmission *ProductionAdmission `json:"production_admission,omitempty"`
@@ -62,6 +65,9 @@ type ModelAcceptanceMaterial struct {
 // Explicit connection policies are narrower than the route's subscription
 // billing metadata. Empty permission fields preserve historical material.
 func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
+	if m.InferencePrompt != "" || m.ResponseByteLimit != 0 || m.CatalogDigest != "" {
+		return false
+	}
 	if m.ProductionAdmission != nil && m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" {
 		return false
 	}
@@ -103,10 +109,13 @@ func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
 const OpenAICatalogURL = "https://api.openai.com/v1/models"
 
 func (m ModelAcceptanceMaterial) ValidAcceptancePurpose() bool {
-	return m.ValidProductionCatalog() || m.ValidConnectionPurpose()
+	return m.ValidProductionInference() || m.ValidProductionCatalog() || m.ValidConnectionPurpose()
 }
 
 func (m ModelAcceptanceMaterial) ValidProductionCatalog() bool {
+	if m.InferencePrompt != "" || m.ResponseByteLimit != 0 || m.CatalogDigest != "" {
+		return false
+	}
 	return m.ProductionAdmission != nil && m.ProductionAdmission.Valid() && m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" &&
 		m.Phase == "catalog" && m.RequestMethod == "GET" && m.RequestURL == OpenAICatalogURL && m.ConnectionPurpose == "" && m.ConnectionMode == "" && m.LoginTimeoutSeconds == 0 && len(m.RequestedScopes) == 0 && m.RequestedResource == "" && m.Model == "" && m.PromptDigest == "" &&
 		m.Account.Enabled && m.Account.Provider == "openai" && m.Account.AuthMethod == "openai_siwc" && m.Account.BillingMode == "subscription" && m.Account.BaseURL == OpenAISubscriptionRequestedResource &&
@@ -135,6 +144,7 @@ type ModelAcceptanceCatalogEntry struct {
 	DisplayName string `json:"display_name"`
 }
 type ModelAcceptanceOperation struct {
+	InferenceEvidence
 	ID                    string                        `json:"id"`
 	AccountID             string                        `json:"account_id"`
 	Revision              int64                         `json:"revision"`

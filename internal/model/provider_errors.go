@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"errors"
+	"foundry/internal/domain"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,18 +28,10 @@ func safeIdentifier(s string) string {
 }
 
 func safeProviderCode(code string) string {
-	switch code {
-	case "invalid_api_key", "authentication_error", "permission_error", "insufficient_quota", "rate_limit_exceeded", "rate_limit_error", "overloaded_error", "invalid_request_error", "model_not_found", "insufficient_balance", "exceeded_current_quota_error", "usage_limit_reached", "subscription_sharing_user_not_eligible", "subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable", "subscription_sharing_unsupported_capability", "subscription_sharing_route_not_supported", "subscription_sharing_invalid_user", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context", "subscription_sharing_user_unavailable":
-		return code
-	}
-	return ""
+	return domain.SafeInferenceProviderCode(code)
 }
 func safeProviderParam(param string) string {
-	switch param {
-	case "model", "input", "tools", "tool_choice", "temperature", "max_output_tokens", "max_tokens", "service_tier", "stream", "store", "instructions":
-		return param
-	}
-	return ""
+	return domain.SafeInferenceProviderParam(param)
 }
 
 func sanitizedResolverError(err error) error {

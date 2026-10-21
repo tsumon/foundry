@@ -47,6 +47,7 @@ type Service struct {
 	sessions           map[string]*connectionSession
 	production         *accounts.ProductionConnectionAdmission
 	catalog            *productionCatalog
+	inference          *productionInference
 }
 
 func New(s *store.Store) *Service {
@@ -118,7 +119,7 @@ func (s *Service) OwnsAccount(account string) bool {
 	return s.ownedAccounts[account]
 }
 func (s *Service) SimulationEligible(account string) bool {
-	if s.catalog != nil || s.production != nil || s.invalidPolicy || !s.ready.Load() || s.router == nil || s.connect == nil {
+	if s.inference != nil || s.catalog != nil || s.production != nil || s.invalidPolicy || !s.ready.Load() || s.router == nil || s.connect == nil {
 		return false
 	}
 	for _, r := range s.routes {
@@ -139,7 +140,7 @@ func (s *Service) ConnectionPurpose(route string) string {
 }
 func (s *Service) Routes(account string) []domain.ModelRoute {
 	out := []domain.ModelRoute{}
-	if s.SimulationEligible(account) || s.catalog != nil && s.OwnsAccount(account) && s.catalog.admission.Valid() || s.production != nil && s.OwnsAccount(account) && s.production.Metadata().Generation != "" {
+	if s.SimulationEligible(account) || s.inference != nil && s.OwnsAccount(account) && s.inference.admission.Valid() || s.catalog != nil && s.OwnsAccount(account) && s.catalog.admission.Valid() || s.production != nil && s.OwnsAccount(account) && s.production.Metadata().Generation != "" {
 		for _, r := range s.routes {
 			if r.AccountID == account {
 				out = append(out, r)
@@ -176,6 +177,12 @@ func (s *Service) mutationResult(o domain.ModelAcceptanceOperation, e error) (do
 func (s *Service) Propose(account string, q domain.ModelAcceptanceProposal) (domain.ModelAcceptanceOperation, error) {
 	s.lifecycle.RLock()
 	defer s.lifecycle.RUnlock()
+	if s.inference != nil {
+		if !s.ProductionInferenceStatus(account).Enabled || s.inference.route.ID != q.RouteID || q.Phase != "inference" || q.ConnectionPurpose != "" || q.Model != domain.OpenAIInferenceModel {
+			return domain.ModelAcceptanceOperation{}, ErrDisabled
+		}
+		return s.mutationResult(s.store.ProposeProductionInference(account, q, s.inference.admission, s.now()))
+	}
 	if s.catalog != nil {
 		if !s.ProductionCatalogStatus(account).Enabled || s.catalog.route.ID != q.RouteID || q.Phase != "catalog" || q.ConnectionPurpose != "" || q.Model != "" {
 			return domain.ModelAcceptanceOperation{}, ErrDisabled
@@ -197,6 +204,9 @@ func (s *Service) Propose(account string, q domain.ModelAcceptanceProposal) (dom
 	return s.mutationResult(s.store.ProposeModelAcceptanceWithConnectionMode(account, q, s.ConnectionMode(q.RouteID), s.now()))
 }
 func (s *Service) owned(account, id string) (domain.ModelAcceptanceOperation, error) {
+	if s.inference != nil {
+		return s.ownedInference(account, id)
+	}
 	if s.catalog != nil {
 		return s.ownedCatalog(account, id)
 	}
@@ -249,6 +259,9 @@ func (s *Service) Execute(ctx context.Context, account, id string, revision int6
 	}
 	if s.catalog != nil {
 		return s.executeCatalog(ctx, o)
+	}
+	if s.inference != nil {
+		return s.executeInference(ctx, o)
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(o.Material.DeadlineSeconds)*time.Second)
 	defer cancel()
