@@ -85,6 +85,45 @@ review is never presented as an independently executed compiler/test. Retain C1
 simulation/unknown/isolated source distinctions. Rejection becomes future failure
 material, never an automatic bypass or implicit replan.
 
+### Version-one wire contract
+
+The ordinary prompt supplies `coding_identity` (mission ID, epoch, selected
+generation) only for version one. Review `extra` is a controller-generated
+contract containing `mission_id`, `epoch`, `plan_revision`,
+`candidate_generation`, `plan_digest`, `trace_digest`, `evidence_digest`, the
+current `execution_approval`, `binding_digest`, and `required_checks`.
+Repository text, findings, logs and prior output remain untrusted data.
+
+Both reviewers return only `passed`, `summary`, `findings`, `binding_digest`,
+and `checks`. The binding digest must exactly echo the supplied contract. Each
+check has `id`, explicit boolean `passed`, nonempty `summary` (at most 4,000
+UTF-8 bytes), and `paths` (at most 128 distinct supplied paths; empty is allowed).
+The review summary and finding summaries have the same text bound; at most 64
+findings are accepted. Missing/null decisions and unknown fields fail closed.
+
+- QA requires `acceptance:0` through the final frozen command index, exactly
+  once each, plus `acceptance_index` and the latest current `verification_id`.
+  It cannot include Auditor reference fields. The controller independently
+  checks command order, count, exit codes, timeout, candidate, plan, image and
+  a successful verification trace record. Source labels remain independent of
+  the result; a synthetic content check did not execute the command.
+- Auditor requires `scope`, `protected`, `approval`, and `integrity`, exactly
+  once each, plus each supplied `reference_digest`. It cannot include QA
+  verification/index fields. These are purpose-separated digests of the common
+  controller binding, not self-asserted permissions. Before and after review,
+  the controller checks actual base/candidate trees, exact plan files, default
+  and task protection rules, recorded edit-chain contents and frozen authority.
+
+The common binding covers task/epoch, selected generation, immutable plan
+content (excluding step runtime status), execution approval, frozen inputs,
+changes, all verification material and sealed failure context. Its review trace
+projection excludes QA/Auditor attempts to avoid self-reference; full archived
+failure trace digests still include those attempts. Any relevant material
+change invalidates the review. Passing prose, a failed mandatory item or a
+high/critical/blocking finding cannot authorize delivery. Well-formed refusals
+are retained as rejected reviews; malformed output is retained as a typed
+failed attempt for the next explicit failure bundle.
+
 ## Workbench and delivery
 
 Keep navigation and layout. Enhance current plan rows, verification cards,
@@ -105,6 +144,35 @@ material, tampering, stale approval, protected files, quota exhaustion, crashes,
 late results, failed storage, and recovery without replay. Old contracts and
 reports must retain compatibility. Run full Go/race/vet, frontend tests/build,
 clean export/security scans, browser acceptance, and exact-commit GitHub CI.
+
+### Local acceptance scenario
+
+`foundry-acceptance` includes `coding_loop_replan` in its printed scenario map.
+It creates only a version-one ordinary **draft**, with no seeded execution or
+delivery approval. Open the corresponding existing workbench task and:
+
+1. Authorize context and request its initial plan; inspect/approve execution.
+2. Observe the unchanged bad candidate fail three content checks (Worker plus
+   two budgeted Debugger repairs), then stop blocked.
+3. Explicitly choose failure-based replanning. The fixture requires the exact
+   controller-frozen bundle; it rejects absent, cross-task or altered material.
+4. Inspect the failure-to-step adjustments, optionally revise the plan, and
+   grant a fresh execution approval. Revision alone does not execute.
+5. Observe the corrected Worker candidate, simulated passing verification and
+   separate QA/Auditor checklists. Independently approve export, then download
+   the patch and report. The report contains current checklists, the complete
+   trace, failure archives and plan adjustments; download revalidates them.
+
+The automated scenario traverses real Engine/Store/Workspace/HTTP routes with
+disposable committed source, checks its source checksum and Git status remain
+unchanged, and runs only `git apply --check` on the export (never applies it).
+Focused negatives cover invalid references, changed material, review disagreement,
+missing/stale approvals, bounded repairs and late results/restart without replay.
+This is local simulation evidence only: no real account/Keychain/provider,
+Docker command, external MCP/script, source Git write, automatic refresh/retry
+or paid fallback is exercised by C2. C1 scenario behavior is unchanged. Final
+clean-export, security, browser and exact-commit CI gates are separate evidence;
+this scenario does not claim those gates or real project-command acceptance.
 
 C3 adds visible repository-import and recovery diagnostics. C4 separately proves
 a small real project with offline, pinned, trusted isolated verification while

@@ -166,6 +166,9 @@ func (e *Engine) reviewCandidate(op *operation, role domain.Role) error {
 	if err != nil {
 		return err
 	}
+	if m.CodingVersion == 1 {
+		return e.reviewCodingCandidate(op, role, m)
+	}
 	evidenceDigest := domain.VerificationDigest(m.Evidence)
 	var out reviewOutput
 	if err := e.call(op, role, nil, &out); err != nil {

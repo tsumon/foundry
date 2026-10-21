@@ -16,6 +16,7 @@ import {
 } from "../verificationSource";
 import { ControlledTask } from "./ControlledTask";
 import { ModelSnapshot } from "./ModelSnapshot";
+import { codingReviewsCurrent } from "./VerificationView";
 import {
   accountActionBlocked,
   accountActionBlockReason,
@@ -62,6 +63,7 @@ export function DecisionPanel({
   const evidence = mission.evidence?.at(-1);
   const deliverable =
     mission.state === "awaiting_delivery" &&
+    codingReviewsCurrent(mission) &&
     !!evidence?.passed &&
     evidence.candidate_digest === mission.candidate_digest &&
     ["qa", "auditor"].every((role) =>
@@ -306,6 +308,12 @@ export function DecisionPanel({
           )}
           {mission.state === "awaiting_delivery" && (
             <>
+              {!!mission.coding_version && (
+                <p className="note">
+                  清单完整性：QA 逐项验收，Auditor
+                  核对范围、保护、审批与完整性。当前计划与引用必须匹配；模型审查不是命令执行。控制器将复核全部摘要。
+                </p>
+              )}
               <p className="note">
                 最新验证：
                 {evidence

@@ -536,12 +536,26 @@ export interface Verification {
   passed: boolean;
 }
 export interface Review {
+  coding_version?: number;
+  plan_revision?: number;
+  trace_digest?: string;
+  binding_digest?: string;
+  checks?: CodingReviewCheck[] | null;
   evidence_digest?: string;
   role: Role;
   passed: boolean;
   summary: string;
   findings: Finding[];
   candidate_digest: string;
+}
+export interface CodingReviewCheck {
+  id: string;
+  passed?: boolean | null;
+  summary: string;
+  paths: string[];
+  verification_id?: string;
+  acceptance_index?: number | null;
+  reference_digest?: string;
 }
 export interface Message {
   role: string;

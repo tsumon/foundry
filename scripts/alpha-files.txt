@@ -626,6 +626,12 @@ internal/domain/coding_failure_test.go
 internal/engine/coding_replan.go
 internal/engine/coding_replan_test.go
 internal/engine/coding_replan_fault_test.go
+internal/domain/coding_review.go
+internal/domain/coding_review_test.go
+internal/engine/coding_review.go
+internal/engine/coding_review_test.go
+cmd/foundry-acceptance/coding_replan_fixture.go
+cmd/foundry-acceptance/coding_replan_fixture_test.go
 web/src/components/ReplanSummary.tsx
 web/src/components/CodingReplan.test.tsx
 internal/store/coding_test.go

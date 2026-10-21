@@ -4,6 +4,77 @@ import {
   verificationOutcome,
   verificationSourceLabel,
 } from "../verificationSource";
+
+// UI completeness only. The controller recomputes cryptographic bindings and
+// validates actual files on delivery; this display never grants authority.
+export function codingReviewsCurrent(mission: Mission): boolean {
+  if (!mission.coding_version) return true;
+  if (mission.coding_version !== 1 || !mission.plan) return false;
+  const approval = mission.approvals
+    ?.filter((a) => a.kind === "execute")
+    .at(-1);
+  const evidence = mission.evidence?.at(-1);
+  if (
+    !approval?.digest ||
+    approval.plan_revision !== mission.plan.revision ||
+    !evidence?.passed ||
+    evidence.acceptance_revision !== mission.plan.revision ||
+    evidence.image_id !== mission.spec.image_id ||
+    evidence.candidate_digest !== mission.candidate_digest ||
+    evidence.results?.length !== mission.spec.acceptance.length ||
+    evidence.results.some(
+      (r, i) =>
+        r.command !== mission.spec.acceptance[i] ||
+        r.exit_code !== 0 ||
+        r.timed_out,
+    )
+  )
+    return false;
+  const qa = mission.reviews?.filter((r) => r.role === "qa").at(-1);
+  const auditor = mission.reviews?.filter((r) => r.role === "auditor").at(-1);
+  if (
+    !qa?.binding_digest ||
+    !qa.trace_digest ||
+    qa.binding_digest !== auditor?.binding_digest ||
+    qa.trace_digest !== auditor?.trace_digest
+  )
+    return false;
+  return [qa, auditor].every((review) => {
+    if (
+      !review ||
+      !review.passed ||
+      review.coding_version !== 1 ||
+      review.plan_revision !== mission.plan!.revision ||
+      review.candidate_digest !== mission.candidate_digest ||
+      review.findings?.some((f) =>
+        ["high", "critical", "blocking"].includes(f.severity),
+      )
+    )
+      return false;
+    const required =
+      review.role === "qa"
+        ? mission.spec.acceptance.map((_, i) => `acceptance:${i}`)
+        : ["scope", "protected", "approval", "integrity"];
+    const checks = review.checks ?? [];
+    return (
+      checks.length === required.length &&
+      new Set(checks.map((c) => c.id)).size === required.length &&
+      checks.every(
+        (c) =>
+          required.includes(c.id) &&
+          c.passed === true &&
+          !!c.summary?.trim() &&
+          (review.role === "qa"
+            ? c.verification_id === evidence.id &&
+              c.id === `acceptance:${c.acceptance_index}` &&
+              !c.reference_digest
+            : !!c.reference_digest &&
+              !c.verification_id &&
+              c.acceptance_index == null),
+      )
+    );
+  });
+}
 export function VerificationView({ mission }: { mission: Mission }) {
   return (
     <>
@@ -134,7 +205,11 @@ function EvidenceView({
         <div className="quiet-state">尚无验证记录</div>
       )}
       {(mission.evidence ?? []).map((evidence, i) => (
-        <section className="evidence-attempt" key={evidence.id}>
+        <section
+          className="evidence-attempt"
+          key={evidence.id}
+          id={`verification-${evidence.id}`}
+        >
           <div className="section-heading">
             <h3>
               第 {i + 1} 次验证 · {verificationSourceLabel(evidence)}
@@ -196,6 +271,53 @@ function EvidenceView({
             <p className="muted small">
               候选摘要 <code>{review.candidate_digest}</code>
             </p>
+            {review.coding_version === 1 ? (
+              <>
+                <p className="muted small">
+                  计划 r{review.plan_revision} · 审查前执行轨迹{" "}
+                  <code>{review.trace_digest}</code>
+                </p>
+                <p className="muted small">
+                  绑定摘要 <code>{review.binding_digest}</code> ·
+                  控制器在交付时重新核对
+                </p>
+                {!review.checks?.length && (
+                  <p className="warning-copy">必需清单缺失，不能交付</p>
+                )}
+                {(review.checks ?? []).map((check, i) => (
+                  <div key={`${check.id}:${i}`} className="command-result">
+                    <strong>{check.id}</strong> ·{" "}
+                    {check.passed === true
+                      ? "模型判断：通过"
+                      : check.passed === false
+                        ? "模型判断：阻塞"
+                        : "判断未记录"}
+                    <p>{check.summary}</p>
+                    {check.verification_id && (
+                      <p>
+                        验证引用{" "}
+                        <a href={`#verification-${check.verification_id}`}>
+                          {check.verification_id}
+                        </a>{" "}
+                        · 验收索引 {check.acceptance_index}
+                      </p>
+                    )}
+                    {check.reference_digest && (
+                      <p>
+                        控制器引用 <code>{check.reference_digest}</code>
+                      </p>
+                    )}
+                    <code>{(check.paths ?? []).join(" · ")}</code>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <p className="muted small">
+                {review.coding_version
+                  ? "不支持的审查清单版本，不能推断有效性"
+                  : "历史审查未记录必需清单，不能补推为证据核对"}
+              </p>
+            )}
             {(review.findings ?? []).map((finding, i) => (
               <p key={i}>
                 <span className="tag">{finding.severity}</span>{" "}

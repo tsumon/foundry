@@ -142,6 +142,9 @@ func VerificationDigest(evidence []Verification) string {
 }
 
 func CanDeliver(mission Mission, currentDigest string) error {
+	if err := ValidateCodingVersion(mission.CodingVersion, mission.WorkspaceMode, mission.ToolMode); err != nil {
+		return err
+	}
 	if mission.State != "awaiting_delivery" {
 		return fmt.Errorf("mission state %q cannot deliver", mission.State)
 	}
@@ -184,6 +187,11 @@ func CanDeliver(mission Mission, currentDigest string) error {
 		}
 		if review.EvidenceDigest != VerificationDigest(mission.Evidence) {
 			return fmt.Errorf("%s review evidence binding changed", role)
+		}
+		if mission.CodingVersion == 1 {
+			if err := ValidateCodingReview(mission, review); err != nil {
+				return fmt.Errorf("%s: %w", role, err)
+			}
 		}
 	}
 	return nil

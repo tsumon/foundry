@@ -270,12 +270,37 @@ func (e *Engine) verifyDelivery(m domain.Mission) error {
 	if m.Delivery == nil {
 		return errors.New("missing delivery")
 	}
+	if err := domain.ValidateCodingVersion(m.CodingVersion, m.WorkspaceMode, m.ToolMode); err != nil {
+		return err
+	}
+	if m.CodingVersion == 1 {
+		if err := e.checkCodingReviewMaterial(m); err != nil {
+			return err
+		}
+		current := m
+		current.State = "awaiting_delivery"
+		if err := domain.CanDeliver(current, m.CandidateDigest); err != nil {
+			return err
+		}
+	}
 	op, err := e.s.GetLocalOperation(m.Delivery.OperationID)
 	if err != nil {
 		return err
 	}
 	if op.MissionID != m.ID || op.Kind != "export" || op.Status != "committed" || op.Result == nil || op.Result.Export == nil || m.CandidateGeneration == nil || op.Before != *m.CandidateGeneration || m.Delivery.CandidateDigest != m.CandidateDigest {
 		return errors.New("delivery operation binding changed")
+	}
+	if m.CodingVersion == 1 {
+		var approval domain.Approval
+		for i := len(m.Approvals) - 1; i >= 0; i-- {
+			if m.Approvals[i].Kind == "deliver" {
+				approval = m.Approvals[i]
+				break
+			}
+		}
+		if m.State != "delivered" || approval.Digest != m.CandidateDigest || approval.Revision != op.ExpectedRevision {
+			return errors.New("current delivery approval missing or changed")
+		}
 	}
 	p := op.Result.Export
 	if p.ReportInput != op.ExportReport || (op.ExportReport != marshalReport(m) && (!legacyVerificationMaterial(m) || op.ExportReport != reportWithSources(m, false))) {
@@ -292,6 +317,9 @@ func (e *Engine) exportIntent(m domain.Mission) (domain.LocalOperation, error) {
 }
 
 func legacyVerificationMaterial(m domain.Mission) bool {
+	if m.CodingVersion != 0 {
+		return false
+	}
 	if domain.VerificationDigest(m.Evidence) != "" {
 		return false
 	}

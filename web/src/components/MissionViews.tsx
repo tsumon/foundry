@@ -284,6 +284,12 @@ export function MissionViews({
   return (
     <>
       <h2>交付报告</h2>
+      {mission.coding_version === 1 && (
+        <p className="muted">
+          C2
+          报告包含执行轨迹、失败归档、计划调整与角色审查清单；下载时控制器复核绑定。内容检查模拟不等于命令执行。
+        </p>
+      )}
       {mission.delivery && mission.state === "delivered" ? (
         <>
           <p>已生成本地 patch 与报告；未修改原仓库，也未推送或部署。</p>

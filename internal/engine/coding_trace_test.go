@@ -29,7 +29,7 @@ func TestCodingFailuresAreTypedAndNeverInferFromProse(t *testing.T) {
 		{"rejected", edit, "review_rejected", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e, s, g, r, m := codingSetup(t, plan, tc.output, `{"passed":false,"summary":"not ready","findings":[]}`)
+			e, s, g, r, m := codingSetup(t, plan, tc.output, codingReject)
 			if tc.infra {
 				e.runner = r.fakeRunner
 				r.runErr = errors.New("verification_failed invalid_model_output arbitrary prose")
@@ -115,7 +115,7 @@ func TestCodingPersistenceStopsDispatchAndRecoversWithoutReplay(t *testing.T) {
 		{"candidate_commit", `NEW.kind='candidate.edited'`, 2, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e, s, g, r, m := codingSetup(t, plan, edit, review, review)
+			e, s, g, r, m := codingSetup(t, plan, edit, codingPass, codingPass)
 			_, err := e.Plan(context.Background(), m.ID, m.Revision)
 			if err != nil {
 				t.Fatal(err)
@@ -357,6 +357,7 @@ func codingSetup(t *testing.T, outputs ...string) (*Engine, *store.Store, *scrip
 	}
 	runner := &codingContentRunner{fakeRunner: r}
 	e.runner = runner
+	e.gateway = &codingReviewGateway{script: g}
 	return e, s, g, runner, m
 }
 func finishCoding(e *Engine) {
@@ -368,7 +369,7 @@ func finishCoding(e *Engine) {
 	}
 }
 func TestCodingExecutionRequiresApprovalAndPersistsCandidateTrace(t *testing.T) {
-	e, s, g, r, m := codingSetup(t, plan, edit, review, review)
+	e, s, g, r, m := codingSetup(t, plan, edit, codingPass, codingPass)
 	if _, err := e.Plan(context.Background(), m.ID, m.Revision); err != nil {
 		t.Fatal(err)
 	}

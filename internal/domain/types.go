@@ -143,12 +143,17 @@ func (v Verification) OutcomeLabel() string {
 }
 
 type Review struct {
-	Role            Role      `json:"role"`
-	Passed          bool      `json:"passed"`
-	Summary         string    `json:"summary"`
-	Findings        []Finding `json:"findings"`
-	CandidateDigest string    `json:"candidate_digest"`
-	EvidenceDigest  string    `json:"evidence_digest,omitempty"`
+	CodingVersion   int                 `json:"coding_version,omitempty"`
+	PlanRevision    int64               `json:"plan_revision,omitempty"`
+	TraceDigest     string              `json:"trace_digest,omitempty"`
+	BindingDigest   string              `json:"binding_digest,omitempty"`
+	Checks          []CodingReviewCheck `json:"checks,omitempty"`
+	Role            Role                `json:"role"`
+	Passed          bool                `json:"passed"`
+	Summary         string              `json:"summary"`
+	Findings        []Finding           `json:"findings"`
+	CandidateDigest string              `json:"candidate_digest"`
+	EvidenceDigest  string              `json:"evidence_digest,omitempty"`
 }
 
 type Message struct {

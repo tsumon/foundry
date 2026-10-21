@@ -94,7 +94,7 @@ func TestCodingExplicitReplanSealsFailuresAndRequiresApproval(t *testing.T) {
 	if len(replanned.RunArchives) != 1 || g.calls != 1 || len(replanned.CodingAttempts) != 6 {
 		t.Fatal("replan executed or lost history")
 	}
-	e.gateway = &scripted{outputs: []string{edit, review, review}}
+	e.gateway = &codingReviewGateway{script: &scripted{outputs: []string{edit, codingPass, codingPass}}}
 	if _, err := e.Approve(context.Background(), replanned.ID, replanned.Revision); err != nil {
 		t.Fatal(err)
 	}
