@@ -5,6 +5,7 @@ import (
 	"errors"
 	"foundry/internal/domain"
 	"foundry/internal/store"
+	"time"
 )
 
 // codingFailure carries a finite classification from the boundary that knows
@@ -94,7 +95,15 @@ func (e *Engine) finishCodingAttempt(op *operation, id, invocationID string, cau
 			a.After = m.CandidateGeneration
 			if (a.Phase == "verification" || a.Phase == "qa" || a.Phase == "auditor") && len(m.Evidence) > 0 {
 				v := m.Evidence[len(m.Evidence)-1]
-				if v.CandidateDigest == a.Before.Digest && v.AcceptanceRevision == a.PlanRevision && (a.Phase != "verification" || v.CreatedAt >= a.StartedAt) {
+				currentVerification := true
+				if a.Phase == "verification" {
+					// RFC3339Nano's variable fractional precision is not lexically
+					// ordered. Compare instants and reject malformed/older evidence.
+					started, startErr := time.Parse(time.RFC3339Nano, a.StartedAt)
+					created, createdErr := time.Parse(time.RFC3339Nano, v.CreatedAt)
+					currentVerification = startErr == nil && createdErr == nil && !created.Before(started)
+				}
+				if v.CandidateDigest == a.Before.Digest && v.AcceptanceRevision == a.PlanRevision && currentVerification {
 					a.VerificationID = v.ID
 				}
 			}

@@ -427,3 +427,64 @@ func TestCodingExecutionRequiresApprovalAndPersistsCandidateTrace(t *testing.T) 
 		t.Fatal("source changed")
 	}
 }
+
+func TestCodingVerificationCorrelationUsesChronologicalTime(t *testing.T) {
+	for _, tc := range []struct {
+		name, started, created string
+		passed, linked         bool
+	}{
+		{"successful_later_fraction", "2020-01-01T00:00:00.12Z", "2020-01-01T00:00:00.123Z", true, true},
+		{"failed_later_fraction", "2020-01-01T00:00:00.12Z", "2020-01-01T00:00:00.123Z", false, true},
+		{"equal_different_precision", "2020-01-01T00:00:00.12Z", "2020-01-01T00:00:00.120Z", true, true},
+		{"reject_older_fraction", "2020-01-01T00:00:00.123Z", "2020-01-01T00:00:00.12Z", false, false},
+		{"reject_older_offset", "2020-01-01T00:00:00.12Z", "2020-01-01T01:00:00.119+01:00", false, false},
+		{"reject_invalid_timestamp", "2020-01-01T00:00:00.12Z", "invalid", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, s, g, r, m := codingSetup(t, plan)
+			if _, err := e.Plan(context.Background(), m.ID, m.Revision); err != nil {
+				t.Fatal(err)
+			}
+			finishCoding(e)
+			m, err := s.GetMission(m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Persist the boundary state directly so timestamps are deterministic;
+			// completion still uses the real controller and immutable store path.
+			m, err = s.UpdateMission(m.ID, m.Revision, "fixture.verification", func(m *domain.Mission) error {
+				m.CodingAttempts = append(m.CodingAttempts, domain.CodingAttempt{ID: "attempt", Epoch: m.Epoch, PlanRevision: m.Plan.Revision, Phase: "verification", Status: "running", Before: m.CandidateGeneration, StartedAt: tc.started})
+				m.Evidence = append(m.Evidence, domain.Verification{ID: "verification", CandidateDigest: m.CandidateDigest, AcceptanceRevision: m.Plan.Revision, CreatedAt: tc.created, Passed: tc.passed})
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var cause error
+			wantStatus, wantCode := "succeeded", ""
+			if !tc.passed {
+				cause = codingError("verification_failed", errors.New("candidate verification failed"))
+				wantStatus, wantCode = "failed", "verification_failed"
+			}
+			op := &operation{id: m.ID, epoch: m.Epoch, ctx: context.Background()}
+			if err = e.finishCodingAttempt(op, "attempt", "", cause); err != cause {
+				t.Errorf("completion error = %v, want original %v", err, cause)
+			}
+			got, err := s.GetMission(m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := got.CodingAttempts[0]
+			wantID := ""
+			if tc.linked {
+				wantID = "verification"
+			}
+			if a.VerificationID != wantID || a.Status != wantStatus || a.FailureCode != wantCode {
+				t.Fatalf("persisted correlation: id=%q status=%q code=%q; want %q/%q/%q", a.VerificationID, a.Status, a.FailureCode, wantID, wantStatus, wantCode)
+			}
+			if len(g.roles) != 1 || r.calls != 0 || got.Budget != m.Budget || *got.CandidateGeneration != *m.CandidateGeneration {
+				t.Fatal("completion dispatched or changed candidate/budget")
+			}
+		})
+	}
+}
