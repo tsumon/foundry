@@ -7,6 +7,7 @@ import {
   orderMissions,
 } from "./deliveryStatus";
 import { profile } from "./test/fixtures";
+import { c4Mission, c4Operation } from "./test/c4Fixtures";
 
 const complete = (id: string, state: string, updated_at: string): Mission => ({
   id,
@@ -124,4 +125,28 @@ it("retains planning-stage labels and pending counts for a v2 tool decision", ()
   expect(missionStateName(row)).toBe("等待工具审批");
   expect(decisionKind(row)).toBe("mcp_call");
   expect(isMissionInProgress(row)).toBe(false);
+});
+
+it.each(["infrastructure_failed", "outcome_unknown"])(
+  "labels a C4 %s baseline as needing handling",
+  (resultClass) => {
+    const row: Mission = {
+      ...c4Mission,
+      state: "draft",
+      c4_operations: [
+        {
+          ...c4Operation,
+          result: { ...c4Operation.result!, class: resultClass },
+          cleanup: [{ ...c4Operation.cleanup![0], state: "failed" }],
+        },
+      ],
+    };
+    expect(missionStateName(row)).toBe("C4 需要处理");
+  },
+);
+
+it("keeps the legacy draft state label unchanged", () => {
+  expect(
+    missionStateName(complete("legacy", "draft", "2026-10-18T10:00:00Z")),
+  ).toBe("待授权上下文");
 });

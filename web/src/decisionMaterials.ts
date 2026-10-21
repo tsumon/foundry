@@ -178,9 +178,7 @@ export function decisionMaterial(mission: Mission): DecisionMaterial {
           ? [
               {
                 label: "最新候选记录",
-                value: c4Supported(mission)
-                  ? c4OperationLabel(candidate)
-                  : "配置不支持 · 仅显示原始事实",
+                value: c4OperationLabel(mission, candidate),
               },
               { label: "候选操作", value: candidate.id },
               { label: "候选材料", value: candidate.material_digest },
@@ -190,9 +188,7 @@ export function decisionMaterial(mission: Mission): DecisionMaterial {
           label: "基线",
           value: !baseline
             ? "尚未准备材料"
-            : c4Supported(mission)
-              ? c4OperationLabel(baseline)
-              : "配置不支持 · 仅显示原始事实",
+            : c4OperationLabel(mission, baseline),
         },
         { label: "基线材料", value: baseline?.material_digest ?? "未记录" },
         {

@@ -19,11 +19,18 @@ const mcpStageNames: Record<string, string> = {
 };
 
 export const missionStateName = (mission: Mission) =>
-  isControlledMCPReadMission(mission) &&
-  mission.state === "planning" &&
-  mcpStageNames[mission.stage]
-    ? mcpStageNames[mission.stage]
-    : (stateNames[mission.state] ?? mission.state);
+  hasC4(mission) &&
+  ["draft", "blocked", "paused"].includes(mission.state) &&
+  !c4BaselinePassed(mission) &&
+  mission.c4_operations?.some(
+    (operation) => operation.kind === "baseline" && !!operation.result,
+  )
+    ? "C4 需要处理"
+    : isControlledMCPReadMission(mission) &&
+        mission.state === "planning" &&
+        mcpStageNames[mission.stage]
+      ? mcpStageNames[mission.stage]
+      : (stateNames[mission.state] ?? mission.state);
 
 export function decisionKind(mission: Mission): DecisionKind | null {
   if (

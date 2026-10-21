@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { mission } from "../test/fixtures";
-import { c4Operation } from "../test/c4Fixtures";
+import {
+  c4CandidateOperation,
+  c4Mission,
+  c4Operation,
+  c4Profile,
+} from "../test/c4Fixtures";
 import { C4Decision, C4Verification } from "./C4Verification";
 import { DecisionPanel } from "./DecisionPanel";
 import { DecisionQueue } from "./DecisionQueue";
@@ -11,21 +15,9 @@ import { api, APIError } from "../api";
 import type { Mission } from "../types";
 
 const m: Mission = {
-  ...mission,
+  ...c4Mission,
   state: "draft",
-  spec: {
-    ...mission.spec,
-    c4: {
-      schema_version: 1,
-      id: "c4_go_v1",
-      mode: "synthetic",
-      image_id: "sha256:" + "a".repeat(64),
-      platform: "linux/arm64",
-      docker_path: "/synthetic/docker",
-      endpoint: "unix:///synthetic/docker.sock",
-      verifier: "/opt/foundry/verify-go-v1",
-    },
-  },
+  spec: { ...c4Mission.spec, c4: c4Profile },
   c4_operations: [
     {
       ...c4Operation,
@@ -62,7 +54,11 @@ it("requires separate explicit approval and execution, displays immutable permis
       {
         ...m.c4_operations![0],
         state: "approved",
-        approval: { digest: "material", revision: m.revision, at: "today" },
+        approval: {
+          digest: c4Operation.material_digest,
+          revision: m.revision,
+          at: c4Operation.prepared_at,
+        },
       },
     ],
   };
@@ -88,7 +84,7 @@ it("requires separate explicit approval and execution, displays immutable permis
     action: "approve",
     revision: m.revision,
     operation_id: "baseline-1",
-    material_digest: "material",
+    material_digest: c4Operation.material_digest,
   });
   vi.mocked(api.c4).mockResolvedValue(status(approved));
   rerender(<C4Decision mission={approved} busy={false} onUpdate={update} />);
@@ -135,9 +131,7 @@ it("separates baseline/candidate and does not call failed cleanup a success", ()
         c4_operations: [
           c4Operation,
           {
-            ...c4Operation,
-            id: "candidate-1",
-            kind: "candidate",
+            ...c4CandidateOperation,
             cleanup: [{ ...c4Operation.cleanup![0], state: "failed" }],
           },
         ],
@@ -195,6 +189,22 @@ it("does not infer synthetic provenance or passing readiness from an unsupported
   expect(screen.getByText(/来源未确认/)).toBeInTheDocument();
   expect(screen.queryByText(/模拟验证通过/)).not.toBeInTheDocument();
 });
+it("keeps a partial schema1 profile unknown in the read-only verification display", () => {
+  render(
+    <C4Verification
+      mission={{
+        ...m,
+        spec: { ...m.spec, c4: { ...m.spec.c4!, verifier: "" } },
+        c4_operations: [c4Operation],
+      }}
+    />,
+  );
+  expect(screen.getByText(/来源未确认/)).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "C4 基线记录" })).toHaveTextContent(
+    "配置不支持 · 仅显示原始事实",
+  );
+  expect(screen.queryByText(/模拟验证通过/)).not.toBeInTheDocument();
+});
 it("keeps unsupported passing baseline facts unknown in the decision panel", async () => {
   const unsupported: Mission = {
     ...m,
@@ -213,6 +223,23 @@ it("keeps unsupported passing baseline facts unknown in the decision panel", asy
   expect(screen.getByText("配置不支持 · 仅显示原始事实")).toBeInTheDocument();
   expect(screen.queryByText(/模拟验证通过/)).not.toBeInTheDocument();
 });
+it("keeps a passing-shaped wrong-mission operation unknown in the decision panel", async () => {
+  const invalid: Mission = {
+    ...m,
+    c4_operations: [{ ...c4Operation, mission_id: "other" }],
+  };
+  vi.spyOn(api, "c4").mockResolvedValue({
+    ...status(invalid),
+    read_only: true,
+    simulation: false,
+  });
+  render(<C4Decision mission={invalid} busy={false} onUpdate={vi.fn()} />);
+  await waitFor(() =>
+    expect(screen.queryByText(/正在读取 C4/)).not.toBeInTheDocument(),
+  );
+  expect(screen.getByText("配置不支持 · 仅显示原始事实")).toBeInTheDocument();
+  expect(screen.queryByText(/模拟验证通过/)).not.toBeInTheDocument();
+});
 it("keeps unsupported passing facts unknown in the attention queue", () => {
   render(
     <DecisionQueue
@@ -221,10 +248,27 @@ it("keeps unsupported passing facts unknown in the attention queue", () => {
           ...m,
           state: "blocked",
           spec: { ...m.spec, c4: { ...m.spec.c4!, schema_version: 2 } },
-          c4_operations: [
-            c4Operation,
-            { ...c4Operation, id: "candidate-1", kind: "candidate" },
-          ],
+          c4_operations: [c4Operation, c4CandidateOperation],
+        },
+      ]}
+      loading={false}
+      error=""
+      onOpenMission={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("region", { name: "需要处理" })).toHaveTextContent(
+    "配置不支持 · 仅显示原始事实",
+  );
+  expect(screen.queryByText(/模拟验证通过/)).not.toBeInTheDocument();
+});
+it("keeps missing operation bindings unknown in the attention queue", () => {
+  render(
+    <DecisionQueue
+      missions={[
+        {
+          ...m,
+          state: "blocked",
+          c4_operations: [{ ...c4Operation, profile_digest: "" }],
         },
       ]}
       loading={false}
@@ -248,12 +292,11 @@ it("retains latest candidate stop facts and mission error separately from a pass
           error: "candidate cleanup requires explicit recovery",
           c4_operations: [
             c4Operation,
-            { ...c4Operation, id: "older-candidate", kind: "candidate" },
+            { ...c4CandidateOperation, id: "older-candidate" },
             {
-              ...c4Operation,
+              ...c4CandidateOperation,
               id: "stopped-candidate",
-              kind: "candidate",
-              material_digest: "stopped-material",
+              material_digest: "5".repeat(64),
               result: {
                 ...c4Operation.result!,
                 class: "infrastructure_failed",
@@ -275,7 +318,7 @@ it("retains latest candidate stop facts and mission error separately from a pass
     "candidate cleanup requires explicit recovery",
   );
   expect(queue).toHaveTextContent("stopped-candidate");
-  expect(queue).toHaveTextContent("stopped-material");
+  expect(queue).toHaveTextContent("5".repeat(64));
   expect(queue).not.toHaveTextContent("older-candidate");
   expect(queue).toHaveTextContent("基线模拟验证通过 · 非真实执行");
 });
@@ -358,8 +401,8 @@ it("known exact-owned cleanup is an explicit cleanup-only request, never execute
       action: "cleanup",
       revision: m.revision,
       operation_id: "baseline-1",
-      material_digest: "material",
-      container_id: "b".repeat(64),
+      material_digest: c4Operation.material_digest,
+      container_id: c4Operation.container_id,
     }),
   );
 });
@@ -381,7 +424,11 @@ it("stops approved stale material and keeps Main chat from invalidating pending 
       {
         ...m.c4_operations![0],
         state: "approved",
-        approval: { digest: "material", revision: m.revision - 2, at: "today" },
+        approval: {
+          digest: c4Operation.material_digest,
+          revision: m.revision - 2,
+          at: c4Operation.prepared_at,
+        },
       },
     ],
   };

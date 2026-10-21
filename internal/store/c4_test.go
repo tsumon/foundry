@@ -173,6 +173,110 @@ func TestC4StoreCASAndDuplicateDispatch(t *testing.T) {
 	}
 }
 
+func TestC4StoreCleanupStagesRollbackAtomically(t *testing.T) {
+	advance := func(t *testing.T, s *Store, m domain.Mission, stage string) domain.Mission {
+		t.Helper()
+		next, err := s.UpdateMission(m.ID, m.Revision, "c4."+stage, func(m *domain.Mission) error {
+			o := &m.C4Operations[0]
+			switch stage {
+			case "approve":
+				o.State = "approved"
+				o.Approval = &domain.C4Approval{Digest: o.MaterialDigest, Revision: m.Revision, At: o.PreparedAt}
+			case "dispatch":
+				o.State = "dispatched"
+				o.Dispatch = &domain.C4Fact{Revision: m.Revision, At: o.PreparedAt}
+			case "created":
+				o.State = "created"
+				o.ContainerID = "container-1"
+				o.Created = &domain.C4Fact{Revision: m.Revision, At: o.PreparedAt}
+			case "started":
+				o.State = "started"
+				o.Started = &domain.C4Fact{Revision: m.Revision, At: o.PreparedAt}
+			case "result":
+				o.State = "finished"
+				o.Result = &domain.C4Result{Class: "infrastructure_failed", Revision: m.Revision, At: o.PreparedAt}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return next
+	}
+
+	newStarted := func(t *testing.T) (*Store, domain.Mission) {
+		t.Helper()
+		s := openTestStore(t)
+		m, err := s.CreateMission(c4StoreMission())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, stage := range []string{"approve", "dispatch", "created", "started"} {
+			m = advance(t, s, m, stage)
+		}
+		return s, m
+	}
+
+	t.Run("result and cleanup", func(t *testing.T) {
+		s, m := newStarted(t)
+		before, _ := json.Marshal(m)
+		_, err := s.UpdateMission(m.ID, m.Revision, "c4.result-and-cleanup", func(m *domain.Mission) error {
+			o := &m.C4Operations[0]
+			o.State = "finished"
+			o.Result = &domain.C4Result{Class: "infrastructure_failed", Revision: m.Revision, At: o.PreparedAt}
+			o.Cleanup = append(o.Cleanup, domain.C4Cleanup{State: "confirmed", ContainerID: o.ContainerID, Owner: o.Owner, Revision: m.Revision, At: o.PreparedAt})
+			return nil
+		})
+		if err == nil {
+			t.Fatal("combined result and cleanup mutation committed")
+		}
+		got, getErr := s.GetMission(m.ID)
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		after, _ := json.Marshal(got)
+		if string(before) != string(after) {
+			t.Fatal("rejected combined mutation changed stored mission")
+		}
+	})
+
+	t.Run("failed and confirmed cleanup", func(t *testing.T) {
+		s, m := newStarted(t)
+		m = advance(t, s, m, "result")
+		before, _ := json.Marshal(m)
+		_, err := s.UpdateMission(m.ID, m.Revision, "c4.double-cleanup", func(m *domain.Mission) error {
+			o := &m.C4Operations[0]
+			o.Cleanup = append(o.Cleanup,
+				domain.C4Cleanup{State: "failed", ContainerID: o.ContainerID, Owner: o.Owner, Revision: m.Revision, At: o.PreparedAt},
+				domain.C4Cleanup{State: "confirmed", ContainerID: o.ContainerID, Owner: o.Owner, Revision: m.Revision, At: o.PreparedAt},
+			)
+			return nil
+		})
+		if err == nil {
+			t.Fatal("multiple cleanup attempts committed together")
+		}
+		got, getErr := s.GetMission(m.ID)
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		after, _ := json.Marshal(got)
+		if string(before) != string(after) {
+			t.Fatal("rejected multiple cleanup mutation changed stored mission")
+		}
+
+		for _, state := range []string{"failed", "confirmed"} {
+			m, err = s.UpdateMission(m.ID, m.Revision, "c4.cleanup", func(m *domain.Mission) error {
+				o := &m.C4Operations[0]
+				o.Cleanup = append(o.Cleanup, domain.C4Cleanup{State: state, ContainerID: o.ContainerID, Owner: o.Owner, Revision: m.Revision, At: o.PreparedAt})
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("separate %s cleanup rejected: %v", state, err)
+			}
+		}
+	})
+}
+
 func TestC4UnknownCorruptAndPartialRecordsRemainReadOnly(t *testing.T) {
 	for _, raw := range []string{
 		`{"id":"future","spec":{"c4":{"schema_version":9}}}`,

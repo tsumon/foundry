@@ -398,6 +398,10 @@ func ValidateC4Transition(before, after Mission) error {
 		if len(b.Cleanup) < len(a.Cleanup) || !reflect.DeepEqual(a.Cleanup, b.Cleanup[:len(a.Cleanup)]) && len(a.Cleanup) > 0 {
 			return errors.New("C4 cleanup facts are append-only")
 		}
+		cleanupAdded := len(b.Cleanup) - len(a.Cleanup)
+		if cleanupAdded > 1 {
+			return errors.New("C4 stages require separate durable transitions")
+		}
 		if a.Result != nil {
 			x := b
 			x.Cleanup = a.Cleanup
@@ -408,7 +412,7 @@ func ValidateC4Transition(before, after Mission) error {
 			if a.Approval != nil && !reflect.DeepEqual(a.Approval, b.Approval) || a.Dispatch != nil && !reflect.DeepEqual(a.Dispatch, b.Dispatch) || a.Created != nil && (!reflect.DeepEqual(a.Created, b.Created) || a.ContainerID != b.ContainerID) || a.Started != nil && !reflect.DeepEqual(a.Started, b.Started) {
 				return errors.New("C4 stage facts are immutable")
 			}
-			added := 0
+			added := cleanupAdded
 			for _, pair := range [][2]*C4Fact{{a.Dispatch, b.Dispatch}, {a.Created, b.Created}, {a.Started, b.Started}} {
 				if pair[0] == nil && pair[1] != nil {
 					added++

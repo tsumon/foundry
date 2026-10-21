@@ -207,9 +207,15 @@ func TestC4UnknownCanOnlyGainExactCleanup(t *testing.T) {
 	if err := ValidateC4Transition(m, n); err != nil {
 		t.Fatal(err)
 	}
-	clean := cloneC4(n)
-	clean.C4Operations[0].Cleanup = []C4Cleanup{{State: "failed", ContainerID: "container-1", Owner: "owner-1", Revision: n.Revision, At: c4Time}, {State: "confirmed", ContainerID: "container-1", Owner: "owner-1", Revision: n.Revision, At: c4Time}}
-	if err := ValidateC4Transition(n, clean); err != nil {
+	failed := cloneC4(n)
+	failed.C4Operations[0].Cleanup = []C4Cleanup{{State: "failed", ContainerID: "container-1", Owner: "owner-1", Revision: n.Revision, At: c4Time}}
+	if err := ValidateC4Transition(n, failed); err != nil {
+		t.Fatal(err)
+	}
+	failed.Revision++
+	clean := cloneC4(failed)
+	clean.C4Operations[0].Cleanup = append(clean.C4Operations[0].Cleanup, C4Cleanup{State: "confirmed", ContainerID: "container-1", Owner: "owner-1", Revision: failed.Revision, At: c4Time})
+	if err := ValidateC4Transition(failed, clean); err != nil {
 		t.Fatal(err)
 	}
 	if clean.C4Operations[0].Passed() {
@@ -220,6 +226,28 @@ func TestC4UnknownCanOnlyGainExactCleanup(t *testing.T) {
 	bad.C4Operations[0].Created = &C4Fact{Revision: bad.Revision, At: c4Time}
 	if ValidateC4Transition(clean, bad) == nil {
 		t.Fatal("terminal gained execution stage")
+	}
+}
+
+func TestC4CleanupRequiresItsOwnDurableTransition(t *testing.T) {
+	started := c4Fixture()
+	for _, stage := range []string{"approved", "dispatched", "created", "started"} {
+		started = c4Advance(started, stage)
+	}
+	combined := c4Advance(started, "finished")
+	combined.C4Operations[0].Cleanup = []C4Cleanup{{State: "confirmed", ContainerID: "container-1", Owner: "owner-1", Revision: started.Revision, At: c4Time}}
+	if ValidateC4Transition(started, combined) == nil {
+		t.Fatal("result and cleanup committed in one durable transition")
+	}
+
+	terminal := c4Advance(started, "finished")
+	multiple := cloneC4(terminal)
+	multiple.C4Operations[0].Cleanup = []C4Cleanup{
+		{State: "failed", ContainerID: "container-1", Owner: "owner-1", Revision: terminal.Revision, At: c4Time},
+		{State: "confirmed", ContainerID: "container-1", Owner: "owner-1", Revision: terminal.Revision, At: c4Time},
+	}
+	if ValidateC4Transition(terminal, multiple) == nil {
+		t.Fatal("multiple cleanup attempts committed in one durable transition")
 	}
 }
 
