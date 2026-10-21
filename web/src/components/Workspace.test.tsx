@@ -1624,12 +1624,33 @@ it("labels operation generations and next actions as historical facts after late
   expect(document.body).not.toHaveTextContent("仍选择原候选");
 });
 
-it("labels legacy mode and task versus plan revisions truthfully", async () => {
+it("labels new ordinary generation mode and unchanged legacy mode truthfully", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input) => reliabilityRead(String(input))),
   );
-  render(
+  const { rerender } = render(
+    <MissionWorkspace
+      mission={{
+        ...mission,
+        workspace_mode: "generations_v1",
+        approvals: [
+          {
+            kind: "execute",
+            revision: 9,
+            plan_revision: 3,
+            created_at: "2026-10-18",
+            digest: "approval",
+          },
+        ],
+      }}
+      onUpdate={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "总览" }));
+  expect(await screen.findByText("不可变候选模式")).toBeVisible();
+  expect(screen.queryByText("旧任务兼容模式")).not.toBeInTheDocument();
+  rerender(
     <MissionWorkspace
       mission={{
         ...mission,
@@ -1646,7 +1667,6 @@ it("labels legacy mode and task versus plan revisions truthfully", async () => {
       onUpdate={() => {}}
     />,
   );
-  fireEvent.click(screen.getByRole("tab", { name: "总览" }));
   expect(await screen.findByText("旧任务兼容模式")).toBeVisible();
   fireEvent.click(screen.getByRole("tab", { name: "审批" }));
   expect(screen.getAllByText(/任务 r9 · 计划 v3/).length).toBeGreaterThan(0);

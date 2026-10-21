@@ -90,8 +90,11 @@ original bytes; their lack of provenance is not evidence of command execution.
    records, model/browser spoofing, review/export binding, and legacy prepared
    export regressions. C1 content-check output alone is not trusted provenance.
 3. Make `generations_v1` the default only for newly created ordinary UI tasks,
-   retaining historical and specialized mode behavior. This is also future
-   work until its UI tests and acceptance checks land.
+   retaining historical and specialized mode behavior. Implemented in the
+   creation form: its ordinary-task choice now starts enabled and submits the
+   existing mode, while controlled-read and MCP tasks keep their dedicated
+   modes. Existing tasks are neither migrated nor relabeled, and execution and
+   delivery remain separately approved.
 
 Final acceptance requires focused Go tests for each boundary, the repository's
 full Go and frontend suites, a clean public export, and a fresh local browser

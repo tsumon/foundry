@@ -66,7 +66,7 @@ it("previews actual role overrides and current credential then accepts only the 
     String(fetcher.mock.calls.find(([p]) => p === "/api/missions")?.[1]?.body),
   );
   expect(body.model_snapshot).toBeUndefined();
-  expect(body.workspace_mode).toBeUndefined();
+  expect(body.workspace_mode).toBe("generations_v1");
   expect(body.spec.profile_id).toBe("p1");
 });
 
@@ -190,7 +190,9 @@ it("keeps controlled creation default-off, loads capabilities only on opt-in, an
   expect(screen.getByLabelText(/启用 Researcher 仓库调研/)).toBeDisabled();
   expect(screen.getByLabelText(/启用可恢复候选/)).not.toBeChecked();
   expect(screen.getByLabelText(/启用可恢复候选/)).toBeDisabled();
-  expect(screen.getByText(/旧版可恢复候选与受控模式互斥/)).toBeVisible();
+  expect(
+    screen.getByText(/普通任务的可恢复候选选择与受控模式互斥/),
+  ).toBeVisible();
   expect(
     await screen.findByRole("option", { name: /Source · 登记 v2/ }),
   ).toBeVisible();
@@ -474,6 +476,7 @@ it("creates an explicit bounded spec from newline fields without starting model 
     title: "新任务",
     goal: "改进校验",
     repo_path: "/tmp/source",
+    workspace_mode: "generations_v1",
     spec: {
       scope: ["src/", "lib/"],
       protected: ["tests/"],
@@ -491,7 +494,7 @@ it("creates an explicit bounded spec from newline fields without starting model 
   ).toHaveLength(1);
 });
 
-it("opts new missions into immutable generations only when explicitly checked", async () => {
+it("defaults new ordinary missions to immutable generations and explains the boundary", async () => {
   const fetcher = vi.fn(async (path: string, _init?: RequestInit) => {
     if (path === "/api/profiles")
       return response({
@@ -520,8 +523,10 @@ it("opts new missions into immutable generations only when explicitly checked", 
   ])
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   const optIn = screen.getByLabelText("启用可恢复候选（新任务）");
-  expect(optIn).not.toBeChecked();
-  fireEvent.click(optIn);
+  expect(optIn).toBeChecked();
+  expect(
+    screen.getByText(/默认用于随后创建的新普通任务；不会迁移旧任务/),
+  ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(4));
   expect(
@@ -533,6 +538,40 @@ it("opts new missions into immutable generations only when explicitly checked", 
   expect(JSON.parse(String(recoverableCall[1]?.body)).workspace_mode).toBe(
     "generations_v1",
   );
+});
+
+it("allows an explicit ordinary opt-out without inferring a specialized mode", async () => {
+  const fetcher = vi.fn(async (path: string) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [profile],
+        settings: { default_profile_id: "p1", role_bindings: {} },
+      });
+    if (path === "/api/health") return response({ capabilities: {} });
+    if (path === "/api/missions") return response({ mission });
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<CreateMission onCancel={() => {}} onCreated={() => {}} />);
+  await screen.findByRole("option", { name: "测试连接 · fixture-model" });
+  fillRequired();
+  const recoverable = screen.getByLabelText("启用可恢复候选（新任务）");
+  expect(recoverable).toBeChecked();
+  fireEvent.click(recoverable);
+  expect(recoverable).not.toBeChecked();
+  fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([path]) => path === "/api/missions"),
+    ).toHaveLength(1),
+  );
+  const body = JSON.parse(
+    String(
+      fetcher.mock.calls.find(([path]) => path === "/api/missions")![1]?.body,
+    ),
+  );
+  expect(body).not.toHaveProperty("workspace_mode");
+  expect(body).not.toHaveProperty("tool_mode");
 });
 
 it("preserves the recoverable draft while controlled mode presents it as disabled and unchecked", async () => {
@@ -588,7 +627,6 @@ it("preserves the recoverable draft while controlled mode presents it as disable
   fillRequired();
   const recoverable = screen.getByLabelText("启用可恢复候选（新任务）");
   const controlled = screen.getByLabelText("启用受控 Researcher 本地读取");
-  fireEvent.click(recoverable);
   expect(recoverable).toBeChecked();
   fireEvent.click(controlled);
   expect(recoverable).toBeDisabled();
@@ -628,7 +666,7 @@ it("preserves the recoverable draft while controlled mode presents it as disable
   expect(JSON.parse(String(call[1]?.body))).not.toHaveProperty("tool_mode");
 });
 
-it("fails the controlled gate closed without blocking profiles or legacy creation", async () => {
+it("fails the controlled gate closed without blocking ordinary creation", async () => {
   const fetcher = vi.fn(async (path: string) => {
     if (path === "/api/profiles")
       return response({

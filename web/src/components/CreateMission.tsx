@@ -57,7 +57,7 @@ export function CreateMission({
   const [image, setImage] = useState("");
   const [budget, setBudget] = useState(16);
   const [research, setResearch] = useState(false);
-  const [recoverable, setRecoverable] = useState(false);
+  const [recoverable, setRecoverable] = useState(true);
   const [controlled, setControlled] = useState(false);
   const [mcpControlled, setMCPControlled] = useState(false);
   const controlledMode = controlled || mcpControlled;
@@ -585,9 +585,9 @@ export function CreateMission({
           </label>
           <p className="field-help">
             使用不可变候选 generation
-            和本地操作账本。默认关闭；不会自动恢复执行或回滚。
+            和本地操作账本。默认用于随后创建的新普通任务；不会迁移旧任务，也不会自动恢复执行或回滚。
             {controlledMode &&
-              " 旧版可恢复候选与受控模式互斥，当前显示关闭；切回旧模式时恢复草稿选择。"}
+              " 普通任务的可恢复候选选择与受控模式互斥，当前显示关闭；切回普通模式时恢复草稿选择。"}
           </p>
           {controlledMode && (
             <section className="controlled-create" aria-label="受控读取绑定">
