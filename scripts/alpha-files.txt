@@ -41,6 +41,7 @@ docs/media/workbench-plan-approval.jpg
 docs/public/alpha-status.md
 docs/public/architecture.md
 docs/public/coding-loop-c1.md
+docs/public/coding-loop-c2.md
 docs/public/model-acceptance-gates.md
 docs/public/model-acceptance.md
 docs/public/openai-inference-gate.md
