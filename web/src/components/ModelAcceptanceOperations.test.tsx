@@ -141,6 +141,147 @@ async function selectInference() {
   });
 }
 
+it("reads a legitimate running inference claim as consumed and unknown without polling or mutation", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = inferenceFixture();
+    const running = {
+      ...f.pending,
+      revision: 3,
+      state: "running",
+      attempts: 1,
+      claim_sequence: 3,
+      certainty: "unknown",
+    };
+    const fetcher = vi.fn(async () =>
+      response({
+        ...f.history,
+        operations: [f.connection, f.catalog, running],
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    await act(async () => {});
+    expect(screen.queryByText("invalid_receipt")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("推理已保存材料"), {
+      target: { value: running.id },
+    });
+    expect(screen.getByText("传输：结果未知")).toBeVisible();
+    expect(screen.getByText(/单次尝试已消耗；没有重试操作/)).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /批准推理|执行推理/ }),
+    ).not.toBeInTheDocument();
+    await act(async () => {
+      vi.advanceTimersByTime(60000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("rejects a forged running inference claim that reports not_sent certainty", async () => {
+  const f = inferenceFixture();
+  const running = {
+    ...f.pending,
+    revision: 3,
+    state: "running",
+    attempts: 1,
+    claim_sequence: 3,
+    certainty: "not_sent",
+  };
+  const fetcher = vi.fn(async () =>
+    response({ ...f.history, operations: [f.connection, f.catalog, running] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("explicitly reconciles a lost inference execution to still running without poll or replay", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = inferenceFixture();
+    const approved = { ...f.pending, revision: 2, state: "approved" };
+    const running = {
+      ...approved,
+      revision: 3,
+      state: "running",
+      attempts: 1,
+      claim_sequence: 3,
+      certainty: "unknown",
+    };
+    let historyReads = 0;
+    const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method) throw new Error("synthetic lost execute response");
+      if (path.endsWith(`/${running.id}`))
+        return response({ operation: running });
+      historyReads++;
+      return response({
+        ...f.history,
+        operations: [
+          f.connection,
+          f.catalog,
+          historyReads === 1 ? approved : running,
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText("推理已保存材料"), {
+      target: { value: approved.id },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "执行推理" }));
+    });
+    expect(
+      screen.getByRole("button", { name: "仅读取原验收记录" }),
+    ).toBeEnabled();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "仅读取原验收记录" }));
+    });
+    expect(screen.queryByText("invalid_receipt")).not.toBeInTheDocument();
+    expect(screen.getByText("传输：结果未知")).toBeVisible();
+    expect(screen.getByText(/单次尝试已消耗；没有重试操作/)).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /批准推理|执行推理/ }),
+    ).not.toBeInTheDocument();
+    await act(async () => {
+      vi.advanceTimersByTime(60000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    const writes = fetcher.mock.calls.filter(([, init]) => init?.method);
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).toBe(
+      `/api/model-accounts/${f.account.id}/acceptance-operations/${approved.id}/execute`,
+    );
+    expect(JSON.parse(String(writes[0][1]?.body))).toEqual({
+      expected_revision: 2,
+      material_digest: approved.material_digest,
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it.each(
   (["catalog", "connection"] as const).flatMap((mode) =>
     (["pending", "approved", "succeeded"] as const).map((state) => ({

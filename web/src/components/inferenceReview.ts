@@ -116,7 +116,8 @@ export function validInferenceReceipt(o: ModelAcceptanceOperation): boolean {
       o.provider_param === undefined &&
       o.request_id === undefined &&
       !o.usage_known &&
-      o.certainty === (unknown ? "unknown" : "not_sent")
+      o.certainty ===
+        (unknown || o.state === "running" ? "unknown" : "not_sent")
     );
   return (
     o.state === "failed" &&
