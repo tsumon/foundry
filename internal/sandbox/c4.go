@@ -240,7 +240,14 @@ func ExecuteC4(ctx context.Context, p domain.C4Profile, o domain.C4Operation, tr
 	if err = d.driver.Start(execCtx, command); err != nil {
 		r := domain.C4Result{Class: "outcome_unknown"}
 		var startup C4StartupError
-		if errors.As(err, &startup) && (startup.ExitCode == 125 || startup.ExitCode == 126 || startup.ExitCode == 127) {
+		// No Start acknowledgment means no proven Started fact. Preserve the
+		// bounded cause without manufacturing timeout/interrupted execution.
+		switch {
+		case errors.Is(err, context.DeadlineExceeded) || errors.Is(execCtx.Err(), context.DeadlineExceeded):
+			r.Output = "C4 start acknowledgment deadline exceeded; execution outcome unknown."
+		case errors.Is(err, context.Canceled) || errors.Is(execCtx.Err(), context.Canceled):
+			r.Output = "C4 start acknowledgment canceled; execution outcome unknown."
+		case errors.As(err, &startup) && (startup.ExitCode == 125 || startup.ExitCode == 126 || startup.ExitCode == 127):
 			r.Class = "infrastructure_failed"
 			r.ExitCode = &startup.ExitCode
 		}

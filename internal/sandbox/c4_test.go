@@ -65,7 +65,14 @@ func (f *c4DriverFixture) Create(ctx context.Context, c C4Command) (string, erro
 	return strings.Repeat("d", 64), nil
 }
 func (f *c4DriverFixture) Start(ctx context.Context, c C4Command) error {
-	return f.record(ctx, c, "start")
+	err := f.record(ctx, c, "start")
+	if f.fail == "start timeout" {
+		return context.DeadlineExceeded
+	}
+	if f.fail == "start cancel" {
+		return context.Canceled
+	}
+	return err
 }
 func (f *c4DriverFixture) Wait(ctx context.Context, c C4Command) error {
 	err := f.record(ctx, c, "wait")
@@ -176,6 +183,26 @@ func TestC4PersistenceFailureStopsNextEffect(t *testing.T) {
 			}
 			if h.trace[len(h.trace)-1] != "persist:"+stage {
 				t.Fatal("effect after failed persist", h.trace)
+			}
+		})
+	}
+}
+
+func TestC4UnacknowledgedStartRecordsCauseWithoutInventingStarted(t *testing.T) {
+	for _, tc := range []struct{ failure, cause string }{
+		{"start timeout", "C4 start acknowledgment deadline exceeded; execution outcome unknown."},
+		{"start cancel", "C4 start acknowledgment canceled; execution outcome unknown."},
+	} {
+		t.Run(tc.failure, func(t *testing.T) {
+			h := newC4Harness(t)
+			h.driver.fail = tc.failure
+			o, err := h.run()
+			if !errors.Is(err, ErrC4Execution) || o.Started != nil || o.Result == nil || o.Result.Class != "outcome_unknown" || o.Result.Output != tc.cause || o.Passed() {
+				t.Fatalf("lost start cause or fabricated execution: result=%+v started=%+v err=%v", o.Result, o.Started, err)
+			}
+			want := []string{"persist:dispatch", "create", "inspect", "persist:created", "start", "persist:result", "inspect", "remove", "persist:cleanup"}
+			if !reflect.DeepEqual(h.trace, want) || o.CleanupState() != "confirmed" || o.Cleanup[0].ContainerID != strings.Repeat("d", 64) || o.Cleanup[0].Owner != o.Owner {
+				t.Fatalf("unexpected retry/wait or non-owned cleanup: trace=%v cleanup=%+v", h.trace, o.Cleanup)
 			}
 		})
 	}

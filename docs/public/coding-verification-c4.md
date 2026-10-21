@@ -108,6 +108,11 @@ Start acknowledgment and waiting are separate: a driver must confirm an
 exact-owned container start before the executor persists the started fact and
 waits. Dispatch, created ID, outcome and cleanup are separate durable mutations.
 A failed or uncertain persistence callback stops all subsequent effects.
+Deadline or cancellation before Start acknowledgment leaves execution
+`outcome_unknown`, with a bounded static cause and no invented Started fact.
+After confirmed start, Wait deadline/cancellation can classify as
+`timeout`/`interrupted`. Both paths stop execution; exact-owned cleanup may still
+run with its own bounded context, but neither permits a retry or Debugger repair.
 
 Because logging is disabled, the plan uses `start --attach`, not Docker logs.
 A future driver must continuously drain attached output into a bounded buffer,
