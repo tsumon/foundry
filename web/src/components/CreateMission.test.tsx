@@ -541,7 +541,7 @@ it("defaults new ordinary missions to immutable generations and explains the bou
 });
 
 it("allows an explicit ordinary opt-out without inferring a specialized mode", async () => {
-  const fetcher = vi.fn(async (path: string) => {
+  const fetcher = vi.fn(async (path: string, _init?: RequestInit) => {
     if (path === "/api/profiles")
       return response({
         profiles: [profile],
