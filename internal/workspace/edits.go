@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"foundry/internal/domain"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -63,7 +64,17 @@ func readTree(dir string) (map[string][]byte, error) {
 		if !info.Mode().IsRegular() || info.Size() > MaxSnapshotBytes {
 			return errors.New("unsupported candidate file")
 		}
-		b, e := root.ReadFile(p)
+		f, e := root.Open(p)
+		if e != nil {
+			return e
+		}
+		defer f.Close()
+		opened, e := f.Stat()
+		if e != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+			return errors.New("candidate file changed during read")
+		}
+		// Files may grow after the metadata check. Bound the actual read too.
+		b, e := io.ReadAll(io.LimitReader(f, int64(MaxSnapshotBytes-total)+1))
 		if e != nil {
 			return e
 		}

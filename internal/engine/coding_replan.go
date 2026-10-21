@@ -26,6 +26,10 @@ func archiveCodingRun(m domain.Mission) domain.RunArchive {
 }
 
 func (e *Engine) freezeReplan(m domain.Mission) (*domain.RunArchive, *domain.FailureBundle, error) {
+	return e.freezeReplanWith(m, e.s.GetLocalOperation)
+}
+
+func (e *Engine) freezeReplanWith(m domain.Mission, readOperation func(string) (domain.LocalOperation, error)) (*domain.RunArchive, *domain.FailureBundle, error) {
 	if m.State == "draft" {
 		return nil, nil, nil
 	}
@@ -48,7 +52,7 @@ func (e *Engine) freezeReplan(m domain.Mission) (*domain.RunArchive, *domain.Fai
 		if a.CandidateGeneration == nil {
 			return nil, nil, errors.New("missing recovered candidate")
 		}
-		op, err := e.s.GetLocalOperation(a.CandidateGeneration.ID)
+		op, err := readOperation(a.CandidateGeneration.ID)
 		if err != nil {
 			return nil, nil, err
 		}

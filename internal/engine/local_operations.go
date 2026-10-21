@@ -270,6 +270,10 @@ func exportMetadata(p domain.PreparedExport) workspace.PreparedExport {
 }
 
 func (e *Engine) verifyDelivery(m domain.Mission) error {
+	return e.verifyDeliveryWith(m, e.s.GetLocalOperation)
+}
+
+func (e *Engine) verifyDeliveryWith(m domain.Mission, readOperation func(string) (domain.LocalOperation, error)) error {
 	if err := e.ValidateRepositoryImport(m); err != nil {
 		return err
 	}
@@ -289,7 +293,7 @@ func (e *Engine) verifyDelivery(m domain.Mission) error {
 			return err
 		}
 	}
-	op, err := e.s.GetLocalOperation(m.Delivery.OperationID)
+	op, err := readOperation(m.Delivery.OperationID)
 	if err != nil {
 		return err
 	}

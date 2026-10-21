@@ -131,6 +131,10 @@ func (s *server) missionRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"local_operations": operations})
 		return
 	}
+	if r.Method == http.MethodGet && parts[1] == "recovery-diagnostic" {
+		s.recoveryDiagnostic(w, r, id)
+		return
+	}
 	if r.Method == http.MethodGet && (parts[1] == "patch" || parts[1] == "report") {
 		s.download(w, r, id, parts[1])
 		return

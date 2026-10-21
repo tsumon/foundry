@@ -243,6 +243,12 @@ func (e *Engine) checkSnapshot(m domain.Mission) error {
 			}
 		}
 	}
+	return e.checkFrozenAuthority(m)
+}
+
+// checkFrozenAuthority checks only managed base material and recorded authority.
+// Keep candidate/export checks separate so diagnosis can report each dimension.
+func (e *Engine) checkFrozenAuthority(m domain.Mission) error {
 	inputs, err := workspace.AcceptanceInputs(filepath.Join(e.dir(m.ID), "base"), m.Spec.Acceptance)
 	if err != nil {
 		return err

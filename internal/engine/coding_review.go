@@ -6,6 +6,7 @@ import (
 	"errors"
 	"foundry/internal/domain"
 	"foundry/internal/workspace"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -149,45 +150,11 @@ func (e *Engine) checkCodingReviewMaterial(m domain.Mission) error {
 			allowed[p] = true
 		}
 	}
-	// Digest/selectedCandidate reject unsafe trees before bounded file reads.
-	type file struct {
-		content []byte
-		mode    fs.FileMode
-	}
-	read := func(root string) (map[string]file, error) {
-		files := map[string]file{}
-		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-			i, err := d.Info()
-			if err != nil {
-				return err
-			}
-			if !i.Mode().IsRegular() {
-				return errors.New("unsafe review tree")
-			}
-			b, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			rel, err := filepath.Rel(root, p)
-			if err != nil {
-				return err
-			}
-			files[filepath.ToSlash(rel)] = file{b, i.Mode()}
-			return nil
-		})
-		return files, err
-	}
-	before, err := read(base)
+	before, err := readCodingReviewTree(base)
 	if err != nil {
 		return err
 	}
-	after, err := read(candidate)
+	after, err := readCodingReviewTree(candidate)
 	if err != nil {
 		return err
 	}
@@ -238,4 +205,69 @@ func (e *Engine) checkCodingReviewMaterial(m domain.Mission) error {
 		}
 	}
 	return nil
+}
+
+type codingReviewFile struct {
+	content []byte
+	mode    fs.FileMode
+}
+
+func readCodingReviewTree(root string) (map[string]codingReviewFile, error) {
+	files := map[string]codingReviewFile{}
+	info, err := os.Lstat(root)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("unsafe review root")
+	}
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	opened, err := dir.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		return nil, errors.New("review root replaced")
+	}
+	total, entries := int64(0), 0
+	err = fs.WalkDir(dir.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		entries++
+		if entries > 4096 || d.Type()&os.ModeSymlink != 0 {
+			return errors.New("unsafe or oversized review tree")
+		}
+		if d.IsDir() {
+			return nil
+		}
+		i, err := dir.Lstat(p)
+		if err != nil {
+			return err
+		}
+		if !i.Mode().IsRegular() || i.Size() > workspace.MaxSnapshotBytes-total || len(files) >= 500 {
+			return errors.New("unsafe or oversized review file")
+		}
+		f, err := dir.Open(p)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		opened, err := f.Stat()
+		if err != nil || !opened.Mode().IsRegular() || !os.SameFile(i, opened) {
+			return errors.New("review file replaced")
+		}
+		b, err := io.ReadAll(io.LimitReader(f, workspace.MaxSnapshotBytes-total+1))
+		if err != nil {
+			return err
+		}
+		total += int64(len(b))
+		if total > workspace.MaxSnapshotBytes {
+			return errors.New("review tree exceeds bound")
+		}
+		files[p] = codingReviewFile{b, opened.Mode()}
+		return nil
+	})
+	return files, err
 }
