@@ -16,6 +16,25 @@ func checkTreeShape(entries, depth int) error {
 	return nil
 }
 
+type treePathIdentity struct {
+	path   string
+	isFile bool
+}
+
+// Every implicit parent must keep the same spelling and directory kind as in
+// the managed tree. Share this rule with generation validation and admission.
+func recordTreePathIdentity(paths map[string]treePathIdentity, p string) error {
+	for part := p; part != "."; part = path.Dir(part) {
+		key := strings.ToLower(part)
+		identity := treePathIdentity{path: part, isFile: part == p}
+		if old, ok := paths[key]; ok && old != identity {
+			return errors.New("case collision or file/directory conflict")
+		}
+		paths[key] = identity
+	}
+	return nil
+}
+
 // Git lists files without their parent directories. Count those implicit entries
 // against the same shape policy before inspection can advertise a ready import.
 func recordTreePath(entries map[string]bool, p string) error {

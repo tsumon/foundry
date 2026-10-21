@@ -243,6 +243,65 @@ func commitImportFixture(t *testing.T, repo string) {
 	importGit(t, repo, "add", ".")
 	importGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture change")
 }
+
+// Index-only entries reproduce collisions even on case-insensitive filesystems.
+// Narrow context must not hide unsupported parent identities in the whole tree.
+func TestInspectRepositoryRejectsImplicitParentCollisions(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		paths []string
+	}{
+		{"directory_directory", []string{"src/a.txt", "SRC/b.txt"}},
+		{"file_directory", []string{"src", "SRC/b.txt"}},
+		{"directory_file", []string{"SRC", "src/b.txt"}},
+		{"nested_directory_directory", []string{"lib/src/a.txt", "lib/SRC/b.txt"}},
+	} {
+		for _, outside := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/outside_context=%t", tc.name, outside), func(t *testing.T) {
+				e, db, repo, data := importFixture(t)
+				blob := importGit(t, repo, "rev-parse", "HEAD:file.txt")
+				for _, p := range tc.paths {
+					importGit(t, repo, "update-index", "--add", "--cacheinfo", "100644,"+blob+","+p)
+				}
+				importGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "parent collision")
+				r := importRequest(repo)
+				if !outside {
+					r.Spec.Scope = append(r.Spec.Scope, tc.paths...)
+				}
+				before := importSourceDigest(t, repo)
+				v, err := e.InspectRepository(context.Background(), r)
+				if err != nil || v.Status != "blocked" || v.Stage != "tree" || v.Code != domain.ImportCaseCollision {
+					t.Fatalf("wanted tree/case_collision, got %+v %v", v, err)
+				}
+				if v.FileCount != nil || v.TotalBytes != nil || v.ContextFileCount != nil || v.ContextBytes != nil || len(v.ContextManifest) != 0 {
+					t.Fatal("failed inspection invented measurements", v)
+				}
+				if err := domain.ValidateImportSelection(v, domain.ImportSelection{InspectionID: v.ID, Digest: v.Digest}); err == nil {
+					t.Fatal("blocked collision remained selectable")
+				}
+				stored, err := db.GetRepositoryInspection(v.ID)
+				if err != nil || stored.Status != "blocked" || stored.Code != domain.ImportCaseCollision || stored.Digest != v.Digest {
+					t.Fatal(stored, err)
+				}
+				ops, err := db.ListRepositoryImportOperations()
+				if err != nil || len(ops) != 0 {
+					t.Fatal("inspection created import operation", ops, err)
+				}
+				missions, err := db.ListMissions()
+				if err != nil || len(missions) != 0 {
+					t.Fatal("inspection created mission", missions, err)
+				}
+				entries, err := os.ReadDir(data)
+				if err != nil || len(entries) != 0 {
+					t.Fatal("inspection created workspace", entries, err)
+				}
+				if importSourceDigest(t, repo) != before {
+					t.Fatal("inspection changed source or Git metadata")
+				}
+			})
+		}
+	}
+}
 func writeImportFile(t *testing.T, repo, name, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0644); err != nil {

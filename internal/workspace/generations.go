@@ -265,21 +265,14 @@ func managedContainer(fsys filesystem, dir, name string) (string, error) {
 }
 func validateTreePaths(files map[string][]byte) error {
 	total := 0
-	paths := map[string]string{}
-	kinds := map[string]bool{}
+	paths := map[string]treePathIdentity{}
 	for p, b := range files {
 		total += len(b)
 		if err := safePath(p); err != nil {
 			return err
 		}
-		for part := p; part != "."; part = filepath.Dir(part) {
-			key := strings.ToLower(part)
-			isFile := part == p
-			if old, ok := paths[key]; ok && (old != part || kinds[key] != isFile) {
-				return errors.New("case collision or file/directory conflict")
-			}
-			paths[key] = part
-			kinds[key] = isFile
+		if err := recordTreePathIdentity(paths, p); err != nil {
+			return err
 		}
 	}
 	if len(files) > 500 || total > MaxSnapshotBytes {

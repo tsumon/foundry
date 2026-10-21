@@ -5,8 +5,60 @@ import (
 	"foundry/internal/domain"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// Keep the extracted generation policy strict about kind, not only spelling.
+func TestValidateTreePathsPreservesParentKinds(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		paths []string
+		valid bool
+	}{
+		{"shared_directory", []string{"src/a.txt", "src/b.txt"}, true},
+		{"file_directory_conflict", []string{"src", "src/a.txt"}, false},
+		{"nested_file_directory_conflict", []string{"lib/src", "lib/src/a.txt"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := map[string][]byte{}
+			for _, p := range tc.paths {
+				files[p] = []byte("text\n")
+			}
+			if err := validateTreePaths(files); (err == nil) != tc.valid {
+				t.Fatalf("valid=%t, got %v", tc.valid, err)
+			}
+		})
+	}
+}
+
+// Preparation shares admission policy and must reject before staging writes.
+func TestPrepareRepositoryImportRejectsImplicitParentCollisionsBeforeWrites(t *testing.T) {
+	for _, p := range []string{"SRC/other.txt", "SRC"} {
+		t.Run(p, func(t *testing.T) {
+			repo := repository(t)
+			blob := git(t, repo, "rev-parse", "HEAD:src/main.txt")
+			git(t, repo, "update-index", "--add", "--cacheinfo", "100644,"+blob+","+p)
+			git(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "parent collision")
+			commit := git(t, repo, "rev-parse", "HEAD")
+			stage := filepath.Join(t.TempDir(), "stage")
+			before := objectDatabaseDigest(t, repo)
+			digest, ref, facts, err := PrepareRepositoryImport(context.Background(), repo, commit, stage, strings.Repeat("a", 32), domain.RepositoryImportSpec{Scope: []string{"src/"}, Acceptance: []string{"test -f src/main.txt"}})
+			if err != domain.ImportCaseCollision {
+				t.Fatalf("wanted case_collision before staging, got %v", err)
+			}
+			if digest != "" || ref.ID != "" || facts.FileCount != 0 || len(facts.ContextManifest) != 0 {
+				t.Fatal("failed preparation returned successful facts", digest, ref, facts)
+			}
+			if _, err := os.Stat(stage); !os.IsNotExist(err) {
+				t.Fatal("collision created staging directory", err)
+			}
+			if objectDatabaseDigest(t, repo) != before {
+				t.Fatal("preparation changed source")
+			}
+		})
+	}
+}
 
 // Reading live files instead of committed blobs changes these literal facts.
 func TestInspectCommittedTreeMeasuresWithoutMaterializing(t *testing.T) {

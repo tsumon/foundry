@@ -62,6 +62,7 @@ export function RecoveryDiagnostic({
     if (lock.current === identity) return;
     lock.current = identity;
     setPending(identity);
+    setCheckedIdentity("");
     setError("");
     try {
       const { diagnostic } = await repositoryImportApi.diagnose(mission.id);

@@ -99,6 +99,7 @@ func readCommittedTree(ctx context.Context, repo, commit string, scope []string)
 	}
 	tree := committedTree{facts: CommittedTreeInspection{ContextManifest: []domain.FileMeta{}}}
 	seen := map[string]bool{}
+	paths := map[string]treePathIdentity{}
 	entries := map[string]bool{".": true}
 	for _, entry := range bytes.Split(b, []byte{0}) {
 		if len(entry) == 0 {
@@ -123,6 +124,9 @@ func readCommittedTree(ctx context.Context, repo, commit string, scope []string)
 		seen[lower] = true
 		if err := recordTreePath(entries, p); err != nil {
 			return zero, domain.ImportTreeLimit
+		}
+		if err := recordTreePathIdentity(paths, p); err != nil {
+			return zero, domain.ImportCaseCollision
 		}
 		size, err := strconv.Atoi(fields[3])
 		if err != nil || size < 0 {

@@ -20,6 +20,61 @@ const diagnostic = {
   ],
   next_actions: ["inspect_records"],
 };
+it("marks previous facts stale when a same-revision recheck starts and fails without retrying", async () => {
+  let reject!: (cause: Error) => void;
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      response({
+        diagnostic: {
+          ...diagnostic,
+          checks: [
+            {
+              id: "candidate",
+              status: "verified",
+              code: "candidate_verified",
+              message: "candidate bytes verified",
+              records: [],
+            },
+          ],
+          next_actions: ["delivery_decision", "new_task"],
+        },
+      }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise<Response>((_, fail) => {
+          reject = fail;
+        }),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  render(<MissionViews mission={mission} view="总览" />);
+  fireEvent.click(screen.getByRole("button", { name: "核对恢复状态" }));
+  expect(await screen.findByText("candidate bytes verified")).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: /返回原决策面板核对/ }),
+  ).toBeVisible();
+  expect(screen.getByText(/需要新的任务/)).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "核对恢复状态" }));
+  expect.soft(screen.queryByText(/已过期/)).toBeVisible();
+  expect
+    .soft(screen.queryByRole("link", { name: /返回原决策面板核对/ }))
+    .not.toBeInTheDocument();
+  expect.soft(screen.queryByText(/需要新的任务/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "正在核对…" })).toBeDisabled();
+
+  await act(async () => reject(new Error("diagnostic unavailable")));
+  expect(screen.getByRole("alert")).toHaveTextContent("diagnostic unavailable");
+  expect(screen.getByText("candidate bytes verified")).toBeVisible();
+  expect(screen.getByText(/已过期/)).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: /返回原决策面板核对/ }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/需要新的任务/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "核对恢复状态" })).toBeEnabled();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
 it("diagnoses only on click, renders the envelope, and invalidates after revision changes", async () => {
   const fetcher = vi.fn(async () => response({ diagnostic }));
   vi.stubGlobal("fetch", fetcher);
