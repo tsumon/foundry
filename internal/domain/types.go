@@ -33,14 +33,15 @@ type Settings struct {
 }
 
 type Spec struct {
-	Scope      []string `json:"scope"`
-	Protected  []string `json:"protected"`
-	Acceptance []string `json:"acceptance"`
-	Image      string   `json:"image"`
-	ImageID    string   `json:"image_id"`
-	ProfileID  string   `json:"profile_id"`
-	Research   bool     `json:"research"`
-	MaxCalls   int      `json:"max_calls"`
+	C4         *C4Profile `json:"c4,omitempty"`
+	Scope      []string   `json:"scope"`
+	Protected  []string   `json:"protected"`
+	Acceptance []string   `json:"acceptance"`
+	Image      string     `json:"image"`
+	ImageID    string     `json:"image_id"`
+	ProfileID  string     `json:"profile_id"`
+	Research   bool       `json:"research"`
+	MaxCalls   int        `json:"max_calls"`
 }
 
 type FileMeta struct {
@@ -189,6 +190,8 @@ type Delivery struct {
 }
 
 type Mission struct {
+	C4Operations            []C4Operation            `json:"c4_operations,omitempty"`
+	C4Invalid               bool                     `json:"-"`
 	ImportVersion           int                      `json:"import_version,omitempty"`
 	RepositoryImport        *RepositoryImportBinding `json:"repository_import,omitempty"`
 	RepositoryImportInvalid bool                     `json:"-"`

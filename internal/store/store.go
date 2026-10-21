@@ -135,6 +135,9 @@ func (s *Store) CreateMission(m domain.Mission) (domain.Mission, error) {
 	return s.createMission(m, nil, "")
 }
 func (s *Store) createMission(m domain.Mission, importOperation *domain.RepositoryImportOperation, sourcePath string) (domain.Mission, error) {
+	if err := domain.ValidateC4Mission(m); err != nil {
+		return domain.Mission{}, err
+	}
 	if importOperation == nil && (m.ImportVersion != 0 || m.RepositoryImport != nil) {
 		return domain.Mission{}, domain.ImportInvalidBinding
 	}
@@ -153,6 +156,17 @@ func (s *Store) createMission(m domain.Mission, importOperation *domain.Reposito
 		m.CreatedAt = now
 	}
 	m.UpdatedAt = now
+	if err := domain.ValidateC4Mission(m); err != nil {
+		return domain.Mission{}, err
+	}
+	// Creation may prepare baseline material, but cannot fabricate historical
+	// approval/dispatch facts or an already authorized candidate operation.
+	c4Initial := m
+	c4Initial.C4Operations = nil
+	c4Initial.Approvals = nil
+	if err := domain.ValidateC4Transition(c4Initial, m); err != nil {
+		return domain.Mission{}, err
+	}
 	data, err := json.Marshal(m)
 	if err != nil {
 		return domain.Mission{}, fmt.Errorf("encode mission: %w", err)
@@ -290,6 +304,15 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 	if err != nil {
 		return domain.Mission{}, err
 	}
+	// Decode a second, fully detached snapshot. A shallow copy would alias
+	// profile, generation, stage, result and cleanup data inside the callback.
+	c4Before, err := decodeMission(data)
+	if err != nil {
+		return domain.Mission{}, err
+	}
+	if err := domain.ValidateC4Mission(c4Before); err != nil {
+		return domain.Mission{}, err
+	}
 	if err := validateMissionImport(context.Background(), tx, m); err != nil {
 		return domain.Mission{}, err
 	}
@@ -334,6 +357,9 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 		return domain.Mission{}, err
 	}
 	if err := mutate(&m); err != nil {
+		return domain.Mission{}, err
+	}
+	if err := domain.ValidateC4Transition(c4Before, m); err != nil {
 		return domain.Mission{}, err
 	}
 	updatedImportBinding, _ := json.Marshal(m.RepositoryImport)
@@ -549,6 +575,8 @@ func decodeMission(data []byte) (domain.Mission, error) {
 	// diagnostic and leaves the original stored bytes untouched.
 	projection := struct {
 		*domain.Mission
+		Spec                json.RawMessage `json:"spec"`
+		C4Operations        json.RawMessage `json:"c4_operations"`
 		RepositoryImport    json.RawMessage `json:"repository_import"`
 		ImportVersion       json.RawMessage `json:"import_version"`
 		CodingAttempts      json.RawMessage `json:"coding_attempts"`
@@ -557,6 +585,28 @@ func decodeMission(data []byte) (domain.Mission, error) {
 	}{Mission: &mission}
 	if err := json.Unmarshal(data, &projection); err != nil {
 		return domain.Mission{}, fmt.Errorf("decode mission: %w", err)
+	}
+	if len(projection.Spec) > 0 {
+		spec := struct {
+			*domain.Spec
+			C4 json.RawMessage `json:"c4"`
+		}{Spec: &mission.Spec}
+		if err := json.Unmarshal(projection.Spec, &spec); err != nil {
+			return domain.Mission{}, fmt.Errorf("decode mission spec: %w", err)
+		}
+		if len(spec.C4) > 0 {
+			var profile domain.C4Profile
+			if string(spec.C4) == "null" || decodeStoredJSON(spec.C4, &profile) != nil {
+				mission.C4Invalid = true
+			} else {
+				mission.Spec.C4 = &profile
+			}
+		}
+	}
+	if len(projection.C4Operations) > 0 {
+		if decodeStoredJSON(projection.C4Operations, &mission.C4Operations) != nil {
+			mission.C4Invalid = true
+		}
 	}
 	if len(projection.ImportVersion) > 0 {
 		if err := json.Unmarshal(projection.ImportVersion, &mission.ImportVersion); err != nil {
