@@ -146,8 +146,12 @@ func startAcceptance(webDir string) (_ *acceptanceRuntime, err error) {
 		return nil, err
 	}
 	descriptor := r.mcp.Descriptor()
-	r.engine = engine.New(r.store, acceptanceGateway{router: r.router}, engine.Options{DataDir: root, Runner: syntheticRunner{}, LocalMCPTest: &descriptor})
+	baseGateway := acceptanceGateway{router: r.router}
+	r.engine = engine.New(r.store, codingLoopGateway{fallback: baseGateway}, engine.Options{DataDir: root, Runner: codingLoopRunner{fallback: syntheticRunner{}}, LocalMCPTest: &descriptor})
 	if err = r.engine.Recover(context.Background()); err != nil {
+		return nil, err
+	}
+	if err = seedCodingLoopScenario(r); err != nil {
 		return nil, err
 	}
 	if err = seedModelAccounts(r, accountService); err != nil {

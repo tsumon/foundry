@@ -15,6 +15,8 @@ cmd/foundry-acceptance/acceptance_gates_test.go
 cmd/foundry-acceptance/acceptance_handoff_test.go
 cmd/foundry-acceptance/acceptance_identity_test.go
 cmd/foundry-acceptance/acceptance_subscription_test.go
+cmd/foundry-acceptance/coding_loop_fixture.go
+cmd/foundry-acceptance/coding_loop_fixture_test.go
 cmd/foundry-acceptance/main.go
 cmd/foundry-acceptance/main_test.go
 cmd/foundry-acceptance/model_acceptance_test.go
@@ -38,6 +40,7 @@ docs/media/model-acceptance.jpg
 docs/media/workbench-plan-approval.jpg
 docs/public/alpha-status.md
 docs/public/architecture.md
+docs/public/coding-loop-c1.md
 docs/public/model-acceptance-gates.md
 docs/public/model-acceptance.md
 docs/public/openai-inference-gate.md
@@ -133,6 +136,7 @@ internal/engine/controlled_calls.go
 internal/engine/controlled_calls_test.go
 internal/engine/controlled_flow_test.go
 internal/engine/controlled_recovery_test.go
+internal/engine/content_repair_test.go
 internal/engine/delivery_read.go
 internal/engine/engine.go
 internal/engine/engine_test.go
