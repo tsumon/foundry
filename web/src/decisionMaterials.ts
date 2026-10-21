@@ -165,16 +165,36 @@ export function decisionMaterial(mission: Mission): DecisionMaterial {
     const baseline = mission.c4_operations
       ?.filter((o) => o.kind === "baseline")
       .at(-1);
+    const candidate = mission.c4_operations
+      ?.filter((o) => o.kind === "candidate")
+      .at(-1);
     return {
       kind,
       actionLabel: kind === "attention" ? "检查 C4 停止原因" : "检查 C4 基线",
       view: "验证",
       facts: [
+        ...(kind === "attention" ? attentionMaterial(mission).facts : []),
+        ...(kind === "attention" && candidate
+          ? [
+              {
+                label: "最新候选记录",
+                value: c4Supported(mission)
+                  ? c4OperationLabel(candidate)
+                  : "配置不支持 · 仅显示原始事实",
+              },
+              { label: "候选操作", value: candidate.id },
+              { label: "候选材料", value: candidate.material_digest },
+            ]
+          : []),
         {
           label: "基线",
-          value: baseline ? c4OperationLabel(baseline) : "尚未准备材料",
+          value: !baseline
+            ? "尚未准备材料"
+            : c4Supported(mission)
+              ? c4OperationLabel(baseline)
+              : "配置不支持 · 仅显示原始事实",
         },
-        { label: "材料", value: baseline?.material_digest ?? "未记录" },
+        { label: "基线材料", value: baseline?.material_digest ?? "未记录" },
         {
           label: "来源",
           value: c4Supported(mission)

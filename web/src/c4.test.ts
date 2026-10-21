@@ -62,6 +62,19 @@ it("routes failed baselines to attention with facts, not another approval invita
   const failed = {
     ...mission,
     state: "draft",
+    spec: {
+      ...mission.spec,
+      c4: {
+        schema_version: 1,
+        id: "c4_go_v1",
+        mode: "synthetic",
+        image_id: "sha256:" + "a".repeat(64),
+        platform: "linux/arm64",
+        docker_path: "/synthetic/docker",
+        endpoint: "unix:///synthetic/docker.sock",
+        verifier: "/opt/foundry/verify-go-v1",
+      },
+    },
     c4_operations: [
       {
         ...c4Operation,

@@ -195,6 +195,90 @@ it("does not infer synthetic provenance or passing readiness from an unsupported
   expect(screen.getByText(/来源未确认/)).toBeInTheDocument();
   expect(screen.queryByText(/模拟验证通过/)).not.toBeInTheDocument();
 });
+it("keeps unsupported passing baseline facts unknown in the decision panel", async () => {
+  const unsupported: Mission = {
+    ...m,
+    spec: { ...m.spec, c4: { ...m.spec.c4!, schema_version: 2 } },
+    c4_operations: [c4Operation],
+  };
+  vi.spyOn(api, "c4").mockResolvedValue({
+    ...status(unsupported),
+    read_only: true,
+    simulation: false,
+  });
+  render(<C4Decision mission={unsupported} busy={false} onUpdate={vi.fn()} />);
+  await waitFor(() =>
+    expect(screen.queryByText(/正在读取 C4/)).not.toBeInTheDocument(),
+  );
+  expect(screen.getByText("配置不支持 · 仅显示原始事实")).toBeInTheDocument();
+  expect(screen.queryByText(/模拟验证通过/)).not.toBeInTheDocument();
+});
+it("keeps unsupported passing facts unknown in the attention queue", () => {
+  render(
+    <DecisionQueue
+      missions={[
+        {
+          ...m,
+          state: "blocked",
+          spec: { ...m.spec, c4: { ...m.spec.c4!, schema_version: 2 } },
+          c4_operations: [
+            c4Operation,
+            { ...c4Operation, id: "candidate-1", kind: "candidate" },
+          ],
+        },
+      ]}
+      loading={false}
+      error=""
+      onOpenMission={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("region", { name: "需要处理" })).toHaveTextContent(
+    "配置不支持 · 仅显示原始事实",
+  );
+  expect(screen.queryByText(/模拟验证通过/)).not.toBeInTheDocument();
+});
+it("retains latest candidate stop facts and mission error separately from a passing baseline", () => {
+  render(
+    <DecisionQueue
+      missions={[
+        {
+          ...m,
+          state: "blocked",
+          base_commit: c4Operation.base_commit,
+          error: "candidate cleanup requires explicit recovery",
+          c4_operations: [
+            c4Operation,
+            { ...c4Operation, id: "older-candidate", kind: "candidate" },
+            {
+              ...c4Operation,
+              id: "stopped-candidate",
+              kind: "candidate",
+              material_digest: "stopped-material",
+              result: {
+                ...c4Operation.result!,
+                class: "infrastructure_failed",
+              },
+              cleanup: [{ ...c4Operation.cleanup![0], state: "failed" }],
+            },
+          ],
+        },
+      ]}
+      loading={false}
+      error=""
+      onOpenMission={vi.fn()}
+    />,
+  );
+  const queue = screen.getByRole("region", { name: "需要处理" });
+  expect(queue).toHaveTextContent("infrastructure_failed");
+  expect(queue).toHaveTextContent("清理未确认，不能继续");
+  expect(queue).toHaveTextContent(
+    "candidate cleanup requires explicit recovery",
+  );
+  expect(queue).toHaveTextContent("stopped-candidate");
+  expect(queue).toHaveTextContent("stopped-material");
+  expect(queue).not.toHaveTextContent("older-candidate");
+  expect(queue).toHaveTextContent("基线模拟验证通过 · 非真实执行");
+});
 it("keeps independent context approval disabled until clean baseline facts exist", () => {
   render(<DecisionPanel mission={m} busy={false} onAction={vi.fn()} />);
   fireEvent.click(screen.getByRole("checkbox", { name: /我已检查目标/ }));

@@ -225,7 +225,11 @@ export function C4Decision({
       )}
       {baseline && (
         <>
-          <p>{c4OperationLabel(baseline)}</p>
+          <p>
+            {c4Supported(mission)
+              ? c4OperationLabel(baseline)
+              : "配置不支持 · 仅显示原始事实"}
+          </p>
           <p className="muted small">
             操作 <code>{baseline.id}</code> · 材料{" "}
             <code>{baseline.material_digest}</code> · 配置摘要{" "}
@@ -276,7 +280,10 @@ export function C4Decision({
         .map((o) => (
           <div className="note warning-note" key={o.id}>
             <p>
-              {o.id} · {c4OperationLabel(o)}
+              {o.id} ·{" "}
+              {c4Supported(mission)
+                ? c4OperationLabel(o)
+                : "配置不支持 · 仅显示原始事实"}
               。清理仅检查并移除已知精确对象，不重放，不改变结果。
             </p>
             <code>
