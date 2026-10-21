@@ -37,10 +37,7 @@ func readTree(dir string) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	seen := map[string]bool{}
 	total := 0
-	e = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
+	e = WalkBoundedTree(root.FS(), func(p string, d fs.DirEntry) error {
 		if p == "." {
 			return nil
 		}

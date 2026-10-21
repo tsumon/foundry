@@ -99,6 +99,7 @@ func readCommittedTree(ctx context.Context, repo, commit string, scope []string)
 	}
 	tree := committedTree{facts: CommittedTreeInspection{ContextManifest: []domain.FileMeta{}}}
 	seen := map[string]bool{}
+	entries := map[string]bool{".": true}
 	for _, entry := range bytes.Split(b, []byte{0}) {
 		if len(entry) == 0 {
 			continue
@@ -120,6 +121,9 @@ func readCommittedTree(ctx context.Context, repo, commit string, scope []string)
 			return zero, domain.ImportCaseCollision
 		}
 		seen[lower] = true
+		if err := recordTreePath(entries, p); err != nil {
+			return zero, domain.ImportTreeLimit
+		}
 		size, err := strconv.Atoi(fields[3])
 		if err != nil || size < 0 {
 			return zero, fmt.Errorf("%w: invalid or unavailable local blob size; materialize missing objects outside FOUNDRY", domain.ImportObjectsUnavailable)

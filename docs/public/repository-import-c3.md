@@ -32,6 +32,15 @@ rules remain. A narrower context does not make an oversized or unsupported whole
 tree importable. Uncommitted and untracked files are excluded. Working-tree
 cleanliness is explicitly `not_checked`, never inferred from HEAD inspection.
 
+Admission and managed-tree validation also share a shape bound: at most 4096
+entries including the root, files and directories, and depth 64 (root depth zero).
+Admission counts implicit parent directories from committed paths and reports
+`tree_limit` before claiming readiness. Managed-tree reads use incremental batches
+of at most 64 directory entries, including empty directories in their bound.
+Unusually deep or directory-heavy trees previously accepted may now be blocked;
+ordinary file/mode/digest and delivery-report bytes are unchanged. These checks do
+not delete, repair or reseal rejected trees.
+
 Admission freezes a version-one inspection record with a controller-owned ID,
 resolved root, optional repository ID/revision, exact commit, import specification
 (scope, protected rules, acceptance commands and requested image), measured counts,

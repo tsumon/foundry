@@ -1,10 +1,40 @@
 package engine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestRecoveryMaterialDirectoryBounds(t *testing.T) {
+	for _, shape := range []string{"wide", "deep"} {
+		t.Run(shape, func(t *testing.T) {
+			root := t.TempDir()
+			path := root
+			count := 5000
+			if shape == "deep" {
+				count = 65
+			}
+			for i := 0; i < count; i++ {
+				if shape == "wide" {
+					path = filepath.Join(root, fmt.Sprintf("dir-%04d", i))
+				} else {
+					path = filepath.Join(path, "d")
+				}
+				if err := os.Mkdir(path, 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := readCodingReviewTree(root); err == nil {
+				t.Fatal("excessive directory tree accepted")
+			}
+			if info, err := os.Stat(path); err != nil || !info.IsDir() {
+				t.Fatal("rejected directory was changed", err)
+			}
+		})
+	}
+}
 
 // The reread must enforce its own bounds and containment even if a preceding
 // digest check observed a smaller, ordinary tree before replacement.

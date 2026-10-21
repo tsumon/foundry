@@ -72,7 +72,7 @@ func (e *Engine) DiagnoseRecovery(ctx context.Context, id string) (domain.Recove
 			}
 			break
 		}
-		executionRequired := m.State == "awaiting_delivery" || m.State == "delivered" || len(m.Evidence) > 0 || len(m.Reviews) > 0
+		executionRequired := m.State == "running" || m.State == "verifying" || m.State == "awaiting_delivery" || m.State == "delivered" || len(m.Evidence) > 0 || len(m.Reviews) > 0
 		for _, attempt := range m.CodingAttempts {
 			if m.Plan != nil && attempt.PlanRevision == m.Plan.Revision {
 				executionRequired = true

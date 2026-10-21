@@ -271,6 +271,65 @@ func TestRecoveryDiagnosticInterruptedSelectionAndFailedReplan(t *testing.T) {
 	}
 }
 
+func TestRecoveryDiagnosticPreAttemptExecutionApproval(t *testing.T) {
+	for _, state := range []string{"awaiting_approval", "running", "verifying"} {
+		for _, stripped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stripped=%t", state, stripped), func(t *testing.T) {
+				e, s, _, _, m := codingSetup(t, plan)
+				if _, err := e.Plan(context.Background(), m.ID, m.Revision); err != nil {
+					t.Fatal(err)
+				}
+				finishCoding(e)
+				m, _ = s.GetMission(m.ID)
+				if state != "awaiting_approval" {
+					seal, err := authority(m, filepath.Join(e.dir(m.ID), "base"), true)
+					if err != nil {
+						t.Fatal(err)
+					}
+					// Persist approval without starting execution: the crash window
+					// before a first attempt must still require its execute seal.
+					m, err = s.ApproveMissionExecution(m.ID, m.Revision, seal)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err = failureDB(t, e).Exec(`UPDATE missions SET data=json_set(data,'$.state',?) WHERE id=?`, state, m.ID); err != nil {
+						t.Fatal(err)
+					}
+					if stripped {
+						last := len(m.Approvals) - 1
+						if m.Approvals[last].Kind != "execute" {
+							t.Fatal("fixture lacks execution approval")
+						}
+						if _, err = failureDB(t, e).Exec(`UPDATE missions SET data=json_remove(data,?) WHERE id=?`, fmt.Sprintf("$.approvals[%d]", last), m.ID); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				m, _ = s.GetMission(m.ID)
+				if len(m.CodingAttempts)+len(m.Evidence)+len(m.Reviews) != 0 {
+					t.Fatal("fixture has execution evidence")
+				}
+				b := &diagnosticNoDispatch{}
+				e.runner, e.gateway = b, b
+				d := diagnosePure(t, e, m)
+				want := "verified"
+				if state != "awaiting_approval" && stripped {
+					want = "blocked"
+				}
+				check := diagnosticCheck(t, d, "base_authority", want)
+				if want == "blocked" && check.Code != "execution_authority_missing" {
+					t.Fatal(check)
+				}
+				diagnosticCheck(t, d, "candidate", "verified")
+				diagnosticCheck(t, d, "coding_trace", "not_applicable")
+				if len(b.calls) != 0 {
+					t.Fatal(b.calls)
+				}
+			})
+		}
+	}
+}
+
 func TestRecoveryDiagnosticExportAndReviewBindings(t *testing.T) {
 	for _, kind := range []string{"intact", "prepared_export", "delivered", "corrupt_patch", "corrupt_report", "corrupt_review", "corrupt_verification", "corrupt_trace_binding", "missing_execution_approval"} {
 		t.Run(kind, func(t *testing.T) {

@@ -230,15 +230,8 @@ func readCodingReviewTree(root string) (map[string]codingReviewFile, error) {
 	if err != nil || !os.SameFile(info, opened) {
 		return nil, errors.New("review root replaced")
 	}
-	total, entries := int64(0), 0
-	err = fs.WalkDir(dir.FS(), ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		entries++
-		if entries > 4096 || d.Type()&os.ModeSymlink != 0 {
-			return errors.New("unsafe or oversized review tree")
-		}
+	total := int64(0)
+	err = workspace.WalkBoundedTree(dir.FS(), func(p string, d fs.DirEntry) error {
 		if d.IsDir() {
 			return nil
 		}

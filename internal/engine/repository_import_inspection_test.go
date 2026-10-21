@@ -147,6 +147,29 @@ func TestInspectRepositoryFailureMatrix(t *testing.T) {
 			}
 			commitImportFixture(t, p)
 		}},
+		{"directory_depth", "tree", domain.ImportTreeLimit, func(t *testing.T, p string, r *domain.RepositoryInspectionRequest) {
+			name := filepath.Join(p, filepath.FromSlash(strings.Repeat("d/", 65)), "outside.txt")
+			if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(name, []byte("x"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			commitImportFixture(t, p)
+		}},
+		{"directory_entries", "tree", domain.ImportTreeLimit, func(t *testing.T, p string, r *domain.RepositoryInspectionRequest) {
+			// Fewer than 500 tiny files, but over 4096 implicit tree entries.
+			for i := 0; i < 80; i++ {
+				name := filepath.Join(p, fmt.Sprintf("branch-%03d", i), filepath.FromSlash(strings.Repeat("d/", 51)), "outside.txt")
+				if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(name, []byte("x"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			commitImportFixture(t, p)
+		}},
 		{"byte_limit", "tree", domain.ImportTreeLimit, func(t *testing.T, p string, r *domain.RepositoryInspectionRequest) {
 			writeImportFile(t, p, "large.txt", strings.Repeat("x", 10*1024*1024+1))
 		}},
