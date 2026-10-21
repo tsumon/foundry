@@ -45,6 +45,26 @@ function status(current = m) {
     real_execution: false,
   };
 }
+
+const matchingCandidateApproval = {
+  kind: "execute",
+  plan_revision: c4CandidateOperation.plan_revision,
+  digest: c4CandidateOperation.approval!.digest,
+  revision: c4CandidateOperation.approval!.revision,
+  created_at: c4CandidateOperation.approval!.at,
+};
+
+function candidateMission(changes: Partial<Mission> = {}): Mission {
+  return {
+    ...c4Mission,
+    state: "blocked",
+    candidate_digest: c4CandidateOperation.candidate_digest!,
+    candidate_generation: c4CandidateOperation.candidate_generation!,
+    c4_operations: [c4Operation, c4CandidateOperation],
+    approvals: [...c4Mission.approvals, matchingCandidateApproval],
+    ...changes,
+  };
+}
 it("requires separate explicit approval and execution, displays immutable permissions, never acts on mount", async () => {
   vi.spyOn(api, "c4").mockResolvedValue(status());
   const approved = {
@@ -128,6 +148,7 @@ it("separates baseline/candidate and does not call failed cleanup a success", ()
     <C4Verification
       mission={{
         ...m,
+        approvals: [...m.approvals, matchingCandidateApproval],
         c4_operations: [
           c4Operation,
           {
@@ -147,6 +168,94 @@ it("separates baseline/candidate and does not call failed cleanup a success", ()
   expect(
     screen.getByRole("region", { name: "C4 候选记录" }),
   ).not.toHaveTextContent("模拟验证通过");
+});
+
+it("labels only approval-bound candidate results as passing", () => {
+  const invalid = candidateMission({ approvals: c4Mission.approvals });
+  const { rerender } = render(<C4Verification mission={invalid} />);
+
+  expect(
+    screen.getByRole("heading", {
+      name: "candidate-1 · 审批绑定缺失或不匹配 · 不能确认通过",
+    }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("region", { name: "C4 候选记录" }),
+  ).not.toHaveTextContent("模拟验证通过");
+  expect(screen.getByRole("region", { name: "C4 基线记录" })).toHaveTextContent(
+    "模拟验证通过 · 非真实执行",
+  );
+
+  rerender(<C4Verification mission={candidateMission()} />);
+  expect(
+    screen.getByRole("heading", {
+      name: "candidate-1 · 模拟验证通过 · 非真实执行",
+    }),
+  ).toBeVisible();
+});
+
+it("blocks delivery when a passing-shaped candidate lacks its copied approval", () => {
+  const evidence = {
+    id: "verification-current",
+    candidate_digest: c4CandidateOperation.candidate_digest!,
+    image_id: c4Mission.spec.image_id,
+    acceptance_revision: c4Mission.plan!.revision,
+    passed: true,
+    created_at: "2026-10-21T00:00:07Z",
+    results: [],
+  };
+  const reviews = (["qa", "auditor"] as const).map((role) => ({
+    role,
+    passed: true,
+    summary: `${role} passed`,
+    findings: [],
+    candidate_digest: c4CandidateOperation.candidate_digest!,
+  }));
+  const deliverable = candidateMission({
+    state: "awaiting_delivery",
+    evidence: [evidence],
+    reviews,
+  });
+  const { rerender } = render(
+    <DecisionPanel
+      mission={deliverable}
+      busy={false}
+      c4Available
+      onAction={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "批准并导出交付" })).toBeEnabled();
+
+  rerender(
+    <DecisionPanel
+      mission={{ ...deliverable, approvals: c4Mission.approvals }}
+      busy={false}
+      c4Available
+      onAction={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "批准并导出交付" })).toBeDisabled();
+});
+
+it("shows the missing candidate approval in the latest-candidate queue fact", () => {
+  render(
+    <DecisionQueue
+      missions={[
+        candidateMission({
+          approvals: c4Mission.approvals,
+          error: "candidate approval binding unavailable",
+        }),
+      ]}
+      loading={false}
+      error=""
+      onOpenMission={vi.fn()}
+    />,
+  );
+
+  const queue = screen.getByRole("region", { name: "需要处理" });
+  expect(queue).toHaveTextContent("审批绑定缺失或不匹配 · 不能确认通过");
+  expect(queue).toHaveTextContent("基线模拟验证通过 · 非真实执行");
+  expect(queue).not.toHaveTextContent("最新候选记录模拟验证通过 · 非真实执行");
 });
 
 it("shows baseline failure in the existing attention queue without offering plan approval", () => {
@@ -290,6 +399,7 @@ it("retains latest candidate stop facts and mission error separately from a pass
           state: "blocked",
           base_commit: c4Operation.base_commit,
           error: "candidate cleanup requires explicit recovery",
+          approvals: [...m.approvals, matchingCandidateApproval],
           c4_operations: [
             c4Operation,
             { ...c4CandidateOperation, id: "older-candidate" },

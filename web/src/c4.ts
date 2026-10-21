@@ -252,22 +252,29 @@ export const c4AdvanceAllowed = (m: Mission) =>
       o.state === "finished" &&
       c4CleanupState(o) === "confirmed",
   );
+
+function c4CandidateApprovalBound(m: Mission, o: C4Operation): boolean {
+  return (
+    !!o.approval &&
+    m.approvals.some(
+      (approval) =>
+        approval.kind === "execute" &&
+        approval.plan_revision === o.plan_revision &&
+        approval.digest === o.approval!.digest &&
+        approval.revision === o.approval!.revision &&
+        approval.created_at === o.approval!.at,
+    )
+  );
+}
+
 export function c4CandidatePassed(m: Mission): boolean {
   const o = m.c4_operations?.filter((o) => o.kind === "candidate").at(-1);
-  const approvalBound = m.approvals.some(
-    (approval) =>
-      approval.kind === "execute" &&
-      approval.plan_revision === o?.plan_revision &&
-      approval.digest === o?.approval?.digest &&
-      approval.revision === o?.approval?.revision &&
-      approval.created_at === o?.approval?.at,
-  );
   return (
     !!o &&
     c4MissionOperationBindings(m, o) &&
     c4Passed(o) &&
     o.kind === "candidate" &&
-    approvalBound &&
+    c4CandidateApprovalBound(m, o) &&
     o.epoch === m.epoch &&
     o.plan_revision === m.plan?.revision &&
     !!m.candidate_digest &&
@@ -279,6 +286,8 @@ export function c4CandidatePassed(m: Mission): boolean {
 }
 export function c4OperationLabel(m: Mission, o: C4Operation): string {
   if (!c4MissionOperationBindings(m, o)) return "配置不支持 · 仅显示原始事实";
+  if (o.kind === "candidate" && !c4CandidateApprovalBound(m, o))
+    return "审批绑定缺失或不匹配 · 不能确认通过";
   if (c4Passed(o)) return "模拟验证通过 · 非真实执行";
   if (o.result)
     return `${o.result.class} · ${c4CleanupState(o) === "confirmed" ? "清理已确认，结果不变" : "清理未确认，不能继续"}`;

@@ -8,7 +8,12 @@ import {
   c4Supported,
 } from "./c4";
 import { mission } from "./test/fixtures";
-import { c4Mission, c4Operation, c4Profile } from "./test/c4Fixtures";
+import {
+  c4CandidateOperation,
+  c4Mission,
+  c4Operation,
+  c4Profile,
+} from "./test/c4Fixtures";
 import { decisionKind } from "./deliveryStatus";
 import { decisionMaterial } from "./decisionMaterials";
 
@@ -196,4 +201,70 @@ it("does not use a successful baseline as candidate delivery evidence", () => {
       ],
     }),
   ).toBe(false);
+});
+
+const matchingCandidateApproval = {
+  kind: "execute",
+  plan_revision: c4CandidateOperation.plan_revision,
+  digest: c4CandidateOperation.approval!.digest,
+  revision: c4CandidateOperation.approval!.revision,
+  created_at: c4CandidateOperation.approval!.at,
+};
+
+const currentCandidateMission = {
+  ...c4Mission,
+  candidate_digest: c4CandidateOperation.candidate_digest!,
+  candidate_generation: c4CandidateOperation.candidate_generation!,
+  c4_operations: [c4Operation, c4CandidateOperation],
+  approvals: [...c4Mission.approvals, matchingCandidateApproval],
+};
+
+it.each([
+  ["missing execute approval", null],
+  ["wrong approval kind", { kind: "context" }],
+  [
+    "wrong plan revision",
+    { plan_revision: matchingCandidateApproval.plan_revision + 1 },
+  ],
+  ["wrong digest", { digest: "5".repeat(64) }],
+  [
+    "wrong approval revision",
+    { revision: matchingCandidateApproval.revision + 1 },
+  ],
+  ["wrong approval timestamp", { created_at: "2026-10-21T00:00:00Z" }],
+])("rejects a passing candidate with %s", (_, change) => {
+  const approvals = change
+    ? [...c4Mission.approvals, { ...matchingCandidateApproval, ...change }]
+    : c4Mission.approvals;
+  const invalid = { ...currentCandidateMission, approvals };
+
+  expect(c4CandidatePassed(invalid)).toBe(false);
+  expect(c4OperationLabel(invalid, c4CandidateOperation)).toBe(
+    "审批绑定缺失或不匹配 · 不能确认通过",
+  );
+});
+
+it("keeps matching current and historical candidate results distinct", () => {
+  expect(c4CandidatePassed(currentCandidateMission)).toBe(true);
+  expect(c4OperationLabel(currentCandidateMission, c4CandidateOperation)).toBe(
+    "模拟验证通过 · 非真实执行",
+  );
+
+  const historicalMission = {
+    ...currentCandidateMission,
+    epoch: currentCandidateMission.epoch + 1,
+    plan: {
+      ...currentCandidateMission.plan!,
+      revision: currentCandidateMission.plan!.revision + 1,
+    },
+    candidate_digest: "6".repeat(64),
+    candidate_generation: {
+      id: "generation-2",
+      digest: "6".repeat(64),
+    },
+  };
+  expect(c4OperationLabel(historicalMission, c4CandidateOperation)).toBe(
+    "模拟验证通过 · 非真实执行",
+  );
+  expect(c4CandidatePassed(historicalMission)).toBe(false);
 });

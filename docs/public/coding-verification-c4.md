@@ -69,6 +69,9 @@ reviewed in C4-C; this declaration does not assert that an image is available.
    At most two existing, explicitly budgeted Debugger repair rounds remain. A
    changed candidate is required for another validation; no transport retry or
    same-candidate redispatch is authorized.
+   Missing or mismatched copied approval facts cannot produce a candidate pass
+   label or current delivery eligibility; historically valid, correctly bound
+   candidate results remain readable after the current candidate changes.
 6. Only a classified test failure permits Debugger. Infrastructure, OOM, timeout,
    unknown outcome, persistence failure or unconfirmed cleanup stops the task.
 7. QA/Auditor remain local simulated model judgements. Delivery stays independently
