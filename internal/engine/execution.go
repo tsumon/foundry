@@ -109,11 +109,7 @@ func (e *Engine) execution(op *operation) error {
 	allFiles := []string{}
 	for _, step := range steps {
 		allFiles = append(allFiles, step.Files...)
-		var out editOutput
-		if err := e.call(op, domain.Worker, step, &out); err != nil {
-			return err
-		}
-		if err := e.apply(op, out, step.Files); err != nil {
+		if err := e.codingEdit(op, domain.Worker, step, step.Files, step.ID, 0); err != nil {
 			return err
 		}
 		if _, err = e.update(op, "step.completed", func(m *domain.Mission) error {
@@ -138,47 +134,18 @@ func (e *Engine) execution(op *operation) error {
 		if round == 2 {
 			return errors.New("acceptance failed after maximum two repair rounds")
 		}
-		var out editOutput
-		if err := e.call(op, domain.Debugger, map[string]int{"repair_round": round + 1}, &out); err != nil {
-			return err
-		}
-		if err := e.apply(op, out, allFiles); err != nil {
+		if err := e.codingEdit(op, domain.Debugger, map[string]int{"repair_round": round + 1}, allFiles, "", round+1); err != nil {
 			return err
 		}
 	}
 	for _, role := range []domain.Role{domain.QA, domain.Auditor} {
-		m, err = e.s.GetMission(op.id)
+		id, err := e.beginCoding(op, string(role), role, "", 0)
 		if err != nil {
 			return err
 		}
-		evidenceDigest := domain.VerificationDigest(m.Evidence)
-		var out reviewOutput
-		if err := e.call(op, role, nil, &out); err != nil {
+		err = e.reviewCandidate(op, role)
+		if err = e.finishCodingAttempt(op, id, op.modelInvocationID, err); err != nil {
 			return err
-		}
-		m, err = e.s.GetMission(op.id)
-		if err != nil {
-			return err
-		}
-		if err := validateReview(out, m); err != nil {
-			return e.denyModelValidation(op, "invalid_review", err)
-		}
-		_, err = e.update(op, "review.completed", func(m *domain.Mission) error {
-			digest, err := e.candidate(*m)
-			if err != nil {
-				return err
-			}
-			if domain.VerificationDigest(m.Evidence) != evidenceDigest {
-				return errors.New("evidence changed during review")
-			}
-			m.Reviews = append(m.Reviews, domain.Review{Role: role, Passed: *out.Passed, Summary: out.Summary, Findings: out.Findings.domainFindings(), CandidateDigest: digest, EvidenceDigest: evidenceDigest})
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-		if !*out.Passed {
-			return errors.New("independent review blocked delivery")
 		}
 	}
 	_, err = e.update(op, "delivery.ready", func(m *domain.Mission) error {
@@ -192,7 +159,45 @@ func (e *Engine) execution(op *operation) error {
 	})
 	return err
 }
-func (e *Engine) verify(op *operation) (bool, error) {
+func (e *Engine) reviewCandidate(op *operation, role domain.Role) error {
+	var m domain.Mission
+	var err error
+	m, err = e.s.GetMission(op.id)
+	if err != nil {
+		return err
+	}
+	evidenceDigest := domain.VerificationDigest(m.Evidence)
+	var out reviewOutput
+	if err := e.call(op, role, nil, &out); err != nil {
+		return err
+	}
+	m, err = e.s.GetMission(op.id)
+	if err != nil {
+		return err
+	}
+	if err := validateReview(out, m); err != nil {
+		return codingError("invalid_model_output", e.denyModelValidation(op, "invalid_review", err))
+	}
+	_, err = e.update(op, "review.completed", func(m *domain.Mission) error {
+		digest, err := e.candidate(*m)
+		if err != nil {
+			return err
+		}
+		if domain.VerificationDigest(m.Evidence) != evidenceDigest {
+			return errors.New("evidence changed during review")
+		}
+		m.Reviews = append(m.Reviews, domain.Review{Role: role, Passed: *out.Passed, Summary: out.Summary, Findings: out.Findings.domainFindings(), CandidateDigest: digest, EvidenceDigest: evidenceDigest})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !*out.Passed {
+		return codingError("review_rejected", errors.New("independent review blocked delivery"))
+	}
+	return nil
+}
+func (e *Engine) verifyCandidate(op *operation) (bool, error) {
 	m, err := e.update(op, "verification.started", func(m *domain.Mission) error {
 		if _, err := e.candidate(*m); err != nil {
 			return err
@@ -225,12 +230,12 @@ func (e *Engine) verify(op *operation) (bool, error) {
 			return false, op.ctx.Err()
 		}
 		if result.Command != command {
-			return false, errors.New("runner returned mismatched command")
+			return false, codingError("infrastructure_failed", errors.New("runner returned mismatched command"))
 		}
 		if err != nil {
 			v.Passed = false
 			result.ExitCode = -1
-			infrastructureError = errors.New("sandbox infrastructure failed; resolve isolation/cleanup before replanning")
+			infrastructureError = codingError("infrastructure_failed", errors.New("sandbox infrastructure failed; resolve isolation/cleanup before replanning"))
 		}
 		if result.ExitCode != 0 || result.TimedOut {
 			v.Passed = false

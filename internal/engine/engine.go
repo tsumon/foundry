@@ -29,6 +29,7 @@ type Options struct {
 	Runner                        sandbox.Runner
 }
 type CreateRequest struct {
+	CodingVersion       int                         `json:"coding_version,omitempty"`
 	MCPSelection        *MCPSelection               `json:"mcp_selection,omitempty"`
 	ToolMode            string                      `json:"tool_mode,omitempty"`
 	CapabilitySelection *domain.CapabilitySelection `json:"capability_selection,omitempty"`
@@ -86,6 +87,9 @@ func (e *Engine) Create(ctx context.Context, r CreateRequest) (domain.Mission, e
 	defer e.mu.Unlock()
 	if e.closed {
 		return domain.Mission{}, errors.New("engine closed")
+	}
+	if err := domain.ValidateCodingVersion(r.CodingVersion, r.WorkspaceMode, r.ToolMode); err != nil {
+		return domain.Mission{}, err
 	}
 	if _, bound, err := domain.BaseWorkspaceMode(r.WorkspaceMode); err != nil || bound {
 		return domain.Mission{}, errors.New("unsupported workspace mode in creation request")
@@ -177,6 +181,7 @@ func (e *Engine) Create(ctx context.Context, r CreateRequest) (domain.Mission, e
 	}
 	m := domain.Mission{ID: id, Title: r.Title, Goal: r.Goal, RepoPath: r.RepoPath, BaseCommit: commit, State: "draft", Stage: "brief", Spec: r.Spec, Profiles: frozen, ContextManifest: manifest, Budget: domain.Budget{MaxCalls: r.Spec.MaxCalls}, CandidateDigest: digest, Messages: []domain.Message{}, Changes: []domain.Change{}, Evidence: []domain.Verification{}, Reviews: []domain.Review{}, Approvals: []domain.Approval{}}
 	m.WorkspaceMode = r.WorkspaceMode
+	m.CodingVersion = r.CodingVersion
 	m.ModelSnapshot = modelSnapshot
 	m.ModelPolicySnapshot = modelPolicySnapshot
 	if modelSnapshot != nil {
@@ -227,6 +232,9 @@ func (e *Engine) checked(id string, revision int64) (domain.Mission, error) {
 	}
 	if m.Revision != revision {
 		return m, store.ErrConflict
+	}
+	if err := domain.ValidateCodingTrace(m); err != nil {
+		return m, err
 	}
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 		return m, err
@@ -281,7 +289,12 @@ func (e *Engine) update(op *operation, kind string, f func(*domain.Mission) erro
 	if op.ctx.Err() != nil || m.Epoch != op.epoch {
 		return m, context.Canceled
 	}
-	return e.s.UpdateMission(m.ID, m.Revision, kind, f)
+	var mutationErr error
+	updated, err := e.s.UpdateMission(m.ID, m.Revision, kind, func(current *domain.Mission) error { mutationErr = f(current); return mutationErr })
+	if mutationErr == nil {
+		err = codingError("persistence_failed", err)
+	}
+	return updated, err
 }
 func (e *Engine) Pause(ctx context.Context, id string, revision int64) (domain.Mission, error) {
 	e.mu.Lock()
@@ -305,7 +318,7 @@ func (e *Engine) Pause(ctx context.Context, id string, revision int64) (domain.M
 		return m, errors.New("mission is not running")
 	}
 	op := e.active
-	m, err = e.s.UpdateMission(id, revision, "mission.pausing", func(m *domain.Mission) error { m.Epoch++; m.State = "pausing"; return nil })
+	m, err = e.s.UpdateMission(id, revision, "mission.pausing", func(m *domain.Mission) error { interruptCoding(m); m.Epoch++; m.State = "pausing"; return nil })
 	if err != nil {
 		e.mu.Unlock()
 		return m, err
@@ -369,6 +382,30 @@ func (e *Engine) Recover(ctx context.Context) error {
 		return err
 	}
 	if err := validateRecoveryModelSnapshots(missions); err != nil {
+		return err
+	}
+	// Read-only preflight: unsupported/corrupt trace must never be rewritten by
+	// recovery, local-operation cleanup, or invocation reconciliation.
+	for _, m := range missions {
+		if err := domain.ValidateCodingTrace(m); err != nil {
+			return err
+		}
+	}
+	for _, m := range missions {
+		if unfinishedCoding(m) {
+			if _, err = e.s.UpdateMission(m.ID, m.Revision, "coding.interrupted", func(current *domain.Mission) error {
+				interruptCoding(current)
+				current.Epoch++
+				current.State = "blocked"
+				current.Error = "interrupted; replan and approve explicitly"
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	missions, err = e.s.ListMissions()
+	if err != nil {
 		return err
 	}
 	// MCP/research reconciliation is local. Unlike ABv1, v2 can also have

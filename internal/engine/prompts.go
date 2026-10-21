@@ -141,6 +141,7 @@ func validateResearch(r domain.Research, manifest []domain.FileMeta) error {
 	return validateFindings(r.Findings, paths)
 }
 func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error {
+	op.modelInvocationID = ""
 	e.mu.Lock()
 	m, err := e.s.GetMission(op.id)
 	if err != nil {
@@ -150,12 +151,12 @@ func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error
 	if m.ToolMode != "" || domain.IsInferenceSnapshot(m) {
 		e.mu.Unlock()
 		invocation, text, err := e.controlledModel(op, role, extra)
+		op.modelInvocationID = invocation.ID
 		if err != nil {
 			return err
 		}
-		op.modelInvocationID = invocation.ID
 		if err = decodeControlled(text, out); err != nil {
-			return e.denyProposal(op, invocation, "invalid_role_output")
+			return codingError("invalid_model_output", e.denyProposal(op, invocation, "invalid_role_output"))
 		}
 		return nil
 	}
@@ -238,12 +239,12 @@ func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error
 		return saveErr
 	}
 	if err != nil {
-		return errors.New("model request failed; reservation consumed, no automatic retry")
+		return codingError("outcome_unknown", errors.New("model request failed; reservation consumed, no automatic retry"))
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	return decodeStrict(result.Text, out)
+	return codingError("invalid_model_output", decodeStrict(result.Text, out))
 }
 func validateReview(r reviewOutput, m domain.Mission) error {
 	if r.Passed == nil || strings.TrimSpace(r.Summary) == "" || r.Findings == nil {

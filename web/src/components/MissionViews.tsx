@@ -8,7 +8,11 @@ import {
   type Mission,
 } from "../types";
 import { ResearchBrief } from "./ResearchBrief";
-import { VerificationView } from "./VerificationView";
+import {
+  VerificationView,
+  CodingAttempts,
+  codingAttemptLabel,
+} from "./VerificationView";
 import { ModelSnapshot } from "./ModelSnapshot";
 export const views = [
   "总览",
@@ -90,6 +94,9 @@ export function MissionViews({
           </dd>
         </dl>
         <ModelSnapshot mission={mission} />
+        {mission.coding_version !== undefined && (
+          <CodingAttempts mission={mission} />
+        )}
         <RecoveryStatus
           mission={mission}
           operations={operations}
@@ -148,15 +155,26 @@ export function MissionViews({
                   </span>
                   <span className="step-status">
                     Worker ·{" "}
-                    {(
-                      {
-                        pending: "待执行",
-                        running: "执行中",
-                        done: "已完成",
-                        completed: "已完成",
-                        failed: "失败",
-                      } as Record<string, string>
-                    )[step.status] ?? step.status}
+                    {mission.coding_version === 1
+                      ? codingAttemptLabel(
+                          [...(mission.coding_attempts ?? [])]
+                            .reverse()
+                            .find(
+                              (a) =>
+                                a.phase === "worker" &&
+                                a.step_id === step.id &&
+                                a.plan_revision === mission.plan?.revision,
+                            ),
+                        )
+                      : ((
+                          {
+                            pending: "待执行",
+                            running: "执行中",
+                            done: "已完成",
+                            completed: "已完成",
+                            failed: "失败",
+                          } as Record<string, string>
+                        )[step.status] ?? step.status)}
                   </span>
                 </summary>
                 <div className="step-details">
@@ -169,6 +187,23 @@ export function MissionViews({
                   <p className="muted small">
                     完成情况以控制器记录和后续验证证据为准。
                   </p>
+                  {mission.coding_version === 1 &&
+                    (mission.coding_attempts ?? [])
+                      .filter(
+                        (a) =>
+                          a.phase === "worker" &&
+                          a.step_id === step.id &&
+                          a.plan_revision === mission.plan?.revision,
+                      )
+                      .map((a) => (
+                        <p className="muted small" key={a.id}>
+                          本地尝试 <code>{a.id}</code>
+                          {a.failure_code ? ` · ${a.failure_code}` : ""}
+                          {a.after
+                            ? ` · 候选 ${a.after.id} · ${a.after.digest}`
+                            : ""}
+                        </p>
+                      ))}
                 </div>
               </details>
             </li>

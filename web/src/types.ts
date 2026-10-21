@@ -759,6 +759,8 @@ export interface Delivery {
   created_at: string;
 }
 export interface Mission {
+  coding_version?: number;
+  coding_attempts?: CodingAttempt[];
   model_snapshot?: MissionModelSnapshot;
   model_snapshot_status?: "valid" | "invalid_or_unsupported";
   model_policy_snapshot?: MissionRolePolicySnapshot;
@@ -864,6 +866,7 @@ export interface RunEvent {
   revision: number;
 }
 export interface CreateRequest {
+  coding_version?: number;
   title: string;
   goal: string;
   repo_path: string;
@@ -879,6 +882,23 @@ export interface CreateRequest {
 export interface GenerationRef {
   id: string;
   digest: string;
+}
+export interface CodingAttempt {
+  id: string;
+  epoch: number;
+  plan_revision: number;
+  phase: string;
+  role?: Role;
+  step_id?: string;
+  repair_round?: number;
+  status: string;
+  invocation_id?: string;
+  before?: GenerationRef;
+  after?: GenerationRef;
+  verification_id?: string;
+  failure_code?: string;
+  started_at: string;
+  finished_at?: string;
 }
 export interface PreparedExport {
   patch_path: string;

@@ -1,4 +1,4 @@
-import type { Mission } from "../types";
+import type { Mission, CodingAttempt } from "../types";
 import {
   verificationOutcome,
   verificationSourceLabel,
@@ -6,6 +6,7 @@ import {
 export function VerificationView({ mission }: { mission: Mission }) {
   return (
     <>
+      <CodingAttempts mission={mission} />
       <EvidenceView mission={mission} />
       {!!mission.run_archives?.length && (
         <section className="review-section">
@@ -31,6 +32,89 @@ export function VerificationView({ mission }: { mission: Mission }) {
         </section>
       )}
     </>
+  );
+}
+
+export function codingAttemptLabel(attempt?: CodingAttempt): string {
+  if (!attempt) return "尚无执行尝试";
+  if (attempt.status === "succeeded") {
+    if (attempt.phase === "worker" || attempt.phase === "debugger")
+      return "候选修改已生成";
+    if (attempt.phase === "verification") return "验证记录已生成（来源见证据）";
+    return "模型审查通过（非命令执行证据）";
+  }
+  return (
+    (
+      {
+        running: "执行中",
+        failed: "失败",
+        interrupted: "已中断",
+        outcome_unknown: "结果未知",
+      } as Record<string, string>
+    )[attempt.status] ?? "未知状态"
+  );
+}
+
+export function CodingAttempts({ mission }: { mission: Mission }) {
+  if (!mission.coding_version)
+    return <p className="muted small">历史任务未记录执行尝试</p>;
+  if (mission.coding_version !== 1)
+    return <p className="muted small">不支持的执行记录版本；不能推断结果</p>;
+  const attempts = mission.coding_attempts ?? [];
+  return (
+    <section className="review-section" aria-label="控制器执行尝试">
+      <h2>控制器执行尝试</h2>
+      <p className="muted small">
+        本地尝试
+        ID，不是提供方回执。整体验证不归因到单个步骤；模型审查不是命令执行证据。
+      </p>
+      {!attempts.length && (
+        <p className="quiet-state">尚无执行尝试；执行仍需单独批准</p>
+      )}
+      {attempts.map((a) => (
+        <article className="review" key={a.id}>
+          <div className="section-heading">
+            <strong>
+              {a.phase}
+              {a.step_id ? ` · ${a.step_id}` : ""}
+              {a.repair_round ? ` · 修复 ${a.repair_round}` : ""}
+            </strong>
+            <span>{codingAttemptLabel(a)}</span>
+          </div>
+          <p className="muted small">
+            运行 {a.epoch} · 计划 r{a.plan_revision} · 尝试 <code>{a.id}</code>
+          </p>
+          {a.failure_code && (
+            <p>
+              失败类型 <code>{a.failure_code}</code>
+            </p>
+          )}
+          {a.before && (
+            <p className="muted small">
+              之前 <code>{a.before.id}</code> · <code>{a.before.digest}</code>
+            </p>
+          )}
+          {a.after && (
+            <p className="muted small">
+              选定候选 <code>{a.after.id}</code> · <code>{a.after.digest}</code>
+            </p>
+          )}
+          {a.verification_id && (
+            <p>
+              验证记录 <code>{a.verification_id}</code>
+            </p>
+          )}
+          {a.invocation_id && (
+            <p>
+              已记录调用关联 <code>{a.invocation_id}</code>
+            </p>
+          )}
+          <p className="muted small">
+            {a.started_at} · {a.finished_at || "尚无结束记录"}
+          </p>
+        </article>
+      ))}
+    </section>
   );
 }
 function EvidenceView({

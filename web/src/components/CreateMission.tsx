@@ -328,7 +328,7 @@ export function CreateMission({
                 },
               }
             : recoverable
-              ? { workspace_mode: "generations_v1" as const }
+              ? { workspace_mode: "generations_v1" as const, coding_version: 1 }
               : {}),
       });
       onCreated(mission);

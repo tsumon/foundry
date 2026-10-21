@@ -169,7 +169,7 @@ func (e *Engine) applyGeneration(run *operation, out editOutput, files []string)
 	// Apply has the same cardinality contract as the legacy workspace path.
 	// PrepareGeneration also serves create/reset, where empty edits are valid.
 	if len(out.Edits) == 0 || len(out.Edits) > 30 {
-		return e.denyModelValidation(run, "invalid_edit_count", errors.New("edits must contain 1–30 files"))
+		return codingError("invalid_model_output", e.denyModelValidation(run, "invalid_edit_count", errors.New("edits must contain 1–30 files")))
 	}
 	e.mu.Lock()
 	m, err := e.s.GetMission(run.id)
@@ -201,11 +201,12 @@ func (e *Engine) applyGeneration(run *operation, out editOutput, files []string)
 	}
 	if err == nil {
 		op, err = e.s.BeginLocalOperation(op)
+		err = codingError("persistence_failed", err)
 	}
 	e.mu.Unlock()
 	if err != nil {
 		if invalidProposal {
-			return e.denyModelValidation(run, "invalid_edit_scope", err)
+			return codingError("edit_denied", e.denyModelValidation(run, "invalid_edit_scope", err))
 		}
 		return err
 	}
@@ -219,7 +220,7 @@ func (e *Engine) applyGeneration(run *operation, out editOutput, files []string)
 		_, _ = e.s.InterruptLocalOperation(op.ID, err.Error())
 		var invalid *workspace.ProposalValidationError
 		if errors.As(err, &invalid) {
-			return e.denyModelValidation(run, "invalid_edit_proposal", err)
+			return codingError("edit_denied", e.denyModelValidation(run, "invalid_edit_proposal", err))
 		}
 		return err
 	}
@@ -227,7 +228,7 @@ func (e *Engine) applyGeneration(run *operation, out editOutput, files []string)
 	prepared, err := e.s.PrepareLocalOperation(op.ID, domain.LocalOperationResult{Generation: &ref, Changes: changes})
 	if err != nil {
 		_, _ = e.s.InterruptLocalOperation(op.ID, err.Error())
-		return err
+		return codingError("persistence_failed", err)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -241,7 +242,7 @@ func (e *Engine) applyGeneration(run *operation, out editOutput, files []string)
 		current.Changes = changes
 		return nil
 	})
-	return err
+	return codingError("persistence_failed", err)
 }
 
 func exportMetadata(p domain.PreparedExport) workspace.PreparedExport {

@@ -183,6 +183,9 @@ type Delivery struct {
 }
 
 type Mission struct {
+	CodingVersion      int             `json:"coding_version,omitempty"`
+	CodingAttempts     []CodingAttempt `json:"coding_attempts,omitempty"`
+	CodingTraceInvalid bool            `json:"-"`
 	// ModelPolicySnapshotInvalid is a read-only decode diagnostic. It never
 	// authorizes repair or serialization of malformed persisted provenance.
 	ModelPolicySnapshotInvalid bool                       `json:"-"`

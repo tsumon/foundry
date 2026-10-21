@@ -67,6 +67,7 @@ it("previews actual role overrides and current credential then accepts only the 
   );
   expect(body.model_snapshot).toBeUndefined();
   expect(body.workspace_mode).toBe("generations_v1");
+  expect(body.coding_version).toBe(1);
   expect(body.spec.profile_id).toBe("p1");
 });
 
@@ -214,6 +215,9 @@ it("keeps controlled creation default-off, loads capabilities only on opt-in, an
     ),
   );
   const call = fetcher.mock.calls.find(([path]) => path === "/api/missions")!;
+  expect(JSON.parse(String(call[1]?.body))).not.toHaveProperty(
+    "coding_version",
+  );
   expect(JSON.parse(String(call[1]?.body))).toMatchObject({
     repo_path: "/tmp/source",
     workspace_mode: "generations_controlled_read_v1",
@@ -345,6 +349,9 @@ it("sends only the eligible server selection for an explicitly chosen v2 local M
     ).toHaveLength(1),
   );
   const create = fetcher.mock.calls.find(([path]) => path === "/api/missions")!;
+  expect(JSON.parse(String(create[1]?.body))).not.toHaveProperty(
+    "coding_version",
+  );
   expect(JSON.parse(String(create[1]?.body))).toMatchObject({
     repo_path: "/tmp/source",
     workspace_mode: "generations_controlled_mcp_read_v2",
@@ -473,6 +480,7 @@ it("creates an explicit bounded spec from newline fields without starting model 
     ([path]) => path === "/api/missions",
   )!;
   expect(JSON.parse(String(createCall[1]?.body))).toEqual({
+    coding_version: 1,
     title: "新任务",
     goal: "改进校验",
     repo_path: "/tmp/source",
@@ -571,6 +579,7 @@ it("allows an explicit ordinary opt-out without inferring a specialized mode", a
     ),
   );
   expect(body).not.toHaveProperty("workspace_mode");
+  expect(body).not.toHaveProperty("coding_version");
   expect(body).not.toHaveProperty("tool_mode");
 });
 

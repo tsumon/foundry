@@ -11,13 +11,20 @@ import (
 
 	"foundry/internal/domain"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 )
 
 var (
 	ErrConflict = errors.New("revision conflict")
 	ErrNotFound = errors.New("not found")
 )
+
+// IsPersistenceError recognizes typed storage failures only. Validation,
+// authority and quota errors are not classified by their prose.
+func IsPersistenceError(err error) bool {
+	var sqliteError sqlite3.Error
+	return errors.As(err, &sqliteError) || errors.Is(err, sql.ErrConnDone) || errors.Is(err, sql.ErrTxDone)
+}
 
 type Store struct {
 	db *sql.DB
@@ -118,6 +125,9 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) CreateMission(m domain.Mission) (domain.Mission, error) {
+	if err := domain.ValidateCodingTrace(m); err != nil {
+		return domain.Mission{}, err
+	}
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 		return domain.Mission{}, err
 	}
@@ -261,6 +271,18 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 		return domain.Mission{}, err
 	}
 	mode := m.WorkspaceMode
+	codingBefore := m
+	codingBefore.CodingAttempts = nil
+	traceBytes, err := json.Marshal(m.CodingAttempts)
+	if err != nil {
+		return domain.Mission{}, err
+	}
+	if err := json.Unmarshal(traceBytes, &codingBefore.CodingAttempts); err != nil {
+		return domain.Mission{}, err
+	}
+	if err := domain.ValidateCodingTrace(codingBefore); err != nil {
+		return domain.Mission{}, err
+	}
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 		return domain.Mission{}, err
 	}
@@ -285,6 +307,9 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 	}
 	if m.WorkspaceMode != mode {
 		return domain.Mission{}, errors.New("workspace mode is immutable")
+	}
+	if err := domain.ValidateCodingTransition(codingBefore, m); err != nil {
+		return domain.Mission{}, err
 	}
 	updatedModelSnapshot, _ := json.Marshal(m.ModelSnapshot)
 	if !bytes.Equal(modelSnapshot, updatedModelSnapshot) {
@@ -480,11 +505,19 @@ func decodeMission(data []byte) (domain.Mission, error) {
 	// diagnostic and leaves the original stored bytes untouched.
 	projection := struct {
 		*domain.Mission
+		CodingAttempts      json.RawMessage `json:"coding_attempts"`
 		ModelSnapshot       json.RawMessage `json:"model_snapshot"`
 		ModelPolicySnapshot json.RawMessage `json:"model_policy_snapshot"`
 	}{Mission: &mission}
 	if err := json.Unmarshal(data, &projection); err != nil {
 		return domain.Mission{}, fmt.Errorf("decode mission: %w", err)
+	}
+	if len(projection.CodingAttempts) > 0 {
+		decoder := json.NewDecoder(bytes.NewReader(projection.CodingAttempts))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&mission.CodingAttempts); err != nil {
+			mission.CodingTraceInvalid = true
+		}
 	}
 	if len(projection.ModelSnapshot) > 0 {
 		if err := json.Unmarshal(projection.ModelSnapshot, &mission.ModelSnapshot); err != nil {

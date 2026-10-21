@@ -66,6 +66,20 @@ func validateExecutablePlan(plan domain.Plan, spec domain.Spec) error {
 }
 
 func authority(m domain.Mission, base string, includePlan bool) (string, error) {
+	if err := domain.ValidateCodingTrace(m); err != nil {
+		return "", err
+	}
+	if m.CodingVersion != 0 {
+		legacy := m
+		legacy.CodingVersion = 0
+		legacy.CodingAttempts = nil
+		digest, err := authority(legacy, base, includePlan)
+		if err != nil {
+			return "", err
+		}
+		h := sha256.Sum256([]byte("FOUNDRY coding authority v1\x00" + digest))
+		return hex.EncodeToString(h[:]), nil
+	}
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 		return "", err
 	}
