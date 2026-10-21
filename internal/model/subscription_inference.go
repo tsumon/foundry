@@ -25,17 +25,25 @@ func SubscriptionInferenceHTTPFailure(status int, header http.Header, body []byt
 	if len(body) > 1<<20 {
 		return providerFailure("response_incomplete", "unknown")
 	}
-	p := classifyProviderError(status, header, body)
-	if strings.Contains(p.RequestID, secret) {
-		p.RequestID = ""
+	// HTTP status alone is not definitive evidence when the response reflects
+	// the leased credential. Scan raw text and decoded JSON tokens before any
+	// error classification; token scanning also sees overwritten duplicate keys.
+	if secret != "" && (bytes.Contains(body, []byte(secret)) || json.Valid(body) && containsCredentialJSON(body, secret)) {
+		return providerFailure("response_incomplete", "unknown")
 	}
-	if strings.Contains(p.ProviderCode, secret) {
-		p.ProviderCode = ""
+	if secret != "" {
+		for key, values := range header {
+			if strings.Contains(key, secret) {
+				return providerFailure("response_incomplete", "unknown")
+			}
+			for _, value := range values {
+				if strings.Contains(value, secret) {
+					return providerFailure("response_incomplete", "unknown")
+				}
+			}
+		}
 	}
-	if strings.Contains(p.ProviderParam, secret) {
-		p.ProviderParam = ""
-	}
-	return p
+	return classifyProviderError(status, header, body)
 }
 
 // DecodeSubscriptionInference requires a real completed terminal event. Deltas
@@ -80,6 +88,7 @@ func DecodeSubscriptionInference(reader io.Reader, secret string) (Result, error
 			Error    json.RawMessage `json:"error"`
 			Code     string          `json:"code"`
 			Param    string          `json:"param"`
+			Message  *string         `json:"message"`
 			Item     json.RawMessage `json:"item"`
 			Part     *struct {
 				Type string `json:"type"`
@@ -115,11 +124,17 @@ func DecodeSubscriptionInference(reader io.Reader, secret string) (Result, error
 			}
 			return result, nil
 		case "response.failed":
-			failure := &SubscriptionInferenceFailure{Failure: classifyProviderError(http.StatusOK, http.Header{}, event.Response), TerminalEvent: event.Type}
 			var response struct {
-				Usage *responsesUsage `json:"usage"`
+				Object string          `json:"object"`
+				Status string          `json:"status"`
+				Error  json.RawMessage `json:"error"`
+				Usage  *responsesUsage `json:"usage"`
 			}
-			if json.Unmarshal(event.Response, &response) == nil && response.Usage != nil && validUsage(response.Usage.InputTokens, response.Usage.OutputTokens) {
+			if json.Unmarshal(event.Response, &response) != nil || response.Object != "response" || response.Status != "failed" || !validInferenceProviderError(response.Error) {
+				return fail()
+			}
+			failure := &SubscriptionInferenceFailure{Failure: classifyProviderError(http.StatusOK, http.Header{}, event.Response), TerminalEvent: event.Type}
+			if response.Usage != nil && validUsage(response.Usage.InputTokens, response.Usage.OutputTokens) {
 				failure.InputTokens = *response.Usage.InputTokens
 				failure.OutputTokens = *response.Usage.OutputTokens
 				failure.UsageKnown = true
@@ -131,6 +146,9 @@ func DecodeSubscriptionInference(reader io.Reader, secret string) (Result, error
 			if len(event.Error) == 0 {
 				event.Error, _ = json.Marshal(map[string]string{"code": event.Code, "param": event.Param})
 			}
+			if !validInferenceProviderError(event.Error) {
+				return fail()
+			}
 			body, _ := json.Marshal(map[string]json.RawMessage{"error": event.Error})
 			return Result{}, &SubscriptionInferenceFailure{Failure: classifyProviderError(http.StatusOK, http.Header{}, body), TerminalEvent: event.Type}
 		case "response.created", "response.in_progress", "response.output_item.added", "response.output_item.done", "response.content_part.added", "response.content_part.done", "response.output_text.delta", "response.output_text.done", "response.reasoning_summary_part.added", "response.reasoning_summary_part.done", "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done":
@@ -139,6 +157,19 @@ func DecodeSubscriptionInference(reader io.Reader, secret string) (Result, error
 		}
 	}
 	return fail()
+}
+
+// An event name is not evidence of a provider rejection. Require an actual
+// structured error with a nonempty code/type; unfamiliar strings are allowed
+// here but only the finite classifier's projection can leave this boundary.
+func validInferenceProviderError(raw json.RawMessage) bool {
+	var problem struct {
+		Code    string  `json:"code"`
+		Type    string  `json:"type"`
+		Message *string `json:"message"`
+		Param   *string `json:"param"`
+	}
+	return json.Unmarshal(raw, &problem) == nil && (strings.TrimSpace(problem.Code) != "" || strings.TrimSpace(problem.Type) != "")
 }
 
 func containsCredentialJSON(raw []byte, secret string) bool {

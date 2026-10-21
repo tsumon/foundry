@@ -101,12 +101,23 @@ func TestProductionInferenceBoundedFailuresAndMatch(t *testing.T) {
 		{"mismatch", 200, strings.ReplaceAll(inferenceCompletion, "FOUNDRY_INFERENCE_OK", "different"), "succeeded", "", false, true},
 		{"unknown usage", 200, strings.ReplaceAll(inferenceCompletion, `,"usage":{"input_tokens":9,"output_tokens":7}`, ""), "succeeded", "", true, false},
 		{"auth", 401, `{}`, "failed", "auth_invalid", false, false},
+		{"http plain echo", 401, `synthetic-catalog-secret`, "unknown", "response_incomplete", false, false},
+		{"http json echo", 401, `{"error":{"message":"synthetic-catalog-secret","code":"invalid_api_key"}}`, "unknown", "response_incomplete", false, false},
+		{"http escaped echo", 403, `{"error":{"message":"synthetic-catalog-\u0073ecret","code":"permission_error"}}`, "unknown", "response_incomplete", false, false},
+		{"http duplicate-key echo", 429, `{"error":{"message":"synthetic-catalog-\u0073ecret","message":"discarded","code":"insufficient_quota"}}`, "unknown", "response_incomplete", false, false},
 		{"entitlement", 403, `{}`, "failed", "entitlement_denied", false, false},
 		{"rate", 429, `{}`, "failed", "rate_limited", false, false},
 		{"server", 503, `{}`, "failed", "server_error", false, false},
 		{"redirect", 302, `{}`, "unknown", "response_incomplete", false, false},
-		{"quota after delta", 200, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"FOUNDRY_INFERENCE_OK\"}\n\ndata: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n", "failed", "quota_exhausted", false, false},
-		{"failed usage", 200, "data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\",\"param\":\"model\"},\"usage\":{\"input_tokens\":9,\"output_tokens\":7}}}\n\n", "failed", "quota_exhausted", false, true},
+		{"quota after delta", 200, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"FOUNDRY_INFERENCE_OK\"}\n\ndata: {\"type\":\"response.failed\",\"response\":{\"object\":\"response\",\"status\":\"failed\",\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n", "failed", "quota_exhausted", false, false},
+		{"failed usage", 200, "data: {\"type\":\"response.failed\",\"response\":{\"object\":\"response\",\"status\":\"failed\",\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\",\"param\":\"model\"},\"usage\":{\"input_tokens\":9,\"output_tokens\":7}}}\n\n", "failed", "quota_exhausted", false, true},
+		{"malformed missing failed response", 200, "data: {\"type\":\"response.failed\"}\n\n", "unknown", "response_incomplete", false, false},
+		{"malformed scalar failed response", 200, "data: {\"type\":\"response.failed\",\"response\":42}\n\n", "unknown", "response_incomplete", false, false},
+		{"malformed failed with usage", 200, "data: {\"type\":\"response.failed\",\"response\":{\"object\":\"response\",\"status\":\"failed\",\"error\":null,\"usage\":{\"input_tokens\":9,\"output_tokens\":7}}}\n\n", "unknown", "response_incomplete", false, false},
+		{"malformed missing error", 200, "data: {\"type\":\"error\"}\n\n", "unknown", "response_incomplete", false, false},
+		{"malformed empty error", 200, "data: {\"type\":\"error\",\"error\":{}}\n\n", "unknown", "response_incomplete", false, false},
+		{"unfamiliar valid failed response", 200, "data: {\"type\":\"response.failed\",\"response\":{\"object\":\"response\",\"status\":\"failed\",\"error\":{\"code\":\"future_code\"}}}\n\n", "failed", "request_rejected", false, false},
+		{"unfamiliar valid error", 200, "data: {\"type\":\"error\",\"code\":\"future_code\"}\n\n", "failed", "request_rejected", false, false},
 		{"delta only", 200, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"FOUNDRY_INFERENCE_OK\"}\n\n", "unknown", "response_incomplete", false, false},
 		{"model", 200, strings.ReplaceAll(inferenceCompletion, "gpt-6.1-sol", "other"), "unknown", "response_incomplete", false, false},
 		{"broken", 200, "data: {\n\n", "unknown", "response_incomplete", false, false},
@@ -134,6 +145,9 @@ func TestProductionInferenceBoundedFailuresAndMatch(t *testing.T) {
 			}
 			if tc.state == "succeeded" && (got.OutputMatched == nil || *got.OutputMatched != tc.matched) {
 				t.Fatal("match not distinct")
+			}
+			if tc.state == "unknown" && (got.Certainty != "unknown" || got.Attempts != 1 || got.InferenceEvidence != (domain.InferenceEvidence{}) || got.InputTokens != 0 || got.OutputTokens != 0) {
+				t.Fatalf("unknown retained terminal/provider evidence: %+v", got)
 			}
 			raw, _ := json.Marshal(got)
 			if strings.Contains(string(raw), "synthetic-catalog-secret") || strings.Contains(string(raw), "different") {
