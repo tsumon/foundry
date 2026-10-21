@@ -164,6 +164,13 @@ function QueueSection({
 }
 
 function decisionCopy(kind: DecisionKind, mission: Mission) {
+  if (
+    kind === "attention" &&
+    (mission.spec.c4 || mission.c4_operations?.length)
+  )
+    return "检查 C4 失败与清理事实；精确清理需单独点击，不重放执行、不改变结果。基线失败需诊断或新建任务。";
+  if (kind === "c4_baseline")
+    return "基线准备、批准与执行各自需要明确点击；基线不是候选验证，也不授权上下文或交付。";
   if (kind === "context")
     return "检查将披露的仓库上下文，并在原决策区明确授权。";
   if (kind === "mcp_call")

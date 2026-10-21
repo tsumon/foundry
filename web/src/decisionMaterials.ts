@@ -1,5 +1,6 @@
 import { decisionKind, type DecisionKind } from "./deliveryStatus";
 import type { Mission, Review } from "./types";
+import { c4OperationLabel, c4Supported, hasC4 } from "./c4";
 import {
   verificationOutcome,
   verificationSourceLabel,
@@ -160,6 +161,29 @@ function attentionMaterial(mission: Mission): DecisionMaterial {
 
 export function decisionMaterial(mission: Mission): DecisionMaterial {
   const kind = decisionKind(mission);
+  if (kind === "c4_baseline" || (kind === "attention" && hasC4(mission))) {
+    const baseline = mission.c4_operations
+      ?.filter((o) => o.kind === "baseline")
+      .at(-1);
+    return {
+      kind,
+      actionLabel: kind === "attention" ? "检查 C4 停止原因" : "检查 C4 基线",
+      view: "验证",
+      facts: [
+        {
+          label: "基线",
+          value: baseline ? c4OperationLabel(baseline) : "尚未准备材料",
+        },
+        { label: "材料", value: baseline?.material_digest ?? "未记录" },
+        {
+          label: "来源",
+          value: c4Supported(mission)
+            ? "synthetic_stub · C4-C 未执行"
+            : "来源未确认 · C4-C 未执行",
+        },
+      ],
+    };
+  }
   if (kind === "context") return contextMaterial(mission);
   if (kind === "mcp_call") return mcpMaterial(mission);
   if (kind === "plan") return planMaterial(mission);

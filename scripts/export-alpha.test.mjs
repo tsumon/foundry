@@ -218,6 +218,28 @@ test('the real alpha manifest exports exactly its listed regular files', async (
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).fileCount, paths.length);
     assert.deepEqual(await listRegularFiles(destination), paths);
+    // Export must retain the C3 admission dependencies used by C4, not merely
+    // agree with an incomplete manifest. This works in an export with no .git.
+    for (const dependency of [
+      'internal/domain/repository_import.go',
+      'internal/workspace/tree_walk.go',
+      'internal/engine/repository_import_inspection.go',
+      'internal/httpapi/repository_import.go',
+      'internal/store/repository_import.go',
+      'cmd/foundry-acceptance/repository_import.go',
+      'web/src/components/RepositoryImport.tsx',
+      'internal/domain/c4.go',
+      'internal/sandbox/c4.go',
+      'internal/engine/c4_baseline.go',
+      'internal/httpapi/c4.go',
+      'internal/c4verify/verify.go',
+      'cmd/foundry-verify-go/main.go',
+      'cmd/foundry-acceptance/c4_fixture.go',
+      'web/src/components/C4Verification.tsx',
+      'docs/public/coding-verification-c4.md',
+    ]) {
+      assert.equal((await stat(join(destination, dependency))).isFile(), true, `${dependency} required in clean export`);
+    }
     for (const path of paths) {
       const sourceBytes = await readFile(join(repositoryRoot, ...path.split('/')));
       const destinationBytes = await readFile(join(destination, ...path.split('/')));
@@ -226,6 +248,7 @@ test('the real alpha manifest exports exactly its listed regular files', async (
     await pathDoesNotExist(join(destination, '.git'));
     await pathDoesNotExist(join(destination, 'AGENTS.md'));
     await pathDoesNotExist(join(destination, 'docs', 'superpowers'));
+    await pathDoesNotExist(join(destination, '.superpowers'));
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

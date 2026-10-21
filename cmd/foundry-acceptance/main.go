@@ -26,6 +26,7 @@ import (
 	"foundry/internal/httpapi"
 	"foundry/internal/mcptest"
 	"foundry/internal/model"
+	"foundry/internal/sandbox"
 	"foundry/internal/store"
 )
 
@@ -147,8 +148,15 @@ func startAcceptance(webDir string) (_ *acceptanceRuntime, err error) {
 	}
 	descriptor := r.mcp.Descriptor()
 	baseGateway := acceptanceGateway{router: r.router}
-	r.engine = engine.New(r.store, codingReplanGateway{fallback: codingLoopGateway{fallback: baseGateway}, store: r.store}, engine.Options{DataDir: filepath.Join(root, "managed"), Runner: codingLoopRunner{fallback: syntheticRunner{}}, LocalMCPTest: &descriptor})
+	// Pin an existing canonical C4 root before construction; no runner probe.
+	if err = os.MkdirAll(filepath.Join(root, "managed"), 0700); err != nil {
+		return nil, err
+	}
+	r.engine = engine.New(r.store, codingReplanGateway{fallback: codingLoopGateway{fallback: baseGateway}, store: r.store}, engine.Options{DataDir: filepath.Join(root, "managed"), Runner: codingLoopRunner{fallback: syntheticRunner{}}, LocalMCPTest: &descriptor, C4: engine.NewC4SyntheticCapability(sandbox.NewC4SyntheticDriver(&c4FixtureDriver{}), c4FixtureGateway{store: r.store}, "/synthetic/docker", "unix:///synthetic/docker.sock")})
 	if err = r.engine.Recover(context.Background()); err != nil {
+		return nil, err
+	}
+	if err = seedC4Scenarios(r); err != nil {
 		return nil, err
 	}
 	if err = seedCodingLoopScenario(r); err != nil {

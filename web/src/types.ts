@@ -439,6 +439,7 @@ export interface Settings {
   model_policy_decision_id?: string;
 }
 export interface Spec {
+  c4?: import("./c4").C4Profile;
   scope: string[];
   protected: string[];
   acceptance: string[];
@@ -804,6 +805,7 @@ export interface Delivery {
   created_at: string;
 }
 export interface Mission {
+  c4_operations?: import("./c4").C4Operation[];
   import_version?: number;
   repository_import?: import("./repositoryImportTypes").RepositoryImportBinding;
   replan_context?: FailureBundle;

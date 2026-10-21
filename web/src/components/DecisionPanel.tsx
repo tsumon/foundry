@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { c4AdvanceAllowed, c4CandidatePassed, hasC4 } from "../c4";
 import {
   activeStates,
   isControlledMCPReadMission,
@@ -30,6 +31,8 @@ export function DecisionPanel({
   onOpenMCPApproval,
   planApprovalBlocked = false,
   unsupportedWorkspaceMode = false,
+  c4Decision,
+  c4Available = false,
 }: {
   mission: Mission;
   busy: boolean;
@@ -38,6 +41,8 @@ export function DecisionPanel({
   onOpenMCPApproval?: () => void;
   planApprovalBlocked?: boolean;
   unsupportedWorkspaceMode?: boolean;
+  c4Decision?: React.ReactNode;
+  c4Available?: boolean;
 }) {
   const [consent, setConsent] = useState(false);
   const [controlledConsent, setControlledConsent] = useState(false);
@@ -61,8 +66,14 @@ export function DecisionPanel({
       mission.coding_attempts?.some((a) => a.status !== "succeeded"));
   const unresolved = mission.plan?.adjustments?.some((a) => a.unresolved);
   const evidence = mission.evidence?.at(-1);
+  const c4Blocked =
+    hasC4(mission) && (!c4Available || !c4AdvanceAllowed(mission));
   const deliverable =
     mission.state === "awaiting_delivery" &&
+    (!hasC4(mission) ||
+      (c4Available &&
+        c4AdvanceAllowed(mission) &&
+        c4CandidatePassed(mission))) &&
     codingReviewsCurrent(mission) &&
     !!evidence?.passed &&
     evidence.candidate_digest === mission.candidate_digest &&
@@ -80,13 +91,15 @@ export function DecisionPanel({
       <h2>
         {demo
           ? "演示中的决策视角"
-          : planning
-            ? "检查共享上下文"
-            : approval
-              ? "请审阅执行计划"
-              : mission.state === "awaiting_delivery"
-                ? "请审阅交付证据"
-                : missionStateName(mission)}
+          : planning && c4Blocked
+            ? "检查 C4 基线与清理"
+            : planning
+              ? "检查共享上下文"
+              : approval
+                ? "请审阅执行计划"
+                : mission.state === "awaiting_delivery"
+                  ? "请审阅交付证据"
+                  : missionStateName(mission)}
       </h2>
       <p className="muted small">
         任务 r{mission.revision}
@@ -98,6 +111,14 @@ export function DecisionPanel({
         </div>
       ) : (
         <>
+          {c4Decision}
+          {c4Blocked && (
+            <p className="warning-copy">
+              C4
+              尚无可继续的完整基线与清理事实，或模拟能力未确认。上下文、执行与交付仍需各自批准；请先检查
+              C4 记录。
+            </p>
+          )}
           {unsupportedWorkspaceMode && (
             <div className="note warning-note">
               此任务使用当前版本不支持的工作区模式。任务保持可读，但规划、计划修订、执行、暂停、交付和模型调用均已禁用。
@@ -132,8 +153,14 @@ export function DecisionPanel({
           {planning && (
             <>
               <div className="note warning-note">
-                已批准的源码、目标与命令可能包含嵌入的秘密。文件名过滤不等于秘密扫描。授权后，这些上下文会发送至下方冻结的模型
-                {mcpControlled ? "接收连接" : "端点"}。
+                {hasC4(mission) ? (
+                  "C4 上下文仅交给专用本地模拟模型；下方端点是合成声明，不联系远程服务。上下文同意仍独立于基线、计划与交付批准。"
+                ) : (
+                  <>
+                    已批准的源码、目标与命令可能包含嵌入的秘密。文件名过滤不等于秘密扫描。授权后，这些上下文会发送至下方冻结的模型
+                    {mcpControlled ? "接收连接" : "端点"}。
+                  </>
+                )}
               </div>
               {mission.state !== "draft" && (
                 <p className="warning-copy">
@@ -261,7 +288,8 @@ export function DecisionPanel({
                   (controlled &&
                     (!controlledConsent || !mission.task_bindings)) ||
                   unsupportedWorkspaceMode ||
-                  planAccountBlocked
+                  planAccountBlocked ||
+                  c4Blocked
                 }
                 onClick={() => onAction("plan", controlled ? true : undefined)}
               >
@@ -288,7 +316,8 @@ export function DecisionPanel({
                   planApprovalBlocked ||
                   unresolved ||
                   unsupportedWorkspaceMode ||
-                  executionAccountBlocked
+                  executionAccountBlocked ||
+                  c4Blocked
                 }
                 onClick={() => onAction("approve")}
               >

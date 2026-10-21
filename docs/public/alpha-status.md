@@ -4,6 +4,8 @@ FOUNDRY is an experimental, source-only macOS arm64 (Apple Silicon) alpha. This 
 
 ## Implemented
 
+- [C4-A/B approval-bound Go verification preparation](coding-verification-c4.md): immutable profile and independently prepared/approved/executed baseline, bounded append-only lifecycle facts, exact-owned cleanup, candidate failure/repair and C2-bound review/delivery checks. Existing workbench decision/verification/activity areas expose local synthetic fixtures; no new navigation or real enable toggle. Production C4 is closed, with no CLI/environment/HTTP bypass or legacy-runner fallback. **C4-C is not performed**: no real Docker/Go execution, image or host-isolation readiness is established.
+
 - C3 local repository admission in the ordinary recoverable-task form: explicit inspection consent, exact receipt binding, input/race invalidation, registered project entry, durable import history (including attempts without a task), and frozen source provenance.
 - Manual read-only recovery diagnosis in the existing candidate/local-operation view. It reports independently checked dimensions and stale revisions without repairing, retrying, polling, or changing the separate context/execution/delivery approvals.
 

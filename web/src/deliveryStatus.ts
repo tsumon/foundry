@@ -1,7 +1,8 @@
 import { isControlledMCPReadMission, stateNames, type Mission } from "./types";
+import { hasC4, c4BaselinePassed } from "./c4";
 
 export type DecisionKind =
-  "context" | "mcp_call" | "plan" | "delivery" | "attention";
+  "context" | "mcp_call" | "plan" | "delivery" | "attention" | "c4_baseline";
 
 export const isMCPDecisionPending = (mission: Mission) =>
   isControlledMCPReadMission(mission) &&
@@ -25,6 +26,14 @@ export const missionStateName = (mission: Mission) =>
     : (stateNames[mission.state] ?? mission.state);
 
 export function decisionKind(mission: Mission): DecisionKind | null {
+  if (
+    hasC4(mission) &&
+    ["draft", "blocked", "paused"].includes(mission.state) &&
+    !c4BaselinePassed(mission)
+  )
+    return mission.c4_operations?.some((o) => o.result)
+      ? "attention"
+      : "c4_baseline";
   if (isMCPDecisionPending(mission)) return "mcp_call";
   switch (mission.state) {
     case "draft":

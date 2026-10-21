@@ -30,7 +30,24 @@ Skill registration stores bounded static text. Skill content does not run script
 
 ## Docker verification
 
-Execution/verification requires a running Docker daemon and the exact trusted image already present locally. FOUNDRY does not pull images. It runs the approved command with networking disabled, a read-only candidate bind mount, a writable restricted `/tmp`, no health check, no log driver, dropped Linux capabilities, `no-new-privileges`, an unprivileged user, and CPU/memory/process limits.
+This section describes the legacy verification path. The versioned
+[C4-A/B path](coding-verification-c4.md) is default-closed in production and never
+falls back to that path. Only the disposable acceptance runtime injects its local
+synthetic driver/models. `synthetic_stub` results are content-comparison records,
+not Go/compiler/Docker execution or real readiness. C4-C has not been performed.
+
+C4 separately approves baseline material, then explicitly executes it; this is
+not context, candidate-plan or delivery approval. Its fixed declaration adds an
+explicit 256 MiB executable `/foundry-build` scratch permission while keeping
+the root/candidate read-only and `/tmp` noexec. Static flags do not prove kernel
+isolation. Unknown results and unconfirmed cleanup stop without retry/repair.
+Separately requested cleanup checks only a known exact-owned ID and cannot replay
+execution, turn unknown/failure into success, or authorize delivery. Production
+startup with any C4 record preserves diagnostic read-only access rather than
+probing Docker or resuming it. No C4 enable environment variable, CLI or HTTP
+override is provided.
+
+Legacy execution/verification requires a running Docker daemon and the exact trusted image already present locally. FOUNDRY does not pull images. It runs the approved command with networking disabled, a read-only candidate bind mount, a writable restricted `/tmp`, no health check, no log driver, dropped Linux capabilities, `no-new-privileges`, an unprivileged user, and CPU/memory/process limits.
 
 These restrictions reduce risk; they are not a proof that Docker, the image, the host kernel, the acceptance command, or the candidate is safe. Do not mount secrets or the Docker socket into the container. If cleanup cannot be confirmed, the controller blocks rather than assuming the sandbox stopped.
 

@@ -12,6 +12,7 @@ import type {
   Settings,
   ReadGrant,
 } from "./types";
+import type { C4Action, C4Status } from "./c4";
 export interface HealthResponse {
   status: string;
   read_only?: boolean;
@@ -64,6 +65,13 @@ export async function initializeSession(): Promise<void> {
   await request("/api/session", json("POST", {}));
 }
 export const api = {
+  c4: (id: string) =>
+    request<C4Status>(`/api/missions/${encodeURIComponent(id)}/c4`),
+  c4Action: (id: string, body: C4Action) =>
+    request<{ mission: Mission }>(
+      `/api/missions/${encodeURIComponent(id)}/c4`,
+      json("POST", body),
+    ),
   health: () => request<HealthResponse>("/api/health"),
   missions: () => request<{ missions: Mission[] | null }>("/api/missions"),
   mission: (id: string) =>

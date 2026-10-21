@@ -1,6 +1,8 @@
 # C4-A/B: approval-bound Go verification preparation
 
-Status: implementation design; C4-C real project/image/Docker acceptance is not authorized.
+Status: C4-A/B implemented with local synthetic validation. C4-C real
+project/image/Docker acceptance is not authorized or performed. Whole-build,
+browser and hosted CI evidence must always be tied to the tested source revision.
 
 ## Scope and non-goals
 
@@ -171,4 +173,57 @@ C4-C remains not performed: actual project admission, image provenance/preload,
 local Docker endpoint readiness, compiler execution, host isolation and resource
 enforcement require separate approval and real acceptance. Synthetic passes do
 not prove these properties.
+
+## Disposable workbench acceptance
+
+Build the existing frontend, then start
+`go run ./cmd/foundry-acceptance --web-dir web/dist`. This command always
+allocates new disposable data and a random loopback URL; it has no user-project
+or C4 real-execution option. Its printed manifest includes
+`c4_readiness: not_checked` and these task IDs:
+
+- `c4_baseline_pending`: C3-admitted stdlib-only Go fixture, fixed protected
+  tests/module/configuration, exactly seven frozen accountless synthetic roles,
+  and prepared but **unapproved** baseline material. Nothing executes on viewing
+  the task. In the existing decision area, approve the material, then separately
+  execute the simulated baseline. Next authorize context, inspect the proposed
+  plan, and explicitly approve execution. Worker proposes `n + 2`; the fake
+  driver records a content-derived `test_failed`, and Debugger changes it to
+  `n * 2`. The original baseline is `n + n`, so the final patch is meaningful.
+  QA/Auditor produce C2 contract-bound simulated reviews. Delivery still needs
+  its own approval and only exports patch/report artifacts.
+- `c4_cleanup_failure`: separate disposable repository with an intentionally
+  simulated `infrastructure_failed` baseline and failed first cleanup. The
+  decision area permits a separately requested, exact-owned cleanup. Cleanup
+  can become confirmed but cannot change the failure, re-run verification,
+  authorize Debugger, or enable delivery. This fixture is deliberately seeded
+  through actual engine approvals/execution; it is not a pending user decision
+  or an observed Docker failure.
+
+The driver compares the exact candidate file contents and frozen test fixture;
+it does **not** run the Go compiler, tests, shell or Docker. All candidate
+verification evidence is `source_version: 1`, `source_kind: synthetic_stub`.
+Simulated lifecycle facts and model judgements are not actual container facts,
+real command evidence, image provenance, or readiness. Models use a dedicated
+in-process gateway with no router, account, credential interface or fallback.
+The fixture restores live settings after freezing its roles, preserving the
+other acceptance scenarios.
+
+The current workbench navigation is unchanged. The decision area displays the
+immutable profile/resources and executable scratch permission. The verification
+view separates baseline from candidate records and shows operation/material,
+generation, attempt/repair, stage, result, truncation and cleanup facts. Persisted
+`c4.*` events appear in the existing activity stream. Missing/unsupported facts,
+stale reads and unconfirmed cleanup never grant UI authority. Failed actions only
+refresh GET facts; they are not retried. Real C4 remains visibly closed without a
+toggle. Backend revision, material and delivery checks remain authoritative.
+
+While baseline material is pending, context/plan and Main chat do not invite
+intervening mutations. Approved material whose approval revision is no longer
+immediate is visibly stopped. The UI never parses opaque operation IDs; a stale
+prepared material is authoritatively rejected by the backend. Failed mutations
+are inhibited for that material and only GET facts refresh. A new durable cleanup
+revision permits a fresh **explicit cleanup-only** action. There is no reprepare
+or same-material execution retry: diagnose the stopped task, or create a fresh
+disposable task/runtime for a new acceptance flow.
 

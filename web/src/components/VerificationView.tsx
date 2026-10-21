@@ -1,5 +1,6 @@
 import type { Mission, CodingAttempt } from "../types";
 import { ReplanSummary } from "./ReplanSummary";
+import { C4Verification } from "./C4Verification";
 import {
   verificationOutcome,
   verificationSourceLabel,
@@ -79,6 +80,7 @@ export function VerificationView({ mission }: { mission: Mission }) {
   return (
     <>
       <ReplanSummary mission={mission} />
+      <C4Verification mission={mission} />
       <CodingAttempts mission={mission} />
       <EvidenceView mission={mission} />
       {!!mission.run_archives?.length && (

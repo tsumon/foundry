@@ -48,6 +48,8 @@ func (r *acceptanceRuntime) manifest() acceptanceManifest {
 			"repository_import":   "Project assets → SYNTHETIC C3 local import → registered repository → create → explicit inspection; source registry is metadata only",
 			"recovery_diagnostic": "Open C3 draft or isolated corrupt-evidence mission → Overview → candidate/local operations → manual recovery diagnosis",
 			"interrupted_import":  "Create task → recent import records (read only); synthetic-c3-no-mission is reserved only",
+			"c4_baseline_pending": "Pending decisions → SYNTHETIC C4 baseline_pending → existing decision area: approve baseline, then explicitly execute; separate context, plan and delivery approvals follow",
+			"c4_cleanup_failure":  "Pending decisions → SYNTHETIC C4 cleanup_failure → inspect infrastructure/cleanup failure; explicit exact-object cleanup only, never re-execution or a passing result",
 		},
 	}
 }

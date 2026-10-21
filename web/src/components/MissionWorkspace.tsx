@@ -6,6 +6,8 @@ import {
   type SetStateAction,
 } from "react";
 import { api, APIError, errorMessage } from "../api";
+import { hasC4, c4EventLabel, c4AdvanceAllowed } from "../c4";
+import { C4Decision } from "./C4Verification";
 import {
   activeStates,
   isControlledMCPReadMission,
@@ -87,6 +89,15 @@ export function MissionWorkspace({
   hooksEnabled?: boolean;
 }) {
   const [view, setView] = useState<MissionView>(initialView);
+  const [c4Availability, setC4Availability] = useState({
+    id: "",
+    revision: 0,
+    available: false,
+  });
+  const c4Available =
+    c4Availability.id === mission.id &&
+    c4Availability.revision === mission.revision &&
+    c4Availability.available;
   const [localSession, setLocalSession] = useState(() =>
     createMissionSession(mission),
   );
@@ -218,12 +229,16 @@ export function MissionWorkspace({
     !activeStates.includes(mission.state) &&
     !unsupportedWorkspaceMode &&
     !accountActionBlocked(mission, "chat") &&
+    (!hasC4(mission) || (c4Available && c4AdvanceAllowed(mission))) &&
     !busy;
   const act = async (action: MissionAction, controlledConsent?: true) => {
     if (
       demo ||
       unsupportedWorkspaceMode ||
       accountActionBlocked(mission, action) ||
+      (hasC4(mission) &&
+        action !== "pause" &&
+        (!c4Available || !c4AdvanceAllowed(mission))) ||
       inFlight.current
     )
       return;
@@ -507,6 +522,25 @@ export function MissionWorkspace({
           }
           planApprovalBlocked={draft.dirty || draft.stale}
           unsupportedWorkspaceMode={unsupportedWorkspaceMode}
+          c4Available={c4Available}
+          c4Decision={
+            !demo && hasC4(mission) ? (
+              <C4Decision
+                mission={mission}
+                busy={busy || unsupportedWorkspaceMode}
+                onUpdate={onUpdate}
+                inFlight={inFlight}
+                onBusyChange={setBusy}
+                onAvailabilityChange={(available) =>
+                  setC4Availability({
+                    id: mission.id,
+                    revision: mission.revision,
+                    available,
+                  })
+                }
+              />
+            ) : undefined
+          }
         />
         <section className="main-agent">
           <div className="section-heading">
@@ -591,7 +625,7 @@ export function MissionWorkspace({
           {events.map((event) => (
             <div className="event-row" key={event.seq}>
               <code>#{event.seq}</code>
-              <span>{event.kind}</span>
+              <span>{c4EventLabel(event.kind)}</span>
               <span>r{event.revision}</span>
               <time>{event.created_at}</time>
             </div>

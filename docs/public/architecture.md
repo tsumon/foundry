@@ -68,6 +68,28 @@ Task-scoped model, repository-read, and MCP calls reserve identity and budget be
 
 Recovery performs local reconciliation and, where previously approved execution may have left a container, owner-scoped Docker cleanup. It does not initiate a model request, MCP request, new sandbox run, image resolution, Git operation, or delivery. A user must explicitly continue from a verified resumable checkpoint.
 
+## C4-A/B synthetic verification boundary
+
+[C4](coding-verification-c4.md) adds optional immutable profile/operation records
+to the existing mission CAS store, not a second approval database. A C3-admitted
+task prepares baseline material, explicitly approves it, then separately executes
+it before context/planning. Baseline is never candidate evidence. Execute approval
+also binds the profile and baseline; delivery still requires current candidate
+evidence, C2 QA/Auditor references, and its own approval.
+
+A deterministic Docker command plan and bounded lifecycle executor accept only
+an injected in-process synthetic capability. There is no production C4 subprocess
+transport, bypass flag, model-router escape or legacy Docker-runner fallback.
+Unknown/persistence/cleanup outcomes stop without replay; explicit cleanup checks
+the separately known exact-owned ID only. Production startup with C4 records is
+diagnostic/read-only. C4-C real image/toolchain/isolation acceptance is unperformed.
+
+The disposable acceptance runtime uses a separate stdlib-only Go source fixture,
+seven accountless synthetic role snapshots, a dedicated local model gateway and
+a content-comparison fake driver. It never invokes Go or Docker for that fixture.
+The existing decision panel, verification view and persisted activity stream show
+these facts without new navigation. All real C4 readiness remains `not_checked`.
+
 ## Output boundary
 
 Model responses, repository observations, MCP data, Skill text, and browser content remain untrusted. The controller validates bounded structured outputs before using them and seals evidence to exact invocation and binding identities. Candidate changes stay in controller-owned storage. Delivery exports a patch and report for human review; it never applies them to the source repository.
