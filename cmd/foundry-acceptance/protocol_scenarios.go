@@ -23,6 +23,7 @@ type acceptanceManifest struct {
 	FixturePath  string            `json:"fixture_path"`
 	Scenarios    map[string]string `json:"scenarios"`
 	BrowserPaths map[string]string `json:"browser_paths"`
+	C4Readiness  string            `json:"c4_readiness"`
 }
 
 func (r *acceptanceRuntime) manifest() acceptanceManifest {
@@ -37,12 +38,16 @@ func (r *acceptanceRuntime) manifest() acceptanceManifest {
 		Repo:        r.Repo,
 		FixturePath: acceptanceFixturePath,
 		Scenarios:   scenarios,
+		C4Readiness: "not_checked",
 		BrowserPaths: map[string]string{
 			"fixture":             "Open /acceptance-fixture/ from the printed root URL",
 			"model_settings":      "Settings → Models",
 			"role_model_policy":   "Settings → Models → Role policy and recommendations",
 			"mission_plan":        "Projects → select scenario title → Plan",
 			"mission_invocations": "Projects → select scenario title → Activity",
+			"repository_import":   "Project assets → SYNTHETIC C3 local import → registered repository → create → explicit inspection; source registry is metadata only",
+			"recovery_diagnostic": "Open C3 draft or isolated corrupt-evidence mission → Overview → candidate/local operations → manual recovery diagnosis",
+			"interrupted_import":  "Create task → recent import records (read only); synthetic-c3-no-mission is reserved only",
 		},
 	}
 }

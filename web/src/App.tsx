@@ -20,6 +20,7 @@ import type { DecisionTargetView } from "./decisionMaterials";
 import { useCatalog } from "./useCatalog";
 import { missionProjectContext } from "./projectContext";
 import { RecoveryNotice } from "./components/RecoveryNotice";
+import type { GitRepository } from "./capabilityTypes";
 
 type MissionSource =
   | { kind: "section"; section: Section }
@@ -39,6 +40,7 @@ export default function App() {
     Record<string, MissionSession>
   >({});
   const [creating, setCreating] = useState(false);
+  const [creationRepository, setCreationRepository] = useState<GitRepository>();
   const [demo, setDemo] = useState(false);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [initialMissionView, setInitialMissionView] = useState<
@@ -74,6 +76,7 @@ export default function App() {
     setInitialMissionView(undefined);
   };
   const beginCreate = () => {
+    setCreationRepository(undefined);
     creationSource.current =
       section === "catalog" && selectedProject
         ? {
@@ -190,10 +193,15 @@ export default function App() {
             onSelected={setSelectedProject}
             view={catalogView}
             onView={setCatalogView}
+            onCreateFromRepository={(repository) => {
+              beginCreate();
+              setCreationRepository(repository);
+            }}
           />
         </div>
         {catalogVisible ? null : creating ? (
           <CreateMission
+            initialRepository={creationRepository}
             onCancel={() => setCreating(false)}
             onCreated={(m) => {
               work.update(m);

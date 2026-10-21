@@ -1,4 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { capabilityApi } from "../../capabilityApi";
+import { errorMessage } from "../../api";
+import type { GitRepository } from "../../capabilityTypes";
 import type { Mission } from "../../types";
 import type { CatalogController } from "../../useCatalog";
 import {
@@ -20,6 +23,7 @@ export function CatalogWorkspace({
   onSelected,
   view,
   onView,
+  onCreateFromRepository,
 }: {
   enabled: boolean;
   missions: Mission[];
@@ -29,6 +33,7 @@ export function CatalogWorkspace({
   onSelected: (id: string) => void;
   view: CatalogView;
   onView: (view: CatalogView) => void;
+  onCreateFromRepository?: (repository: GitRepository) => void;
 }) {
   const snapshot = catalog.snapshot;
   const project = snapshot?.projects.find((item) => item.id === selected);
@@ -114,6 +119,14 @@ export function CatalogWorkspace({
                 <summary>项目资料</summary>
                 <ProjectForm project={project} {...actions} />
               </details>
+              {onCreateFromRepository && (
+                <ProjectRepositories
+                  key={project.id}
+                  projectID={project.id}
+                  enabled={enabled}
+                  onCreate={onCreateFromRepository}
+                />
+              )}
               <nav aria-label="项目资产视角" className="catalog-tabs">
                 {catalogViews.map((tab) => (
                   <button
@@ -330,6 +343,58 @@ export function CatalogWorkspace({
         </>
       )}
     </div>
+  );
+}
+
+function ProjectRepositories({
+  projectID,
+  enabled,
+  onCreate,
+}: {
+  projectID: string;
+  enabled: boolean;
+  onCreate: (repository: GitRepository) => void;
+}) {
+  const [repositories, setRepositories] = useState<GitRepository[]>([]);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    void capabilityApi
+      .snapshot()
+      .then((data) => {
+        if (alive)
+          setRepositories(
+            (data.repositories ?? []).filter((r) => r.project_id === projectID),
+          );
+      })
+      .catch((cause) => {
+        if (alive) setError(errorMessage(cause));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [projectID, enabled]);
+  return (
+    <section className="note" aria-label="项目登记仓库">
+      <h2>已登记仓库</h2>
+      <p className="field-help">
+        项目关联仅为组织元数据，不授予读取或执行许可。仓库登记与关联请在设置 /
+        Git 中管理。
+      </p>
+      {error && <p role="status">登记目录读取失败：{error}</p>}
+      {repositories.map((r) => (
+        <div key={r.id}>
+          <p>
+            {r.name} · v{r.revision} · <code>{r.path}</code>
+          </p>
+          <button disabled={!enabled} onClick={() => onCreate(r)}>
+            从 {r.name} 创建任务
+          </button>
+        </div>
+      ))}
+      {!repositories.length && !error && <p>暂无已读取的关联仓库</p>}
+    </section>
   );
 }
 

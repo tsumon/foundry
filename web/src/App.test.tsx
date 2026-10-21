@@ -299,16 +299,44 @@ it.each(["success", "failure", "conflict"])(
   },
 );
 
-async function submitNewMission() {
+const appInspection = {
+  schema_version: 1,
+  id: "app-receipt",
+  digest: "c".repeat(64),
+  root: "/tmp/new-mission",
+  branch: "main",
+  commit: "a".repeat(40),
+  spec: {
+    scope: ["src/"],
+    protected: [],
+    acceptance: ["/opt/foundry/verify"],
+    image: "fixture:local",
+  },
+  policy_version: "committed_text_v1",
+  status: "ready",
+  stage: "complete",
+  code: "",
+  checked_at: "now",
+  working_tree_status: "not_checked",
+  file_count: 1,
+  total_bytes: 10,
+  context_file_count: 1,
+  context_bytes: 10,
+  context_manifest: [],
+  protected_inputs: [],
+};
+async function submitNewMission(prefilled = false) {
+  await screen.findByRole("option", { name: "测试连接 · fixture-model" });
   fireEvent.change(screen.getByLabelText("任务标题"), {
     target: { value: "新建任务" },
   });
   fireEvent.change(screen.getByLabelText("交付目标"), {
     target: { value: "验证创建后的返回位置" },
   });
-  fireEvent.change(screen.getByLabelText("Git 仓库绝对路径"), {
-    target: { value: "/tmp/new-mission" },
-  });
+  if (!prefilled)
+    fireEvent.change(screen.getByLabelText("Git 仓库绝对路径"), {
+      target: { value: "/tmp/new-mission" },
+    });
   fireEvent.change(screen.getByLabelText("允许修改范围（每行一项）"), {
     target: { value: "src/" },
   });
@@ -321,6 +349,8 @@ async function submitNewMission() {
   const submit = screen.getByRole("button", {
     name: "创建任务并检查上下文",
   });
+  expect(submit).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "检查可导入性" }));
   await waitFor(() => expect(submit).toBeEnabled());
   fireEvent.click(submit);
   expect(
@@ -803,19 +833,22 @@ it("returns a newly created overview task to the overview", async () => {
     vi.fn((path: string, init?: RequestInit) =>
       Promise.resolve(
         response(
-          path === "/api/missions" && init?.method === "POST"
-            ? { mission: created }
-            : path === "/api/missions"
-              ? { missions: [] }
-              : path === "/api/profiles"
-                ? {
-                    profiles: [profile],
-                    settings: {
-                      default_profile_id: profile.id,
-                      role_bindings: {},
-                    },
-                  }
-                : {},
+          path === "/api/repository-imports/inspections" &&
+            init?.method === "POST"
+            ? appInspection
+            : path === "/api/missions" && init?.method === "POST"
+              ? { mission: created }
+              : path === "/api/missions"
+                ? { missions: [] }
+                : path === "/api/profiles"
+                  ? {
+                      profiles: [profile],
+                      settings: {
+                        default_profile_id: profile.id,
+                        role_bindings: {},
+                      },
+                    }
+                  : {},
         ),
       ),
     ),
@@ -828,6 +861,15 @@ it("returns a newly created overview task to the overview", async () => {
 });
 
 it("returns a task created from a selected project to its prior project task view without linking it", async () => {
+  const registered = {
+    id: "repo-project",
+    revision: 2,
+    name: "Project source",
+    path: "/tmp/new-mission",
+    project_id: "p1",
+    created_at: "now",
+    updated_at: "now",
+  };
   const created = {
     ...mission,
     id: "created-project",
@@ -857,21 +899,26 @@ it("returns a task created from a selected project to its prior project task vie
   const fetcher = vi.fn((path: string, init?: RequestInit) =>
     Promise.resolve(
       response(
-        path === "/api/missions" && init?.method === "POST"
-          ? { mission: created }
-          : path === "/api/missions"
-            ? { missions: [mission] }
-            : path === "/api/catalog"
-              ? { catalog }
-              : path === "/api/profiles"
-                ? {
-                    profiles: [profile],
-                    settings: {
-                      default_profile_id: profile.id,
-                      role_bindings: {},
-                    },
-                  }
-                : {},
+        path === "/api/capabilities"
+          ? { ...emptyCapabilities, repositories: [registered] }
+          : path === "/api/repository-imports/inspections" &&
+              init?.method === "POST"
+            ? appInspection
+            : path === "/api/missions" && init?.method === "POST"
+              ? { mission: created }
+              : path === "/api/missions"
+                ? { missions: [mission] }
+                : path === "/api/catalog"
+                  ? { catalog }
+                  : path === "/api/profiles"
+                    ? {
+                        profiles: [profile],
+                        settings: {
+                          default_profile_id: profile.id,
+                          role_bindings: {},
+                        },
+                      }
+                    : {},
       ),
     ),
   );
@@ -880,8 +927,22 @@ it("returns a task created from a selected project to its prior project task vie
   fireEvent.click(screen.getByRole("button", { name: "项目资产" }));
   fireEvent.click(await screen.findByRole("button", { name: "项目 A" }));
   fireEvent.click(screen.getByRole("button", { name: "项目任务" }));
-  fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
-  await submitNewMission();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "从 Project source 创建任务" }),
+  );
+  expect(screen.getByLabelText("Git 仓库绝对路径")).toHaveValue(
+    "/tmp/new-mission",
+  );
+  await submitNewMission(true);
+  const inspected = fetcher.mock.calls.find(
+    ([path, init]) =>
+      path === "/api/repository-imports/inspections" && init?.method === "POST",
+  );
+  expect(JSON.parse(String(inspected?.[1]?.body))).toMatchObject({
+    repository_id: "repo-project",
+    repository_revision: 2,
+    consent: true,
+  });
   fireEvent.click(screen.getByRole("button", { name: "返回项目 项目 A" }));
   expect(screen.getByRole("heading", { name: "项目 A" })).toBeVisible();
   expect(screen.getByRole("button", { name: "项目任务" })).toHaveAttribute(

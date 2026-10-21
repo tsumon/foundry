@@ -34,9 +34,13 @@ const base = { ...empty, projects: [project, other] };
 function CatalogHarness({
   enabled,
   onOpenMission,
+  onCreateFromRepository,
 }: {
   enabled: boolean;
   onOpenMission: (id: string) => void;
+  onCreateFromRepository?: (
+    repository: import("../../capabilityTypes").GitRepository,
+  ) => void;
 }) {
   const catalog = useCatalog(enabled);
   const [selected, setSelected] = useState("");
@@ -46,6 +50,7 @@ function CatalogHarness({
       enabled={enabled}
       missions={[mission]}
       onOpenMission={onOpenMission}
+      onCreateFromRepository={onCreateFromRepository}
       catalog={catalog}
       selected={selected}
       onSelected={setSelected}
@@ -117,6 +122,52 @@ function setup(catalog = empty, reject = 0) {
 async function selectA() {
   fireEvent.click(await screen.findByRole("button", { name: "项目 A" }));
 }
+
+it("opens creation from project-linked registration without reading repository contents", async () => {
+  const repo = {
+    ...meta,
+    id: "repo-1",
+    name: "Registered source",
+    path: "/tmp/source",
+    project_id: "p1",
+  };
+  const requests: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string) => {
+      requests.push(path);
+      return response(
+        path === "/api/capabilities"
+          ? {
+              repositories: [
+                repo,
+                { ...repo, id: "other", project_id: "p2", name: "Other" },
+              ],
+            }
+          : { catalog: base },
+      );
+    }),
+  );
+  const create = vi.fn();
+  render(
+    <CatalogHarness
+      enabled
+      onOpenMission={vi.fn()}
+      onCreateFromRepository={create}
+    />,
+  );
+  await selectA();
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "从 Registered source 创建任务",
+    }),
+  );
+  expect(create).toHaveBeenCalledWith(repo);
+  expect(
+    screen.queryByRole("button", { name: "从 Other 创建任务" }),
+  ).not.toBeInTheDocument();
+  expect(requests.filter((p) => p.includes("inspect"))).toEqual([]);
+});
 
 function toggleDisclosure(name: string) {
   fireEvent.click(screen.getByText(name, { selector: "summary" }));

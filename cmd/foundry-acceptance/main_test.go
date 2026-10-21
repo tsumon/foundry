@@ -157,10 +157,18 @@ func TestAcceptanceRuntimeFreshIsolatedNormalHTTPFlow(t *testing.T) {
 		Observations []domain.GitObservation `json:"git_observations"`
 	}
 	decode(request("GET", "/api/capabilities", nil), &capabilities)
-	if len(capabilities.Repositories) != 1 || len(capabilities.Observations) != 1 {
+	if len(capabilities.Repositories) < 1 || len(capabilities.Observations) != 1 {
 		t.Fatalf("missing synthetic repository catalog %+v", capabilities)
 	}
-	repository := capabilities.Repositories[0]
+	var repository domain.GitRepository
+	for _, candidate := range capabilities.Repositories {
+		if candidate.ID == "synthetic-source" {
+			repository = candidate
+		}
+	}
+	if repository.ID == "" || repository.Revision != capabilities.Observations[0].RepositoryRevision {
+		t.Fatal("historical controlled source/observation changed")
+	}
 	if err := runtime.store.PutSettings(allRoleBindings(legacy.ID, nil)); err != nil {
 		t.Fatal(err)
 	}

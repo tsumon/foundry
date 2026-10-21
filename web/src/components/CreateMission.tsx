@@ -16,6 +16,9 @@ import {
 import { ModelSnapshot } from "./ModelSnapshot";
 import { rolePolicyApi } from "../rolePolicyApi";
 import type { RolePolicyState } from "../rolePolicyTypes";
+import { ImportHistory, RepositoryImport } from "./RepositoryImport";
+import type { RepositoryInspection } from "../repositoryImportTypes";
+import type { GitRepository } from "../capabilityTypes";
 const lines = (text: string) =>
   text
     .split(/\r?\n/)
@@ -24,9 +27,11 @@ const lines = (text: string) =>
 export function CreateMission({
   onCancel,
   onCreated,
+  initialRepository,
 }: {
   onCancel: () => void;
   onCreated: (mission: Mission) => void;
+  initialRepository?: GitRepository;
 }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profileID, setProfileID] = useState("");
@@ -41,6 +46,7 @@ export function CreateMission({
   const [loading, setLoading] = useState(true);
   const [healthLoading, setHealthLoading] = useState(true);
   const [healthError, setHealthError] = useState("");
+  const [readOnly, setReadOnly] = useState(false);
   const [controlledAvailable, setControlledAvailable] = useState(false);
   const [taskLocalMCPEnabled, setTaskLocalMCPEnabled] = useState(false);
   const [localMCP, setLocalMCP] = useState<LocalMCPTest | null>(null);
@@ -50,7 +56,12 @@ export function CreateMission({
   const lock = useRef(false);
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
-  const [repo, setRepo] = useState("");
+  const [repo, setRepo] = useState(initialRepository?.path ?? "");
+  const [importRepository, setImportRepository] = useState<
+    GitRepository | undefined
+  >(initialRepository);
+  const [repositories, setRepositories] = useState<GitRepository[]>([]);
+  const [registryError, setRegistryError] = useState("");
   const [scope, setScope] = useState("");
   const [protectedPaths, setProtectedPaths] = useState("");
   const [commands, setCommands] = useState("");
@@ -61,6 +72,45 @@ export function CreateMission({
   const [controlled, setControlled] = useState(false);
   const [mcpControlled, setMCPControlled] = useState(false);
   const controlledMode = controlled || mcpControlled;
+  const importing = recoverable && !controlledMode;
+  const [importAttempt, setImportAttempt] = useState(0);
+  const importKey = JSON.stringify([
+    importAttempt,
+    importing,
+    repo,
+    scope,
+    protectedPaths,
+    commands,
+    image,
+    importRepository,
+  ]);
+  const importEpoch = useRef({ key: importKey, epoch: 0 });
+  if (importEpoch.current.key !== importKey)
+    importEpoch.current = {
+      key: importKey,
+      epoch: importEpoch.current.epoch + 1,
+    };
+  const epoch = importEpoch.current.epoch;
+  const [inspection, setInspection] = useState<{
+    epoch: number;
+    receipt: RepositoryInspection;
+  } | null>(null);
+  const selectedInspection =
+    importing && inspection?.epoch === epoch ? inspection.receipt : null;
+  useEffect(() => {
+    let alive = true;
+    void capabilityApi
+      .snapshot()
+      .then((data) => {
+        if (alive) setRepositories(data.repositories ?? []);
+      })
+      .catch((cause) => {
+        if (alive) setRegistryError(errorMessage(cause));
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [capabilities, setCapabilities] = useState<CapabilitySnapshot | null>(
     null,
   );
@@ -118,6 +168,7 @@ export function CreateMission({
     setHealthError("");
     try {
       const data = await api.health();
+      setReadOnly(data.read_only === true);
       setControlledAvailable(
         data.capabilities.controlled_read_creation === true,
       );
@@ -231,7 +282,11 @@ export function CreateMission({
   );
   const selectedSource = sources.find((source) => source.key === sourceKey);
   const submit = async () => {
-    if (lock.current) return;
+    if (lock.current || readOnly) return;
+    if (importing && !selectedInspection) {
+      setError("请先检查可导入性并确认当前回执。");
+      return;
+    }
     const selectedSkills = skillRows.map((row) => ({
       row,
       skill: capabilities?.skills.find(
@@ -269,7 +324,7 @@ export function CreateMission({
     }
     const requestRepo = controlledMode
       ? selectedSource!.observation.root
-      : repo.trim();
+      : (selectedInspection?.root ?? repo.trim());
     if (!requestRepo.startsWith("/")) {
       setError("请输入 Git 仓库的绝对路径，例如 /Users/you/project");
       return;
@@ -282,6 +337,15 @@ export function CreateMission({
         title: title.trim(),
         goal: goal.trim(),
         repo_path: requestRepo,
+        ...(importing && selectedInspection
+          ? {
+              import_version: 1,
+              import_selection: {
+                inspection_id: selectedInspection.id,
+                digest: selectedInspection.digest,
+              },
+            }
+          : {}),
         spec: {
           scope: lines(scope),
           protected: lines(protectedPaths),
@@ -334,6 +398,10 @@ export function CreateMission({
       onCreated(mission);
     } catch (e) {
       setError(errorMessage(e));
+      if (importing) {
+        setInspection(null);
+        setImportAttempt((value) => value + 1);
+      }
     } finally {
       lock.current = false;
       setBusy(false);
@@ -380,11 +448,44 @@ export function CreateMission({
           <input
             id="mission-repo"
             value={repo}
-            onChange={(e) => setRepo(e.target.value)}
+            onChange={(e) => {
+              setRepo(e.target.value);
+              setImportRepository(undefined);
+            }}
             required={!controlledMode}
             disabled={controlledMode}
             placeholder="/Users/you/project"
           />
+          {importing && (
+            <>
+              <label htmlFor="import-repository">
+                已登记仓库（元数据，不代表许可）
+              </label>
+              <select
+                id="import-repository"
+                value={importRepository?.id ?? ""}
+                onChange={(event) => {
+                  const next = repositories.find(
+                    (r) => r.id === event.target.value,
+                  );
+                  setImportRepository(next);
+                  if (next) setRepo(next.path);
+                }}
+              >
+                <option value="">使用显式绝对路径</option>
+                {repositories.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} · 登记 v{r.revision}
+                  </option>
+                ))}
+              </select>
+              {registryError && (
+                <p role="status">
+                  登记目录读取失败：{registryError}。可显式输入路径后检查。
+                </p>
+              )}
+            </>
+          )}
           <p className="field-help">
             {controlledMode
               ? "受控模式使用下方成功登记观察的 canonical root；此旧模式草稿会在切换回来时保留。"
@@ -842,6 +943,36 @@ export function CreateMission({
             />
           )}
         </fieldset>
+        {importing ? (
+          <RepositoryImport
+            key={epoch}
+            disabled={busy || loading || readOnly}
+            request={{
+              ...(importRepository
+                ? {
+                    repository_id: importRepository.id,
+                    repository_revision: importRepository.revision,
+                  }
+                : { repo_path: repo.trim() }),
+              spec: {
+                scope: lines(scope),
+                protected: lines(protectedPaths),
+                acceptance: lines(commands),
+                image: image.trim(),
+              },
+              consent: true,
+            }}
+            onInspected={(receipt) => {
+              if (importEpoch.current.epoch === epoch)
+                setInspection(receipt ? { epoch, receipt } : null);
+            }}
+          />
+        ) : (
+          <p className="note">
+            旧式 / 专用模式：未绑定 C3 导入回执；不会复用普通任务检查。
+          </p>
+        )}
+        <ImportHistory key={`history-${importAttempt}`} />
         {!loading && !profiles.length && (
           <p className="note warning-note">
             尚未配置模型连接。请先进入“设置”保存连接与默认分配。
@@ -856,7 +987,13 @@ export function CreateMission({
           <button
             className="primary"
             type="submit"
-            disabled={busy || loading || !profiles.length}
+            disabled={
+              busy ||
+              loading ||
+              readOnly ||
+              !profiles.length ||
+              (importing && !selectedInspection)
+            }
           >
             {busy ? "正在读取快照…" : "创建任务并检查上下文"}
           </button>

@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,6 +24,11 @@ func TestCodingReplanScenarioFullHTTPWorkflow(t *testing.T) {
 	if id == "" {
 		t.Fatal("missing draft coding_loop_replan scenario")
 	}
+	runCodingReplanWorkflow(t, r, id)
+}
+
+func runCodingReplanWorkflow(t *testing.T, r *acceptanceRuntime, id string) {
+	t.Helper()
 	c := newAcceptanceAPIClient(t, r.URL)
 	base := "/api/missions/" + id
 	var response struct {
@@ -122,6 +129,22 @@ func TestCodingReplanScenarioFullHTTPWorkflow(t *testing.T) {
 		res.Body.Close()
 		if err != nil || res.StatusCode != 200 {
 			t.Fatalf("download %s: %d %v %s", kind, res.StatusCode, err, b)
+		}
+		path, expected := m.Delivery.PatchPath, m.Delivery.PatchSHA256
+		if kind == "report" {
+			path, expected = m.Delivery.ReportPath, m.Delivery.ReportSHA256
+		}
+		local, err := os.ReadFile(path)
+		if err != nil || sha256.Sum256(local) != sha256.Sum256(b) || fmt.Sprintf("%x", sha256.Sum256(b)) != expected {
+			t.Fatal("download differs from independent export bytes/digest", kind)
+		}
+		manifestBytes, err := os.ReadFile(filepath.Join(filepath.Dir(path), "manifest.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var manifest map[string]any
+		if err := json.Unmarshal(manifestBytes, &manifest); err != nil || manifest[kind+"_sha256"] != expected {
+			t.Fatal("download differs from export manifest", kind)
 		}
 		if kind == "patch" && !strings.Contains(string(b), "+repaired") {
 			t.Fatal("patch missing correction")

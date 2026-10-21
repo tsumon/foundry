@@ -804,6 +804,8 @@ export interface Delivery {
   created_at: string;
 }
 export interface Mission {
+  import_version?: number;
+  repository_import?: import("./repositoryImportTypes").RepositoryImportBinding;
   replan_context?: FailureBundle;
   coding_version?: number;
   coding_attempts?: CodingAttempt[];
@@ -913,6 +915,8 @@ export interface RunEvent {
   revision: number;
 }
 export interface CreateRequest {
+  import_version?: number;
+  import_selection?: import("./repositoryImportTypes").ImportSelection;
   coding_version?: number;
   title: string;
   goal: string;

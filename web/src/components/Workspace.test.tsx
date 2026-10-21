@@ -25,6 +25,43 @@ const openPlanEditor = () =>
     screen.getByRole("button", { name: "修订计划（保存不审批）" }),
   );
 
+it("opens the existing decision drawer from diagnosis without executing an action", async () => {
+  const fetcher = vi.fn(async (path: string, _init?: RequestInit) =>
+    path.endsWith("/recovery-diagnostic")
+      ? response({
+          diagnostic: {
+            schema_version: 1,
+            mission_id: mission.id,
+            revision: mission.revision,
+            epoch: mission.epoch,
+            checked_at: "now",
+            stale: false,
+            checks: [],
+            next_actions: ["replan"],
+          },
+        })
+      : reliabilityRead(path),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <MissionWorkspace
+      mission={mission}
+      onUpdate={vi.fn()}
+      initialView="总览"
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "核对恢复状态" }));
+  fireEvent.click(
+    await screen.findByRole("link", { name: /返回原决策面板核对/ }),
+  );
+  expect(
+    screen.getByRole("button", { name: /决策与 Main Agent/ }),
+  ).toHaveAttribute("aria-expanded", "true");
+  expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(
+    false,
+  );
+});
+
 const controlledBindings = {
   git: {
     repository_id: "repo",
@@ -1537,7 +1574,7 @@ it("keeps the mission visible when history fails and shows recorded operation re
   );
   expect(document.body).not.toHaveTextContent("已恢复执行");
   expect(
-    screen.queryByRole("button", { name: /恢复|回滚/ }),
+    screen.queryByRole("button", { name: /^(恢复|回滚|自动恢复)/ }),
   ).not.toBeInTheDocument();
 });
 

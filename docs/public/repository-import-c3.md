@@ -143,6 +143,45 @@ imports in the source/creation area when no task exists. No one-click repair,
 database edit, source rollback, arbitrary generation selection or cleanup buttons.
 Historical provenance stays visibly absent, not backfilled as verified.
 
+### Implemented interface and local fixture
+
+The ordinary form uses `检查可导入性` for a single explicit inspection, then
+`创建任务并检查上下文` for the separate creation confirmation. All import-bound
+inputs invalidate readiness immediately, including changes away and back while a
+request is pending. A refused creation also clears the selection; history is read
+again without retrying the mutation. Specialized or legacy modes carry no C3
+selection. Project details reuse Settings / Git registration metadata and prefill
+the existing form; this does not automatically link a new task or grant permission.
+
+Inspection and operation history GETs return bounded arrays. Inspection POSTs
+return a versioned inspection record. Task diagnosis GET returns
+`{ "diagnostic": ... }`, with ten dimensions: `candidate_record`, `candidate`,
+`base_authority`, `import_provenance`, `coding_trace`, `invocations`,
+`verification`, `reviews`, `export`, and `local_operation`. The manual
+`核对恢复状态` control lives in Overview / candidate and local operations.
+Changing task identity, revision or epoch makes its result stale and discards
+late responses. Any suggested replan or delivery action points back to the
+original decision panel; the result grants no authority.
+
+`foundry-acceptance` supplies an explicitly synthetic C3 project, an imported
+unplanned draft, a binary repository that is not inspected until requested,
+a reserved import with no task, and an isolated evidence-corruption task.
+The corruption is seeded only by the acceptance command after real synthetic
+engine transitions; no production fault-injection endpoint exists. New-task
+defaults use the local `synthetic-stub` for every role. Historical local protocol
+scenarios retain their frozen selections, and the optional policy proposal stays
+unconfirmed. Controller workspace data is in a separate `managed` sibling of
+the disposable sources, preserving the source/data overlap guard.
+
+The HTTP acceptance path covers exact import, context consent, initial execution
+failure, explicit replan, fresh execution approval, corrected verification and
+independent reviews, and separate delivery. Downloads are compared with independently
+read export bytes, SHA-256 values and the export manifest; the report's C3 binding
+is compared with the task binding. Diagnosis snapshots check that missions,
+budgets, events, imports, local operations and invocations remain unchanged.
+The manifest labels C4 readiness `not_checked`. Final clean-export browser QA,
+security scans and exact-commit CI remain separate publication gates.
+
 ## Acceptance and handoff to C4
 
 Use real disposable Git, SQLite, workspace and HTTP with synthetic model/runner

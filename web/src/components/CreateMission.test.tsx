@@ -10,6 +10,27 @@ import { CreateMission } from "./CreateMission";
 import { mission, profile, response } from "../test/fixtures";
 import { emptyCapabilities, skill } from "./capabilities/testFixtures";
 import { roles } from "../types";
+// C3 HTTP and race contracts are exercised through real mounted fetch boundaries
+// in RepositoryImport.test.tsx; these existing model/mode tests use a receipt.
+vi.mock("../repositoryImportApi", () => ({
+  repositoryImportApi: {
+    operations: async () => [],
+    inspections: async () => [],
+    inspect: async (input: { repo_path: string; spec: unknown }) => ({
+      schema_version: 1,
+      id: "receipt",
+      digest: "b".repeat(64),
+      root: input.repo_path,
+      spec: input.spec,
+      status: "ready",
+      protected_inputs: [],
+    }),
+  },
+}));
+async function inspectOrdinary() {
+  fireEvent.click(screen.getByRole("button", { name: "检查可导入性" }));
+  await screen.findByText("可创建任务");
+}
 
 const fillRequired = () => {
   for (const [label, value] of [
@@ -60,6 +81,7 @@ it("previews actual role overrides and current credential then accepts only the 
   expect(within(preview).getByText(/凭据版本：2/)).toBeVisible();
   expect(within(preview).getAllByText(/旧式连接/)).toHaveLength(6);
   fillRequired();
+  await inspectOrdinary();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
   await waitFor(() => expect(onCreated).toHaveBeenCalledWith(created));
   const body = JSON.parse(
@@ -131,7 +153,7 @@ it("previews the active confirmed policy as future-only and does not imply a def
   expect(within(source).getAllByText(/p1/)).toHaveLength(7);
 });
 
-it("keeps controlled creation default-off, loads capabilities only on opt-in, and sends exact frozen identities", async () => {
+it("keeps controlled creation default-off, loads metadata without inspecting, and sends exact frozen identities", async () => {
   const snapshot = {
     ...emptyCapabilities,
     skills: [skill],
@@ -184,7 +206,7 @@ it("keeps controlled creation default-off, loads capabilities only on opt-in, an
   await screen.findByRole("option", { name: "测试连接 · fixture-model" });
   expect(
     fetcher.mock.calls.filter(([path]) => path === "/api/capabilities"),
-  ).toHaveLength(0);
+  ).toHaveLength(1);
   fillRequired();
   fireEvent.click(screen.getByLabelText("启用受控 Researcher 本地读取"));
   expect(screen.getByLabelText(/启用 Researcher 仓库调研/)).toBeChecked();
@@ -474,12 +496,15 @@ it("creates an explicit bounded spec from newline fields without starting model 
   ])
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   fireEvent.click(screen.getByLabelText(/启用 Researcher/));
+  await inspectOrdinary();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
   await waitFor(() => expect(created).toHaveBeenCalledWith(mission));
   const createCall = fetcher.mock.calls.find(
     ([path]) => path === "/api/missions",
   )!;
   expect(JSON.parse(String(createCall[1]?.body))).toEqual({
+    import_version: 1,
+    import_selection: { inspection_id: "receipt", digest: "b".repeat(64) },
     coding_version: 1,
     title: "新任务",
     goal: "改进校验",
@@ -496,7 +521,7 @@ it("creates an explicit bounded spec from newline fields without starting model 
       max_calls: 16,
     },
   });
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(5);
   expect(
     fetcher.mock.calls.filter(([path]) => path === "/api/role-model-policy"),
   ).toHaveLength(1);
@@ -535,8 +560,9 @@ it("defaults new ordinary missions to immutable generations and explains the bou
   expect(
     screen.getByText(/默认用于随后创建的新普通任务；不会迁移旧任务/),
   ).toBeVisible();
+  await inspectOrdinary();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
-  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(4));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(5));
   expect(
     fetcher.mock.calls.filter(([path]) => path === "/api/role-model-policy"),
   ).toHaveLength(1);
@@ -660,6 +686,7 @@ it("preserves the recoverable draft while controlled mode presents it as disable
   fireEvent.click(controlled);
   expect(recoverable).toBeEnabled();
   expect(recoverable).toBeChecked();
+  await inspectOrdinary();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
   await waitFor(() =>
     expect(
@@ -695,11 +722,12 @@ it("fails the controlled gate closed without blocking ordinary creation", async 
   expect(await screen.findByText(/创建开关读取失败/)).toBeVisible();
   expect(screen.getByLabelText("启用受控 Researcher 本地读取")).toBeDisabled();
   fillRequired();
+  await inspectOrdinary();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
   await waitFor(() => expect(created).toHaveBeenCalledWith(mission));
   expect(
     fetcher.mock.calls.filter(([path]) => path === "/api/capabilities"),
-  ).toHaveLength(0);
+  ).toHaveLength(1);
 });
 
 it("retries a failed capability read and retains drafts and exact selections after a create conflict", async () => {
@@ -748,7 +776,7 @@ it("retries a failed capability read and retains drafts and exact selections aft
         capabilities: { controlled_read_creation: true },
       });
     if (path === "/api/capabilities")
-      return ++capabilityCalls === 1
+      return ++capabilityCalls <= 2
         ? response({ error: { message: "catalog unavailable" } }, 500)
         : response(snapshot);
     if (path === "/api/missions")

@@ -4,6 +4,9 @@ FOUNDRY is an experimental, source-only macOS arm64 (Apple Silicon) alpha. This 
 
 ## Implemented
 
+- C3 local repository admission in the ordinary recoverable-task form: explicit inspection consent, exact receipt binding, input/race invalidation, registered project entry, durable import history (including attempts without a task), and frozen source provenance.
+- Manual read-only recovery diagnosis in the existing candidate/local-operation view. It reports independently checked dimensions and stale revisions without repairing, retrying, polling, or changing the separate context/execution/delivery approvals.
+
 - Buildable Go controller and React UI with a loopback-only HTTP server.
 - Local SQLite state, exclusive data-directory ownership, immutable source/model/policy snapshots, and controller-owned candidate generations.
 - Separate context, exact single-MCP-call, plan-execution, and delivery approvals.
@@ -45,6 +48,8 @@ The expected validation toolchain is Go 1.27.3, Node.js 22.23.2, and npm 10.9.8.
 Legacy accountless model profiles preserve their network capability. New account routes marked `live` are blocked in the production router, but the product as a whole is not globally offline. See [safety](safety.md).
 
 ## Not yet verified or claimed
+
+- C3 acceptance uses disposable local Git/SQLite/HTTP with synthetic model responses and content checks. It does not execute compiler commands or Docker. C4 real-project / trusted-image readiness remains `not_checked`; a synthetic pass is not real-project readiness.
 
 - No real provider account, API key, subscription, entitlement, quota, billing, balance, or reset-time behavior is certified. The presence of the Keychain diagnostic is not a claim that it passed on this or any other machine.
 - No external MCP implementation is certified for task execution.

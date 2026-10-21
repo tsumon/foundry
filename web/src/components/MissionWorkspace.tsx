@@ -446,6 +446,7 @@ export function MissionWorkspace({
           {view === "计划链路" && <ReplanSummary mission={mission} />}
           <MissionViews
             mission={mission}
+            onOpenDecision={() => setDrawer(true)}
             view={view}
             demo={demo}
             operations={operations}

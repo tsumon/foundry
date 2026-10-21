@@ -14,6 +14,7 @@ import {
   codingAttemptLabel,
 } from "./VerificationView";
 import { ModelSnapshot } from "./ModelSnapshot";
+import { RecoveryDiagnostic, RepositorySource } from "./RecoveryDiagnostic";
 export const views = [
   "总览",
   "会话",
@@ -33,6 +34,7 @@ export function MissionViews({
   operationsError = "",
   planEditor,
   mcpDecision,
+  onOpenDecision,
 }: {
   mission: Mission;
   view: MissionView;
@@ -42,6 +44,7 @@ export function MissionViews({
   operationsError?: string;
   planEditor?: ReactNode;
   mcpDecision?: ReactNode;
+  onOpenDecision?: () => void;
 }) {
   if (view === "总览")
     return (
@@ -51,6 +54,7 @@ export function MissionViews({
           <span className="muted small">任务 r{mission.revision}</span>
         </div>
         <p className="goal">{mission.goal}</p>
+        <RepositorySource mission={mission} />
         {mcpDecision}
         <dl className="metadata">
           <dt>仓库</dt>
@@ -99,6 +103,7 @@ export function MissionViews({
         )}
         <RecoveryStatus
           mission={mission}
+          onOpenDecision={onOpenDecision}
           operations={operations}
           loading={operationsLoading}
           error={operationsError}
@@ -365,11 +370,13 @@ function operationGenerationLabel(mission: Mission, operation: LocalOperation) {
 
 function RecoveryStatus({
   mission,
+  onOpenDecision,
   operations,
   loading,
   error,
 }: {
   mission: Mission;
+  onOpenDecision?: () => void;
   operations: LocalOperation[];
   loading: boolean;
   error: string;
@@ -380,6 +387,7 @@ function RecoveryStatus({
   const generations = usesGenerationWorkspace(mission);
   return (
     <section className="recovery-status" aria-label="候选与本地操作">
+      <RecoveryDiagnostic mission={mission} onOpenDecision={onOpenDecision} />
       <div className="section-heading">
         <h2>候选与本地操作</h2>
         <span className="tag">

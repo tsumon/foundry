@@ -147,7 +147,7 @@ func startAcceptance(webDir string) (_ *acceptanceRuntime, err error) {
 	}
 	descriptor := r.mcp.Descriptor()
 	baseGateway := acceptanceGateway{router: r.router}
-	r.engine = engine.New(r.store, codingReplanGateway{fallback: codingLoopGateway{fallback: baseGateway}, store: r.store}, engine.Options{DataDir: root, Runner: codingLoopRunner{fallback: syntheticRunner{}}, LocalMCPTest: &descriptor})
+	r.engine = engine.New(r.store, codingReplanGateway{fallback: codingLoopGateway{fallback: baseGateway}, store: r.store}, engine.Options{DataDir: filepath.Join(root, "managed"), Runner: codingLoopRunner{fallback: syntheticRunner{}}, LocalMCPTest: &descriptor})
 	if err = r.engine.Recover(context.Background()); err != nil {
 		return nil, err
 	}
@@ -157,11 +157,20 @@ func startAcceptance(webDir string) (_ *acceptanceRuntime, err error) {
 	if err = seedCodingReplanScenario(r); err != nil {
 		return nil, err
 	}
+	if err = seedRepositoryImportScenarios(r); err != nil {
+		return nil, err
+	}
 	if err = seedModelAccounts(r, accountService); err != nil {
 		return nil, err
 	}
 	r.scenarios["legacy_mcp_approval"] = r.AccountMissionID
 	if err = seedProtocolScenarios(r, accountService); err != nil {
+		return nil, err
+	}
+	// Historical protocol missions already froze their own selections. New
+	// ordinary tasks use the local stub, without account or subscription setup.
+	// Restore before proposing policy so its settings digest remains current.
+	if err = r.store.PutSettings(allRoleBindings("synthetic-stub", nil)); err != nil {
 		return nil, err
 	}
 	if err = seedRolePolicyScenarios(r); err != nil {
