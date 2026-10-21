@@ -1,8 +1,9 @@
 # Dormant C4 Docker adapter
 
-Status: implementation specification. This increment implements a dormant
-transport, not C4-C real acceptance. Project selection, image provenance,
-Docker readiness checks and real execution require separate user confirmation.
+Status: dormant transport implemented and validated with synthetic fixtures and
+an owned Go-test helper subprocess only, not C4-C real acceptance. No Docker
+executable, endpoint, image or container was contacted. Project selection, image
+provenance, Docker readiness checks and real execution require separate user confirmation.
 Subscription integration remains paused.
 
 ## Scope and alternatives
@@ -35,10 +36,14 @@ No host source, home, credentials, .git or Docker socket mount is permitted.
 
 The trusted executable is an absolute, canonical, executable regular file, not
 a PATH lookup or symlink. The explicit endpoint is a canonical local Unix socket,
-not a context or TCP/SSH URI. Before an enabled dispatch, verify executable/socket
+not a context or TCP/SSH URI. Before an enabled process call, verify executable/socket
 identity and safe ownership/modes; recheck their identity before effects. These
 checks do not establish image provenance or defend against a compromised host or
-Docker daemon. Never include inherited environment or raw OS/CLI error text in
+Docker daemon. The checker rejects symlinks and group/world-writable parent
+directories and retains executable, socket and parent device/inode/owner/mode
+identity. Socket group write is permitted; world write is not. These checks do
+not close filesystem check/use races or protect against a malicious same-user
+process. Never include inherited environment or raw OS/CLI error text in
 durable records. Invocation environment is the frozen command-plan environment.
 
 The adapter is bound to one `C4Plan`, not an arbitrary `C4Command`. It compares
@@ -99,6 +104,9 @@ counts and verifier process exit mapping (passed=0, test_failed=1, other=2).
 Use a bounded wire buffer large enough for JSON escaping of 64 KiB, distinct from
 the retained human-output limit. Partial or oversized metadata cannot mean pass.
 Output and errors are untrusted and must be redacted before durable storage.
+Malformed or truncated verifier wire is replaced with a static unavailable
+diagnostic rather than retained as raw JSON; only valid decoded envelope output
+and bounded sanitized stderr enter the human-output capture.
 
 This framing prevents ordinary test stdout from masquerading as metadata. It is
 not cryptographic isolation from hostile processes sharing the verifier's UID
@@ -113,6 +121,25 @@ dispatch-before-effects and all durable CAS/epoch fences. The Docker wrapper che
 the disabled gate, profile, approved operation and frozen plan before any effects;
 it never wraps the real driver in a synthetic capability. Synthetic APIs and
 historical bytes retain their meaning. No mock result is persisted as real evidence.
+
+`ExecuteC4Docker` and `CleanupC4Docker` accept a zero-value-disabled
+`C4DockerConfig`; there is no application enable switch. Disabled or structurally
+invalid/unapproved calls return a static error before filesystem validation or
+persistence. An otherwise valid execution performs the existing read-only managed
+candidate preflight before dispatch CAS. Current mission epoch, material and
+candidate execute-approval authority remain the persister's responsibility; an
+operation alone cannot prove that current mission authority. Failed dispatch CAS
+stops before executable/socket trust probes or any process call. Trust checks are
+lazy after durable dispatch, not construction-time readiness checks. Explicit
+cleanup requires a previously durable terminal operation, its original admitted
+candidate path and the known full ID; it reuses the existing cleanup lifecycle.
+Unlike execution's dispatch CAS, recovery requires the trusted caller to authorize
+the current mission/epoch/material/known ID under existing mission serialization
+**before** calling the wrapper. The cleanup persister records the outcome after
+removal; it does not provide a pre-removal current-authority check. Future startup
+integration must wire this caller gate. Local malformed/unapproved/foreign-ID
+rejection and a fresh exact-owned effective-config inspection are still mandatory;
+a stale post-removal CAS cannot be claimed to prevent removal effects.
 
 Only a classified test_failed result with confirmed cleanup permits the existing
 budgeted Debugger path. Infrastructure, unknown result, persistence failure, OOM,
@@ -136,6 +163,14 @@ Cover disabled/invalid approval zero effects; argv/env tampering; foreign owners
 image/config drift; malformed/duplicate/oversized JSON; output spoofing; nonzero
 test exits; wait/inspect disagreement; cancellation/timeout/OOM; cleanup failure;
 persistence failure; no replay; bounded buffers and subprocess reaping.
+
+Inspection fixtures are hand-authored synthetic JSON, not daemon observations.
+Required fields and accepted normalization are deliberately conservative: omitted
+security fields, unsupported Docker schema variants, and changed effective
+configuration fail closed. Matching fixtures does not establish compatibility
+with an installed Docker version, image provenance, verifier/compiler presence,
+daemon readiness or runtime isolation. Those require separately authorized real
+acceptance and review; there is no schema fallback or retry.
 
 Preserve existing UI and verify baseline approval, execute approval, failed candidate,
 repair and separate delivery using the local synthetic workbench. It must still

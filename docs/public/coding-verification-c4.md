@@ -101,10 +101,13 @@ Failure to persist a terminal fact retains the durable intent for diagnosis.
 
 ## Bounded executor and verifier boundary
 
-The executor accepts only an in-process synthetic-driver capability in A/B.
-The profile's `mode` string alone is not that capability. Production Docker mode
-is rejected before persistence or driver calls. The deterministic command plan
-is not a subprocess transport; the existing legacy runner is not a fallback.
+The production executor accepts only an in-process synthetic-driver capability
+in A/B. The profile's `mode` string alone is not that capability. Production
+Docker mode is rejected before persistence or driver calls. A separate
+[dormant Docker adapter](c4-docker-adapter.md) now implements the frozen command
+plan behind zero-value-disabled trusted library configuration; startup, engine,
+HTTP and UI do not enable it. Its tests use synthetic process/filesystem fixtures
+and an owned Go helper only, never Docker. The legacy runner is not a fallback.
 
 Every planned Docker command binds the trusted absolute executable and explicit
 local Unix endpoint, with no inherited environment. The managed candidate must
@@ -142,10 +145,11 @@ ID; it cannot discover by name, replay a command or promote an unknown result.
 
 - Domain: optional C4 profile and operation records, strict validation, digest and
   transition rules. Add store transaction validation using the existing mission CAS.
-- Sandbox: a fixed C4 command plan and lifecycle executor with an injected driver.
-  This increment supplies synthetic/in-memory drivers only; no production C4
-  subprocess transport. The command plan is reviewable but never dispatched to
-  Docker here. The old sandbox is unchanged for legacy tasks.
+- Sandbox: a fixed C4 command plan and shared durable lifecycle executor, with
+  distinct synthetic and dormant Docker wrappers. The default-off adapter uses
+  bounded stdlib subprocess transport, retained filesystem trust and strict
+  effective-config/verifier framing checks. No production activation or real
+  Docker acceptance occurred. The old sandbox is unchanged for legacy tasks.
 - Engine: guarded C4 creation, baseline prepare/approve/execute, exact-owned cleanup,
   planning/approval/verification/recovery routing; no legacy-runner fallback.
 - HTTP: task-scoped operations behind existing Host/Origin/session/JSON/read-only

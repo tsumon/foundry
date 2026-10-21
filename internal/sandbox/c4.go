@@ -23,10 +23,10 @@ func (C4StartupError) Error() string { return "C4 startup failed" }
 // C4Driver is an injected typed effect seam, not an executable selector.
 // Implementations must honor context cancellation. All inspection facts and
 // verifier metadata come from this trusted process-side seam, never client JSON
-// or model/log instructions. A/B supplies no real Docker implementation.
+// or model/log instructions. Production A/B remains synthetic-only.
 // Start must confirm an exact-owned container start fact, not merely launch an
-// attach subprocess. It must continuously drain combined attached output into
-// bounded capture (retaining truncation) to avoid deadlock while Wait runs.
+// attach subprocess. It must continuously drain attached output into bounded
+// capture (retaining truncation); the dormant Docker driver joins attach first.
 // Logs drains that capture only: --log-driver=none rules out Docker logs.
 type C4Driver interface {
 	Create(context.Context, C4Command) (string, error)
@@ -50,8 +50,13 @@ type C4Inspection struct {
 // deliberately not serializable or inferred from C4Profile.Mode.
 type C4SyntheticDriver struct{ driver C4Driver }
 
-func NewC4SyntheticDriver(d C4Driver) *C4SyntheticDriver { return &C4SyntheticDriver{driver: d} }
-func (*C4SyntheticDriver) VerificationSource() string    { return "synthetic" }
+func NewC4SyntheticDriver(d C4Driver) *C4SyntheticDriver {
+	if _, real := d.(*c4DockerDriver); real {
+		return nil
+	}
+	return &C4SyntheticDriver{driver: d}
+}
+func (*C4SyntheticDriver) VerificationSource() string { return "synthetic" }
 
 // C4Change contains one append-only durable stage. Apply supplies transaction
 // revision/time; it does not grant authorization or replace store validation.
@@ -193,6 +198,13 @@ func ExecuteC4(ctx context.Context, p domain.C4Profile, o domain.C4Operation, tr
 	if err != nil {
 		return o, err
 	}
+	return executeC4(ctx, plan, o, d.driver, persist)
+}
+
+// Shared durable core. Wrappers establish distinct authority before entering;
+// a driver is never converted into synthetic authority to reuse the lifecycle.
+func executeC4(ctx context.Context, plan C4Plan, o domain.C4Operation, d C4Driver, persist C4Persist) (domain.C4Operation, error) {
+	var err error
 	o, err = persistC4(ctx, persist, o, C4Change{Stage: "dispatch"})
 	if err != nil {
 		return o, err
@@ -204,7 +216,7 @@ func ExecuteC4(ctx context.Context, p domain.C4Profile, o domain.C4Operation, tr
 			return o, err
 		}
 		if cleanupID != "" {
-			o, err = cleanupC4(plan, o, cleanupID, d.driver, persist)
+			o, err = cleanupC4(plan, o, cleanupID, d, persist)
 			if err != nil {
 				return o, err
 			}
@@ -218,13 +230,13 @@ func ExecuteC4(ctx context.Context, p domain.C4Profile, o domain.C4Operation, tr
 		return finish(domain.C4Result{Class: "interrupted"}, "")
 	}
 	createCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	id, err := d.driver.Create(createCtx, plan.Create())
+	id, err := d.Create(createCtx, plan.Create())
 	cancel()
 	// An ambiguous create never invents an ID or discovers/removes by name.
 	if err != nil || !c4ContainerID.MatchString(id) {
 		return finish(domain.C4Result{Class: "outcome_unknown"}, "")
 	}
-	if _, err = inspectC4(plan, d.driver, id); err != nil {
+	if _, err = inspectC4(plan, d, id); err != nil {
 		return finish(domain.C4Result{Class: "outcome_unknown"}, "")
 	}
 	o, err = persistC4(context.Background(), persist, o, C4Change{Stage: "created", ContainerID: id})
@@ -237,7 +249,7 @@ func ExecuteC4(ctx context.Context, p domain.C4Profile, o domain.C4Operation, tr
 	execCtx, cancelExec := context.WithTimeout(ctx, 120*time.Second)
 	defer cancelExec()
 	command, _ := plan.Command("start", id)
-	if err = d.driver.Start(execCtx, command); err != nil {
+	if err = d.Start(execCtx, command); err != nil {
 		r := domain.C4Result{Class: "outcome_unknown"}
 		var startup C4StartupError
 		// No Start acknowledgment means no proven Started fact. Preserve the
@@ -258,8 +270,8 @@ func ExecuteC4(ctx context.Context, p domain.C4Profile, o domain.C4Operation, tr
 		return o, err
 	}
 	command, _ = plan.Command("wait", id)
-	waitErr := d.driver.Wait(execCtx, command)
-	v, err := inspectC4(plan, d.driver, id)
+	waitErr := d.Wait(execCtx, command)
+	v, err := inspectC4(plan, d, id)
 	if err != nil {
 		return finish(domain.C4Result{Class: "outcome_unknown"}, "")
 	}
@@ -267,7 +279,7 @@ func ExecuteC4(ctx context.Context, p domain.C4Profile, o domain.C4Operation, tr
 	output := c4verify.NewOutput()
 	logCtx, cancelLogs := context.WithTimeout(context.Background(), 10*time.Second)
 	command, _ = plan.Command("logs", id)
-	captureTruncated, err := d.driver.Logs(logCtx, command, output)
+	captureTruncated, err := d.Logs(logCtx, command, output)
 	cancelLogs()
 	r.Output, r.Truncated = output.Text()
 	r.Truncated = r.Truncated || captureTruncated

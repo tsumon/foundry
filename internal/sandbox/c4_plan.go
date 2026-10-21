@@ -12,11 +12,12 @@ import (
 )
 
 // C4Trust is supplied by trusted process configuration, never request JSON.
-// A/B validates declarations only: no executable, endpoint or image is probed.
+// Plan building validates declarations only: no executable, endpoint or image
+// is probed. The dormant adapter checks trust only after durable dispatch.
 type C4Trust struct{ DockerPath, Endpoint, ManagedRoot string }
 
-// C4Command is a reviewable argv/environment, not a shell string. No C4
-// subprocess transport is provided. A future transport must use Env verbatim.
+// C4Command is a reviewable argv/environment, not a shell string. The dormant
+// Docker adapter binds it to one plan and uses Env verbatim.
 // CaptureID instead identifies a bounded in-memory attach buffer: Path/Args/Env
 // are empty and there is no executable command for that stage.
 type C4Command struct {
