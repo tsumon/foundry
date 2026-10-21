@@ -775,7 +775,8 @@ function validHistory(
           value.operations.every(
             (operation) =>
               (operation.source === "production_connection" ||
-                operation.source === "production_catalog") &&
+                operation.source === "production_catalog" ||
+                operation.source === "production_inference") &&
               validOperation(operation, accountID),
           )
         );
@@ -799,7 +800,8 @@ function validHistory(
           value.operations.every(
             (operation) =>
               (operation.source === "production_connection" ||
-                operation.source === "production_catalog") &&
+                operation.source === "production_catalog" ||
+                operation.source === "production_inference") &&
               validOperation(operation, accountID),
           )
         );
@@ -1020,13 +1022,17 @@ function AcceptanceOperations({
   const historicalCatalog =
     policy === "production_connection" &&
     operations.some((operation) => operation.source === "production_catalog");
-  const visiblePhases = productionInference
-    ? phases
-    : productionCatalog || historicalCatalog
-      ? (["connection", "catalog"] as ModelAcceptancePhase[])
-      : subscriptionOnly
-        ? (["connection"] as ModelAcceptancePhase[])
-        : phases;
+  const historicalInference =
+    (policy === "production_connection" || policy === "production_catalog") &&
+    operations.some((operation) => operation.source === "production_inference");
+  const visiblePhases =
+    productionInference || historicalInference
+      ? phases
+      : productionCatalog || historicalCatalog
+        ? (["connection", "catalog"] as ModelAcceptancePhase[])
+        : subscriptionOnly
+          ? (["connection"] as ModelAcceptancePhase[])
+          : phases;
   // Connection authority is dispatch order, never response/list/proposal/time order.
   const latestConnection = useMemo(
     () => latestClaimed(operations, "connection"),
@@ -1604,9 +1610,10 @@ function AcceptanceOperations({
             (phase === "inference" && (!catalog || !model));
           const identityClosedPhase = identityOnly && phase !== "connection";
           const historicalPhase =
+            (historicalInference && phase === "inference") ||
             (productionInference && phase !== "inference") ||
             (productionCatalog && phase === "connection") ||
-            (historicalCatalog && phase === "catalog");
+            (policy === "production_connection" && phase !== "connection");
           return (
             <li key={phase}>
               <div className="acceptance-step-heading">
@@ -1641,7 +1648,7 @@ function AcceptanceOperations({
                   身份专用连接不授权目录、推理、刷新或任何模型使用。
                 </p>
               )}
-              {phase === "inference" && (
+              {phase === "inference" && !historicalInference && (
                 <label>
                   推理模型
                   <select

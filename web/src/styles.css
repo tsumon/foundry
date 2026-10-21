@@ -1489,6 +1489,11 @@ summary {
   max-width: 280px;
   overflow-wrap: anywhere;
 }
+@media (max-width: 1179px) {
+  .acceptance-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 799px) {
   .model-accounts {
     padding: 16px;
@@ -1497,8 +1502,7 @@ summary {
     align-items: flex-start;
     flex-direction: column;
   }
-  .acceptance-toolbar,
-  .acceptance-steps {
+  .acceptance-toolbar {
     grid-template-columns: minmax(0, 1fr);
   }
   .acceptance-toolbar > button {

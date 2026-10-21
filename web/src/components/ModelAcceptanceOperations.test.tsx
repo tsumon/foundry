@@ -141,6 +141,222 @@ async function selectInference() {
   });
 }
 
+it.each(
+  (["catalog", "connection"] as const).flatMap((mode) =>
+    (["pending", "approved", "succeeded"] as const).map((state) => ({
+      mode,
+      state,
+    })),
+  ),
+)(
+  "keeps $state inference history read-only in $mode mode without blocking its independent approval",
+  async ({ mode, state }) => {
+    const f = inferenceFixture();
+    const admission = {
+      generation: "d".repeat(32),
+      profile:
+        mode === "catalog"
+          ? "openai_siwc_catalog_v1"
+          : "openai_siwc_subscription_v1",
+    };
+    const historical = {
+      ...f.pending,
+      state,
+      ...(state === "succeeded"
+        ? {
+            attempts: 1,
+            claim_sequence: 3,
+            certainty: "completed",
+            terminal_event: "response.completed",
+            resolved_model: "gpt-6.1-sol",
+            output_matched: true,
+            output_digest: digest,
+          }
+        : {}),
+    };
+    const next =
+      mode === "catalog"
+        ? catalogFixture().pending
+        : {
+            ...f.connection,
+            revision: 1,
+            state: "pending",
+            attempts: 0,
+            claim_sequence: 0,
+            certainty: "not_sent",
+            result_account_revision: undefined,
+            result_snapshot_digest: undefined,
+          };
+    let active = {
+      ...next,
+      state: "pending",
+      id: `fresh-${mode}`,
+      material: {
+        ...next.material,
+        account: { ...f.account },
+        production_admission: admission,
+      },
+    };
+    const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method) {
+        if (path.endsWith("/decision"))
+          active = { ...active, revision: 2, state: "approved" };
+        return response({ operation: active });
+      }
+      return response({
+        ...f.history,
+        operations: [f.connection, f.catalog, historical],
+        production_inference_enabled: false,
+        production_catalog_enabled: mode === "catalog",
+        production_connection_enabled: mode === "connection",
+        production_admission: admission,
+        routes: [
+          {
+            ...f.route,
+            ...(mode === "connection"
+              ? {
+                  connection_purpose: "subscription_only",
+                  connection_mode: "browser_handoff",
+                }
+              : {}),
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    const phase = mode === "catalog" ? "目录" : "连接";
+    const create = await screen.findByRole("button", {
+      name: `创建真实${phase}材料`,
+    });
+    await waitFor(() => expect(create).toBeEnabled());
+    await selectInference();
+    expect(
+      within(screen.getByLabelText("推理材料审阅")).getByText(
+        "Reply exactly: FOUNDRY_INFERENCE_OK",
+      ),
+    ).toBeVisible();
+    expect(
+      within(screen.getByLabelText("推理材料审阅")).queryByRole("button"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /创建真实推理|批准推理|执行推理/ }),
+    ).not.toBeInTheDocument();
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(
+      0,
+    );
+    fireEvent.click(create);
+    fireEvent.click(
+      await screen.findByRole("button", { name: `批准${phase}材料` }),
+    );
+    expect(
+      await screen.findByRole("button", { name: `执行${phase}` }),
+    ).toBeEnabled();
+    const writes = fetcher.mock.calls.filter(([, init]) => init?.method);
+    expect(writes).toHaveLength(2);
+    expect(JSON.parse(String(writes[0][1]?.body)).phase).toBe(mode);
+    expect(writes[1][0]).toContain(`/fresh-${mode}/decision`);
+  },
+);
+
+it("keeps all nonconnection phases read-only when an inference history response omits catalog rows", async () => {
+  const f = inferenceFixture();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        ...f.history,
+        operations: [f.connection, f.pending],
+        production_inference_enabled: false,
+        production_catalog_enabled: false,
+        production_connection_enabled: true,
+        production_admission: {
+          generation: "d".repeat(32),
+          profile: "openai_siwc_subscription_v1",
+        },
+        routes: [
+          {
+            ...f.route,
+            connection_purpose: "subscription_only",
+            connection_mode: "browser_handoff",
+          },
+        ],
+      }),
+    ),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  expect(
+    await screen.findByRole("button", { name: "创建真实连接材料" }),
+  ).toBeEnabled();
+  await selectInference();
+  expect(
+    screen.queryByRole("button", {
+      name: /创建真实目录|创建真实推理|批准推理|执行推理/,
+    }),
+  ).not.toBeInTheDocument();
+});
+
+it.each(["catalog", "connection"])(
+  "rejects malformed historical inference even in %s mode",
+  async (mode) => {
+    const f = inferenceFixture();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          ...f.history,
+          operations: [
+            f.connection,
+            f.catalog,
+            {
+              ...f.pending,
+              material: { ...f.pending.material, model: "wrong-model" },
+            },
+          ],
+          production_inference_enabled: false,
+          production_catalog_enabled: mode === "catalog",
+          production_connection_enabled: mode === "connection",
+          production_admission: {
+            generation: "d".repeat(32),
+            profile:
+              mode === "catalog"
+                ? "openai_siwc_catalog_v1"
+                : "openai_siwc_subscription_v1",
+          },
+          routes: [
+            {
+              ...f.route,
+              ...(mode === "connection"
+                ? {
+                    connection_purpose: "subscription_only",
+                    connection_mode: "browser_handoff",
+                  }
+                : {}),
+            },
+          ],
+        }),
+      ),
+    );
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    expect(await screen.findByText("invalid_receipt")).toBeVisible();
+  },
+);
+
 it("reports a consumed pre-send credential failure as not sent, without retry controls", async () => {
   const f = inferenceFixture();
   const failed = {
