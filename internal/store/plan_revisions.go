@@ -35,6 +35,9 @@ func (s *Store) RevisePlan(id string, expectedMission, expectedPlan int64, reaso
 		if active != 0 {
 			return ErrConflict
 		}
+		if err := domain.ValidatePlanAdjustments(*m, nextPlan); err != nil {
+			return err
+		}
 		old, oldDigest, err := canonicalPlan(*m.Plan)
 		if err != nil {
 			return err

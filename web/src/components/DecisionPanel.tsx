@@ -53,6 +53,12 @@ export function DecisionPanel({
   unsupportedWorkspaceMode ||= invalidSnapshot;
   const planning = ["draft", "paused", "blocked"].includes(mission.state);
   const approval = mission.state === "awaiting_approval" && !!mission.plan;
+  const replan =
+    mission.coding_version === 1 &&
+    planning &&
+    (!!mission.replan_context ||
+      mission.coding_attempts?.some((a) => a.status !== "succeeded"));
+  const unresolved = mission.plan?.adjustments?.some((a) => a.unresolved);
   const evidence = mission.evidence?.at(-1);
   const deliverable =
     mission.state === "awaiting_delivery" &&
@@ -261,7 +267,9 @@ export function DecisionPanel({
                   ? "授权上下文并开始受控调研"
                   : controlled
                     ? "授权上下文与本地读取并生成计划"
-                    : "授权上下文并生成计划"}
+                    : replan
+                      ? "基于失败重新规划"
+                      : "授权上下文并生成计划"}
               </button>
             </>
           )}
@@ -276,6 +284,7 @@ export function DecisionPanel({
                 disabled={
                   busy ||
                   planApprovalBlocked ||
+                  unresolved ||
                   unsupportedWorkspaceMode ||
                   executionAccountBlocked
                 }
@@ -283,6 +292,11 @@ export function DecisionPanel({
               >
                 批准并执行计划
               </button>
+              {unresolved && (
+                <p className="warning-copy">
+                  未解决的失败阻止执行审批；请在计划修订中明确处理。
+                </p>
+              )}
               {planApprovalBlocked && (
                 <p className="warning-copy">
                   本地计划草稿尚未保存、丢弃或已过期。请先在“计划链路”明确处理；系统不会自动保存并批准。

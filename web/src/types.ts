@@ -461,7 +461,38 @@ export interface Step {
   files: string[];
   status: string;
 }
+export interface PlanAdjustment {
+  failure_id: string;
+  step_ids: string[];
+  reason: string;
+  unresolved: boolean;
+}
+export interface CodingFailure {
+  id: string;
+  code: string;
+  phase: string;
+  attempt_id?: string;
+  verification_id?: string;
+  review_role?: string;
+  summary: string;
+  log_excerpt?: string;
+  log_truncated?: boolean;
+  source_digest?: string;
+}
+export interface FailureBundle {
+  schema_version: number;
+  mission_id: string;
+  epoch: number;
+  plan_revision: number;
+  base_commit: string;
+  candidate_generation: GenerationRef;
+  archive_digest: string;
+  trace_digest: string;
+  digest: string;
+  failures: CodingFailure[];
+}
 export interface Plan {
+  adjustments?: PlanAdjustment[];
   revision: number;
   summary: string;
   steps: Step[];
@@ -759,6 +790,7 @@ export interface Delivery {
   created_at: string;
 }
 export interface Mission {
+  replan_context?: FailureBundle;
   coding_version?: number;
   coding_attempts?: CodingAttempt[];
   model_snapshot?: MissionModelSnapshot;
@@ -842,6 +874,7 @@ export const isSupportedMissionMode = (
   (!baseWorkspaceMode(mission.workspace_mode) && !mission.tool_mode) ||
   usesGenerationWorkspace(mission);
 export interface RunArchive {
+  coding_attempts?: CodingAttempt[];
   candidate_generation?: GenerationRef;
   epoch: number;
   plan_revision: number;

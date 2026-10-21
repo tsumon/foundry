@@ -621,6 +621,13 @@ internal/domain/coding.go
 internal/domain/coding_test.go
 internal/engine/coding_trace.go
 internal/engine/coding_trace_test.go
+internal/domain/coding_failure.go
+internal/domain/coding_failure_test.go
+internal/engine/coding_replan.go
+internal/engine/coding_replan_test.go
+internal/engine/coding_replan_fault_test.go
+web/src/components/ReplanSummary.tsx
+web/src/components/CodingReplan.test.tsx
 internal/store/coding_test.go
 internal/domain/model_acceptance_inference.go
 internal/domain/model_acceptance_inference_test.go

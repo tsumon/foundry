@@ -28,6 +28,14 @@ export interface PlanDraft {
 }
 
 const editablePlan = (plan: Plan): EditablePlan => ({
+  ...(plan.adjustments
+    ? {
+        adjustments: plan.adjustments.map((a) => ({
+          ...a,
+          step_ids: [...a.step_ids],
+        })),
+      }
+    : {}),
   summary: plan.summary,
   steps: plan.steps.map(({ status: _status, ...step }) => ({
     ...step,
@@ -70,6 +78,8 @@ function describeDiff(draft: PlanDraft): string[] {
   const result: string[] = [];
   const before = draft.originalPlan;
   const after = draft.plan;
+  if (JSON.stringify(before.adjustments) !== JSON.stringify(after.adjustments))
+    result.push("失败映射、调整原因或未解决状态已变更。");
   if (before.summary !== after.summary)
     result.push(
       `摘要：${before.summary || "（空）"} → ${after.summary || "（空）"}`,
@@ -159,6 +169,17 @@ function validateDraft(draft: PlanDraft): string {
     const files = planListLines(step.files.join("\n"));
     if (!files.length) return `${label}至少需要一个文件。`;
     if (files.length > 30) return "每个步骤最多 30 个文件。";
+  }
+  for (const a of draft.plan.adjustments ?? []) {
+    if (!a.reason.trim()) return "每项失败必须填写调整原因。";
+    if (utf8Bytes(a.reason) > 4000) return "调整原因不能超过 4000 UTF-8 字节。";
+    if (!a.unresolved && !a.step_ids.length)
+      return "已解决失败必须映射当前步骤。";
+    if (
+      new Set(a.step_ids).size !== a.step_ids.length ||
+      a.step_ids.some((id) => !seen.has(id))
+    )
+      return "失败映射包含未知或重复步骤；请更新映射或标记未解决。";
   }
   return "";
 }
@@ -299,6 +320,64 @@ export function PlanRevisionEditor({
           }
         />
         <div className="plan-step-editors">
+          {draft.plan.adjustments?.map((adjustment, index) => (
+            <fieldset key={adjustment.failure_id}>
+              <legend>失败调整 {adjustment.failure_id}</legend>
+              <label>
+                调整原因 {adjustment.failure_id}
+                <textarea
+                  value={adjustment.reason}
+                  readOnly={!canEdit}
+                  onChange={(event) =>
+                    updatePlan({
+                      ...draft.plan,
+                      adjustments: draft.plan.adjustments!.map((a, i) =>
+                        i === index ? { ...a, reason: event.target.value } : a,
+                      ),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                映射步骤 {adjustment.failure_id}（每行一项）
+                <textarea
+                  value={adjustment.step_ids.join("\n")}
+                  readOnly={!canEdit}
+                  onChange={(event) =>
+                    updatePlan({
+                      ...draft.plan,
+                      adjustments: draft.plan.adjustments!.map((a, i) =>
+                        i === index
+                          ? {
+                              ...a,
+                              step_ids: planListLines(event.target.value),
+                            }
+                          : a,
+                      ),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={adjustment.unresolved}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    updatePlan({
+                      ...draft.plan,
+                      adjustments: draft.plan.adjustments!.map((a, i) =>
+                        i === index
+                          ? { ...a, unresolved: event.target.checked }
+                          : a,
+                      ),
+                    })
+                  }
+                />
+                未解决 {adjustment.failure_id}
+              </label>
+            </fieldset>
+          ))}
           {draft.plan.steps.map((step, index) => (
             <fieldset
               key={index}

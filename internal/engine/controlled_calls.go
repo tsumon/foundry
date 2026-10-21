@@ -302,7 +302,10 @@ func (e *Engine) controlledModelInput(m domain.Mission, role domain.Role, extra 
 		}
 	}
 	payload := map[string]any{"goal": m.Goal, "spec": m.Spec, "context": files, "manifest": m.ContextManifest, "skills": bound, "research": m.Research, "plan": m.Plan, "changes": m.Changes, "evidence": m.Evidence, "extra": extra}
-	input := controlledInput{Profile: m.Profiles[role], Role: role, System: rolePrompt(role), MaxOutputTokens: 8192}
+	if m.ReplanContext != nil {
+		payload["replan_context"] = m.ReplanContext
+	}
+	input := controlledInput{Profile: m.Profiles[role], Role: role, System: missionRolePrompt(m, role), MaxOutputTokens: 8192}
 	if domain.IsInferenceSnapshot(m) {
 		selection := m.ModelSnapshot.Roles[role]
 		input.SnapshotSchema = 2

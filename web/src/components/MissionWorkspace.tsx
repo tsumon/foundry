@@ -20,6 +20,7 @@ import {
 import { missionStateName } from "../deliveryStatus";
 import { StageRail } from "./StageRail";
 import { DecisionPanel } from "./DecisionPanel";
+import { ReplanSummary } from "./ReplanSummary";
 import { MissionViews, views, type MissionView } from "./MissionViews";
 import type { MissionProjectContext } from "../projectContext";
 import {
@@ -278,6 +279,9 @@ export function MissionWorkspace({
         expected_plan_revision: draft.expectedPlanRevision,
         reason: draft.reason.trim(),
         plan: {
+          ...(draft.plan.adjustments
+            ? { adjustments: draft.plan.adjustments }
+            : {}),
           summary: draft.plan.summary,
           steps: draft.plan.steps.map((step) => ({
             id: step.id,
@@ -439,6 +443,7 @@ export function MissionWorkspace({
           className="view-content"
           tabIndex={0}
         >
+          {view === "计划链路" && <ReplanSummary mission={mission} />}
           <MissionViews
             mission={mission}
             view={view}

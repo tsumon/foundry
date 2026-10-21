@@ -13,8 +13,9 @@ import (
 
 // EditablePlan deliberately excludes runtime status, revisions and authority.
 type EditablePlan struct {
-	Summary string         `json:"summary"`
-	Steps   []EditableStep `json:"steps"`
+	Adjustments []domain.PlanAdjustment `json:"adjustments,omitempty"`
+	Summary     string                  `json:"summary"`
+	Steps       []EditableStep          `json:"steps"`
 }
 
 type EditableStep struct {
@@ -46,7 +47,7 @@ func invalidRevisionInput(err error) error {
 }
 
 func (p EditablePlan) pendingPlan() domain.Plan {
-	plan := domain.Plan{Summary: p.Summary, Steps: make([]domain.Step, 0, len(p.Steps))}
+	plan := domain.Plan{Summary: p.Summary, Steps: make([]domain.Step, 0, len(p.Steps)), Adjustments: p.Adjustments}
 	for _, step := range p.Steps {
 		plan.Steps = append(plan.Steps, domain.Step{ID: step.ID, Title: step.Title, Description: step.Description, DependsOn: step.DependsOn, Files: step.Files, Status: "pending"})
 	}
@@ -116,6 +117,9 @@ func (e *Engine) RevisePlan(ctx context.Context, id string, request PlanRevision
 		return m, empty, invalidRevisionInput(err)
 	}
 	next := request.Plan.pendingPlan()
+	if err = domain.ValidatePlanAdjustments(m, next); err != nil {
+		return m, empty, invalidRevisionInput(err)
+	}
 	if err = validateExecutablePlan(next, m.Spec); err != nil {
 		return m, empty, invalidRevisionInput(err)
 	}

@@ -118,11 +118,7 @@ func (e *Engine) commitLocal(op domain.LocalOperation, event string, mutate func
 
 func resetRun(m *domain.Mission, revision int64, ref domain.GenerationRef) {
 	if m.State != "draft" {
-		planRevision := int64(0)
-		if m.Plan != nil {
-			planRevision = m.Plan.Revision
-		}
-		m.RunArchives = append(m.RunArchives, domain.RunArchive{Epoch: m.Epoch, PlanRevision: planRevision, Revision: m.Revision, ArchivedAt: now(), State: m.State, Error: m.Error, ImageID: m.Spec.ImageID, CandidateDigest: m.CandidateDigest, CandidateGeneration: m.CandidateGeneration, Plan: m.Plan, Research: m.Research, Changes: m.Changes, Evidence: m.Evidence, Reviews: m.Reviews, Delivery: m.Delivery})
+		m.RunArchives = append(m.RunArchives, archiveCodingRun(*m))
 	}
 	m.Epoch++
 	m.State = "planning"
@@ -141,10 +137,14 @@ func resetRun(m *domain.Mission, revision int64, ref domain.GenerationRef) {
 }
 
 func (e *Engine) resetGeneration(m domain.Mission) (domain.Mission, error) {
+	archive, bundle, err := e.freezeReplan(m)
+	if err != nil {
+		return m, err
+	}
 	if err := e.interruptUnfinished(m); err != nil {
 		return m, err
 	}
-	op, err := e.localIntent(m, "reset", nil)
+	op, err := e.localIntent(m, "reset", bundle)
 	if err != nil {
 		return m, err
 	}
@@ -162,7 +162,24 @@ func (e *Engine) resetGeneration(m domain.Mission) (domain.Mission, error) {
 		_, _ = e.s.InterruptLocalOperation(op.ID, err.Error())
 		return m, err
 	}
-	return e.commitLocal(prepared, "mission.planning", func(current *domain.Mission) error { resetRun(current, m.Revision, ref); return nil })
+	return e.commitLocal(prepared, "mission.planning", func(current *domain.Mission) error {
+		if _, err := e.selectedCandidate(*current); err != nil {
+			return err
+		}
+		if archive != nil {
+			actual := archiveCodingRun(*current)
+			actual.ArchivedAt = archive.ArchivedAt
+			if domain.CodingArchiveDigest(actual) != domain.CodingArchiveDigest(*archive) {
+				return errors.New("failure material changed before reset selection")
+			}
+		}
+		resetRun(current, m.Revision, ref)
+		if archive != nil {
+			current.RunArchives[len(current.RunArchives)-1] = *archive
+		}
+		current.ReplanContext = bundle
+		return domain.ValidateReplanContext(*current)
+	})
 }
 
 func (e *Engine) applyGeneration(run *operation, out editOutput, files []string) error {

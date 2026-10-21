@@ -20,6 +20,106 @@ import (
 
 type revisionGateway struct{}
 
+type codingRevisionGateway struct{}
+
+func (codingRevisionGateway) Complete(ctx context.Context, request model.Request) (model.Result, error) {
+	if request.Role == domain.Worker {
+		return model.Result{Text: `{"summary":"invalid","edits":[]}`}, nil
+	}
+	result, err := (revisionGateway{}).Complete(ctx, request)
+	var input struct {
+		Bundle *domain.FailureBundle `json:"replan_context"`
+	}
+	_ = json.Unmarshal([]byte(request.Prompt), &input)
+	if input.Bundle != nil {
+		var proposal engine.EditablePlan
+		_ = json.Unmarshal([]byte(result.Text), &proposal)
+		for _, f := range input.Bundle.Failures {
+			proposal.Adjustments = append(proposal.Adjustments, domain.PlanAdjustment{FailureID: f.ID, StepIDs: []string{"one"}, Reason: "correct edit output"})
+		}
+		raw, _ := json.Marshal(proposal)
+		result.Text = string(raw)
+	}
+	return result, err
+}
+
+func TestCodingFailureReplanHTTPSeparatesProposalRevisionAndApproval(t *testing.T) {
+	f, old := revisionFixture(t)
+	server := f.handler.(*server)
+	_ = server.engine.Close()
+	makeEngine := func() *engine.Engine {
+		return engine.New(f.store, codingRevisionGateway{}, engine.Options{DataDir: f.dataDir, Runner: idleRunner{}})
+	}
+	e := makeEngine()
+	server.engine = e
+	t.Cleanup(func() { server.engine.Close() })
+	m, err := e.Create(context.Background(), engine.CreateRequest{Title: old.Title, Goal: old.Goal, RepoPath: old.RepoPath, Spec: old.Spec, WorkspaceMode: domain.WorkspaceModeGenerationsV1, CodingVersion: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := "/api/missions/" + m.ID
+	await := func(state string) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			m, err = f.store.GetMission(m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.State == state {
+				if err = e.Close(); err != nil {
+					t.Fatal(err)
+				}
+				e = makeEngine()
+				server.engine = e
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		t.Fatal("state timeout", m.State, m.Error)
+	}
+	action := func(name string) {
+		t.Helper()
+		rr := f.request("POST", base+"/"+name, fmt.Sprintf(`{"revision":%d}`, m.Revision), true)
+		if rr.Code != 200 {
+			t.Fatal(rr.Code, rr.Body.String())
+		}
+	}
+	action("plan")
+	await("awaiting_approval")
+	action("approve")
+	await("blocked")
+	before := m.Budget.UsedCalls
+	action("plan")
+	await("awaiting_approval")
+	if m.ReplanContext == nil || len(m.Plan.Adjustments) != 1 || m.Budget.UsedCalls != before+1 || len(m.Evidence) != 0 {
+		t.Fatal("replan boundary lost")
+	}
+	body := revisionBody(m)
+	rr := f.request("POST", base+"/plan-revisions", body, true)
+	if rr.Code != 400 {
+		t.Fatal("missing adjustment accepted", rr.Code, rr.Body.String())
+	}
+	var req engine.PlanRevisionRequest
+	_ = json.Unmarshal([]byte(body), &req)
+	req.Plan.Adjustments = append([]domain.PlanAdjustment(nil), m.Plan.Adjustments...)
+	req.Plan.Adjustments[0].Unresolved = true
+	raw, _ := json.Marshal(req)
+	rr = f.request("POST", base+"/plan-revisions", string(raw), true)
+	if rr.Code != 200 {
+		t.Fatal(rr.Code, rr.Body.String())
+	}
+	m, _ = f.store.GetMission(m.ID)
+	rr = f.request("POST", base+"/approve", fmt.Sprintf(`{"revision":%d}`, m.Revision), true)
+	if rr.Code != 409 {
+		t.Fatal("unresolved approved", rr.Code, rr.Body.String())
+	}
+	got, _ := f.store.GetMission(m.ID)
+	if got.Budget != m.Budget || got.State != "awaiting_approval" {
+		t.Fatal("revision or refusal executed")
+	}
+}
+
 func (revisionGateway) Complete(context.Context, model.Request) (model.Result, error) {
 	return model.Result{Text: `{"summary":"Implement","steps":[{"id":"one","title":"Update","description":"Edit source","depends_on":[],"files":["src/main.txt"]}]}`}, nil
 }

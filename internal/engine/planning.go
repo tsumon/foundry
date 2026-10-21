@@ -66,6 +66,14 @@ func validateExecutablePlan(plan domain.Plan, spec domain.Spec) error {
 }
 
 func authority(m domain.Mission, base string, includePlan bool) (string, error) {
+	if err := domain.ValidateReplanContext(m); err != nil {
+		return "", err
+	}
+	if includePlan && m.Plan != nil {
+		if err := domain.ValidatePlanAdjustments(m, *m.Plan); err != nil {
+			return "", err
+		}
+	}
 	if err := domain.ValidateCodingTrace(m); err != nil {
 		return "", err
 	}
@@ -73,11 +81,26 @@ func authority(m domain.Mission, base string, includePlan bool) (string, error) 
 		legacy := m
 		legacy.CodingVersion = 0
 		legacy.CodingAttempts = nil
+		legacy.ReplanContext = nil
+		legacy.RunArchives = nil
+		if legacy.Plan != nil {
+			p := *legacy.Plan
+			p.Adjustments = nil
+			legacy.Plan = &p
+		}
 		digest, err := authority(legacy, base, includePlan)
 		if err != nil {
 			return "", err
 		}
-		h := sha256.Sum256([]byte("FOUNDRY coding authority v1\x00" + digest))
+		binding := ""
+		if includePlan && m.ReplanContext != nil {
+			if m.Plan == nil {
+				return "", errors.New("replan execution authority requires a proposal")
+			}
+			raw, _ := json.Marshal(m.Plan.Adjustments)
+			binding = "\x00" + m.ReplanContext.Digest + "\x00" + string(raw)
+		}
+		h := sha256.Sum256([]byte("FOUNDRY coding authority v1\x00" + digest + binding))
 		return hex.EncodeToString(h[:]), nil
 	}
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
@@ -183,6 +206,9 @@ func hasSeal(m domain.Mission, kind, digest string) bool {
 	return false
 }
 func (e *Engine) checkSnapshot(m domain.Mission) error {
+	if err := e.checkReplanMaterial(m); err != nil {
+		return err
+	}
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 		return err
 	}
@@ -246,6 +272,9 @@ func (e *Engine) plan(ctx context.Context, id string, revision int64, consent bo
 	}
 	if m.State != "draft" && m.State != "paused" && m.State != "blocked" {
 		return m, errors.New("mission cannot plan in this state")
+	}
+	if m.CodingVersion == 1 && m.Budget.UsedCalls >= m.Budget.MaxCalls {
+		return m, errors.New("model call budget exhausted")
 	}
 	roles := []domain.Role{domain.Planner}
 	if m.Spec.Research {
@@ -361,11 +390,23 @@ func (e *Engine) planning(op *operation) error {
 			return err
 		}
 	}
-	var p planOutput
-	if err := e.call(op, domain.Planner, nil, &p); err != nil {
-		return err
+	var p EditablePlan
+	if m.CodingVersion == 1 && m.ReplanContext != nil {
+		if err := e.call(op, domain.Planner, nil, &p); err != nil {
+			return err
+		}
+	} else {
+		var legacy planOutput
+		if err := e.call(op, domain.Planner, nil, &legacy); err != nil {
+			return err
+		}
+		p.Summary = legacy.Summary
+		p.Steps = legacy.Steps
 	}
 	plan := p.pendingPlan()
+	if err := domain.ValidatePlanAdjustments(m, plan); err != nil {
+		return e.denyModelValidation(op, "invalid_adjustments", err)
+	}
 	if err := validateExecutablePlan(plan, m.Spec); err != nil {
 		return e.denyModelValidation(op, "invalid_plan", err)
 	}
@@ -395,6 +436,14 @@ func (e *Engine) Approve(ctx context.Context, id string, revision int64) (domain
 	}
 	if m.State != "awaiting_approval" || m.Plan == nil {
 		return m, errors.New("mission is not awaiting approval")
+	}
+	if err := domain.ValidatePlanAdjustments(m, *m.Plan); err != nil {
+		return m, err
+	}
+	for _, a := range m.Plan.Adjustments {
+		if a.Unresolved {
+			return m, errors.New("unresolved failure blocks execution approval")
+		}
 	}
 	if err = e.preflightModelRoles(ctx, m, domain.Worker, domain.Debugger, domain.QA, domain.Auditor); err != nil {
 		return m, err

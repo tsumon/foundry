@@ -59,9 +59,10 @@ type Step struct {
 }
 
 type Plan struct {
-	Revision int64  `json:"revision"`
-	Summary  string `json:"summary"`
-	Steps    []Step `json:"steps"`
+	Adjustments []PlanAdjustment `json:"adjustments,omitempty"`
+	Revision    int64            `json:"revision"`
+	Summary     string           `json:"summary"`
+	Steps       []Step           `json:"steps"`
 }
 
 type Finding struct {
@@ -183,6 +184,7 @@ type Delivery struct {
 }
 
 type Mission struct {
+	ReplanContext      *FailureBundle  `json:"replan_context,omitempty"`
 	CodingVersion      int             `json:"coding_version,omitempty"`
 	CodingAttempts     []CodingAttempt `json:"coding_attempts,omitempty"`
 	CodingTraceInvalid bool            `json:"-"`
@@ -227,23 +229,25 @@ type Mission struct {
 	RunArchives          []RunArchive          `json:"run_archives,omitempty"`
 }
 
-// RunArchive is historical data only, never an input to delivery authority.
+// RunArchive is historical data, never current passing delivery evidence.
+// Version-one replans bind its exact digest as failure material, not approval.
 type RunArchive struct {
-	CandidateGeneration *GenerationRef `json:"candidate_generation,omitempty"`
-	Epoch               int64          `json:"epoch"`
-	PlanRevision        int64          `json:"plan_revision"`
-	Revision            int64          `json:"revision"`
-	ArchivedAt          string         `json:"archived_at"`
-	State               string         `json:"state"`
-	Error               string         `json:"error"`
-	ImageID             string         `json:"image_id"`
-	CandidateDigest     string         `json:"candidate_digest"`
-	Plan                *Plan          `json:"plan"`
-	Research            *Research      `json:"research"`
-	Changes             []Change       `json:"changes"`
-	Evidence            []Verification `json:"evidence"`
-	Reviews             []Review       `json:"reviews"`
-	Delivery            *Delivery      `json:"delivery"`
+	CodingAttempts      []CodingAttempt `json:"coding_attempts,omitempty"`
+	CandidateGeneration *GenerationRef  `json:"candidate_generation,omitempty"`
+	Epoch               int64           `json:"epoch"`
+	PlanRevision        int64           `json:"plan_revision"`
+	Revision            int64           `json:"revision"`
+	ArchivedAt          string          `json:"archived_at"`
+	State               string          `json:"state"`
+	Error               string          `json:"error"`
+	ImageID             string          `json:"image_id"`
+	CandidateDigest     string          `json:"candidate_digest"`
+	Plan                *Plan           `json:"plan"`
+	Research            *Research       `json:"research"`
+	Changes             []Change        `json:"changes"`
+	Evidence            []Verification  `json:"evidence"`
+	Reviews             []Review        `json:"reviews"`
+	Delivery            *Delivery       `json:"delivery"`
 }
 
 type Event struct {

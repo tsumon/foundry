@@ -19,6 +19,14 @@ func (s *Store) ApproveMissionExecution(id string, expected int64, digest string
 		if m.State != "awaiting_approval" || m.Plan == nil || digest == "" {
 			return errors.New("mission is not awaiting execution approval")
 		}
+		if err := domain.ValidatePlanAdjustments(*m, *m.Plan); err != nil {
+			return err
+		}
+		for _, a := range m.Plan.Adjustments {
+			if a.Unresolved {
+				return errors.New("unresolved failure blocks execution approval")
+			}
+		}
 		proposal := ""
 		for i := len(m.Approvals) - 1; i >= 0; i-- {
 			if m.Approvals[i].Kind == "plan_proposal" {
