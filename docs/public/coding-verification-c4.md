@@ -46,8 +46,11 @@ It invokes a fixed Go test command, validates actual test events and fails on ze
 tests. Freeze tests, go.mod/go.sum, build/configuration inputs and verifier identity.
 Use GOPROXY=off, GOSUMDB=off, GOTOOLCHAIN=local, GOENV=off, GOWORK=off,
 CGO_ENABLED=0 and scratch-only compiler/cache paths. No dependency install,
-go generate or shell expansion. The image's Go version and base digest must be
-selected and reviewed in C4-C; this increment must not invent an available image.
+go generate or shell expansion. The verifier contract fixes Go 1.27.3 on
+linux/arm64 and `go test -json -count=1 -timeout=90s ./...` in `/workspace`.
+The future image must supply `/usr/local/go/bin/go`; the verifier checks its
+version before testing. Its image/base provenance and actual compiler must be
+reviewed in C4-C; this declaration does not assert that an image is available.
 
 ## Approvals and task flow
 
@@ -90,6 +93,40 @@ and stop. A recorded exact-owned cleanup action may be requested separately;
 cleanup cannot replay execution and cannot manufacture a passing result.
 C3 diagnostic reads remain read-only and never contact a runner.
 Failure to persist a terminal fact retains the durable intent for diagnosis.
+
+## Bounded executor and verifier boundary
+
+The executor accepts only an in-process synthetic-driver capability in A/B.
+The profile's `mode` string alone is not that capability. Production Docker mode
+is rejected before persistence or driver calls. The deterministic command plan
+is not a subprocess transport; the existing legacy runner is not a fallback.
+
+Every planned Docker command binds the trusted absolute executable and explicit
+local Unix endpoint, with no inherited environment. The managed candidate must
+be a canonical descendant directory without symlinks, `.git`, or special files.
+Start acknowledgment and waiting are separate: a driver must confirm an
+exact-owned container start before the executor persists the started fact and
+waits. Dispatch, created ID, outcome and cleanup are separate durable mutations.
+A failed or uncertain persistence callback stops all subsequent effects.
+
+Because logging is disabled, the plan uses `start --attach`, not Docker logs.
+A future driver must continuously drain attached output into a bounded buffer,
+preserve truncation metadata, and expose that buffer through the typed logs stage
+without launching another command. It must validate the image-owned verifier
+summary independently of untrusted output strings. The verifier treats Go JSON
+events as data, requires a completed passing test and successful package outcomes,
+and rejects malformed, oversized, zero-test, skipped-only and nonzero-status
+false success. Output retention is bounded to 64 KiB combined and common
+credential patterns/control characters are redacted before persistence.
+
+These are testable contracts, not observed isolation. C4-C still must validate
+executable/socket trust, image provenance and content ID, actual platform and
+toolchain, image configuration (including rejecting declared volumes and unsafe
+environment defaults), effective container mounts/resources/network, immutable
+candidate handoff, attach/start acknowledgment and verifier-summary transport.
+No such readiness probe, image inspection, image build or container run occurs
+in A/B. Explicit recovery inspects/removes only a separately known exact-owned
+ID; it cannot discover by name, replay a command or promote an unknown result.
 
 ## Implementation seams
 
