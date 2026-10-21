@@ -274,6 +274,9 @@ func (e *Engine) verifyDelivery(m domain.Mission) error {
 }
 
 func (e *Engine) verifyDeliveryWith(m domain.Mission, readOperation func(string) (domain.LocalOperation, error)) error {
+	if err := c4Delivery(m); err != nil {
+		return err
+	}
 	if err := e.ValidateRepositoryImport(m); err != nil {
 		return err
 	}

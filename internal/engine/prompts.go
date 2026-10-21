@@ -166,6 +166,10 @@ func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error
 		e.mu.Unlock()
 		return err
 	}
+	if err = e.c4Gate(m); err != nil {
+		e.mu.Unlock()
+		return err
+	}
 	if m.ToolMode != "" || domain.IsInferenceSnapshot(m) {
 		e.mu.Unlock()
 		invocation, text, err := e.controlledModel(op, role, extra)
@@ -243,12 +247,13 @@ func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error
 	if err != nil {
 		return err
 	}
-	if e.gateway == nil {
-		return errors.New("model gateway unavailable")
+	gateway, err := e.c4ModelGateway(m)
+	if err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(op.ctx, 90*time.Second)
 	defer cancel()
-	result, err := e.gateway.Complete(ctx, model.Request{Profile: m.Profiles[role], Role: role, System: missionRolePrompt(m, role), Prompt: string(b), MaxOutputTokens: 8192})
+	result, err := gateway.Complete(ctx, model.Request{Profile: m.Profiles[role], Role: role, System: missionRolePrompt(m, role), Prompt: string(b), MaxOutputTokens: 8192})
 	// Even unknown outcomes consume the reservation. No retry is performed.
 	_, saveErr := e.update(op, "call.finished", func(m *domain.Mission) error {
 		if !result.UsageKnown || err != nil {
@@ -338,6 +343,15 @@ func reportWithSources(m domain.Mission, sources bool) string {
 	if m.ImportVersion == 1 {
 		material, _ := json.MarshalIndent(m.RepositoryImport, "", "  ")
 		out.WriteString("\n## C3 · Frozen repository import\n\nCommitted source provenance only; not execution or delivery approval.\n\n```json\n")
+		out.Write(material)
+		out.WriteString("\n```\n")
+	}
+	if isC4(m) {
+		material, _ := json.MarshalIndent(struct {
+			Profile    *domain.C4Profile    `json:"profile"`
+			Operations []domain.C4Operation `json:"operations"`
+		}{m.Spec.C4, m.C4Operations}, "", "  ")
+		out.WriteString("\n## C4 · Synthetic verification lifecycle\n\nSynthetic models and command outcomes only. No real Docker or Go execution, readiness, isolation, or resource enforcement was verified. Baseline is frozen-source evidence only, never candidate verification or delivery approval.\n\n```json\n")
 		out.Write(material)
 		out.WriteString("\n```\n")
 	}

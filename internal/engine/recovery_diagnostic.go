@@ -23,6 +23,9 @@ func (e *Engine) DiagnoseRecovery(ctx context.Context, id string) (domain.Recove
 	local, localErr := e.s.LatestLocalOperation(id)
 	invocations, invocationErr := e.s.RecoveryInvocations(id)
 	add := func(c domain.RecoveryCheck) { d.Checks = append(d.Checks, c) }
+	if isC4(m) {
+		add(c4Diagnostic(m))
+	}
 	validMode := supportedMode(m.WorkspaceMode) == nil && m.ToolMode == "" && domain.ValidateCodingVersion(m.CodingVersion, m.WorkspaceMode, m.ToolMode) == nil
 	if !validMode || id == "" || filepath.Base(id) != id || id == "." || id == ".." {
 		for _, check := range []string{"candidate_record", "candidate", "base_authority", "import_provenance", "coding_trace", "invocations", "verification", "reviews", "export", "local_operation"} {

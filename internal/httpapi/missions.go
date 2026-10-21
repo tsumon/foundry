@@ -78,6 +78,10 @@ func (s *server) missionRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	if len(parts) == 2 && parts[1] == "c4" {
+		s.c4(w, r, id)
+		return
+	}
 	if s.mcpTaskRoute(w, r, parts) {
 		return
 	}

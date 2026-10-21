@@ -20,6 +20,7 @@ import (
 )
 
 type Options struct {
+	C4           *C4SyntheticCapability
 	LocalMCPTest *mcptest.Descriptor
 	// Go-only experimental service; never configured by CLI, environment or HTTP.
 	EnableLocalMCP                bool
@@ -53,6 +54,7 @@ type operation struct {
 	finished          chan struct{}
 }
 type Engine struct {
+	c4Root  string // Canonical trusted data root pinned at construction; no mission aliases.
 	s       *store.Store
 	gateway model.Gateway
 	options Options
@@ -75,7 +77,8 @@ func New(s *store.Store, gateway model.Gateway, options Options) *Engine {
 	if runner == nil {
 		runner = sandbox.New(options.DockerPath, hex.EncodeToString(owner[:12]))
 	}
-	return &Engine{s: s, gateway: gateway, options: options, runner: runner}
+	c4Root, _ := filepath.EvalSymlinks(abs)
+	return &Engine{s: s, gateway: gateway, options: options, runner: runner, c4Root: c4Root}
 }
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 func opaque() (string, error) {
@@ -89,6 +92,9 @@ func (e *Engine) Create(ctx context.Context, r CreateRequest) (domain.Mission, e
 	defer e.mu.Unlock()
 	if e.closed {
 		return domain.Mission{}, errors.New("engine closed")
+	}
+	if err := e.c4CreateGate(r); err != nil {
+		return domain.Mission{}, err
 	}
 	if r.ImportVersion != 0 || r.ImportSelection != nil {
 		return e.createRepositoryImport(ctx, r)
@@ -238,6 +244,9 @@ func (e *Engine) checked(id string, revision int64) (domain.Mission, error) {
 	if m.Revision != revision {
 		return m, store.ErrConflict
 	}
+	if err := e.c4Gate(m); err != nil {
+		return m, err
+	}
 	if err := e.ValidateRepositoryImport(m); err != nil {
 		return m, err
 	}
@@ -338,7 +347,7 @@ func (e *Engine) Pause(ctx context.Context, id string, revision int64) (domain.M
 	// Retain the serial slot while cleanup runs, but do not hold the mutex:
 	// other actions can promptly observe busy rather than race into this slot.
 	var cleanupErr error
-	if op.sandbox {
+	if op.sandbox && !isC4(m) {
 		cleanupErr = e.runner.Reconcile(context.Background())
 	}
 	e.mu.Lock()
@@ -392,6 +401,11 @@ func (e *Engine) Recover(ctx context.Context) error {
 	if err := validateRecoveryModelSnapshots(missions); err != nil {
 		return err
 	}
+	for _, m := range missions {
+		if err := e.c4Gate(m); err != nil {
+			return err
+		}
+	}
 	// Read-only preflight: unsupported/corrupt trace must never be rewritten by
 	// recovery, local-operation cleanup, or invocation reconciliation.
 	for _, m := range missions {
@@ -400,6 +414,12 @@ func (e *Engine) Recover(ctx context.Context) error {
 		}
 	}
 	for _, m := range missions {
+		if isC4(m) {
+			if err := e.recoverC4(m); err != nil {
+				return err
+			}
+			continue
+		}
 		if unfinishedCoding(m) {
 			if _, err = e.s.UpdateMission(m.ID, m.Revision, "coding.interrupted", func(current *domain.Mission) error {
 				interruptCoding(current)
@@ -419,9 +439,12 @@ func (e *Engine) Recover(ctx context.Context) error {
 	// MCP/research reconciliation is local. Unlike ABv1, v2 can also have
 	// explicitly approved execution: retain owner-scoped cleanup without doing
 	// ordinary generation/Git recovery or replaying any execution.
-	ordinaryRecovery := len(missions) == 0
+	ordinaryRecovery := len(missions) == 0 && !e.C4SimulationEnabled()
 	executionCleanup := false
 	for _, m := range missions {
+		if isC4(m) {
+			continue
+		}
 		if domain.IsResearchFlowV2(m.WorkspaceMode, m.ToolMode) {
 			if err := e.s.CheckMCPLedgerVersion(m.ID); err != nil {
 				if errors.Is(err, store.ErrMCPFutureVersion) {
@@ -483,6 +506,9 @@ func (e *Engine) Recover(ctx context.Context) error {
 	}
 	for _, m := range missions {
 		// A future format is readable, but this binary must not rewrite it.
+		if isC4(m) {
+			continue
+		}
 		if domain.IsControlledMCPRead(m.WorkspaceMode, m.ToolMode) {
 			continue
 		}

@@ -66,6 +66,9 @@ func validateExecutablePlan(plan domain.Plan, spec domain.Spec) error {
 }
 
 func authority(m domain.Mission, base string, includePlan bool) (string, error) {
+	if m.Spec.C4 != nil && includePlan {
+		return c4ExecutionAuthority(m, base)
+	}
 	if err := domain.ValidateMissionRepositoryImport(m); err != nil {
 		return "", err
 	}
@@ -221,6 +224,9 @@ func hasSeal(m domain.Mission, kind, digest string) bool {
 	return false
 }
 func (e *Engine) checkSnapshot(m domain.Mission) error {
+	if err := e.c4Gate(m); err != nil {
+		return err
+	}
 	if err := e.checkRepositoryImportBase(m); err != nil {
 		return err
 	}
@@ -300,6 +306,9 @@ func (e *Engine) plan(ctx context.Context, id string, revision int64, consent bo
 	if m.CodingVersion == 1 && m.Budget.UsedCalls >= m.Budget.MaxCalls {
 		return m, errors.New("model call budget exhausted")
 	}
+	if err := c4PlanningGate(m); err != nil {
+		return m, err
+	}
 	roles := []domain.Role{domain.Planner}
 	if m.Spec.Research {
 		roles = append(roles, domain.Researcher)
@@ -376,14 +385,14 @@ func (e *Engine) planning(op *operation) error {
 		return err
 	}
 	for _, a := range m.Approvals {
-		if a.Kind == "execute" {
+		if a.Kind == "execute" && !isC4(m) {
 			if err := e.runner.Reconcile(op.ctx); err != nil {
 				return errors.New("owned sandbox cleanup must succeed before replanning")
 			}
 			break
 		}
 	}
-	image, err := e.runner.Resolve(op.ctx, m.Spec.Image)
+	image, err := e.resolveVerificationImage(op.ctx, m)
 	if err != nil {
 		return err
 	}
@@ -482,7 +491,7 @@ func (e *Engine) Approve(ctx context.Context, id string, revision int64) (domain
 	if !hasSeal(m, "plan_proposal", seal) {
 		return m, errors.New("plan approval inputs changed")
 	}
-	image, err := e.runner.Resolve(ctx, m.Spec.Image)
+	image, err := e.resolveVerificationImage(ctx, m)
 	if err != nil {
 		return m, err
 	}

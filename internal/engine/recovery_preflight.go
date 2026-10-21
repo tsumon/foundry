@@ -17,11 +17,21 @@ func CheckRecoveryModelSnapshots(s *store.Store) error {
 	if err != nil {
 		return err
 	}
+	// This is the production startup preflight. Only disposable Go-only runtimes
+	// can admit C4; a production process must not mutate even valid C4 records.
+	for _, m := range missions {
+		if isC4(m) {
+			return ErrC4Unavailable
+		}
+	}
 	return validateRecoveryModelSnapshots(missions)
 }
 
 func validateRecoveryModelSnapshots(missions []domain.Mission) error {
 	for _, m := range missions {
+		if err := c4Structure(m); err != nil {
+			return err
+		}
 		if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 			_, bound, _ := domain.BaseWorkspaceMode(m.WorkspaceMode)
 			if errors.Is(err, domain.ErrInvalidModelSnapshot) || m.ModelSnapshot != nil || hasAccountProfiles(m) || bound {

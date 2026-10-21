@@ -56,6 +56,9 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 		if err != nil || e.s.ValidateMissionRepositoryImport(m) != nil {
 			return zero, domain.ImportInvalidBinding
 		}
+		if err := e.c4Gate(m); err != nil {
+			return zero, err
+		}
 		return m, nil
 	}
 	if !errors.Is(err, store.ErrNotFound) {
@@ -68,6 +71,15 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 	if domain.RepositoryImportSpecDigest(spec) != domain.RepositoryImportSpecDigest(receipt.Spec) {
 		return zero, domain.ImportSourceChanged
 	}
+	resolved, frozen, modelSnapshot, modelPolicy, err := e.s.ResolveMissionModelSelection(r.Spec.ProfileID)
+	if err != nil {
+		return zero, err
+	}
+	if r.Spec.C4 != nil {
+		if err := c4Profiles(frozen, modelSnapshot); err != nil {
+			return zero, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	source, err := e.recheckImportSource(ctx, receipt, r.RepoPath)
@@ -76,10 +88,6 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 	}
 	if workspace.CheckLocation(ctx, receipt.Root, e.options.DataDir) != nil {
 		return zero, domain.ImportLocation
-	}
-	resolved, frozen, modelSnapshot, modelPolicy, err := e.s.ResolveMissionModelSelection(r.Spec.ProfileID)
-	if err != nil {
-		return zero, err
 	}
 	id, err := opaque()
 	if err != nil {

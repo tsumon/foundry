@@ -25,6 +25,7 @@ import (
 	"foundry/internal/engine"
 	"foundry/internal/hooks"
 	"foundry/internal/model"
+	"foundry/internal/sandbox"
 	"foundry/internal/store"
 )
 
@@ -35,6 +36,7 @@ const (
 )
 
 type Options struct {
+	RecoveryError    string
 	Acceptance       *acceptance.Service
 	RecoveryReadOnly bool
 	Accounts         *accounts.Service
@@ -46,6 +48,7 @@ type Options struct {
 }
 
 type server struct {
+	recoveryError    string
 	acceptance       *acceptance.Service
 	recoveryReadOnly bool
 	accounts         *accounts.Service
@@ -98,7 +101,11 @@ func New(s *store.Store, e *engine.Engine, client *model.Client, secrets model.S
 	if gates == nil {
 		gates = acceptance.New(s)
 	}
+	if opts.RecoveryError == "" {
+		opts.RecoveryError = "invalid_mission_model_snapshot"
+	}
 	return &server{
+		recoveryError:    opts.RecoveryError,
 		acceptance:       gates,
 		recoveryReadOnly: opts.RecoveryReadOnly,
 		accounts:         accountService,
@@ -207,9 +214,10 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 		if s.recoveryReadOnly {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"status": "recovery_limited", "version": version, "read_only": true,
-				"recovery_error": "invalid_mission_model_snapshot",
+				"recovery_error": s.recoveryError,
 				"model_runtime":  s.modelRuntimeView(),
 				"capabilities": map[string]bool{
+					"c4_simulation": false, "c4_real_execution": false,
 					"model_snapshots": true, "server_sent_events": true,
 					"account_management": false, "credential_versions": false,
 					"provider_login": false, "account_inference": false, "automatic_paid_fallback": false,
@@ -234,6 +242,7 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 			"status": "ok", "version": version,
 			"model_runtime": s.modelRuntimeView(),
 			"capabilities": map[string]bool{
+				"c4_simulation": s.engine.C4SimulationEnabled(), "c4_real_execution": false,
 				"account_management": true, "credential_versions": true, "model_snapshots": true,
 				"provider_login": false, "account_inference": false, "automatic_paid_fallback": false,
 				"planning": true, "execution": true, "docker_verification": true,
@@ -325,6 +334,12 @@ func writeMappedError(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, engine.ErrC4Unavailable):
+		writeError(w, 409, "c4_unavailable", "C4 synthetic capability or frozen authority unavailable; real execution is disabled")
+	case errors.Is(err, sandbox.ErrC4Persistence):
+		writeError(w, 409, "c4_persistence_unknown", "C4 persistence is unconfirmed; inspect recorded facts, never replay")
+	case errors.Is(err, sandbox.ErrC4Execution):
+		writeError(w, 409, "c4_not_passed", "C4 did not record a clean synthetic pass; inspect operation outcome and cleanup")
 	case errors.Is(err, model.ErrAccountInferenceDisabled):
 		writeError(w, http.StatusConflict, "r5a_account_inference_disabled", "account configuration is frozen; real account inference is not enabled")
 	case errors.Is(err, store.ErrModelAccountUnavailable):

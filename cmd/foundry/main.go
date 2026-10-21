@@ -132,9 +132,13 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	// Decide instance-wide readiness before any recovery, observer or owned
 	// MCP service can mutate history. Do not swallow other startup failures.
 	recoveryReadOnly := false
+	recoveryError := "invalid_mission_model_snapshot"
 	if err := engine.CheckRecoveryModelSnapshots(persistent); err != nil {
-		if !errors.Is(err, domain.ErrInvalidModelSnapshot) {
+		if !errors.Is(err, domain.ErrInvalidModelSnapshot) && !errors.Is(err, engine.ErrC4Unavailable) {
 			return fmt.Errorf("check recovery structure: %w", err)
+		}
+		if errors.Is(err, engine.ErrC4Unavailable) {
+			recoveryError = "c4_unavailable"
 		}
 		recoveryReadOnly = true
 	}
@@ -191,7 +195,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly})
+	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly, RecoveryError: recoveryError})
 	server := &http.Server{
 		Addr: cfg.address, Handler: handler,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -206,7 +210,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	}()
 	log.Printf("FOUNDRY 0.1.0 listening at http://%s", cfg.address)
 	if recoveryReadOnly {
-		log.Print("recovery_limited: diagnostic read-only; invalid_mission_model_snapshot; all business mutations disabled")
+		log.Printf("recovery_limited: diagnostic read-only; %s; all business mutations disabled", recoveryError)
 	}
 
 	select {

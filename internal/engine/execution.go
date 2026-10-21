@@ -149,6 +149,9 @@ func (e *Engine) execution(op *operation) error {
 		}
 	}
 	_, err = e.update(op, "delivery.ready", func(m *domain.Mission) error {
+		if err := c4Delivery(*m); err != nil {
+			return err
+		}
 		digest, err := e.candidate(*m)
 		if err != nil {
 			return err
@@ -201,6 +204,13 @@ func (e *Engine) reviewCandidate(op *operation, role domain.Role) error {
 	return nil
 }
 func (e *Engine) verifyCandidate(op *operation) (bool, error) {
+	current, err := e.s.GetMission(op.id)
+	if err != nil {
+		return false, err
+	}
+	if isC4(current) {
+		return e.verifyC4Candidate(op)
+	}
 	m, err := e.update(op, "verification.started", func(m *domain.Mission) error {
 		if _, err := e.candidate(*m); err != nil {
 			return err
@@ -273,6 +283,9 @@ func (e *Engine) Deliver(ctx context.Context, id string, revision int64) (domain
 	}
 	if e.active != nil {
 		return m, errors.New("another operation is active")
+	}
+	if err := c4Delivery(m); err != nil {
+		return m, err
 	}
 	if domain.UsesGenerations(m.WorkspaceMode) && m.State == "delivered" {
 		if _, err = e.selectedCandidate(m); err != nil {
