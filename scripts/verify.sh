@@ -20,7 +20,7 @@ command -v npm >/dev/null 2>&1 || { echo "npm was not found" >&2; exit 1; }
 command -v cc >/dev/null 2>&1 || { echo "a C compiler was not found" >&2; exit 1; }
 [ -x /usr/bin/git ] || { echo "/usr/bin/git was not found" >&2; exit 1; }
 
-require_exact_version "Go" "$(go env GOVERSION)" "go1.27.2"
+require_exact_version "Go" "$(go env GOVERSION)" "go1.27.3"
 require_exact_version "Node.js" "$(node --version)" "v22.23.2"
 require_exact_version "npm" "$(npm --version)" "10.9.8"
 /usr/bin/git --no-lazy-fetch --version

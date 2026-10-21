@@ -41,7 +41,7 @@ FOUNDRY 是一个面向本地软件交付的工作台。它冻结已提交的 Gi
 ### 前置条件
 
 - Apple Silicon Mac（`darwin/arm64`）、启用 cgo，并安装可用的 C 编译器。受支持的凭据后端是 macOS Keychain。
-- Go 1.27.2、Node.js 22.23.2、npm 10.9.8，以及支持 `GIT_NO_LAZY_FETCH` 的系统 `/usr/bin/git`。`/usr/bin/git --no-lazy-fetch --version` 必须成功；在 `PATH` 中另装 Git 不能替代这个受信任路径。
+- Go 1.27.3、Node.js 22.23.2、npm 10.9.8，以及支持 `GIT_NO_LAZY_FETCH` 的系统 `/usr/bin/git`。`/usr/bin/git --no-lazy-fetch --version` 必须成功；在 `PATH` 中另装 Git 不能替代这个受信任路径。
 - Docker 只在任务执行、验证或 Docker smoke test 时需要。daemon 必须已运行，且可信镜像必须已存在于本机；FOUNDRY 使用 `--pull=never`。
 
 ### 1. 安装锁定的前端依赖并构建
@@ -141,6 +141,8 @@ OpenAI 订阅连接的[操作员入口](docs/public/openai-operator-entry.md)已
 
 [独立目录查询门禁](docs/public/openai-catalog-gate.md)与连接审批分开：仅在专用操作员模式下，允许为当前有效订阅凭据准备一次固定 `GET /v1/models` 的材料，再单独批准和执行。普通启动仍关闭；凭据过期就停止，不刷新、不重试、不调用模型、不自动更改角色策略。本阶段验证仅使用本地模拟，目录返回不代表推理、额度或计费已验收。
 
+[独立单次推理门禁](docs/public/openai-inference-gate.md)同样默认关闭。专用操作员模式只允许为有效连接和同凭据目录证据准备一次 `gpt-6.1-sol` 固定文本测试，并要求单独批准、显式执行；不能用于任务或其他模型。30 秒超时和 1 MiB 接收限制不是 Token 或金额上限。额度与远程计费保持未知，失败或过期就停止，不刷新、不重试、不切换收费 API。实现验证仅使用本地模拟，真实推理仍需另行确认。
+
 <details>
 <summary>本地开发与运行入口</summary>
 
@@ -175,6 +177,7 @@ FOUNDRY_DATA_DIR="$FOUNDRY_MCP_DATA" ./bin/foundry --local-mcp-test
 | `--local-mcp-test` | 显式启动合成 MCP fixture，默认关闭。 |
 | `--openai-subscription-route` + `--openai-keychain-journal` | 操作员成对使用，指定一个已有官方订阅路由和新的私有检查日志。会执行新的本机专用测试项检查；真实使用须另行确认，不能替代工作台单次连接审批。见[操作员入口](docs/public/openai-operator-entry.md)。 |
 | `--openai-catalog-route` | 独立目录模式，与连接启动参数互斥。仅检查指定路由的本地元数据；准备/批准不读取令牌、不联网。一次真实 GET 仍须独立审批并显式执行。见[目录门禁](docs/public/openai-catalog-gate.md)。 |
+| `--openai-inference-route` | 独立单次推理模式，与连接/目录参数互斥。默认关闭；启动、准备和审批只检查元数据。固定模型和文本的一次请求仍需独立审批、显式执行，不能自动刷新、重试或切换收费 API。见[推理门禁](docs/public/openai-inference-gate.md)。 |
 
 </details>
 

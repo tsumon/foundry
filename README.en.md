@@ -41,7 +41,7 @@ It does not treat model output as authority. It does not modify the source repos
 ### Prerequisites
 
 - An Apple Silicon Mac (`darwin/arm64`) with cgo enabled and a working C compiler. The supported credential backend is macOS Keychain.
-- Go 1.27.2, Node.js 22.23.2, npm 10.9.8, and the system `/usr/bin/git` with `GIT_NO_LAZY_FETCH` support. `/usr/bin/git --no-lazy-fetch --version` must succeed; another Git on `PATH` does not replace this trusted path.
+- Go 1.27.3, Node.js 22.23.2, npm 10.9.8, and the system `/usr/bin/git` with `GIT_NO_LAZY_FETCH` support. `/usr/bin/git --no-lazy-fetch --version` must succeed; another Git on `PATH` does not replace this trusted path.
 - Docker is required only for task execution, verification, or Docker smoke tests. Its daemon must already be running and the exact trusted image must already exist locally. FOUNDRY uses `--pull=never`.
 
 ### 1. Install locked frontend dependencies and build
@@ -141,6 +141,8 @@ The OpenAI subscription [operator entry](docs/public/openai-operator-entry.md) i
 
 The [independent catalog gate](docs/public/openai-catalog-gate.md) is separate from connection approval. A dedicated operator mode can prepare one fixed `GET /v1/models` request for the current unexpired subscription authorization, followed by separate approval and explicit execution. Ordinary startup stays closed. Expired credentials stop the flow, with no refresh, retry, inference or automatic role-policy changes. Validation uses local simulation only; a returned catalog does not certify inference, quota or billing.
 
+The [independent single-inference gate](docs/public/openai-inference-gate.md) is also default-closed. A dedicated operator mode can prepare one fixed-text `gpt-6.1-sol` test backed by current connection and same-credential catalog evidence, with separate approval and explicit execution. It cannot authorize task inference or another model. The 30-second timeout and 1 MiB receive limit are not token or monetary caps. Quota and remote billing remain unknown; failure or expiry stops without refresh, retry or paid-API fallback. Implementation validation uses local simulation only; real inference requires separate confirmation.
+
 <details>
 <summary>Local development and runtime entrypoints</summary>
 
@@ -175,6 +177,7 @@ The service exposes one fixed read-only test tool and is the only MCP eligible f
 | `--local-mcp-test` | Explicitly starts the synthetic MCP fixture; off by default. |
 | `--openai-subscription-route` + `--openai-keychain-journal` | Paired operator opt-in for one existing official subscription route and a new private diagnostic journal. Runs a fresh native test-item probe; real use requires separate confirmation and never replaces one-operation workbench approval. See [operator entry](docs/public/openai-operator-entry.md). |
 | `--openai-catalog-route` | Separate catalog mode, mutually exclusive with connection startup options. Startup inspects local route metadata only; preparation/approval do not read tokens or contact a provider. One real GET still requires independent approval and explicit execution. See [catalog gate](docs/public/openai-catalog-gate.md). |
+| `--openai-inference-route` | Separate single-inference mode, mutually exclusive with connection/catalog options. Off by default; startup, preparation and approval inspect metadata only. One fixed-model, fixed-text request still requires independent approval and explicit execution, without automatic refresh, retry or paid-API fallback. See [inference gate](docs/public/openai-inference-gate.md). |
 
 </details>
 

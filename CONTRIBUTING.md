@@ -18,7 +18,7 @@ Read [architecture](docs/public/architecture.md), [safety](docs/public/safety.md
 
 ## Development setup
 
-Use an Apple Silicon Mac (`darwin/arm64`) with cgo, a C compiler, Go 1.27.2, Node.js 22.23.2, npm 10.9.8, and a system `/usr/bin/git` for which `/usr/bin/git --no-lazy-fetch --version` succeeds. A newer Git elsewhere on `PATH` does not replace the controller's trusted system path. Intel macOS and other OS/CPU targets are unverified and unsupported for this alpha. Install frontend dependencies exactly from the lockfile:
+Use an Apple Silicon Mac (`darwin/arm64`) with cgo, a C compiler, Go 1.27.3, Node.js 22.23.2, npm 10.9.8, and a system `/usr/bin/git` for which `/usr/bin/git --no-lazy-fetch --version` succeeds. A newer Git elsewhere on `PATH` does not replace the controller's trusted system path. Intel macOS and other OS/CPU targets are unverified and unsupported for this alpha. Install frontend dependencies exactly from the lockfile:
 
 ```sh
 cd web

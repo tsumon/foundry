@@ -6,7 +6,9 @@
 
 **Architecture:** Reuse immutable acceptance claims/dispatches and current workbench cards. Add a narrow inference controller and store validation, leaving the general router closed. Tests replace network/secret boundaries only, preserving actual ledger, request builder, parsing and UI behavior.
 
-**Tech Stack:** Existing Go 1.27.2/SQLite and React/TypeScript; Node 22.23.2, npm 10.9.8; no new dependency.
+**Tech Stack:** Go 1.27.3/SQLite and React/TypeScript; Node 22.23.2, npm 10.9.8; no new dependency.
+
+**Pre-publication security update:** The 2026-10-21 vulnerability scan reports `GO-2026-6809` in the existing Go 1.27.2 standard library. Task 3 must advance the pinned verification toolchain to Go 1.27.3 and repeat the full scan/verification; baseline results below still belong to Go 1.27.2. This is a patch-level security update, not a platform expansion. See the [Go release history](https://go.dev/doc/devel/release).
 
 **Spec:** [openai-inference-gate.md](openai-inference-gate.md)
 
@@ -71,8 +73,9 @@ await modelAcceptanceApi.execute(accountID, approvedOperation);
 
 ## Task 3: End-to-end verification and publication
 
-**Files:** public feature status/changelog/readmes only for accurate scope, `scripts/alpha-files.txt`; private evidence outside export/repository. Reuse `scripts/verify.sh`, `scripts/export-alpha.mjs` and pinned scanning tools.
+**Files:** public feature status/changelog/readmes for accurate scope, `.go-version`, `go.mod`, `scripts/verify.sh`, `CONTRIBUTING.md` and `scripts/alpha-files.txt`; private evidence outside export/repository. Reuse `scripts/verify.sh`, `scripts/export-alpha.mjs` and pinned scanning tools.
 
+- [ ] Upgrade the pinned/minimum Go toolchain and its verification/documentation references to 1.27.3 for `GO-2026-6809`; retain all security scan rules and supported-platform boundaries.
 - [ ] Run full `./scripts/verify.sh`; record Go/race/vet, frontend and build results.
 - [ ] Browser-check the disposable local fixture on normal desktop and narrow layout: pending/approved/success, quota failure, interrupted stream, expired credential and fresh default-closed startup. Capture screenshots with no real account data; do not interact with the user's live account instance.
 - [ ] Run gitleaks source/history, govulncheck, npm audit and actionlint. Export a new clean allowlisted source snapshot, run verification there and confirm internal/private files are absent.

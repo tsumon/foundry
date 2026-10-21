@@ -21,13 +21,15 @@ The [OpenAI operator entry](openai-operator-entry.md) is implemented and default
 
 The [independent OpenAI catalog gate](openai-catalog-gate.md) adds a separate default-closed operator mode for one approved `GET /v1/models`. It requires a current successful real connection receipt and unexpired matching authorization; connection permission never implies catalog permission. Preparation is metadata-only. Inference, automatic refresh/retry and paid fallback remain closed. Local synthetic tests are implementation evidence only; actual catalog/entitlement/quota acceptance remains unverified.
 
+The [independent single-inference gate](openai-inference-gate.md) adds a mutually exclusive, default-closed operator mode for one separately approved fixed-text `gpt-6.1-sol` request. It requires current connection and same-credential catalog evidence. Preparation/approval are metadata-only; execution reserves one dispatch before leasing its credential. Bounded SSE completion, expected-output match and actual supplied usage are recorded separately, without retaining arbitrary output. Unknown outcomes are consumed, never replayed. Expiry stops without refresh, retry or paid fallback; the timeout/receive bound is not a token or monetary cap. Validation is synthetic only, and does not certify real inference or grant task/role access.
+
 ## Deliberately not implemented
 
 - Automatic patch application, source-repository writes, commits, pushes, releases, deployment, or database migration.
 - Multi-worker scheduling or autonomous background execution.
 - Generic external MCP `tools/call`, MCP stdio/OAuth, Skill/script execution, hook scripts/webhooks, or Git hooks.
 - Automatic provider fallback, paid fallback, retry/replay of unknown remote outcomes, or automatic Docker image pulls.
-- A browser-triggered native Keychain test, ordinary-startup real-login action, live model query, or live-inference action. Only separately confirmed operator activation can prepare the connection-only approval workflow; its native check is never triggered by a web request.
+- A browser-triggered native Keychain test or ordinary-startup real-login, live catalog or live-inference action. Only separately confirmed operator activation can prepare the corresponding independent approval workflow; the connection mode's native check is never triggered by a web request. Task inference through live account routes stays closed.
 - An installer, signed/notarized application, package manager formula, or downloadable binary release.
 
 ## Support boundary
@@ -36,7 +38,7 @@ The reviewed and supported source-alpha target is macOS arm64 (Apple Silicon). I
 
 The usable credential backend on the supported target is macOS Keychain with cgo. Other platforms may compile portions of the code but can expose an unsupported secret backend; compilation alone does not establish alpha support.
 
-The expected validation toolchain is Go 1.27.2, Node.js 22.23.2, and npm 10.9.8. The trusted system `/usr/bin/git` must pass `/usr/bin/git --no-lazy-fetch --version`; a newer Git elsewhere on `PATH` does not substitute for it. CI targets the public-repository arm64 `macos-26` image and retains that feature check. The initial public snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) completed both macOS verification and security checks in [public workflow run 39188374585](https://github.com/tsumon/foundry/actions/runs/39188374585). That evidence is commit-scoped; it does not cover later commits or any skipped Docker, Keychain, real-provider, or independent-machine check. Docker-dependent behavior requires a running local daemon and a preloaded trusted image. A skipped Docker smoke test is unverified, not passed.
+The expected validation toolchain is Go 1.27.3, Node.js 22.23.2, and npm 10.9.8. The trusted system `/usr/bin/git` must pass `/usr/bin/git --no-lazy-fetch --version`; a newer Git elsewhere on `PATH` does not substitute for it. CI targets the public-repository arm64 `macos-26` image and retains that feature check. The initial public snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) completed both macOS verification and security checks in [public workflow run 39188374585](https://github.com/tsumon/foundry/actions/runs/39188374585). That evidence is commit-scoped; it does not cover later commits or any skipped Docker, Keychain, real-provider, or independent-machine check. Docker-dependent behavior requires a running local daemon and a preloaded trusted image. A skipped Docker smoke test is unverified, not passed.
 
 Legacy accountless model profiles preserve their network capability. New account routes marked `live` are blocked in the production router, but the product as a whole is not globally offline. See [safety](safety.md).
 
