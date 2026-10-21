@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { mission } from "../test/fixtures";
+import type { Mission } from "../types";
 import { DecisionPanel } from "./DecisionPanel";
 import { createPlanDraft, PlanRevisionEditor } from "./PlanRevisionEditor";
 
@@ -107,3 +108,72 @@ it("retains editable adjustment data and rejects removed mapped steps", () => {
     screen.getByRole("button", { name: "保存修订（不审批）" }),
   ).toBeDisabled();
 });
+
+it.each(["null", "omitted"])(
+  "edits unresolved proposals with %s step IDs without changing frozen input",
+  (representation) => {
+    const source = replanMission();
+    const { step_ids: _ids, ...adjustment } = source.plan.adjustments[0];
+    const m: Mission = JSON.parse(
+      JSON.stringify({
+        ...source,
+        plan: {
+          ...source.plan,
+          adjustments: [
+            {
+              ...adjustment,
+              unresolved: true,
+              ...(representation === "null" ? { step_ids: null } : {}),
+            },
+          ],
+        },
+      }),
+    );
+    const frozenInput = JSON.stringify(m);
+    const initial = createPlanDraft(m);
+    expect(initial.plan.adjustments?.[0].step_ids).toEqual([]);
+    expect(initial.dirty).toBe(false);
+    const save = vi.fn();
+    function Editor() {
+      const [draft, setDraft] = useState(initial);
+      return (
+        <PlanRevisionEditor
+          mission={m}
+          draft={draft}
+          history={[]}
+          historyLoading={false}
+          historyError=""
+          busy={false}
+          saveError=""
+          onDraftChange={setDraft}
+          onSave={save}
+          onDiscard={vi.fn()}
+          onRebase={vi.fn()}
+        />
+      );
+    }
+    render(<Editor />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "修订计划（保存不审批）" }),
+    );
+    const mapping = screen.getByLabelText("映射步骤 failure-a（每行一项）");
+    const saveButton = screen.getByRole("button", {
+      name: "保存修订（不审批）",
+    });
+    expect(mapping).toHaveValue("");
+    expect(saveButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("修订原因"), {
+      target: { value: "处理失败" },
+    });
+    fireEvent.click(screen.getByLabelText("未解决 failure-a"));
+    expect(screen.getByText("已解决失败必须映射当前步骤。")).toBeVisible();
+    expect(saveButton).toBeDisabled();
+    fireEvent.change(mapping, { target: { value: "unknown-step" } });
+    expect(screen.getByText(/失败映射包含未知或重复步骤/)).toBeVisible();
+    fireEvent.change(mapping, { target: { value: source.plan.steps[0].id } });
+    expect(saveButton).toBeEnabled();
+    expect(save).not.toHaveBeenCalled();
+    expect(JSON.stringify(m)).toBe(frozenInput);
+    expect(initial.originalPlan.adjustments?.[0].step_ids).toEqual([]);
+  },
+);

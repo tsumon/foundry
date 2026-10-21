@@ -463,7 +463,7 @@ export interface Step {
 }
 export interface PlanAdjustment {
   failure_id: string;
-  step_ids: string[];
+  step_ids?: string[] | null;
   reason: string;
   unresolved: boolean;
 }

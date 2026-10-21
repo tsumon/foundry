@@ -6,13 +6,15 @@ import {
   isSupportedMissionMode,
   type Mission,
   type Plan,
+  type PlanAdjustment,
   type PlanRevision,
   type Step,
 } from "../types";
 
 type EditableStep = Omit<Step, "status">;
-type EditablePlan = Omit<Plan, "revision" | "steps"> & {
+type EditablePlan = Omit<Plan, "revision" | "steps" | "adjustments"> & {
   steps: EditableStep[];
+  adjustments?: (Omit<PlanAdjustment, "step_ids"> & { step_ids: string[] })[];
 };
 
 export interface PlanDraft {
@@ -32,7 +34,7 @@ const editablePlan = (plan: Plan): EditablePlan => ({
     ? {
         adjustments: plan.adjustments.map((a) => ({
           ...a,
-          step_ids: [...a.step_ids],
+          step_ids: [...(a.step_ids ?? [])],
         })),
       }
     : {}),
