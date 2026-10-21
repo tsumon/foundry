@@ -36,6 +36,67 @@ func runC4DockerHarness(h *c4Harness, f *c4ScriptProcess, trust *c4CountingTrust
 	return executeC4Docker(context.Background(), h.p, h.op, C4DockerConfig{Enabled: true, Trust: h.trust}, h.candidate, h.persist, f, trust)
 }
 
+// Valid terminal recovery derived from a successful lower-seam lifecycle. Its
+// pending cleanup and unknown result match the existing explicit recovery case.
+func c4DockerDisabledRecoveryFixture(t *testing.T) (*c4Harness, *c4ScriptProcess, *c4CountingTrust) {
+	t.Helper()
+	h, f, trust := newC4DockerHarness(t)
+	o, err := runC4DockerHarness(h, f, trust)
+	if err != nil || !o.Passed() {
+		t.Fatal("recovery fixture execution failed", err)
+	}
+	o.Result.Class = "outcome_unknown"
+	o.Cleanup = nil
+	h.op = o
+	h.mission.C4Operations = []domain.C4Operation{cloneC4Operation(o)}
+	h.trace = nil
+	plan, err := BuildC4Plan(h.p, o, h.trust, h.candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps := c4DriverSteps(plan)[7:]
+	steps = append([]c4ProcessStep{steps[0]}, steps...)
+	for i := range steps {
+		steps[i].out = strings.ReplaceAll(steps[i].out, "/synthetic/candidate", h.candidate)
+	}
+	return h, &c4ScriptProcess{t: t, steps: steps, trace: &h.trace}, &c4CountingTrust{trace: &h.trace}
+}
+
+// Catches removal of Enabled as the sole rejection reason. Both calls have a
+// valid candidate, approval/digests, trust declaration and working fake process.
+// Safe to run with a gate-removal mutation: no native boundary is constructed.
+func TestC4DockerDisabledGateWithValidInputs(t *testing.T) {
+	for _, cleanup := range []bool{false, true} {
+		name := "execute"
+		if cleanup {
+			name = "recovery"
+		}
+		t.Run(name, func(t *testing.T) {
+			h, f, trust := newC4DockerHarness(t)
+			if cleanup {
+				h, f, trust = c4DockerDisabledRecoveryFixture(t)
+			}
+			config := C4DockerConfig{Trust: h.trust}
+			run := func() (domain.C4Operation, error) {
+				if cleanup {
+					return cleanupC4Docker(context.Background(), h.p, h.op, config, h.candidate, h.op.ContainerID, h.persist, f, trust)
+				}
+				return executeC4Docker(context.Background(), h.p, h.op, config, h.candidate, h.persist, f, trust)
+			}
+			got, err := run()
+			if err != errC4Docker || len(h.trace) != 0 || f.calls != 0 || trust.calls != 0 || !reflect.DeepEqual(got, h.op) {
+				t.Fatalf("disabled gate bypassed: err=%v process=%d trust=%d trace=%v", err, f.calls, trust.calls, h.trace)
+			}
+			// Changing only Enabled must permit this exact fixture to complete.
+			config.Enabled = true
+			got, err = run()
+			if err != nil || got.CleanupState() != "confirmed" || f.calls == 0 || trust.calls == 0 || len(h.trace) == 0 || (!cleanup && !got.Passed()) || (cleanup && got.Result.Class != "outcome_unknown") {
+				t.Fatal("otherwise-valid fixture could not complete", got, err, h.trace)
+			}
+		})
+	}
+}
+
 // Catches bypassing durable intent, stage reordering, and stale approvals replaying effects.
 func TestC4DockerLifecycleDurableSuccessAndNoReplay(t *testing.T) {
 	h, f, trust := newC4DockerHarness(t)
@@ -73,17 +134,15 @@ func TestC4DockerLifecyclePersistenceStopsEffects(t *testing.T) {
 	}
 }
 
-// Catches probing before the default gate, structural authorization, or dispatch CAS.
+// Catches probing before structural authorization or dispatch CAS.
 func TestC4DockerLifecycleInvalidApprovalHasNoEffects(t *testing.T) {
-	for _, name := range []string{"disabled", "mode", "missing approval", "foreign approval", "stale material", "not approved", "nil persist", "cancelled"} {
+	for _, name := range []string{"mode", "missing approval", "foreign approval", "stale material", "not approved", "nil persist", "cancelled"} {
 		t.Run(name, func(t *testing.T) {
 			h, f, trust := newC4DockerHarness(t)
 			config := C4DockerConfig{Enabled: true, Trust: h.trust}
 			ctx := context.Background()
 			persist := h.persist
 			switch name {
-			case "disabled":
-				config.Enabled = false
 			case "mode":
 				h.p.Mode = "synthetic"
 			case "missing approval":
@@ -227,7 +286,7 @@ func TestC4DockerLifecycleFaultMatrix(t *testing.T) {
 // Catches the recovery wrapper using an unapproved, foreign, or already-cleaned
 // operation to reach trust/process effects. No candidate path is probed.
 func TestC4DockerCleanupRejectsInvalidAuthority(t *testing.T) {
-	for _, name := range []string{"disabled", "missing approval", "foreign approval", "foreign id", "short id", "no terminal", "confirmed", "cancelled"} {
+	for _, name := range []string{"missing approval", "foreign approval", "foreign id", "short id", "no terminal", "confirmed", "cancelled"} {
 		t.Run(name, func(t *testing.T) {
 			h, f, trust := newC4DockerHarness(t)
 			o, err := runC4DockerHarness(h, f, trust)
@@ -239,8 +298,6 @@ func TestC4DockerCleanupRejectsInvalidAuthority(t *testing.T) {
 			config := C4DockerConfig{Enabled: true, Trust: h.trust}
 			ctx := context.Background()
 			switch name {
-			case "disabled":
-				config.Enabled = false
 			case "missing approval":
 				o.Approval = nil
 			case "foreign approval":

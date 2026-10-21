@@ -170,24 +170,25 @@ func TestC4DockerDriverRejectsTamperingAndReservesCreate(t *testing.T) {
 	}
 }
 
-// Catches zero config probing or writing durable records even with valid-looking input.
+// Catches disabled public entry points with otherwise valid bound inputs.
+// Gate-removal mutation testing uses only the lower-seam regression, never
+// these public wrappers (which construct the native process/trust boundaries).
 func TestC4DockerDefaultOff(t *testing.T) {
-	p, o, _, candidate := c4PlanFixture(t)
-	p.Mode = "docker"
-	calls := 0
-	persist := func(_ context.Context, o domain.C4Operation, _ C4Change) (domain.C4Operation, error) {
-		calls++
-		return o, nil
-	}
 	for _, cleanup := range []bool{false, true} {
+		h, _, _ := newC4DockerHarness(t)
+		if cleanup {
+			h, _, _ = c4DockerDisabledRecoveryFixture(t)
+		}
+		config := C4DockerConfig{Trust: h.trust} // Only Enabled is false.
+		var got domain.C4Operation
 		var err error
 		if cleanup {
-			_, err = CleanupC4Docker(context.Background(), p, o, C4DockerConfig{}, candidate, strings.Repeat("d", 64), persist)
+			got, err = CleanupC4Docker(context.Background(), h.p, h.op, config, h.candidate, h.op.ContainerID, h.persist)
 		} else {
-			_, err = ExecuteC4Docker(context.Background(), p, o, C4DockerConfig{}, candidate, persist)
+			got, err = ExecuteC4Docker(context.Background(), h.p, h.op, config, h.candidate, h.persist)
 		}
-		if err == nil || calls != 0 {
-			t.Fatal("disabled adapter performed effects", err, calls)
+		if err != errC4Docker || len(h.trace) != 0 || !reflect.DeepEqual(got, h.op) {
+			t.Fatal("disabled public adapter changed operation or persisted", err, h.trace)
 		}
 	}
 }
