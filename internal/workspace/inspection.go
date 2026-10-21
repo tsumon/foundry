@@ -39,6 +39,10 @@ func InspectCommittedTree(ctx context.Context, repo, commit string, spec domain.
 	if err != nil {
 		return CommittedTreeInspection{}, err
 	}
+	return committedTreeFacts(ctx, tree, spec)
+}
+
+func committedTreeFacts(ctx context.Context, tree committedTree, spec domain.RepositoryImportSpec) (CommittedTreeInspection, error) {
 	files := make(map[string][]byte, len(tree.files))
 	for _, f := range tree.files {
 		files[f.p] = f.content
@@ -66,7 +70,7 @@ func InspectCommittedTree(ctx context.Context, repo, commit string, spec domain.
 		tree.facts.ProtectedInputs = append(tree.facts.ProtectedInputs, p)
 	}
 	sort.Strings(tree.facts.ProtectedInputs)
-	if err = ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return CommittedTreeInspection{}, err
 	}
 	return tree.facts, nil

@@ -105,6 +105,9 @@ func (e *Engine) controlledAuthority(op *operation, role domain.Role) (domain.Mi
 		return m, "", "", context.Canceled
 	}
 	ordinaryInference := domain.IsInferenceSnapshot(m) && m.ToolMode == ""
+	if err = e.ValidateRepositoryImport(m); err != nil {
+		return m, "", "", err
+	}
 	if !ordinaryInference && ((m.ToolMode != domain.ToolModeControlledReadV1 && !domain.IsResearchFlowV2(m.WorkspaceMode, m.ToolMode)) || m.TaskBindings == nil) {
 		return m, "", "", errors.New("controlled binding missing")
 	}

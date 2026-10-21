@@ -66,6 +66,21 @@ func validateExecutablePlan(plan domain.Plan, spec domain.Spec) error {
 }
 
 func authority(m domain.Mission, base string, includePlan bool) (string, error) {
+	if err := domain.ValidateMissionRepositoryImport(m); err != nil {
+		return "", err
+	}
+	if m.ImportVersion == 1 {
+		inner := m
+		inner.ImportVersion = 0
+		inner.RepositoryImport = nil
+		digest, err := authority(inner, base, includePlan)
+		if err != nil {
+			return "", err
+		}
+		raw, _ := json.Marshal(m.RepositoryImport)
+		h := sha256.Sum256([]byte("FOUNDRY repository import authority v1\x00" + string(raw) + "\x00" + digest))
+		return hex.EncodeToString(h[:]), nil
+	}
 	if err := domain.ValidateReplanContext(m); err != nil {
 		return "", err
 	}
@@ -206,6 +221,9 @@ func hasSeal(m domain.Mission, kind, digest string) bool {
 	return false
 }
 func (e *Engine) checkSnapshot(m domain.Mission) error {
+	if err := e.checkRepositoryImportBase(m); err != nil {
+		return err
+	}
 	if err := e.checkReplanMaterial(m); err != nil {
 		return err
 	}

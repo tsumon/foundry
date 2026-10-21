@@ -270,6 +270,9 @@ func exportMetadata(p domain.PreparedExport) workspace.PreparedExport {
 }
 
 func (e *Engine) verifyDelivery(m domain.Mission) error {
+	if err := e.ValidateRepositoryImport(m); err != nil {
+		return err
+	}
 	if m.Delivery == nil {
 		return errors.New("missing delivery")
 	}

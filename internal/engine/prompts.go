@@ -182,6 +182,10 @@ func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error
 		e.mu.Unlock()
 		return context.Canceled
 	}
+	if err = e.ValidateRepositoryImport(m); err != nil {
+		e.mu.Unlock()
+		return err
+	}
 	if err = e.checkSnapshot(m); err != nil {
 		e.mu.Unlock()
 		return err
@@ -328,6 +332,12 @@ func reportWithSources(m domain.Mission, sources bool) string {
 			Archives      []domain.RunArchive    `json:"run_archives"`
 		}{m.CodingVersion, m.ID, m.Epoch, m.Plan, m.CodingAttempts, m.ReplanContext, m.RunArchives}, "", "  ")
 		out.WriteString("\n## C2 · 控制器执行、失败与调整\n\n本地尝试 ID 不是提供方回执；历史归档不授予当前交付权限。审查清单见 Reviews。\n\n```json\n")
+		out.Write(material)
+		out.WriteString("\n```\n")
+	}
+	if m.ImportVersion == 1 {
+		material, _ := json.MarshalIndent(m.RepositoryImport, "", "  ")
+		out.WriteString("\n## C3 · Frozen repository import\n\nCommitted source provenance only; not execution or delivery approval.\n\n```json\n")
 		out.Write(material)
 		out.WriteString("\n```\n")
 	}

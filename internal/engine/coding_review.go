@@ -116,6 +116,9 @@ func (e *Engine) reviewCodingCandidate(op *operation, role domain.Role, m domain
 // and checkSnapshot itself calls verifyDelivery. Recheck the actual frozen base,
 // candidate tree, authority and exact plan scope independently of model claims.
 func (e *Engine) checkCodingReviewMaterial(m domain.Mission) error {
+	if err := e.checkRepositoryImportBase(m); err != nil {
+		return err
+	}
 	if err := e.checkReplanMaterial(m); err != nil {
 		return err
 	}

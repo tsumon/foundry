@@ -6,6 +6,15 @@ import (
 	"net/http"
 )
 
+func (s *server) repositoryImportOperations(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.store.ListRepositoryImportOperations()
+	if err != nil {
+		writeError(w, 500, "storage_failed", "import history unavailable")
+		return
+	}
+	writeJSON(w, 200, rows)
+}
+
 func (s *server) repositoryInspections(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:

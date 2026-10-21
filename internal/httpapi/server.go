@@ -197,6 +197,8 @@ func (s *server) validMutation(r *http.Request) bool {
 
 func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/api/repository-imports/operations":
+		s.repositoryImportOperations(w, r)
 	case r.URL.Path == "/api/repository-imports/inspections":
 		s.repositoryInspections(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/mcp-local-test":
@@ -308,6 +310,20 @@ func writeDecodeError(w http.ResponseWriter, err error) {
 }
 
 func writeMappedError(w http.ResponseWriter, err error) {
+	var importErr domain.ImportError
+	if errors.As(err, &importErr) {
+		status := 500
+		switch importErr {
+		case domain.ImportInvalidRequest, domain.ImportInvalidRecord, domain.ImportLocation:
+			status = 400
+		case domain.ImportSourceChanged, domain.ImportIntentConflict, domain.ImportIncomplete, domain.ImportInvalidBinding:
+			status = 409
+		case domain.ImportTimeout:
+			status = 408
+		}
+		writeError(w, status, string(importErr), "repository import request refused")
+		return
+	}
 	switch {
 	case errors.Is(err, model.ErrAccountInferenceDisabled):
 		writeError(w, http.StatusConflict, "r5a_account_inference_disabled", "account configuration is frozen; real account inference is not enabled")

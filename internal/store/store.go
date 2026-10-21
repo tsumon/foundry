@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -120,6 +121,9 @@ func (s *Store) initialize() error {
 	if err := s.initializeRepositoryInspections(); err != nil {
 		return err
 	}
+	if err := s.initializeRepositoryImports(); err != nil {
+		return err
+	}
 	return s.initializeRolePolicy()
 }
 
@@ -128,6 +132,12 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) CreateMission(m domain.Mission) (domain.Mission, error) {
+	return s.createMission(m, nil, "")
+}
+func (s *Store) createMission(m domain.Mission, importOperation *domain.RepositoryImportOperation, sourcePath string) (domain.Mission, error) {
+	if importOperation == nil && (m.ImportVersion != 0 || m.RepositoryImport != nil) {
+		return domain.Mission{}, domain.ImportInvalidBinding
+	}
 	if err := domain.ValidateCodingTrace(m); err != nil {
 		return domain.Mission{}, err
 	}
@@ -152,6 +162,13 @@ func (s *Store) CreateMission(m domain.Mission) (domain.Mission, error) {
 		return domain.Mission{}, fmt.Errorf("begin create mission: %w", err)
 	}
 	defer tx.Rollback()
+	if importOperation != nil {
+		if err := commitRepositoryImportTx(tx, m, *importOperation, sourcePath); err != nil {
+			return domain.Mission{}, err
+		}
+	} else if err := validateMissionImport(context.Background(), tx, m); err != nil {
+		return domain.Mission{}, err
+	}
 	if err := validateNewModelSnapshotTx(tx, m); err != nil {
 		return domain.Mission{}, err
 	}
@@ -273,6 +290,11 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 	if err != nil {
 		return domain.Mission{}, err
 	}
+	if err := validateMissionImport(context.Background(), tx, m); err != nil {
+		return domain.Mission{}, err
+	}
+	importVersion := m.ImportVersion
+	importBinding, _ := json.Marshal(m.RepositoryImport)
 	mode := m.WorkspaceMode
 	codingBefore := m
 	codingBefore.CodingAttempts = nil
@@ -312,6 +334,13 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 		return domain.Mission{}, err
 	}
 	if err := mutate(&m); err != nil {
+		return domain.Mission{}, err
+	}
+	updatedImportBinding, _ := json.Marshal(m.RepositoryImport)
+	if m.ImportVersion != importVersion || !bytes.Equal(importBinding, updatedImportBinding) {
+		return domain.Mission{}, domain.ImportInvalidBinding
+	}
+	if err := validateMissionImport(context.Background(), tx, m); err != nil {
 		return domain.Mission{}, err
 	}
 	if m.WorkspaceMode != mode {
@@ -520,12 +549,27 @@ func decodeMission(data []byte) (domain.Mission, error) {
 	// diagnostic and leaves the original stored bytes untouched.
 	projection := struct {
 		*domain.Mission
+		RepositoryImport    json.RawMessage `json:"repository_import"`
+		ImportVersion       json.RawMessage `json:"import_version"`
 		CodingAttempts      json.RawMessage `json:"coding_attempts"`
 		ModelSnapshot       json.RawMessage `json:"model_snapshot"`
 		ModelPolicySnapshot json.RawMessage `json:"model_policy_snapshot"`
 	}{Mission: &mission}
 	if err := json.Unmarshal(data, &projection); err != nil {
 		return domain.Mission{}, fmt.Errorf("decode mission: %w", err)
+	}
+	if len(projection.ImportVersion) > 0 {
+		if err := json.Unmarshal(projection.ImportVersion, &mission.ImportVersion); err != nil {
+			mission.RepositoryImportInvalid = true
+		}
+	}
+	if len(projection.RepositoryImport) > 0 && string(projection.RepositoryImport) != "null" {
+		var binding domain.RepositoryImportBinding
+		if decodeStoredJSON(projection.RepositoryImport, &binding) != nil {
+			mission.RepositoryImportInvalid = true
+		} else {
+			mission.RepositoryImport = &binding
+		}
 	}
 	if len(projection.CodingAttempts) > 0 {
 		decoder := json.NewDecoder(bytes.NewReader(projection.CodingAttempts))

@@ -29,6 +29,8 @@ type Options struct {
 	Runner                        sandbox.Runner
 }
 type CreateRequest struct {
+	ImportVersion       int                         `json:"import_version,omitempty"`
+	ImportSelection     *domain.ImportSelection     `json:"import_selection,omitempty"`
 	CodingVersion       int                         `json:"coding_version,omitempty"`
 	MCPSelection        *MCPSelection               `json:"mcp_selection,omitempty"`
 	ToolMode            string                      `json:"tool_mode,omitempty"`
@@ -87,6 +89,9 @@ func (e *Engine) Create(ctx context.Context, r CreateRequest) (domain.Mission, e
 	defer e.mu.Unlock()
 	if e.closed {
 		return domain.Mission{}, errors.New("engine closed")
+	}
+	if r.ImportVersion != 0 || r.ImportSelection != nil {
+		return e.createRepositoryImport(ctx, r)
 	}
 	if err := domain.ValidateCodingVersion(r.CodingVersion, r.WorkspaceMode, r.ToolMode); err != nil {
 		return domain.Mission{}, err
@@ -232,6 +237,9 @@ func (e *Engine) checked(id string, revision int64) (domain.Mission, error) {
 	}
 	if m.Revision != revision {
 		return m, store.ErrConflict
+	}
+	if err := e.ValidateRepositoryImport(m); err != nil {
+		return m, err
 	}
 	if err := domain.ValidateCodingTrace(m); err != nil {
 		return m, err

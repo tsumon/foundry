@@ -41,6 +41,11 @@ const (
 	ImportCanceled               ImportError = "canceled"
 	ImportInspectionFailed       ImportError = "inspection_failed"
 	ImportGitUnavailable         ImportError = "git_unavailable"
+	ImportInvalidBinding         ImportError = "invalid_import_binding"
+	ImportIntentConflict         ImportError = "import_intent_conflict"
+	ImportIncomplete             ImportError = "import_incomplete"
+	ImportPrepareFailed          ImportError = "import_prepare_failed"
+	ImportPublishFailed          ImportError = "import_publish_failed"
 )
 
 type RepositoryImportSpec struct {
@@ -49,6 +54,111 @@ type RepositoryImportSpec struct {
 	Acceptance []string `json:"acceptance"`
 	Image      string   `json:"image"`
 }
+
+type RepositoryImportBinding struct {
+	SchemaVersion     int    `json:"schema_version"`
+	InspectionID      string `json:"inspection_id"`
+	InspectionDigest  string `json:"inspection_digest"`
+	ImportOperationID string `json:"import_operation_id"`
+	Root              string `json:"root"`
+	Commit            string `json:"commit"`
+	BaseDigest        string `json:"base_digest"`
+	ImportSpecDigest  string `json:"import_spec_digest"`
+}
+
+type RepositoryImportOperation struct {
+	ID           string                   `json:"id"`
+	InspectionID string                   `json:"inspection_id"`
+	IntentDigest string                   `json:"intent_digest"`
+	MissionID    string                   `json:"mission_id"`
+	Status       string                   `json:"status"`
+	Stage        string                   `json:"stage"`
+	Code         ImportError              `json:"code"`
+	Revision     int64                    `json:"revision"`
+	CreatedAt    string                   `json:"created_at"`
+	UpdatedAt    string                   `json:"updated_at"`
+	Binding      *RepositoryImportBinding `json:"binding,omitempty"`
+	Generation   *GenerationRef           `json:"generation,omitempty"`
+}
+
+func RepositoryImportSpecDigest(s RepositoryImportSpec) string {
+	// nil and empty optional rules have the same normalized request meaning.
+	if s.Protected == nil {
+		s.Protected = []string{}
+	}
+	b, _ := json.Marshal(s)
+	h := sha256.Sum256(append([]byte("FOUNDRY repository import spec v1\x00"), b...))
+	return hex.EncodeToString(h[:])
+}
+
+func ValidateRepositoryImportBinding(b RepositoryImportBinding) error {
+	if b.SchemaVersion != 1 || !importID(b.InspectionID) || !importID(b.ImportOperationID) || !importHex(b.InspectionDigest, 64) || !importHex(b.BaseDigest, 64) || !importHex(b.ImportSpecDigest, 64) || !importHex(b.Commit, 40, 64) || !importText(b.Root, 4096, true) || !filepath.IsAbs(b.Root) || filepath.Clean(b.Root) != b.Root {
+		return ImportInvalidBinding
+	}
+	return nil
+}
+
+func ValidateMissionRepositoryImport(m Mission) error {
+	if m.RepositoryImportInvalid {
+		return ImportInvalidBinding
+	}
+	if m.ImportVersion == 0 && m.RepositoryImport == nil {
+		return nil
+	}
+	mode, _, err := BaseWorkspaceMode(m.WorkspaceMode)
+	if err != nil || m.ImportVersion != 1 || m.RepositoryImport == nil || m.CodingVersion != 1 || mode != "generations_v1" || m.ToolMode != "" || m.TaskBindings != nil || m.MCPBindings != nil {
+		return ImportInvalidBinding
+	}
+	if err = ValidateRepositoryImportBinding(*m.RepositoryImport); err != nil {
+		return err
+	}
+	if m.RepoPath != m.RepositoryImport.Root || m.BaseCommit != m.RepositoryImport.Commit {
+		return ImportInvalidBinding
+	}
+	return nil
+}
+
+func ValidateRepositoryImportOperation(o RepositoryImportOperation) error {
+	if !importID(o.ID) || !importID(o.InspectionID) || !importID(o.MissionID) || !importHex(o.IntentDigest, 64) || o.Revision < 1 {
+		return ImportInvalidBinding
+	}
+	for _, v := range []string{o.CreatedAt, o.UpdatedAt} {
+		if _, err := time.Parse(time.RFC3339Nano, v); err != nil {
+			return ImportInvalidBinding
+		}
+	}
+	if (o.Binding == nil) != (o.Generation == nil) {
+		return ImportInvalidBinding
+	}
+	if o.Binding != nil {
+		if ValidateRepositoryImportBinding(*o.Binding) != nil || o.Binding.ImportOperationID != o.ID || o.Binding.InspectionID != o.InspectionID || !importHex(o.Generation.ID, 32) || o.Generation.Digest != o.Binding.BaseDigest {
+			return ImportInvalidBinding
+		}
+	}
+	switch o.Status {
+	case "pending":
+		if o.Stage != "reserve" || o.Code != "" || o.Binding != nil {
+			return ImportInvalidBinding
+		}
+	case "prepared":
+		if o.Stage != "prepare" || o.Code != "" || o.Binding == nil {
+			return ImportInvalidBinding
+		}
+	case "committed":
+		if o.Stage != "complete" || o.Code != "" || o.Binding == nil {
+			return ImportInvalidBinding
+		}
+	case "failed":
+		valid := o.Stage == "prepare" && o.Code == ImportPrepareFailed || o.Stage == "publish" && o.Code == ImportPublishFailed || (o.Stage == "prepare" || o.Stage == "commit") && o.Code == ImportStorageFailed || o.Stage == "source" && o.Code == ImportSourceChanged
+		if !valid {
+			return ImportInvalidBinding
+		}
+	default:
+		return ImportInvalidBinding
+	}
+	return nil
+}
+
 type RepositoryInspectionRequest struct {
 	RepositoryID       string               `json:"repository_id,omitempty"`
 	RepositoryRevision int64                `json:"repository_revision,omitempty"`
