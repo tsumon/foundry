@@ -100,6 +100,9 @@ func TestCodingLoopRepairScenarioUsesContentAndIndependentApprovals(t *testing.T
 		t.Fatalf("repair did not traverse failure, debugger and both reviews: %+v", mission)
 	}
 	for _, evidence := range mission.Evidence {
+		if evidence.SourceVersion != 1 || evidence.SourceKind != "synthetic_content_check" {
+			t.Fatalf("content check lacks trusted simulation source: %+v", evidence)
+		}
 		if len(evidence.Results) != 1 || evidence.Results[0].Output != "SIMULATED content check; no command executed" {
 			t.Fatalf("fixture claimed a real command result: %+v", evidence.Results)
 		}
@@ -116,6 +119,10 @@ func TestCodingLoopRepairScenarioUsesContentAndIndependentApprovals(t *testing.T
 	patch, err := os.ReadFile(delivered.Delivery.PatchPath)
 	if err != nil || !strings.Contains(string(patch), "+repaired") {
 		t.Fatalf("exported patch lacks repaired content: %v %s", err, patch)
+	}
+	report, err := os.ReadFile(delivered.Delivery.ReportPath)
+	if err != nil || !strings.Contains(string(report), "内容检查模拟（未执行命令）") || !strings.Contains(string(report), "模拟验证未通过") || !strings.Contains(string(report), "模拟验证通过") {
+		t.Fatalf("report lost explicit simulation outcomes: %v %s", err, report)
 	}
 	check := exec.Command("/usr/bin/git", "apply", "--check", delivered.Delivery.PatchPath)
 	check.Dir = runtime.Repo

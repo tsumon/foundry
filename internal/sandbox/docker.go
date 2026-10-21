@@ -24,6 +24,15 @@ type Runner interface {
 }
 type Docker struct{ Path, Owner string }
 
+// VerificationSourceProvider is an optional, trusted process-side declaration.
+// It is not populated from model output, browser JSON, logs, or image metadata.
+// A multiplexed simulation runner may use imageID to select its own code path.
+type VerificationSourceProvider interface {
+	VerificationSource(imageID string) string
+}
+
+func (*Docker) VerificationSource(string) string { return "isolated_execution" }
+
 func New(path, owner string) *Docker {
 	if path == "" {
 		path = "docker"

@@ -15,6 +15,41 @@ const item = (id: string, state: string, updated_at: string): Mission => ({
   updated_at,
 });
 
+it("shows simulation provenance beside the latest passing result without approval shortcuts", () => {
+  render(
+    <DecisionQueue
+      missions={[
+        {
+          ...mission,
+          state: "awaiting_delivery",
+          evidence: [
+            {
+              id: "content",
+              candidate_digest: mission.candidate_digest,
+              image_id: "fixture",
+              created_at: "today",
+              acceptance_revision: 3,
+              passed: true,
+              results: [],
+              source_version: 1,
+              source_kind: "synthetic_content_check",
+            },
+          ],
+        },
+      ]}
+      loading={false}
+      error=""
+      onOpenMission={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getByText("模拟验证通过 · 内容检查模拟（未执行命令）"),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: /批准|导出/ }),
+  ).not.toBeInTheDocument();
+});
+
 it("separates approvals from attention, discloses missing review objects and only navigates", () => {
   const onOpenMission = vi.fn();
   render(

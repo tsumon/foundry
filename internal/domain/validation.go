@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -123,6 +126,21 @@ func ValidatePlan(plan Plan, spec Spec) error {
 	return nil
 }
 
+// VerificationDigest binds all raw evidence, including unsupported provenance,
+// for new reviews. Empty preserves the historical review representation.
+func VerificationDigest(evidence []Verification) string {
+	versioned := false
+	for _, v := range evidence {
+		versioned = versioned || v.SourceVersion != 0 || v.SourceKind != ""
+	}
+	if !versioned {
+		return ""
+	}
+	b, _ := json.Marshal(evidence)
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
 func CanDeliver(mission Mission, currentDigest string) error {
 	if mission.State != "awaiting_delivery" {
 		return fmt.Errorf("mission state %q cannot deliver", mission.State)
@@ -163,6 +181,9 @@ func CanDeliver(mission Mission, currentDigest string) error {
 		review, ok := latestReviews[role]
 		if !ok || !review.Passed || review.CandidateDigest != currentDigest {
 			return fmt.Errorf("passing %s review for current candidate is required", role)
+		}
+		if review.EvidenceDigest != VerificationDigest(mission.Evidence) {
+			return fmt.Errorf("%s review evidence binding changed", role)
 		}
 	}
 	return nil

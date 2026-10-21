@@ -10,6 +10,10 @@ import {
   type MissionAction,
 } from "../types";
 import { isMCPDecisionPending, missionStateName } from "../deliveryStatus";
+import {
+  verificationOutcome,
+  verificationSourceLabel,
+} from "../verificationSource";
 import { ControlledTask } from "./ControlledTask";
 import { ModelSnapshot } from "./ModelSnapshot";
 import {
@@ -264,8 +268,8 @@ export function DecisionPanel({
           {approval && (
             <>
               <div className="note">
-                批准后，Worker 将按当前计划在独立候选副本执行。验证仅在受限
-                Docker 容器中进行；不会修改原仓库。
+                批准后，Worker 将按当前计划在独立候选副本执行，不会修改原仓库。
+                验证来源以控制器记录为准；模拟检查不执行命令，来源未记录不代表已执行。
               </div>
               <button
                 className="primary full"
@@ -289,7 +293,11 @@ export function DecisionPanel({
           {mission.state === "awaiting_delivery" && (
             <>
               <p className="note">
-                只导出当前候选的 patch 和报告，不自动 apply、push 或
+                最新验证：
+                {evidence
+                  ? `${verificationOutcome(evidence)} · ${verificationSourceLabel(evidence)}`
+                  : "未记录 · 来源未记录"}
+                。 只导出当前候选的 patch 和报告，不自动 apply、push 或
                 deploy。控制器会再次核对摘要。
               </p>
               <button

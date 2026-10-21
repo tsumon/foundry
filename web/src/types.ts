@@ -494,6 +494,8 @@ export interface CommandResult {
   timed_out: boolean;
 }
 export interface Verification {
+  source_version?: number;
+  source_kind?: string;
   id: string;
   candidate_digest: string;
   image_id: string;
@@ -503,6 +505,7 @@ export interface Verification {
   passed: boolean;
 }
 export interface Review {
+  evidence_digest?: string;
   role: Role;
   passed: boolean;
   summary: string;

@@ -1,4 +1,8 @@
 import type { Mission } from "../types";
+import {
+  verificationOutcome,
+  verificationSourceLabel,
+} from "../verificationSource";
 export function VerificationView({ mission }: { mission: Mission }) {
   return (
     <>
@@ -37,20 +41,22 @@ function EvidenceView({
   return (
     <>
       <div className="section-heading">
-        <h2>命令执行证据</h2>
+        <h2>验证证据与来源</h2>
         <span className="muted small">保留失败与复测记录</span>
       </div>
       {!mission.evidence?.length && (
-        <div className="quiet-state">尚未运行验收命令</div>
+        <div className="quiet-state">尚无验证记录</div>
       )}
       {(mission.evidence ?? []).map((evidence, i) => (
         <section className="evidence-attempt" key={evidence.id}>
           <div className="section-heading">
-            <h3>第 {i + 1} 次验证</h3>
+            <h3>
+              第 {i + 1} 次验证 · {verificationSourceLabel(evidence)}
+            </h3>
             <span
               className={`status ${evidence.passed ? "success" : "warning"}`}
             >
-              {evidence.passed ? "验收命令通过" : "验收未通过"}
+              {verificationOutcome(evidence)}
             </span>
           </div>
           <dl className="metadata">

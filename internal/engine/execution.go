@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"foundry/internal/domain"
+	"foundry/internal/sandbox"
 	"foundry/internal/workspace"
 	"path/filepath"
 )
@@ -144,6 +145,11 @@ func (e *Engine) execution(op *operation) error {
 		}
 	}
 	for _, role := range []domain.Role{domain.QA, domain.Auditor} {
+		m, err = e.s.GetMission(op.id)
+		if err != nil {
+			return err
+		}
+		evidenceDigest := domain.VerificationDigest(m.Evidence)
 		var out reviewOutput
 		if err := e.call(op, role, nil, &out); err != nil {
 			return err
@@ -160,7 +166,10 @@ func (e *Engine) execution(op *operation) error {
 			if err != nil {
 				return err
 			}
-			m.Reviews = append(m.Reviews, domain.Review{Role: role, Passed: *out.Passed, Summary: out.Summary, Findings: out.Findings.domainFindings(), CandidateDigest: digest})
+			if domain.VerificationDigest(m.Evidence) != evidenceDigest {
+				return errors.New("evidence changed during review")
+			}
+			m.Reviews = append(m.Reviews, domain.Review{Role: role, Passed: *out.Passed, Summary: out.Summary, Findings: out.Findings.domainFindings(), CandidateDigest: digest, EvidenceDigest: evidenceDigest})
 			return nil
 		})
 		if err != nil {
@@ -198,6 +207,11 @@ func (e *Engine) verify(op *operation) (bool, error) {
 		return false, err
 	}
 	v := domain.Verification{ID: id, CandidateDigest: m.CandidateDigest, ImageID: m.Spec.ImageID, CreatedAt: now(), AcceptanceRevision: m.Plan.Revision, Passed: true, Results: []domain.CommandResult{}}
+	v.SourceVersion = 1
+	if provider, ok := e.runner.(sandbox.VerificationSourceProvider); ok {
+		v.SourceKind = provider.VerificationSource(m.Spec.ImageID)
+	}
+	v.SourceKind = v.EffectiveSource()
 	var infrastructureError error
 	for _, command := range m.Spec.Acceptance {
 		candidate, err := e.selectedCandidate(m)

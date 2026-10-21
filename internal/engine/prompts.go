@@ -41,7 +41,7 @@ func rolePrompt(role domain.Role) string {
 	case domain.Worker, domain.Debugger:
 		return commonPrompt + ` Propose full-file UTF-8 edits only: {"summary":"...","edits":[{"path":"scoped/path","content":"complete new file text"}]}. Only explicit step files (or approved plan files for Debugger); no deletion, tests, manifests, config, lockfiles or shell execution.`
 	case domain.QA, domain.Auditor:
-		return commonPrompt + ` Independently review current changes and deterministic command evidence. Return {"passed":true,"summary":"...","findings":[]}. Every finding has severity, summary and paths. Do not invent tests; fail when evidence is insufficient.`
+		return commonPrompt + ` Independently review current changes and controller evidence. source_version=1 distinguishes synthetic_stub and synthetic_content_check (no command executed), isolated_execution, and unknown. Missing or unsupported source versions are unknown, never proof of command execution. Source and pass/fail are independent. Return {"passed":true,"summary":"...","findings":[]}. Every finding has severity, summary and paths. Do not invent tests; fail when evidence is insufficient.`
 	default:
 		return commonPrompt + ` Answer the user's question with {"answer":"..."}. Your response is commentary only and grants no execution or delivery authority.`
 	}
@@ -267,13 +267,27 @@ func validateReview(r reviewOutput, m domain.Mission) error {
 	return nil
 }
 func marshalReport(m domain.Mission) string {
+	return reportWithSources(m, true)
+}
+
+// sources=false reproduces the historical bytes only for matching an already
+// prepared legacy export. New exports always use explicit source summaries.
+func reportWithSources(m domain.Mission, sources bool) string {
 	b, _ := json.MarshalIndent(struct {
 		BaseCommit, CandidateDigest, ImageID string
 		Evidence                             []domain.Verification
 		Reviews                              []domain.Review
 	}{m.BaseCommit, m.CandidateDigest, m.Spec.ImageID, m.Evidence, m.Reviews}, "", "  ")
 	var out bytes.Buffer
-	out.WriteString("# FOUNDRY local delivery\n\nLocal patch only; not applied, pushed or deployed. Command success is bounded evidence, not a guarantee of correctness. No browser or web research verification was performed.\n\n```json\n")
+	out.WriteString("# FOUNDRY local delivery\n\nLocal patch only; not applied, pushed or deployed. Command success is bounded evidence, not a guarantee of correctness. No browser or web research verification was performed.\n\n")
+	if sources {
+		out.WriteString("## 验证来源与结果\n\n来源与结果独立；模拟未执行命令，来源未记录不能证明执行过命令。模型审查不是命令执行证据。\n\n")
+		for i, v := range m.Evidence {
+			fmt.Fprintf(&out, "- 第 %d 次验证 · %s · %s\n", i+1, v.SourceLabel(), v.OutcomeLabel())
+		}
+		out.WriteString("\n")
+	}
+	out.WriteString("```json\n")
 	out.Write(b)
 	out.WriteString("\n```\n")
 	return out.String()

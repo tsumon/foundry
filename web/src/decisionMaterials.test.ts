@@ -102,7 +102,7 @@ describe("decisionMaterial", () => {
     expect(decisionMaterial(delivery).actionLabel).toBe("审阅交付证据");
     expect(decisionMaterial(delivery).view).toBe("验证");
     expect(values(delivery)).toEqual({
-      最新验证: "通过",
+      最新验证: "验证记录通过 · 来源未记录",
       当前候选匹配: "不匹配（最新证据属于旧候选）",
       "QA 审查": "当前候选 2 条：1 通过，1 未通过",
       "Auditor 审查": "当前候选：未通过",
@@ -118,7 +118,7 @@ describe("decisionMaterial", () => {
       reviews: [review("qa", "old", true)],
     };
     expect(values(stale)).toEqual({
-      最新验证: "通过",
+      最新验证: "验证记录通过 · 来源未记录",
       当前候选匹配: "匹配当前候选",
       "QA 审查": "当前候选审查缺失",
       "Auditor 审查": "当前候选审查缺失",
@@ -148,4 +148,35 @@ describe("decisionMaterial", () => {
       原因: "未记录阻塞或暂停原因",
     });
   });
+});
+
+it("keeps the latest source explicit when the same candidate has mixed sources", () => {
+  const rows = [
+    {
+      ...evidence("same", true),
+      source_version: 1,
+      source_kind: "isolated_execution",
+    },
+    {
+      ...evidence("same", false),
+      source_version: 1,
+      source_kind: "synthetic_content_check",
+    },
+  ];
+  expect(
+    values({
+      ...mission,
+      state: "awaiting_delivery",
+      candidate_digest: "same",
+      evidence: rows,
+    }).最新验证,
+  ).toBe("模拟验证未通过 · 内容检查模拟（未执行命令）");
+  rows[1].passed = true;
+  expect(
+    values({ ...mission, state: "awaiting_delivery", evidence: rows }).最新验证,
+  ).toBe("模拟验证通过 · 内容检查模拟（未执行命令）");
+  rows[1].source_version = 2;
+  expect(
+    values({ ...mission, state: "awaiting_delivery", evidence: rows }).最新验证,
+  ).toBe("验证记录通过 · 来源未记录");
 });

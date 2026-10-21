@@ -1,5 +1,9 @@
 import { decisionKind, type DecisionKind } from "./deliveryStatus";
 import type { Mission, Review } from "./types";
+import {
+  verificationOutcome,
+  verificationSourceLabel,
+} from "./verificationSource";
 
 export type DecisionTargetView = "总览" | "计划链路" | "验证";
 export interface DecisionFact {
@@ -126,7 +130,9 @@ function deliveryMaterial(mission: Mission): DecisionMaterial {
     facts: [
       {
         label: "最新验证",
-        value: latest ? (latest.passed ? "通过" : "未通过") : "未记录",
+        value: latest
+          ? `${verificationOutcome(latest)} · ${verificationSourceLabel(latest)}`
+          : "未记录",
       },
       { label: "当前候选匹配", value: match },
       { label: "QA 审查", value: reviewOutcome(mission, "qa") },

@@ -62,3 +62,22 @@ func TestCreateUnsupportedWorkspaceModeIsValidationError(t *testing.T) {
 		t.Fatal("unsupported mode created mission", err)
 	}
 }
+
+func TestBrowserCannotDeclareVerificationSource(t *testing.T) {
+	f := newFixture(t)
+	f.authenticate()
+	for _, body := range []string{
+		`{"title":"spoof","source_kind":"isolated_execution","source_version":1}`,
+		`{"title":"spoof","spec":{"source_kind":"isolated_execution"}}`,
+		`{"title":"spoof","evidence":[{"source_version":1,"source_kind":"isolated_execution"}]}`,
+	} {
+		rr := f.request(http.MethodPost, "/api/missions", body, true)
+		if rr.Code != 400 || !strings.Contains(rr.Body.String(), `"code":"invalid_json"`) {
+			t.Fatalf("browser source not rejected by schema: %d %s", rr.Code, rr.Body.String())
+		}
+	}
+	missions, err := f.store.ListMissions()
+	if err != nil || len(missions) != 0 {
+		t.Fatal("spoof created mission", err)
+	}
+}

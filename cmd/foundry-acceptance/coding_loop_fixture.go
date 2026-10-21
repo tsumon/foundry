@@ -106,6 +106,13 @@ func (g codingLoopGateway) PreflightAccountProfile(ctx context.Context, profile 
 
 type codingLoopRunner struct{ fallback syntheticRunner }
 
+func (r codingLoopRunner) VerificationSource(imageID string) string {
+	if imageID == codingLoopImageID {
+		return "synthetic_content_check"
+	}
+	return r.fallback.VerificationSource(imageID)
+}
+
 func (r codingLoopRunner) Resolve(ctx context.Context, image string) (string, error) {
 	if image == codingLoopImage {
 		return codingLoopImageID, nil

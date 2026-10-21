@@ -260,6 +260,9 @@ func (e *Engine) verifyDelivery(m domain.Mission) error {
 		return errors.New("delivery operation binding changed")
 	}
 	p := op.Result.Export
+	if p.ReportInput != op.ExportReport || (op.ExportReport != marshalReport(m) && (!legacyVerificationMaterial(m) || op.ExportReport != reportWithSources(m, false))) {
+		return errors.New("delivery evidence/report binding changed")
+	}
 	if m.Delivery.PatchPath != p.PatchPath || m.Delivery.ReportPath != p.ReportPath || m.Delivery.PatchSHA256 != p.PatchSHA256 || m.Delivery.ReportSHA256 != p.ReportSHA256 {
 		return errors.New("delivery artifact binding changed")
 	}
@@ -267,7 +270,22 @@ func (e *Engine) verifyDelivery(m domain.Mission) error {
 }
 
 func (e *Engine) exportIntent(m domain.Mission) (domain.LocalOperation, error) {
-	report := marshalReport(m)
+	return e.exportIntentForReport(m, marshalReport(m))
+}
+
+func legacyVerificationMaterial(m domain.Mission) bool {
+	if domain.VerificationDigest(m.Evidence) != "" {
+		return false
+	}
+	for _, review := range m.Reviews {
+		if review.EvidenceDigest != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func (e *Engine) exportIntentForReport(m domain.Mission, report string) (domain.LocalOperation, error) {
 	proposed, err := e.localIntent(m, "export", struct {
 		Report    string
 		Evidence  []domain.Verification
@@ -304,7 +322,15 @@ func (e *Engine) deliverGeneration(ctx context.Context, m domain.Mission) (domai
 			continue
 		}
 		if prior.IntentDigest != proposed.IntentDigest || prior.ExportReport != proposed.ExportReport {
-			return m, errors.New("existing export intent does not match current delivery")
+			// A previously prepared pre-provenance export keeps its exact bytes;
+			// never strip source fields or rewrite/reseal it to obtain a match.
+			if !legacyVerificationMaterial(m) || prior.Result == nil || prior.Result.Export == nil || prior.Result.Export.ReportInput != prior.ExportReport {
+				return m, errors.New("existing export intent does not match current delivery")
+			}
+			old, err := e.exportIntentForReport(m, reportWithSources(m, false))
+			if err != nil || prior.IntentDigest != old.IntentDigest || prior.ExportReport != old.ExportReport {
+				return m, errors.New("existing export intent does not match current delivery")
+			}
 		}
 		op = prior
 		break

@@ -78,6 +78,8 @@ func (acceptanceGateway) PreflightAccountProfile(context.Context, domain.Profile
 
 type syntheticRunner struct{}
 
+func (syntheticRunner) VerificationSource(string) string { return "synthetic_stub" }
+
 func (syntheticRunner) Resolve(_ context.Context, image string) (string, error) {
 	if image != "synthetic:stub" {
 		return "", errors.New("synthetic runner accepts only synthetic:stub; no Docker image is resolved")

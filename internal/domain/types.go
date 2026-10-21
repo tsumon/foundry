@@ -98,6 +98,47 @@ type Verification struct {
 	AcceptanceRevision int64           `json:"acceptance_revision"`
 	Results            []CommandResult `json:"results"`
 	Passed             bool            `json:"passed"`
+	SourceVersion      int             `json:"source_version,omitempty"`
+	SourceKind         string          `json:"source_kind,omitempty"`
+}
+
+// EffectiveSource never upgrades legacy or unsupported provenance. Raw fields
+// remain unchanged on decode/encode so historical material seals stay valid.
+func (v Verification) EffectiveSource() string {
+	if v.SourceVersion == 1 {
+		switch v.SourceKind {
+		case "synthetic_stub", "synthetic_content_check", "isolated_execution":
+			return v.SourceKind
+		}
+	}
+	return "unknown"
+}
+
+func (v Verification) SourceLabel() string {
+	switch v.EffectiveSource() {
+	case "synthetic_stub":
+		return "流程模拟（未执行命令）"
+	case "synthetic_content_check":
+		return "内容检查模拟（未执行命令）"
+	case "isolated_execution":
+		return "隔离命令执行"
+	default:
+		return "来源未记录"
+	}
+}
+
+func (v Verification) OutcomeLabel() string {
+	prefix := "验证记录"
+	switch v.EffectiveSource() {
+	case "synthetic_stub", "synthetic_content_check":
+		prefix = "模拟验证"
+	case "isolated_execution":
+		prefix = "验收命令"
+	}
+	if v.Passed {
+		return prefix + "通过"
+	}
+	return prefix + "未通过"
 }
 
 type Review struct {
@@ -106,6 +147,7 @@ type Review struct {
 	Summary         string    `json:"summary"`
 	Findings        []Finding `json:"findings"`
 	CandidateDigest string    `json:"candidate_digest"`
+	EvidenceDigest  string    `json:"evidence_digest,omitempty"`
 }
 
 type Message struct {

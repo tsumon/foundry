@@ -127,6 +127,7 @@ internal/domain/types.go
 internal/domain/validation.go
 internal/domain/validation_test.go
 internal/engine/acceptance_test.go
+internal/engine/verification_source_test.go
 internal/engine/account_approval_test.go
 internal/engine/boundary_test.go
 internal/engine/controlled_bindings.go
@@ -550,6 +551,7 @@ web/src/components/RolePolicySnapshot.tsx
 web/src/components/Sidebar.tsx
 web/src/components/StageRail.tsx
 web/src/components/VerificationView.tsx
+web/src/components/VerificationView.test.tsx
 web/src/components/WorkbenchStatus.test.tsx
 web/src/components/WorkbenchStatus.tsx
 web/src/components/Workspace.test.tsx
@@ -594,6 +596,7 @@ web/src/test/appStyles.ts
 web/src/test/fixtures.ts
 web/src/test/setup.ts
 web/src/types.ts
+web/src/verificationSource.ts
 web/src/useCatalog.test.tsx
 web/src/useCatalog.ts
 web/src/useWorkbench.test.tsx

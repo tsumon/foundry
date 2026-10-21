@@ -371,11 +371,43 @@ it("changes seven views without changing lifecycle and shows research citations 
     "step",
   );
   fireEvent.click(screen.getByRole("tab", { name: "验证" }));
-  expect(screen.getByText("尚未运行验收命令")).toBeVisible();
+  expect(screen.getByText("尚无验证记录")).toBeVisible();
   expect(within(stages).getByText("计划").closest("li")).toHaveAttribute(
     "aria-current",
     "step",
   );
+});
+it("keeps approval notes honest for simulation and unknown verification sources", () => {
+  const { rerender } = render(
+    <MissionWorkspace mission={mission} onUpdate={() => {}} />,
+  );
+  expect(screen.queryByText(/验证仅在受限/)).not.toBeInTheDocument();
+  expect(screen.getByText(/验证来源以控制器记录为准/)).toBeVisible();
+  rerender(
+    <MissionWorkspace
+      mission={{
+        ...mission,
+        state: "awaiting_delivery",
+        evidence: [
+          {
+            id: "simulation",
+            candidate_digest: mission.candidate_digest,
+            image_id: "image",
+            acceptance_revision: 3,
+            created_at: "today",
+            passed: true,
+            results: [],
+            source_version: 1,
+            source_kind: "synthetic_stub",
+          },
+        ],
+      }}
+      onUpdate={() => {}}
+    />,
+  );
+  expect(
+    screen.getByText(/模拟验证通过 · 流程模拟（未执行命令）/),
+  ).toBeVisible();
 });
 it("approves mission revision, suppresses duplicate submits and surfaces conflict without retry", async () => {
   let resolve!: (v: Response) => void;
@@ -997,7 +1029,7 @@ it("distinguishes archived verification from current delivery evidence", () => {
   expect(screen.getByText(/运行 2 · 计划 r9/)).toBeVisible();
   expect(screen.getByText("historical failure output")).toBeInTheDocument();
   expect(screen.getByText("historical explanation")).toBeInTheDocument();
-  expect(screen.getByText("尚未运行验收命令")).toBeVisible();
+  expect(screen.getByText("尚无验证记录")).toBeVisible();
 });
 it("keeps command attempts and model reviews distinct, handles repeated change paths and only offers actual delivery", () => {
   const evidence = {
