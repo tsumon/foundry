@@ -4,6 +4,8 @@ import (
 	"errors"
 	"foundry/internal/domain"
 	"foundry/internal/workspace"
+	"path/filepath"
+	"reflect"
 )
 
 func archiveCodingRun(m domain.Mission) domain.RunArchive {
@@ -41,6 +43,32 @@ func (e *Engine) freezeReplan(m domain.Mission) (*domain.RunArchive, *domain.Fai
 		}
 		return &a, m.ReplanContext, nil
 	}
+	last := a.CodingAttempts[len(a.CodingAttempts)-1]
+	if last.Status == "interrupted" && last.After == nil && !reflect.DeepEqual(last.Before, a.CandidateGeneration) {
+		if a.CandidateGeneration == nil {
+			return nil, nil, errors.New("missing recovered candidate")
+		}
+		op, err := e.s.GetLocalOperation(a.CandidateGeneration.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		a.RecoveredSelection = &op
+		if err := domain.ValidateRecoveredSelection(m, a); err != nil {
+			return nil, nil, err
+		}
+		// The selected generation is not sufficient evidence on its own. Check
+		// frozen authority and the complete on-disk recorded edit chain as well.
+		if err := e.checkCodingReviewMaterial(m); err != nil {
+			return nil, nil, err
+		}
+		approval, err := authority(m, filepath.Join(e.dir(m.ID), "base"), true)
+		if err != nil || approval != op.ApprovalDigest {
+			return nil, nil, errors.New("recovered selection approval mismatch")
+		}
+		if err := e.checkRecoveredSelection(m, a); err != nil {
+			return nil, nil, err
+		}
+	}
 	b, err := domain.BuildFailureBundle(m, a)
 	return &a, b, err
 }
@@ -53,6 +81,28 @@ func (e *Engine) checkReplanMaterial(m domain.Mission) error {
 		if err := workspace.VerifyGeneration(e.dir(m.ID), m.ReplanContext.CandidateGeneration); err != nil {
 			return err
 		}
+		for _, a := range m.RunArchives {
+			if a.Epoch == m.ReplanContext.Epoch && a.RecoveredSelection != nil {
+				if err := e.checkRecoveredSelection(m, a); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
+}
+
+func (e *Engine) checkRecoveredSelection(m domain.Mission, a domain.RunArchive) error {
+	if err := domain.ValidateRecoveredSelection(m, a); err != nil {
+		return err
+	}
+	op := a.RecoveredSelection
+	base, err := workspace.Digest(filepath.Join(e.dir(m.ID), "base"))
+	if err != nil || base != op.BaseDigest {
+		return errors.New("recovered selection base changed")
+	}
+	if err := workspace.VerifyGeneration(e.dir(m.ID), op.Before); err != nil {
+		return err
+	}
+	return workspace.VerifyGenerationParent(e.dir(m.ID), *op.Result.Generation, op.Before)
 }

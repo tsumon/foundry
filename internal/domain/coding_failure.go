@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -17,16 +18,17 @@ const FailureBundleLimit = 128 * 1024
 const FailureLogLimit = 8 * 1024
 
 type CodingFailure struct {
-	ID             string `json:"id"`
-	Code           string `json:"code"`
-	Phase          string `json:"phase"`
-	AttemptID      string `json:"attempt_id,omitempty"`
-	VerificationID string `json:"verification_id,omitempty"`
-	ReviewRole     Role   `json:"review_role,omitempty"`
-	Summary        string `json:"summary"`
-	LogExcerpt     string `json:"log_excerpt,omitempty"`
-	LogTruncated   bool   `json:"log_truncated,omitempty"`
-	SourceDigest   string `json:"source_digest,omitempty"`
+	CommittedOperationID string `json:"committed_operation_id,omitempty"`
+	ID                   string `json:"id"`
+	Code                 string `json:"code"`
+	Phase                string `json:"phase"`
+	AttemptID            string `json:"attempt_id,omitempty"`
+	VerificationID       string `json:"verification_id,omitempty"`
+	ReviewRole           Role   `json:"review_role,omitempty"`
+	Summary              string `json:"summary"`
+	LogExcerpt           string `json:"log_excerpt,omitempty"`
+	LogTruncated         bool   `json:"log_truncated,omitempty"`
+	SourceDigest         string `json:"source_digest,omitempty"`
 }
 type FailureBundle struct {
 	SchemaVersion       int             `json:"schema_version"`
@@ -112,8 +114,13 @@ func BuildFailureBundle(m Mission, a RunArchive) (*FailureBundle, error) {
 		evidence[v.ID] = v
 	}
 	used := map[string]bool{}
+	if a.RecoveredSelection != nil {
+		if err := ValidateRecoveredSelection(m, a); err != nil {
+			return nil, err
+		}
+	}
 	var last *GenerationRef
-	for _, attempt := range a.CodingAttempts {
+	for i, attempt := range a.CodingAttempts {
 		if attempt.Epoch != a.Epoch || attempt.PlanRevision != a.PlanRevision || attempt.Status == "running" {
 			return nil, bad
 		}
@@ -128,19 +135,43 @@ func BuildFailureBundle(m Mission, a RunArchive) (*FailureBundle, error) {
 			continue
 		}
 		f := CodingFailure{ID: "failure-" + attempt.ID, Code: attempt.FailureCode, Phase: attempt.Phase, AttemptID: attempt.ID, Summary: attempt.Phase + ": " + attempt.FailureCode, SourceDigest: codingDigest("attempt", attempt)}
+		if i == len(a.CodingAttempts)-1 && a.RecoveredSelection != nil {
+			last = a.RecoveredSelection.Result.Generation
+			f.CommittedOperationID = a.RecoveredSelection.ID
+			f.Summary += "; local candidate selection committed; execution remains interrupted"
+		}
 		if attempt.VerificationID != "" {
 			v, ok := evidence[attempt.VerificationID]
 			if !ok || v.AcceptanceRevision != a.PlanRevision || v.CandidateDigest != attempt.Before.Digest {
 				return nil, bad
 			}
 			f.VerificationID = v.ID
-			if attempt.FailureCode == "verification_failed" {
-				if v.Passed || len(v.Results) == 0 {
+			// A failed record can also be the durable result of infrastructure or
+			// persistence failure. Account for its provenance without changing the
+			// controller's typed outcome or making it eligible for automatic repair.
+			if !v.Passed {
+				if attempt.Phase != "verification" || used[v.ID] {
+					return nil, bad
+				}
+				started, e1 := time.Parse(time.RFC3339Nano, attempt.StartedAt)
+				finished, e2 := time.Parse(time.RFC3339Nano, attempt.FinishedAt)
+				created, e3 := time.Parse(time.RFC3339Nano, v.CreatedAt)
+				if e1 != nil || e2 != nil || e3 != nil || created.Before(started) || created.After(finished) {
+					return nil, bad
+				}
+				switch attempt.FailureCode {
+				case "verification_failed", "infrastructure_failed", "persistence_failed", "interrupted", "outcome_unknown":
+				default:
 					return nil, bad
 				}
 				used[v.ID] = true
 				f.SourceDigest = codingDigest("verification", v)
 				f.Summary += "; " + v.SourceLabel()
+			}
+			if attempt.FailureCode == "verification_failed" {
+				if v.Passed || len(v.Results) == 0 {
+					return nil, bad
+				}
 				var logs strings.Builder
 				for _, r := range v.Results {
 					logs.WriteString(r.Output)
@@ -184,6 +215,39 @@ func BuildFailureBundle(m Mission, a RunArchive) (*FailureBundle, error) {
 		return nil, errors.New("failure bundle exceeds 128 KiB; explicit new task required")
 	}
 	return b, nil
+}
+
+// A recovered selection is a separate committed local fact, never an amendment
+// to an interrupted attempt or evidence of successful execution. Only the final
+// edit's missing After may be bridged, and only inside its recorded time window.
+func ValidateRecoveredSelection(m Mission, a RunArchive) error {
+	bad := errors.New("invalid recovered coding selection")
+	op := a.RecoveredSelection
+	if m.CodingVersion != 1 || op == nil || len(a.CodingAttempts) == 0 || a.CandidateGeneration == nil {
+		return bad
+	}
+	attempt := a.CodingAttempts[len(a.CodingAttempts)-1]
+	if attempt.Epoch != a.Epoch || attempt.PlanRevision != a.PlanRevision || attempt.Status != "interrupted" || attempt.FailureCode != "interrupted" || attempt.After != nil || attempt.Before == nil || (attempt.Phase != "worker" && attempt.Phase != "debugger") || attempt.VerificationID != "" {
+		return bad
+	}
+	if op.ID == "" || op.MissionID != m.ID || op.Kind != "apply" || op.Status != "committed" || op.Error != "" || op.ExportReport != "" || op.Epoch != a.Epoch || op.PlanRevision != a.PlanRevision || op.Before != *attempt.Before || op.ExpectedRevision < 1 || op.ExpectedRevision >= a.Revision || op.BaseDigest == "" || op.IntentDigest == "" || op.ApprovalDigest == "" || op.Result == nil || op.Result.Export != nil || op.Result.Generation == nil || op.Result.Generation.ID != op.ID || *op.Result.Generation != *a.CandidateGeneration || *op.Result.Generation == op.Before || !reflect.DeepEqual(op.Result.Changes, a.Changes) {
+		return bad
+	}
+	started, e1 := time.Parse(time.RFC3339Nano, attempt.StartedAt)
+	finished, e2 := time.Parse(time.RFC3339Nano, attempt.FinishedAt)
+	created, e3 := time.Parse(time.RFC3339Nano, op.CreatedAt)
+	committed, e4 := time.Parse(time.RFC3339Nano, op.UpdatedAt)
+	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || created.Before(started) || committed.Before(created) || committed.After(finished) {
+		return bad
+	}
+	approved := false
+	for _, approval := range m.Approvals {
+		approved = approved || (approval.Kind == "execute" && approval.Digest == op.ApprovalDigest && approval.Revision < op.ExpectedRevision)
+	}
+	if !approved {
+		return bad
+	}
+	return nil
 }
 
 func ValidateReplanContext(m Mission) error {

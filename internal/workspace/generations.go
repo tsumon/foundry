@@ -207,6 +207,22 @@ func VerifyGeneration(dir string, ref domain.GenerationRef) error {
 	return nil
 }
 
+// VerifyGenerationParent additionally binds a committed apply result to its
+// recorded input generation; a valid tree alone does not establish that edge.
+func VerifyGenerationParent(dir string, ref, parent domain.GenerationRef) error {
+	if err := VerifyGeneration(dir, ref); err != nil {
+		return err
+	}
+	var manifest generationManifest
+	if err := readManifest(filepath.Join(dir, "generations", ref.ID, "manifest.json"), &manifest); err != nil {
+		return err
+	}
+	if manifest.Parent == nil || *manifest.Parent != parent {
+		return errors.New("generation parent mismatch")
+	}
+	return nil
+}
+
 func validHex(s string, n int) bool {
 	if len(s) != n {
 		return false

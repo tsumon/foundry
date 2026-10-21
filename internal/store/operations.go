@@ -201,6 +201,27 @@ func readOperation(q operationQuerier, id string) (domain.LocalOperation, error)
 	return scanOperation(q.QueryRow(`SELECT intent,status,result,error,updated_at FROM local_operations WHERE id=?`, id))
 }
 
+// Use the caller's transaction: engine snapshot checks also run inside mission
+// mutations, where opening a second connection would deadlock the single writer.
+func validateRecoveredSelections(q operationQuerier, m domain.Mission) error {
+	for _, a := range m.RunArchives {
+		if a.RecoveredSelection == nil {
+			continue
+		}
+		if err := domain.ValidateRecoveredSelection(m, a); err != nil {
+			return err
+		}
+		op, err := readOperation(q, a.RecoveredSelection.ID)
+		if err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(&op, a.RecoveredSelection) {
+			return errors.New("recovered local operation changed")
+		}
+	}
+	return nil
+}
+
 func scanOperation(row operationScanner) (domain.LocalOperation, error) {
 	var op domain.LocalOperation
 	var intent, result []byte

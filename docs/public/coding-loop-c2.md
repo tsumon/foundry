@@ -49,6 +49,13 @@ current candidate and archive consistency before use. Historical unsealed data
 cannot silently become a verified failure bundle. Missing, altered, cross-task,
 or unsupported material blocks dispatch rather than silently falling back.
 
+If selection committed before an interrupted edit's terminal trace could be
+saved, explicit freezing may retain a separate, sealed local-operation fact.
+It must match that final attempt's task, plan, input generation and time window,
+the committed result, frozen authority, edit chain and on-disk generation parent.
+The interrupted trace is never rewritten or promoted to success; only the known
+candidate selection is reconciled. Unknown outcomes remain unresolved.
+
 Only bounded, sanitized projections enter Planner prompts: maximum encoded bundle
 128 KiB, each log excerpt 8 KiB, explicit truncation and original-record digest/
 reference. No profile/credential objects, entire repository, or unbounded run

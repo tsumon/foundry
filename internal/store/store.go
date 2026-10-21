@@ -286,6 +286,9 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 	if err := domain.ValidateReplanContext(m); err != nil {
 		return domain.Mission{}, err
 	}
+	if err := validateRecoveredSelections(tx, m); err != nil {
+		return domain.Mission{}, err
+	}
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 		return domain.Mission{}, err
 	}
@@ -315,6 +318,9 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 		return domain.Mission{}, err
 	}
 	if err := domain.ValidateReplanContext(m); err != nil {
+		return domain.Mission{}, err
+	}
+	if err := validateRecoveredSelections(tx, m); err != nil {
 		return domain.Mission{}, err
 	}
 	updatedModelSnapshot, _ := json.Marshal(m.ModelSnapshot)

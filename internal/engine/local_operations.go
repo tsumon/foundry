@@ -169,6 +169,9 @@ func (e *Engine) resetGeneration(m domain.Mission) (domain.Mission, error) {
 		if archive != nil {
 			actual := archiveCodingRun(*current)
 			actual.ArchivedAt = archive.ArchivedAt
+			// The separately verified immutable local-operation fact is frozen
+			// alongside (not written into) the unchanged controller trace.
+			actual.RecoveredSelection = archive.RecoveredSelection
 			if domain.CodingArchiveDigest(actual) != domain.CodingArchiveDigest(*archive) {
 				return errors.New("failure material changed before reset selection")
 			}

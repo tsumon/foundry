@@ -237,6 +237,7 @@ type Mission struct {
 // RunArchive is historical data, never current passing delivery evidence.
 // Version-one replans bind its exact digest as failure material, not approval.
 type RunArchive struct {
+	RecoveredSelection  *LocalOperation `json:"recovered_selection,omitempty"`
 	CodingAttempts      []CodingAttempt `json:"coding_attempts,omitempty"`
 	CandidateGeneration *GenerationRef  `json:"candidate_generation,omitempty"`
 	Epoch               int64           `json:"epoch"`
