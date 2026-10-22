@@ -5,15 +5,26 @@ const os = require("node:os");
 const path = require("node:path");
 const { validateOutput, writeManifest } = require("../build-support.cjs");
 const { verifyResources, executableName } = require("../runtime.cjs");
+function workflowJob(workflow, name) {
+  return workflow.replace(/\r\n/g, "\n").split(`  ${name}:\n`)[1].split(/^  [a-z-]+:\n/m)[0];
+}
+test("workflow boundary checks parse LF and native Windows CRLF identically", () => {
+  const workflow = fs.readFileSync(path.join(__dirname, "../../.github/workflows/desktop.yml"), "utf8");
+  const lf = workflow.replace(/\r\n/g, "\n");
+  const crlf = lf.replace(/\n/g, "\r\n");
+  for (const name of ["runtime-sources", "macos-installer", "windows-installer"]) {
+    assert.equal(workflowJob(lf, name), workflowJob(crlf, name));
+  }
+});
 test("native CI explicitly installs the pinned Electron runtime before contract tests", () => {
   const workflow = fs.readFileSync(path.join(__dirname, "../../.github/workflows/desktop.yml"), "utf8");
   for (const name of ["macos-installer", "windows-installer"]) {
-    const job = workflow.split(`  ${name}:\n`)[1].split(/^  [a-z-]+:\n/m)[0];
+    const job = workflowJob(workflow, name);
     const install = job.indexOf("node desktop/node_modules/electron/install.js");
     const testGate = job.search(/name: (Desktop boundaries|Native CGO commands)/);
     assert.ok(install >= 0 && install < testGate, `${name} must install Electron before testing`);
   }
-  assert.doesNotMatch(workflow.split("  macos-installer:\n")[0], /node desktop\/node_modules\/electron\/install\.js/);
+  assert.doesNotMatch(workflowJob(workflow, "runtime-sources"), /node desktop\/node_modules\/electron\/install\.js/);
 });
 test("shared verification retains full uncached normal and race suites with finite budgets", () => {
   const script = fs.readFileSync(path.join(__dirname, "../../scripts/verify.sh"), "utf8");
@@ -26,7 +37,7 @@ test("shared verification retains full uncached normal and race suites with fini
 });
 test("Windows native CI uses an explicit long-form temporary root without relaxing aliases", () => {
   const workflow = fs.readFileSync(path.join(__dirname, "../../.github/workflows/desktop.yml"), "utf8");
-  const job = workflow.split("  windows-installer:\n")[1];
+  const job = workflowJob(workflow, "windows-installer");
   const setup = job.indexOf("name: Prepare long-form native temporary directory");
   assert.ok(setup > 0 && setup < job.indexOf("name: Install locked dependencies"));
   assert.match(job, /IsPathFullyQualified\(\$nativeTemp\)/);
