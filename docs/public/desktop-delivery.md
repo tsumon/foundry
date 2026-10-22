@@ -37,6 +37,21 @@ Git execution uses an explicit trusted installation, with configuration, hooks, 
 
 The bilingual README must state which installed workflows were accepted, explain unsigned/notarized status, and distinguish local simulation, historical bounded real tests, and capabilities that remain closed. Screenshots must come from the real application with disposable data, not imagined results.
 
+## Gitiles source archive integrity
+
+Gitiles regenerates archive timestamps, so six immutable-revision source archives
+use a committed canonical SHA-256, entry count and total file-data size instead
+of requiring an identical gzip transport. Verification never extracts archives:
+bounded gunzip (256 MiB maximum), strict 512-byte POSIX headers and checksums,
+only regular files/directories and single local PAX headers (`mtime`/`path` only).
+Unsafe or duplicate paths, links, unsupported metadata, malformed padding and
+trailing data are rejected. Bytewise-path-sorted canonical records bind effective
+path, raw type, mode, numeric and named owners, size and file-content SHA-256.
+Filesystem mtime, archive order, gzip metadata and the validated PAX wrapper are
+excluded from source-tree identity. Original compressed hashes remain provenance, while the delivered
+manifest and SHA256SUMS identify actual saved bytes. Packaging rechecks committed
+pins, not the downloaded receipt. Other source inputs retain exact raw-byte pins.
+
 ## Official references
 
 - [Electron security checklist](https://www.electronjs.org/docs/latest/tutorial/security)

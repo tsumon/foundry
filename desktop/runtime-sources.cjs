@@ -25,14 +25,64 @@ function validateEntry(entry) {
     (entry.encoding !== undefined && entry.encoding !== "base64")
   )
     throw Error("Runtime source integrity failure: invalid metadata");
+  if (entry.canonical !== undefined) {
+    const c = entry.canonical;
+    if (
+      !c ||
+      c.format !== "gitiles-tar-v1" ||
+      !/^[a-f0-9]{64}$/.test(c.sha256) ||
+      !Number.isSafeInteger(c.entries) ||
+      c.entries < 1 ||
+      c.entries > 100000 ||
+      !Number.isSafeInteger(c.fileBytes) ||
+      c.fileBytes < 0 ||
+      c.fileBytes > 256 * 1024 * 1024 ||
+      entry.encoding !== undefined ||
+      !Number.isSafeInteger(entry.maxDownloadBytes) ||
+      entry.maxDownloadBytes < entry.bytes ||
+      entry.maxDownloadBytes > 64 * 1024 * 1024
+    )
+      throw Error(
+        "Runtime source integrity failure: invalid canonical metadata",
+      );
+  } else if (entry.maxDownloadBytes !== undefined)
+    throw Error("Runtime source integrity failure: invalid transport metadata");
 }
 function verifyInput(entry, raw) {
   validateEntry(entry);
-  if (
-    raw.length !== entry.bytes ||
-    crypto.createHash("sha256").update(raw).digest("hex") !== entry.sha256
-  )
-    throw Error("Runtime source integrity failure: " + entry.file);
+  const actual = {
+    file: entry.file,
+    bytes: raw.length,
+    sha256: crypto.createHash("sha256").update(raw).digest("hex"),
+  };
+  if (entry.canonical) {
+    if (!raw.length || raw.length > entry.maxDownloadBytes)
+      throw Error("Runtime source integrity failure: compressed bound");
+    const observed = require("./gitiles-archive.cjs").archiveIdentity(raw),
+      expected = entry.canonical;
+    if (
+      observed.sha256 !== expected.sha256 ||
+      observed.entries !== expected.entries ||
+      observed.fileBytes !== expected.fileBytes
+    )
+      throw Error(
+        "Runtime source integrity failure: " +
+          entry.file +
+          " expected " +
+          JSON.stringify(expected) +
+          " observed " +
+          JSON.stringify(observed),
+      );
+  } else if (actual.bytes !== entry.bytes || actual.sha256 !== entry.sha256)
+    throw Error(
+      "Runtime source integrity failure: " +
+        entry.file +
+        " expected " +
+        JSON.stringify({ bytes: entry.bytes, sha256: entry.sha256 }) +
+        " observed " +
+        JSON.stringify(actual),
+    );
+  return actual;
 }
 async function download(entry, fetchImpl = fetch) {
   validateEntry(entry);
@@ -58,7 +108,7 @@ async function download(entry, fetchImpl = fetch) {
     const bound =
       entry.encoding === "base64"
         ? Math.ceil(entry.bytes / 3) * 4 + 16
-        : entry.bytes;
+        : (entry.maxDownloadBytes ?? entry.bytes);
     if (size > bound) throw Error("Runtime source transport exceeds bound");
     chunks.push(chunk);
   }
@@ -80,6 +130,7 @@ async function prepareSources({ output, local, manifest, readme, fetchImpl }) {
     names.add(entry.file.toLowerCase());
   }
   fs.mkdirSync(output, { mode: 0o700 });
+  const receipts = [];
   for (const entry of manifest.files) {
     let raw;
     if (local) {
@@ -87,11 +138,22 @@ async function prepareSources({ output, local, manifest, readme, fetchImpl }) {
       const stat = fs.lstatSync(filename);
       if (path.dirname(filename) !== local || !stat.isFile())
         throw Error("Regular local source input required");
-      if (stat.size !== entry.bytes)
+      if (
+        entry.canonical
+          ? stat.size > entry.maxDownloadBytes
+          : stat.size !== entry.bytes
+      )
         throw Error("Runtime source integrity failure: size");
       raw = fs.readFileSync(filename);
     } else raw = await download(entry, fetchImpl);
-    verifyInput(entry, raw);
+    const receipt = verifyInput(entry, raw);
+    receipts.push({
+      ...entry,
+      ...receipt,
+      ...(entry.canonical
+        ? { originalTransport: { bytes: entry.bytes, sha256: entry.sha256 } }
+        : {}),
+    });
     fs.writeFileSync(path.join(output, entry.file), raw, {
       flag: "wx",
       mode: 0o644,
@@ -99,7 +161,7 @@ async function prepareSources({ output, local, manifest, readme, fetchImpl }) {
   }
   fs.writeFileSync(
     path.join(output, "manifest.json"),
-    JSON.stringify(manifest, null, 2) + "\n",
+    JSON.stringify({ ...manifest, files: receipts }, null, 2) + "\n",
     { flag: "wx", mode: 0o644 },
   );
   fs.writeFileSync(path.join(output, "README.md"), readme, {
@@ -108,7 +170,7 @@ async function prepareSources({ output, local, manifest, readme, fetchImpl }) {
   });
   fs.writeFileSync(
     path.join(output, "SHA256SUMS"),
-    manifest.files.map((e) => e.sha256 + "  " + e.file).join("\n") + "\n",
+    receipts.map((e) => e.sha256 + "  " + e.file).join("\n") + "\n",
     { flag: "wx", mode: 0o644 },
   );
 }

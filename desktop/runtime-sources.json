@@ -19,7 +19,14 @@
       "stripComponents": 0,
       "role": "shipped-library-source",
       "bytes": 18925377,
-      "sha256": "dda8b3d190eabbd0f4f4bbee398c7b346d9de626c32cd790f7517b341f236724"
+      "sha256": "dda8b3d190eabbd0f4f4bbee398c7b346d9de626c32cd790f7517b341f236724",
+      "maxDownloadBytes": 67108864,
+      "canonical": {
+        "format": "gitiles-tar-v1",
+        "sha256": "6a86d972828bcb60e6b8b60413ab36044cad8beb9de26ce6ecc0aafb7a4d17c1",
+        "entries": 11438,
+        "fileBytes": 97656731
+      }
     },
     {
       "file": "electron-45.0.0-54f961b44b83e4ece81065ab60a182fd0c38c01e.tar.gz",
@@ -57,7 +64,14 @@
       "stripComponents": 0,
       "role": "controlling-build-scripts",
       "bytes": 1992528,
-      "sha256": "b3b0e613a70d0c56f81d34cd073feb92cdc513e503103ca1a4803d711fe94064"
+      "sha256": "b3b0e613a70d0c56f81d34cd073feb92cdc513e503103ca1a4803d711fe94064",
+      "maxDownloadBytes": 67108864,
+      "canonical": {
+        "format": "gitiles-tar-v1",
+        "sha256": "f896cb8dfea2d0c3d606bdd9f68b139fcac1d67822ba66f2a08f857e97035e8c",
+        "entries": 1823,
+        "fileBytes": 8526053
+      }
     },
     {
       "file": "chromium-generate-stubs-d0c02bf.tar.gz",
@@ -67,7 +81,14 @@
       "stripComponents": 0,
       "role": "windows-definition-generator",
       "bytes": 15197,
-      "sha256": "a762027e9021b0756457d8234e91e238f44f97eaf9030f731075023619bb5feb"
+      "sha256": "a762027e9021b0756457d8234e91e238f44f97eaf9030f731075023619bb5feb",
+      "maxDownloadBytes": 67108864,
+      "canonical": {
+        "format": "gitiles-tar-v1",
+        "sha256": "cfa8ad91a7a786b75c3856320a5a8fc8e98a2d64b877d84de8cf3427ba308e46",
+        "entries": 3,
+        "fileBytes": 60370
+      }
     },
     {
       "file": "chromium-opus-d0c02bf.tar.gz",
@@ -77,7 +98,14 @@
       "stripComponents": 0,
       "role": "linked-library-source",
       "bytes": 4258450,
-      "sha256": "66bdfecce617be70e32ff5ddbd7d0aa0fa792b328ef87e16ccdb4a7f90defd4b"
+      "sha256": "66bdfecce617be70e32ff5ddbd7d0aa0fa792b328ef87e16ccdb4a7f90defd4b",
+      "maxDownloadBytes": 67108864,
+      "canonical": {
+        "format": "gitiles-tar-v1",
+        "sha256": "d4c7497fcab71338d87a715eee50bb972af8ea845e2d2b0ea9a517120e08b47d",
+        "entries": 790,
+        "fileBytes": 15121838
+      }
     },
     {
       "file": "chromium-media-ffmpeg-d0c02bf.tar.gz",
@@ -87,7 +115,14 @@
       "stripComponents": 0,
       "role": "integration-build-documentation",
       "bytes": 105221,
-      "sha256": "c89b485007877e9e8e6c8bfe227de3e440d8ea9e6c99715ffb5a102ce3691cf9"
+      "sha256": "c89b485007877e9e8e6c8bfe227de3e440d8ea9e6c99715ffb5a102ce3691cf9",
+      "maxDownloadBytes": 67108864,
+      "canonical": {
+        "format": "gitiles-tar-v1",
+        "sha256": "ae07226b666bb511b27558ff54c2de3e08ae04f698bbc99a913d8e67af142cb5",
+        "entries": 44,
+        "fileBytes": 381551
+      }
     },
     {
       "file": "chromium-nasm-525a09a.tar.gz",
@@ -97,7 +132,14 @@
       "stripComponents": 0,
       "role": "assembler-source-and-build-integration",
       "bytes": 2433082,
-      "sha256": "02b3f510e73674b5a6778dc5e5cfc4af0ddcd780a341bea38ee1290c1ac0620f"
+      "sha256": "02b3f510e73674b5a6778dc5e5cfc4af0ddcd780a341bea38ee1290c1ac0620f",
+      "maxDownloadBytes": 67108864,
+      "canonical": {
+        "format": "gitiles-tar-v1",
+        "sha256": "4dc2792f0915a5d7c0c52f4af71d046f2001183e9568c74dc49efd92edaedd39",
+        "entries": 1387,
+        "fileBytes": 17808926
+      }
     },
     {
       "file": "chromium-LICENSE",

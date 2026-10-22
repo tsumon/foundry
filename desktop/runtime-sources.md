@@ -17,6 +17,25 @@ the unmodified downloaded bytes; it is not an upstream signature or a claim of
 reproducible binaries. No long-term written source offer is substituted for these
 files. Keep the source directory when redistributing the corresponding installer.
 
+Six Gitiles `.tar.gz` inputs regenerate timestamps even at an immutable revision.
+Their committed `canonical` pins fix the source-tree identity: entry count,
+total file-data bytes and a SHA-256 over UTF-8 JSON array records, sorted by
+bytewise effective path. Each newline-terminated record contains path, raw type,
+mode, uid, gid, uname, gname, size and file-content SHA-256; the hash starts with
+`foundry-gitiles-tar-v1\n`. Filesystem mtime, archive order, gzip metadata and the
+validated PAX transport wrapper are not source-tree identity. Source contents,
+types, paths and all recorded permissions/ownership remain fixed.
+
+Verification uses bounded decompression (256 MiB) without extraction. Only POSIX
+regular-file/directory headers and a single local PAX `mtime`/`path` extension
+are admitted. Checksums, numeric fields, UTF-8, padding and end markers are
+checked; links, unknown extensions, unsafe/duplicate paths and file/parent
+conflicts fail closed. Downloads have a separate 64 MiB maximum. Committed raw
+hashes/sizes retain the original reviewed archive provenance; delivered receipts
+record `originalTransport` and the actual saved bytes/hash. Packaging rechecks
+the committed canonical pins, never trusts the sidecar receipt as authority.
+All other inputs still require their exact original byte count and raw SHA-256.
+
 The Windows installer has an additional `installer/` source subdirectory,
 described below. Providing it with the Mac artifact as well does not imply those
 Windows components are present in the Mac runtime.
@@ -120,13 +139,15 @@ remain applicable; these materials are not a blanket legal clearance.
 
 ### Preparing the sidecars
 
-Run `node desktop/runtime-sources.cjs /absolute/new/output` to download each pinned
+Run `npm ci --prefix desktop --ignore-scripts` to install the locked build-time
+verifier without Electron installation scripts. Then run
+`node desktop/runtime-sources.cjs /absolute/new/output` to download each pinned
 input once and verify it; a failure stops without fallback or hash rewriting.
 For the Windows source inputs, run
 `node desktop/runtime-sources.cjs /absolute/new/output/installer installer`
 after creating the main sidecar. Official release redirects are limited to three
-explicitly allowlisted HTTPS hops; content is always checked against its pinned
-size and SHA-256 before it is saved.
+explicitly allowlisted HTTPS hops; content is always checked against its committed
+canonical or exact-byte pins before it is saved.
 Set `FOUNDRY_RUNTIME_SOURCES` to a previously verified input directory to prepare
 the sidecar without network. The installed app never runs this build-time script.
 When updating Electron, review its actual platform notice files, source pins,

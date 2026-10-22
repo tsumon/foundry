@@ -121,8 +121,7 @@ function verifyFiles(directory, entries) {
     const file = path.join(directory, entry.file);
     if (!fs.lstatSync(file).isFile())
       throw Error("Regular shipping source/notice required");
-    verifyInput(entry, fs.readFileSync(file));
-    return { file: entry.file, bytes: entry.bytes, sha256: entry.sha256 };
+    return verifyInput(entry, fs.readFileSync(file));
   });
 }
 function verifyShipping(sourceKit, legal) {

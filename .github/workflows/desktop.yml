@@ -21,6 +21,8 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
+      - name: Install source verifier without Electron install scripts
+        run: npm ci --prefix desktop --ignore-scripts
       - name: Fetch each immutable source once and check every digest
         run: |
           node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources"
