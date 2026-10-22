@@ -77,18 +77,30 @@ it before context/planning. Baseline is never candidate evidence. Execute approv
 also binds the profile and baseline; delivery still requires current candidate
 evidence, C2 QA/Auditor references, and its own approval.
 
-A deterministic Docker command plan and bounded lifecycle executor accept only
-an injected in-process synthetic capability. There is no production C4 subprocess
-transport, bypass flag, model-router escape or legacy Docker-runner fallback.
+A deterministic command plan and bounded lifecycle executor separate injected
+local simulation from the default-closed, strictly configured Docker adapter.
+There is no HTTP/environment bypass, model-router escape or legacy-runner fallback.
 Unknown/persistence/cleanup outcomes stop without replay; explicit cleanup checks
 the separately known exact-owned ID only. Production startup with C4 records is
-diagnostic/read-only. C4-C real image/toolchain/isolation acceptance is unperformed.
+diagnostic/read-only unless it matches separately admitted controlled activation.
+A historical, bounded Double-project C4-C acceptance exercised real tests and
+exact-owned cleanup with simulated roles; it grants no future execution authority.
 
 The disposable acceptance runtime uses a separate stdlib-only Go source fixture,
 seven accountless synthetic role snapshots, a dedicated local model gateway and
 a content-comparison fake driver. It never invokes Go or Docker for that fixture.
 The existing decision panel, verification view and persisted activity stream show
 these facts without new navigation. All real C4 readiness remains `not_checked`.
+
+The isolated [repository-task mode](repository-task-orchestration.md) uses the
+same store/controller/HTTP/workbench with a descriptor-only gateway and pure
+frozen-content evaluator. Goals, nested paths, dependencies and full-file edits
+are data; no account/router/MCP service or real runner is constructed. The existing
+controller owns approvals, immutable generations, two repair rounds, failure
+archives, independent review bindings and patch delivery. Existing-source imports
+consume committed HEAD only, preserve dirty working files, and reject descriptor
+drift without running Git status/diff or filters. This generalization applies only
+to `synthetic`, control-version-0 tasks; real controlled goals remain Double-only.
 
 ## Output boundary
 

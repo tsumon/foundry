@@ -181,6 +181,33 @@ The service exposes one fixed read-only test tool and is the only MCP eligible f
 
 </details>
 
+## Local repository-task demo (accountless simulation)
+
+With the documented Go toolchain, cached dependencies and an already built
+`web/dist`, run from the source root:
+
+```sh
+GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off go run ./cmd/foundry-acceptance --repository-tasks-fixture --web-dir web/dist
+```
+
+Open the printed loopback URL. Two new disposable repositories demonstrate nested
+label formatting and dependent multifile pricing changes, including a new file.
+Separately approve and execute baseline, approve context/planning, review or edit
+the plan, approve execution, inspect failure → repair → independent reviews, then
+explicitly deliver the patch. Source files and source Git state remain unchanged.
+
+Optionally add `--repository-task-path /absolute/path/to/repository` for a read-only
+committed-HEAD import. Uncommitted/untracked files are ignored; the working
+descriptor must match the commit. No worktree-cleanliness certification or Git
+conversion filter runs. Protected `foundry.task.json` supplies proposals and exact
+content assertions: **not autonomous reasoning or real Go/Docker tests**. This mode
+constructs no account, Keychain, router or MCP service and cannot be combined with
+`--c4-controls-fixture`. See the [contract and limits](docs/public/repository-task-orchestration.md).
+
+A separately approved, bounded Double-project C4-C Docker acceptance was completed
+earlier; its roles remained local simulations. That historical evidence grants no
+authority for this demo or future real execution.
+
 ## Safety before first use
 
 - **FOUNDRY is not entirely offline.** New account routes marked `live` fail closed with `live_provider_access_pending_confirmation`, but compatible legacy accountless profiles can still contact their configured HTTPS provider during an approved model operation. Local providers may use literal-loopback HTTP. Explicitly approved MCP catalog discovery can also contact the selected endpoint.

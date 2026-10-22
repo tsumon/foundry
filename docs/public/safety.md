@@ -34,7 +34,10 @@ This section describes the legacy verification path. The versioned
 [C4-A/B path](coding-verification-c4.md) is default-closed in production and never
 falls back to that path. Only the disposable acceptance runtime injects its local
 synthetic driver/models. `synthetic_stub` results are content-comparison records,
-not Go/compiler/Docker execution or real readiness. C4-C has not been performed.
+not Go/compiler/Docker execution or real readiness. A separately approved,
+bounded Double-project C4-C acceptance did run real tests with simulated roles;
+its baseline/failed/repaired evidence and confirmed cleanup are historical only,
+not consent for any new project, image, host or execution.
 
 C4 separately approves baseline material, then explicitly executes it; this is
 not context, candidate-plan or delivery approval. Its fixed declaration adds an
@@ -43,9 +46,19 @@ the root/candidate read-only and `/tmp` noexec. Static flags do not prove kernel
 isolation. Unknown results and unconfirmed cleanup stop without retry/repair.
 Separately requested cleanup checks only a known exact-owned ID and cannot replay
 execution, turn unknown/failure into success, or authorize delivery. Production
-startup with any C4 record preserves diagnostic read-only access rather than
-probing Docker or resuming it. No C4 enable environment variable, CLI or HTTP
-override is provided.
+startup without matching admitted controlled activation preserves diagnostic
+read-only access rather than probing Docker or resuming it. No environment or
+HTTP enable override is provided; strict startup configuration and separate
+readiness/baseline/execution approvals remain required for real controlled use.
+
+The [repository-task launcher](repository-task-orchestration.md) is an isolated
+synthetic-only entrypoint. Protected descriptor text supplies proposals, never
+permissions or executable commands. Assertions are frozen at import; candidate
+changes cannot replace them. Only declared scoped source edits/additions are
+supported, never protected tests/build inputs or deletion. Optional existing-path
+import reads committed objects, ignores dirty/untracked bytes, preserves source
+and index, and does not execute Git status/diff, hooks or conversion filters.
+No account, router, Keychain, MCP, Docker or compiler is used by this mode.
 
 Legacy execution/verification requires a running Docker daemon and the exact trusted image already present locally. FOUNDRY does not pull images. It runs the approved command with networking disabled, a read-only candidate bind mount, a writable restricted `/tmp`, no health check, no log driver, dropped Linux capabilities, `no-new-privileges`, an unprivileged user, and CPU/memory/process limits.
 

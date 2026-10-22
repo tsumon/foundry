@@ -181,6 +181,20 @@ FOUNDRY_DATA_DIR="$FOUNDRY_MCP_DATA" ./bin/foundry --local-mcp-test
 
 </details>
 
+## 本地仓库任务演示（无账号、仅模拟）
+
+已安装文档要求的 Go 工具链、已有依赖缓存且 `web/dist` 已构建时，在源码根目录运行：
+
+```sh
+GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off go run ./cmd/foundry-acceptance --repository-tasks-fixture --web-dir web/dist
+```
+
+打开输出的本机 URL。两个全新临时仓库分别演示嵌套路径标签格式化与有依赖的多文件价格修改（包含新文件）。基线准备不等于批准：依次明确批准并执行基线、批准上下文规划、审阅/修改计划、批准执行，检查失败→修复→独立复核后再批准导出。源仓库和其 Git 状态不变。
+
+可加 `--repository-task-path /absolute/path/to/repository` 只读导入已有仓库的已提交 HEAD；未提交/未跟踪文件不参与任务，工作区描述符必须与提交一致。不检查工作区是否干净，不运行 Git 转换过滤器。任务由受保护的 `foundry.task.json` 提供提案和精确内容断言，**不是自主模型推理或真实 Go/Docker 测试**，也不启用账号、Keychain、MCP 或订阅。此模式与 `--c4-controls-fixture` 互斥。格式、限制和流程见[仓库任务说明](docs/public/repository-task-orchestration.md)。
+
+历史上已完成经单独批准的、范围受限的 Double 项目 C4-C Docker 验收；当时角色仍为本地模拟。历史证据不授权本次演示或任何未来真实执行。
+
 ## 首次使用前的安全边界
 
 - **不是完全离线。** 新账户 route 标记为 `live` 时会以 `live_provider_access_pending_confirmation` 关闭，但兼容的旧式无账户 profile 在获批的模型操作中仍可联系其 HTTPS provider；本地 provider 可使用字面回环 HTTP。显式批准的 MCP 目录发现也可以联系选定端点。

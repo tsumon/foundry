@@ -1,7 +1,11 @@
 # C4-A/B: approval-bound Go verification preparation
 
-Status: C4-A/B implemented with local synthetic validation. C4-C real
-project/image/Docker acceptance is not authorized or performed. Whole-build,
+Status: C4-A/B implemented with local synthetic validation. A separately approved,
+bounded C4-C acceptance subsequently ran the disposable Double project's tests in
+its approved local Docker image: baseline passed, initial candidate failed,
+repaired candidate passed, and exact-owned cleanup was confirmed. Roles remained
+local simulations; original evidence and sealed exports are retained unchanged.
+This establishes no general-repository support or future execution authority. Whole-build,
 browser and hosted CI evidence must always be tied to the tested source revision.
 
 ## Scope and non-goals
@@ -27,7 +31,9 @@ with a separate synthetic-only runtime/store and two shared-base scenarios:
 readiness pending and simulated cleanup failure. Prepare, approve and execute
 remain separate workbench actions; readiness does not approve baseline/candidate
 execution. Default legacy fixtures are unchanged. These are mock validations;
-real C4-C remains unperformed.
+this fixture performs no real C4-C execution. The separate
+[repository-task mode](repository-task-orchestration.md) is descriptor-driven,
+accountless local simulation only; it does not relax the real Double boundary.
 
 ## Versioned contract
 
@@ -59,9 +65,9 @@ Use GOPROXY=off, GOSUMDB=off, GOTOOLCHAIN=local, GOENV=off, GOWORK=off,
 CGO_ENABLED=0 and scratch-only compiler/cache paths. No dependency install,
 go generate or shell expansion. The verifier contract fixes Go 1.27.3 on
 linux/arm64 and `go test -json -count=1 -timeout=90s ./...` in `/workspace`.
-The future image must supply `/usr/local/go/bin/go`; the verifier checks its
-version before testing. Its image/base provenance and actual compiler must be
-reviewed in C4-C; this declaration does not assert that an image is available.
+An admitted image must supply `/usr/local/go/bin/go`; the verifier checks its
+version before testing. Image/base provenance and actual compiler require
+run-specific admission; this declaration does not assert current availability.
 
 ## Approvals and task flow
 
@@ -110,13 +116,13 @@ Failure to persist a terminal fact retains the durable intent for diagnosis.
 
 ## Bounded executor and verifier boundary
 
-The production executor accepts only an in-process synthetic-driver capability
-in A/B. The profile's `mode` string alone is not that capability. Production
-Docker mode is rejected before persistence or driver calls. A separate
-[dormant Docker adapter](c4-docker-adapter.md) now implements the frozen command
-plan behind zero-value-disabled trusted library configuration; startup, engine,
-HTTP and UI do not enable it. Its tests use synthetic process/filesystem fixtures
-and an owned Go helper only, never Docker. The legacy runner is not a fallback.
+The A/B synthetic executor accepts only an in-process synthetic-driver capability.
+The profile's `mode` string alone is not authority. The separate
+[default-closed Docker adapter](c4-docker-adapter.md) requires strict admitted
+startup configuration and independent readiness/execution approvals as described
+in [controlled activation](c4-controlled-activation.md). HTTP/UI cannot enable it.
+Its automated tests use synthetic process/filesystem fixtures and an owned Go
+helper, never Docker. The legacy runner is not a fallback.
 
 Every planned Docker command binds the trusted absolute executable and explicit
 local Unix endpoint, with no inherited environment. The managed candidate must
@@ -132,7 +138,7 @@ After confirmed start, Wait deadline/cancellation can classify as
 run with its own bounded context, but neither permits a retry or Debugger repair.
 
 Because logging is disabled, the plan uses `start --attach`, not Docker logs.
-A future driver must continuously drain attached output into a bounded buffer,
+The driver must continuously drain attached output into a bounded buffer,
 preserve truncation metadata, and expose that buffer through the typed logs stage
 without launching another command. It must validate the image-owned verifier
 summary independently of untrusted output strings. The verifier treats Go JSON
@@ -141,13 +147,14 @@ and rejects malformed, oversized, zero-test, skipped-only and nonzero-status
 false success. Output retention is bounded to 64 KiB combined and common
 credential patterns/control characters are redacted before persistence.
 
-These are testable contracts, not observed isolation. C4-C still must validate
+These are contracts, not a universal isolation guarantee. Each real run must validate
 executable/socket trust, image provenance and content ID, actual platform and
 toolchain, image configuration (including rejecting declared volumes and unsafe
 environment defaults), effective container mounts/resources/network, immutable
 candidate handoff, attach/start acknowledgment and verifier-summary transport.
 No such readiness probe, image inspection, image build or container run occurs
-in A/B. Explicit recovery inspects/removes only a separately known exact-owned
+in the local synthetic modes. The historical bounded Double acceptance is not
+proof of any other image, host or repository. Explicit recovery inspects/removes only a separately known exact-owned
 ID; it cannot discover by name, replay a command or promote an unknown result.
 
 ## Implementation seams
@@ -157,8 +164,8 @@ ID; it cannot discover by name, replay a command or promote an unknown result.
 - Sandbox: a fixed C4 command plan and shared durable lifecycle executor, with
   distinct synthetic and dormant Docker wrappers. The default-off adapter uses
   bounded stdlib subprocess transport, retained filesystem trust and strict
-  effective-config/verifier framing checks. No production activation or real
-  Docker acceptance occurred. The old sandbox is unchanged for legacy tasks.
+  effective-config/verifier framing checks. Real activation remains separately
+  gated; the historical bounded acceptance does not renew it. The old sandbox is unchanged for legacy tasks.
 - Engine: guarded C4 creation, baseline prepare/approve/execute, exact-owned cleanup,
   planning/approval/verification/recovery routing; no legacy-runner fallback.
 - HTTP: task-scoped operations behind existing Host/Origin/session/JSON/read-only
@@ -185,17 +192,19 @@ local mock state, clean-source export and secrets/vulnerability/workflow scans.
 Push only reviewed public source/docs after gates, inspect exact-commit CI, then
 start the latest disposable acceptance workbench. No Release.
 
-C4-C remains not performed: actual project admission, image provenance/preload,
-local Docker endpoint readiness, compiler execution, host isolation and resource
-enforcement require separate approval and real acceptance. Synthetic passes do
-not prove these properties.
+The historical bounded Double C4-C acceptance does not generalize to other
+projects, images or hosts. Every future real run still requires project admission,
+image provenance, local readiness and independent execution approval. Synthetic
+passes do not prove compiler execution, host isolation or resource enforcement.
 
 ## Disposable workbench acceptance
 
 Build the existing frontend, then start
 `go run ./cmd/foundry-acceptance --web-dir web/dist`. This command always
-allocates new disposable data and a random loopback URL; it has no user-project
-or C4 real-execution option. Its printed manifest includes
+allocates new disposable data and a random loopback URL; the default mode has no
+user-project option and no acceptance mode enables real C4 execution. The separate
+repository-task mode supports committed-source simulation as documented above.
+The default mode's printed manifest includes
 `c4_readiness: not_checked` and these task IDs:
 
 - `c4_baseline_pending`: C3-admitted stdlib-only Go fixture, fixed protected

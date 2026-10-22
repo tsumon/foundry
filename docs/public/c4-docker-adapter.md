@@ -1,9 +1,12 @@
 # C4 Docker adapter (default closed)
 
-Status: dormant transport implemented and validated with synthetic fixtures and
-an owned Go-test helper subprocess only, not C4-C real acceptance. No Docker
-executable, endpoint, image or container was contacted. Project selection, image
-provenance, Docker readiness checks and real execution require separate user confirmation.
+Status: default-closed transport with automated synthetic-fixture and owned Go
+helper coverage. A separately approved, bounded Double-project C4-C acceptance
+subsequently used the approved local Docker image: baseline passed, initial
+candidate failed, repaired candidate passed, exact-owned cleanup confirmed.
+Roles stayed simulated and original evidence/exports remain unchanged. Project
+selection, image provenance, readiness and real execution still require fresh,
+separate user authorization; that historical result grants none for future runs.
 Subscription integration remains paused.
 
 ## Scope and alternatives
@@ -22,7 +25,8 @@ environment variables and the workbench cannot enable or configure the adapter. 
 of disabled configuration must perform no filesystem trust probes, Docker command,
 socket connection or image inspection. Domain `mode: docker` alone is not authority.
 The ordinary production C4 engine gate remains closed without explicit admitted
-startup configuration. This integration has mock validation only. No apparent readiness
+startup configuration. The [generic repository-task path](repository-task-orchestration.md)
+is local simulation only and does not use or widen this adapter. No apparent readiness
 is inferred from implementing or mock-testing a transport.
 
 ## Frozen inputs

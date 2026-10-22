@@ -64,7 +64,7 @@ func (g Gateway) Complete(_ context.Context, req model.Request) (model.Result, e
 		}
 		output = map[string]any{"passed": true, "summary": "SYNTHETIC review, not real execution or readiness", "findings": []any{}, "binding_digest": contract.BindingDigest, "checks": checks}
 	case domain.Main:
-		output = map[string]string{"answer": "SYNTHETIC C4 fixture: baseline, context, execution and delivery remain separate decisions. C4-C has not been performed."}
+		output = map[string]string{"answer": "SYNTHETIC C4 fixture: baseline, context, execution and delivery remain separate decisions. These role judgments are local simulations and never establish real Docker execution."}
 	default:
 		return model.Result{}, errors.New("role not used by C4 fixture; no fallback")
 	}

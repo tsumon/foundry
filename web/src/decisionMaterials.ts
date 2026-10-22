@@ -198,8 +198,8 @@ export function decisionMaterial(mission: Mission): DecisionMaterial {
             mission.spec.c4.mode === "docker"
               ? "受控 Docker 声明 · 结果以绑定事实为准；模型推理为本地模拟"
               : c4Supported(mission)
-                ? "synthetic_stub · C4-C 未执行"
-                : "来源未确认 · C4-C 未执行",
+                ? "synthetic_stub · 本任务未执行真实 Docker"
+                : "来源未确认 · 本任务未确认真实执行",
         },
       ],
     };

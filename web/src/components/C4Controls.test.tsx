@@ -122,6 +122,7 @@ it("requires three explicit readiness actions; readiness cannot approve or execu
     return { mission: m };
   });
   render(<Harness start={m} />);
+  expect(screen.getByText(/本任务仅本地模拟，未执行真实 Docker/)).toBeInTheDocument();
   expect(screen.getByText(/模拟就绪检查 · 非真实 Docker/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "执行就绪检查" })).toBeDisabled();
   await waitFor(() =>

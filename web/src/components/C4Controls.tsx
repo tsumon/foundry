@@ -284,7 +284,7 @@ export function C4Controls({
       </h3>
       <p className="warning-copy">
         {source === "synthetic_c4_control"
-          ? "真实 C4 入口关闭 · C4-C 未执行；模拟不能证明 Docker、Go、镜像或隔离就绪。"
+          ? "本任务仅本地模拟，未执行真实 Docker；模拟不能证明 Docker、Go、镜像或隔离就绪。"
           : "配置可用不代表就绪或执行成功；模型推理仍为本地模拟。"}
       </p>
       <p>

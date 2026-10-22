@@ -32,8 +32,11 @@ func (r *acceptanceRuntime) manifest() acceptanceManifest {
 	for name, id := range r.scenarios {
 		scenarios[name] = id
 	}
+	if r.repositoryTasks {
+		return acceptanceManifest{Label: "SYNTHETIC REPOSITORY TASK ONLY: descriptor proposals and content checks; no model, compiler, Docker, provider or account", URL: r.URL, Root: r.Root, Repo: r.Repo, Scenarios: scenarios, C4Readiness: "synthetic_only; all tasks start with unapproved baseline material", BrowserPaths: map[string]string{"repository_tasks": "Pending decisions → select repository task → approve baseline → execute baseline → approve context/plan → edit proposal → approve execution → inspect repair and independent reviews → explicitly deliver patch"}}
+	}
 	if r.c4Controls != nil {
-		return acceptanceManifest{Label: "SYNTHETIC C4 CONTROLS ONLY: no Docker, compiler, provider or real account; real C4-C unperformed", URL: r.URL, Root: r.Root, Repo: r.Repo, Scenarios: scenarios, C4Readiness: "synthetic_only; pending mission unapproved; one failure scenario explicitly seeded", C4SyntheticReadinessCalls: r.c4Controls.readiness.Load(), BrowserPaths: map[string]string{"c4_controls_baseline_pending": "Pending decisions → SYNTHETIC C4 controls baseline_pending → prepare readiness → approve → execute → separate baseline approval", "c4_controls_cleanup_failure": "Pending decisions → SYNTHETIC C4 controls cleanup_failure → prepare exact-object cleanup → approve → execute; failed result unchanged"}}
+		return acceptanceManifest{Label: "SYNTHETIC C4 CONTROLS ONLY: this runtime uses no Docker, compiler, provider or real account", URL: r.URL, Root: r.Root, Repo: r.Repo, Scenarios: scenarios, C4Readiness: "synthetic_only; pending mission unapproved; one failure scenario explicitly seeded", C4SyntheticReadinessCalls: r.c4Controls.readiness.Load(), BrowserPaths: map[string]string{"c4_controls_baseline_pending": "Pending decisions → SYNTHETIC C4 controls baseline_pending → prepare readiness → approve → execute → separate baseline approval", "c4_controls_cleanup_failure": "Pending decisions → SYNTHETIC C4 controls cleanup_failure → prepare exact-object cleanup → approve → execute; failed result unchanged"}}
 	}
 	return acceptanceManifest{
 		Label:       "SYNTHETIC ACCEPTANCE ONLY: actual owned loopback SIWC/model protocols; synthetic repository/runner; no cloud, Docker, or real-account validation",

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { mission } from "../test/fixtures";
+import { c4Mission, c4Operation } from "../test/c4Fixtures";
 import type { Mission } from "../types";
 import { DeliveryOverview } from "./DeliveryOverview";
 
@@ -14,6 +15,41 @@ const item = (id: string, state: string, updated_at: string): Mission => ({
   evidence: state === "awaiting_delivery" ? [] : mission.evidence,
   budget: { ...mission.budget, used_calls: Number(id.slice(1)), max_calls: 16 },
   updated_at,
+});
+
+it("counts each pending synthetic baseline as a decision without claiming execution", () => {
+  const pending: Mission = {
+    ...c4Mission,
+    state: "draft",
+    c4_operations: [{
+      ...c4Operation,
+      state: "prepared",
+      approval: undefined,
+      dispatch: undefined,
+      created: undefined,
+      started: undefined,
+      result: undefined,
+      cleanup: [],
+      container_id: undefined,
+    }],
+  };
+  render(
+    <DeliveryOverview
+      missions={[pending, { ...pending, id: "second-repository-task" }]}
+      events={[]}
+      loading={false}
+      error=""
+      stream="事件流已连接"
+      onOpenMission={() => {}}
+      onCreate={() => {}}
+      onSettings={() => {}}
+      onDemo={() => {}}
+    />,
+  );
+  expect(screen.getByTestId("metric-decisions")).toHaveTextContent("2");
+  expect(screen.getByTestId("metric-in-progress")).toHaveTextContent("0");
+  expect(screen.getByTestId("metric-delivered")).toHaveTextContent("0");
+  expect(screen.getByTestId("metric-attention")).toHaveTextContent("0");
 });
 
 it("shows real grouped counts, unknown states, ordered task facts and a bounded session event list", () => {

@@ -54,7 +54,7 @@ export function DeliveryOverview(props: Props) {
     );
 
   const pending = missions.filter((m) =>
-    ["context", "mcp_call", "plan", "delivery"].includes(decisionKind(m) ?? ""),
+    ["context", "mcp_call", "plan", "delivery", "c4_baseline"].includes(decisionKind(m) ?? ""),
   ).length;
   const metrics = [
     ["in-progress", "进行中", missions.filter(isMissionInProgress).length],

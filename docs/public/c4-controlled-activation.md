@@ -1,7 +1,9 @@
 # C4 controlled activation and independent readiness
 
-Status: implementation specification, not real Docker acceptance. This increment
-is tested only with owned local fixtures. No project, image, Docker installation,
+Status: implemented with automated local-fixture coverage. A separately approved,
+bounded Double-project C4-C acceptance later executed real Go tests in its approved
+local Docker image (baseline pass, candidate failure, repaired pass, confirmed
+exact-owned cleanup). Those roles remained local simulations. No project, image, Docker installation,
 endpoint or real readiness/execution is approved by publishing this document.
 Subscription integration remains paused.
 
@@ -12,7 +14,7 @@ approvals. Add controls to the existing C4 task decision area, not a new workflo
 or navigation section. Reuse the dormant fixed-policy adapter and the mission CAS
 journal. Do not activate the legacy Docker runner, a shell, Git writes or a model
 provider. Accountless fixture reasoning remains explicitly simulated even when a
-future verification result comes from Docker.
+separately admitted verification result comes from Docker.
 
 New controlled missions use `C4Profile.control_version: 1`. The field is omitted
 for historical synthetic missions; do not migrate/rewrite their hashes or infer
@@ -40,12 +42,17 @@ paths alone are never approval. Activation is isolated from ordinary missions,
 provider/account startup and legacy recovery. Invalid/mismatched history selects
 diagnostic read-only startup, without rewriting records or invoking Docker.
 
-The first controlled coding flow uses only the existing deterministic Double
+The real controlled coding flow remains limited to the existing deterministic Double
 fixture reasoning (local Planner/Worker/Debugger/QA/Auditor). Move/reuse that
 implementation without a router fallback; unsupported goals stop. This is not
 general autonomous model-powered coding. Real project/image admission and runtime
-compatibility still require subsequent explicit user confirmation. Mock startup
+compatibility require fresh explicit user confirmation for future runs. Mock startup
 cannot consume a real configuration or construct a real transport.
+
+The [generic repository-task simulation](repository-task-orchestration.md) uses
+`control_version: 0`, never this real/control-version-1 path. Arbitrary descriptor
+goals and paths do not authorize Docker, accounts, provider access or a broader
+real coding gateway. Historical sealed reports remain untouched.
 
 ## Material and evidence
 

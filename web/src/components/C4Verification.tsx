@@ -20,7 +20,7 @@ function C4ProfileFacts({ mission }: { mission: Mission }) {
       <p className="warning-copy">
         {docker
           ? "受控 Docker 声明；当前可用性需核对控制状态。历史事实不等于当前就绪，模型推理仍为本地模拟。"
-          : "真实 C4 入口关闭 · C4-C 未执行。模拟通过不证明 Docker、Go、镜像、隔离或资源就绪。"}
+          : "本任务仅本地模拟，未执行真实 Docker。模拟通过不证明 Docker、Go、镜像、隔离或资源就绪。"}
       </p>
       <p className="muted small">
         {docker

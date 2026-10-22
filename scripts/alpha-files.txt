@@ -19,6 +19,8 @@ cmd/foundry-acceptance/coding_loop_fixture.go
 cmd/foundry-acceptance/coding_loop_fixture_test.go
 cmd/foundry-acceptance/main.go
 cmd/foundry-acceptance/main_test.go
+cmd/foundry-acceptance/repository_task_fixture.go
+cmd/foundry-acceptance/repository_task_fixture_test.go
 cmd/foundry-acceptance/model_acceptance_test.go
 cmd/foundry-acceptance/model_accounts.go
 cmd/foundry-acceptance/protocol_acceptance_test.go
@@ -56,8 +58,15 @@ docs/public/openai-stage0.md
 docs/public/openai-subscription-adapter.md
 docs/public/openai-subscription-connection.md
 docs/public/safety.md
+docs/public/repository-task-orchestration.md
 go.mod
 go.sum
+internal/repositorytask/definition.go
+internal/repositorytask/definition_test.go
+internal/repositorytask/gateway.go
+internal/repositorytask/gateway_test.go
+internal/repositorytask/verification.go
+internal/repositorytask/verification_test.go
 internal/acceptance/connection_session.go
 internal/acceptance/production_connection.go
 internal/acceptance/production_connection_test.go

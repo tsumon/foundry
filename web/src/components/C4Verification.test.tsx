@@ -94,7 +94,8 @@ it("requires separate explicit approval and execution, displays immutable permis
   );
   expect(action).not.toHaveBeenCalled();
   expect(screen.getByText(/256 MiB.*exec/)).toBeInTheDocument();
-  expect(screen.getByText(/C4-C 未执行/)).toBeInTheDocument();
+  expect(screen.getByText(/本任务仅本地模拟，未执行真实 Docker/)).toBeInTheDocument();
+  expect(screen.queryByText(/C4-C 未执行/)).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: /启用真实/ }),
   ).not.toBeInTheDocument();

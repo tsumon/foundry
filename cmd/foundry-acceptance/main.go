@@ -50,18 +50,29 @@ type acceptanceRuntime struct {
 	cancel                      context.CancelFunc
 	serveErr                    chan error
 	c4Controls                  *c4ControlsDriver
+	repositoryTasks             bool
 }
 
 func main() {
 	webDir := flag.String("web-dir", "web/dist", "built workbench static directory (read-only)")
 	controls := flag.Bool("c4-controls-fixture", false, "isolated synthetic C4 controls only; never enables Docker")
+	repository := flag.Bool("repository-tasks-fixture", false, "isolated descriptor-driven repository simulation; no compiler, Docker or provider execution")
+	repositoryPath := flag.String("repository-task-path", "", "optional committed repository with foundry.task.json; read-only HEAD snapshot, ignores uncommitted edits; requires --repository-tasks-fixture")
 	flag.Parse()
 	if flag.NArg() != 0 {
-		log.Fatal("only --web-dir and --c4-controls-fixture are accepted; data and loopback port are always freshly allocated")
+		log.Fatal("only documented flags are accepted; data and loopback port are always freshly allocated")
+	}
+	if err := validateRepositoryTaskFlags(*controls, *repository, *repositoryPath); err != nil {
+		log.Fatal(err)
 	}
 	start := startAcceptance
 	if *controls {
 		start = startC4ControlsAcceptance
+	}
+	if *repository {
+		start = func(web string) (*acceptanceRuntime, error) {
+			return startRepositoryTasksAcceptance(web, *repositoryPath)
+		}
 	}
 	runtime, err := start(*webDir)
 	if err != nil {
