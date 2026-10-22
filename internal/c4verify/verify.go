@@ -33,7 +33,7 @@ type Process interface {
 type Result struct {
 	Class     string `json:"class"`
 	ExitCode  int    `json:"exit_code"`
-	Tests     int    `json:"tests"`
+	Tests     int    `json:"tests"` // Completed pass/fail tests; skips and package events do not count.
 	Output    string `json:"output"`
 	Truncated bool   `json:"truncated"`
 }
@@ -97,10 +97,11 @@ type events struct {
 	invalid, failed                   bool
 	tests, lines                      int
 	running, done, packages, terminal map[string]bool
+	failedPackages                    map[string]bool
 }
 
 func newEvents() *events {
-	return &events{running: map[string]bool{}, done: map[string]bool{}, packages: map[string]bool{}, terminal: map[string]bool{}}
+	return &events{running: map[string]bool{}, done: map[string]bool{}, packages: map[string]bool{}, terminal: map[string]bool{}, failedPackages: map[string]bool{}}
 }
 func (e *events) Write(p []byte) (int, error) {
 	n := len(p)
@@ -151,6 +152,10 @@ func (e *events) consume() {
 		e.running[key] = true
 	case "pass":
 		if v.Test == "" {
+			if e.failedPackages[v.Package] {
+				e.invalid = true
+				return
+			}
 			for key := range e.running {
 				if strings.HasPrefix(key, v.Package+"\x00") {
 					e.invalid = true
@@ -175,21 +180,27 @@ func (e *events) consume() {
 				return
 			}
 			e.failed = true
+			e.failedPackages[v.Package] = true
 			delete(e.running, key)
 			e.done[key] = true
+			e.tests++
 		} else {
 			e.packages[v.Package] = false
 			e.terminal[v.Package] = true
 		}
 	case "skip":
 		if v.Test != "" {
-			if len(e.running)+len(e.done) >= 4096 {
+			if !e.running[key] || len(e.running)+len(e.done) >= 4096 {
 				e.invalid = true
 				return
 			}
 			delete(e.running, key)
 			e.done[key] = true
 		} else {
+			if e.failedPackages[v.Package] {
+				e.invalid = true
+				return
+			}
 			e.packages[v.Package] = true
 			e.terminal[v.Package] = true
 		}
@@ -199,8 +210,24 @@ func (e *events) consume() {
 		e.invalid = true
 	}
 }
-func (e *events) complete() bool {
+
+// terminated requires a complete stream even when the command failed. A
+// positive count from a valid prefix must not authorize repair after a partial
+// stream, an unfinished test, or a package without a terminal event.
+func (e *events) terminated() bool {
 	if e.invalid || len(e.line) != 0 || len(e.running) > 0 || e.tests == 0 {
+		return false
+	}
+	for pkg := range e.packages {
+		if !e.terminal[pkg] {
+			return false
+		}
+	}
+	return true
+}
+
+func (e *events) complete() bool {
+	if !e.terminated() {
 		return false
 	}
 	for _, passed := range e.packages {
@@ -252,7 +279,7 @@ func Run(ctx context.Context, p Process) Result {
 	if err != nil || exit == 125 || exit == 126 || exit == 127 || events.invalid || len(events.line) != 0 {
 		return r
 	}
-	if exit != 0 && events.failed {
+	if exit != 0 && events.failed && events.terminated() {
 		r.Class = "test_failed"
 		return r
 	}

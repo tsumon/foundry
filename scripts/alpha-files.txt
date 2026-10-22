@@ -668,6 +668,7 @@ internal/engine/c4_recovery.go
 internal/engine/c4_recovery_test.go
 internal/engine/c4_test.go
 internal/engine/c4_verification.go
+internal/engine/c4_verification_count_test.go
 internal/engine/recovery_diagnostic.go
 internal/engine/repository_import_create.go
 internal/httpapi/c4.go

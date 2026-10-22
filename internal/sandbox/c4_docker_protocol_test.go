@@ -39,10 +39,10 @@ func TestC4DockerVerifierProcessMapping(t *testing.T) {
 	for _, tc := range []struct {
 		class                  string
 		goExit, process, tests int
-	}{{"passed", 0, 0, 1}, {"test_failed", 7, 1, 0}, {"infrastructure_failed", -1, 2, 0}, {"infrastructure_failed", 0, 2, 0}, {"timeout", -1, 2, 0}} {
+	}{{"passed", 0, 0, 1}, {"test_failed", 1, 1, 1}, {"test_failed", 7, 1, 0}, {"infrastructure_failed", -1, 2, 0}, {"infrastructure_failed", 0, 2, 0}, {"timeout", -1, 2, 0}} {
 		raw, _ := json.Marshal(map[string]any{"class": tc.class, "exit_code": tc.goExit, "tests": tc.tests, "output": "", "truncated": false})
 		r, err := decodeC4Verifier(raw, tc.process)
-		if err != nil || r == nil || r.ExitCode != tc.process || r.Class != tc.class {
+		if err != nil || r == nil || r.ExitCode != tc.process || r.Class != tc.class || r.Tests != tc.tests {
 			t.Fatalf("mapping %+v: %+v %v", tc, r, err)
 		}
 	}

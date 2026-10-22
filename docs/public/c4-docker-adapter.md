@@ -104,6 +104,22 @@ JSON `c4verify.Result` envelope on stdout. Decode that envelope, not text within
 its Output field or stderr. Require every field, reject duplicate/unknown envelope
 keys and trailing data, bound decoded output to 64 KiB, and validate class/test
 counts and verifier process exit mapping (passed=0, test_failed=1, other=2).
+`tests` counts matched, completed Go test `pass` **or** `fail` events, not only
+passing tests; skipped tests and package-level events do not increment it. One
+test containing four input cases is still one test. Failure classification also
+requires a complete event stream: no invalid/trailing partial JSON, unfinished
+tests, or packages without terminal events. A positive count from an incomplete
+stream is not repair-eligible evidence. Zero-test, skip-only and build-only
+failures remain infrastructure failures, not successful verification.
+
+The controller's positive-test-count, readiness binding, dispatch/start and
+confirmed-cleanup requirements for `isolated_execution` remain unchanged.
+Historical zero-count failure envelopes remain readable but are not promoted or
+rewritten; new parser accounting does not grant retroactive provenance. Local
+process fixtures exercise this classification without running Docker. Images
+built from older verifier source must not be assumed to contain this fix; a new
+verifier build and its exact image ID still require separate approval.
+
 Use a bounded wire buffer large enough for JSON escaping of 64 KiB, distinct from
 the retained human-output limit. Partial or oversized metadata cannot mean pass.
 Output and errors are untrusted and must be redacted before durable storage.

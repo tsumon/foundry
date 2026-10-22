@@ -12,6 +12,7 @@ import (
 type fixtureProcess struct {
 	output string
 	calls  int
+	exit   int
 }
 
 func (p *fixtureProcess) Run(_ context.Context, r c4verify.Request, out, errout io.Writer) (int, error) {
@@ -20,8 +21,23 @@ func (p *fixtureProcess) Run(_ context.Context, r c4verify.Request, out, errout 
 		io.WriteString(out, "go version go1.27.3 linux/arm64\n")
 	} else {
 		io.WriteString(out, p.output)
+		return p.exit, nil
 	}
 	return 0, nil
+}
+
+func TestCommandReportsCompletedFailedTest(t *testing.T) {
+	// Only the process boundary is simulated; run and JSON serialization are real.
+	p := &fixtureProcess{exit: 1, output: "{\"Action\":\"run\",\"Package\":\"p\",\"Test\":\"TestDouble\"}\n{\"Action\":\"fail\",\"Package\":\"p\",\"Test\":\"TestDouble\"}\n{\"Action\":\"fail\",\"Package\":\"p\"}\n"}
+	var out bytes.Buffer
+	code := run(context.Background(), p, &out)
+	var result c4verify.Result
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatal("not one complete JSON envelope", err)
+	}
+	if code != 1 || result.Class != "test_failed" || result.ExitCode != 1 || result.Tests != 1 || p.calls != 2 {
+		t.Fatalf("failed test evidence lost: status=%d calls=%d result=%+v", code, p.calls, result)
+	}
 }
 
 func TestCommandEmitsVerifierOwnedSummaryAndFailsClosed(t *testing.T) {

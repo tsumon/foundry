@@ -63,7 +63,7 @@ func TestVerifierRequiresActualCompletedTestEvents(t *testing.T) {
 		{name: "pass", events: passingEvents, class: "passed", tests: 1},
 		{name: "package only", events: "{\"Action\":\"pass\",\"Package\":\"p\"}\n", class: "infrastructure_failed"},
 		{name: "skip only", events: "{\"Action\":\"skip\",\"Package\":\"p\",\"Test\":\"TestSkip\"}\n", class: "infrastructure_failed"},
-		{name: "test failure", events: "{\"Action\":\"run\",\"Package\":\"p\",\"Test\":\"TestBad\"}\n{\"Action\":\"fail\",\"Package\":\"p\",\"Test\":\"TestBad\"}\n", exit: 1, class: "test_failed"},
+		{name: "test failure", events: "{\"Action\":\"run\",\"Package\":\"p\",\"Test\":\"TestBad\"}\n{\"Action\":\"fail\",\"Package\":\"p\",\"Test\":\"TestBad\"}\n{\"Action\":\"fail\",\"Package\":\"p\"}\n", exit: 1, class: "test_failed", tests: 1},
 		{name: "build failure", events: "{\"Action\":\"fail\",\"Package\":\"p\"}\n", exit: 1, class: "infrastructure_failed"},
 		{name: "nonzero", events: passingEvents, exit: 1, class: "infrastructure_failed", tests: 1},
 		{name: "startup125", events: passingEvents, exit: 125, class: "infrastructure_failed", tests: 1},
@@ -86,6 +86,46 @@ func TestVerifierRequiresActualCompletedTestEvents(t *testing.T) {
 			}
 			if tc.version != "" && f.calls != 1 {
 				t.Fatal("tested with wrong Go")
+			}
+		})
+	}
+}
+
+// These are process-boundary fixtures, not Go/Docker execution. A matched fail
+// must count like a matched pass, but incomplete or forged streams must not
+// become repair-eligible just because their completed-test count is positive.
+func TestVerifierCountsCompletedFailuresWithoutRelaxingEvidence(t *testing.T) {
+	const run = "{\"Action\":\"run\",\"Package\":\"p\",\"Test\":\"TestDouble\"}\n"
+	const fail = "{\"Action\":\"fail\",\"Package\":\"p\",\"Test\":\"TestDouble\"}\n"
+	const packageFail = "{\"Action\":\"fail\",\"Package\":\"p\"}\n"
+	const skipped = "{\"Action\":\"run\",\"Package\":\"p\",\"Test\":\"TestSkip\"}\n{\"Action\":\"skip\",\"Package\":\"p\",\"Test\":\"TestSkip\"}\n"
+	for _, tc := range []struct {
+		name, events, class string
+		tests               int
+	}{
+		{"only failed test", run + fail + packageFail, "test_failed", 1},
+		{"pass and fail", passingEvents + run + fail + packageFail, "test_failed", 2},
+		{"skip not counted", skipped + run + fail + packageFail, "test_failed", 1},
+		{"package failure not a test", packageFail, "infrastructure_failed", 0},
+		{"skip then package failure", skipped + packageFail, "infrastructure_failed", 0},
+		{"unmatched fail", fail + packageFail, "infrastructure_failed", 0},
+		{"duplicate fail", run + fail + fail + packageFail, "infrastructure_failed", 1},
+		{"skip after fail", run + fail + "{\"Action\":\"skip\",\"Package\":\"p\",\"Test\":\"TestDouble\"}\n" + packageFail, "infrastructure_failed", 1},
+		{"unmatched skip after fail", run + fail + "{\"Action\":\"skip\",\"Package\":\"p\",\"Test\":\"TestOther\"}\n" + packageFail, "infrastructure_failed", 1},
+		{"package pass contradicts fail", run + fail + "{\"Action\":\"pass\",\"Package\":\"p\"}\n", "infrastructure_failed", 1},
+		{"package skip contradicts fail", run + fail + "{\"Action\":\"skip\",\"Package\":\"p\"}\n", "infrastructure_failed", 1},
+		{"duplicate run", run + run + fail + packageFail, "infrastructure_failed", 0},
+		{"missing package terminal", run + fail, "infrastructure_failed", 1},
+		{"unfinished other package", run + fail + packageFail + "{\"Action\":\"start\",\"Package\":\"other\"}\n", "infrastructure_failed", 1},
+		{"unfinished other test", run + "{\"Action\":\"run\",\"Package\":\"p\",\"Test\":\"TestOther\"}\n" + fail + packageFail, "infrastructure_failed", 1},
+		{"unterminated metadata", run + fail + strings.TrimSuffix(packageFail, "\n"), "infrastructure_failed", 1},
+		{"malformed tail", run + fail + packageFail + "not json\n", "infrastructure_failed", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &processFixture{t: t, output: tc.events, exit: 1}
+			r := Run(context.Background(), p)
+			if r.Class != tc.class || r.Tests != tc.tests || r.ExitCode != 1 || p.calls != 2 {
+				t.Fatalf("got %+v with %d process calls; want class=%s tests=%d", r, p.calls, tc.class, tc.tests)
 			}
 		})
 	}
