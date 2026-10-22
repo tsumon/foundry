@@ -49,15 +49,21 @@ type acceptanceRuntime struct {
 	server                      *http.Server
 	cancel                      context.CancelFunc
 	serveErr                    chan error
+	c4Controls                  *c4ControlsDriver
 }
 
 func main() {
 	webDir := flag.String("web-dir", "web/dist", "built workbench static directory (read-only)")
+	controls := flag.Bool("c4-controls-fixture", false, "isolated synthetic C4 controls only; never enables Docker")
 	flag.Parse()
 	if flag.NArg() != 0 {
-		log.Fatal("only --web-dir is accepted; data and loopback port are always freshly allocated")
+		log.Fatal("only --web-dir and --c4-controls-fixture are accepted; data and loopback port are always freshly allocated")
 	}
-	runtime, err := startAcceptance(*webDir)
+	start := startAcceptance
+	if *controls {
+		start = startC4ControlsAcceptance
+	}
+	runtime, err := start(*webDir)
 	if err != nil {
 		log.Fatal(err)
 	}

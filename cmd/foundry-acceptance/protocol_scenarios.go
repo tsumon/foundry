@@ -16,20 +16,24 @@ import (
 )
 
 type acceptanceManifest struct {
-	Label        string            `json:"label"`
-	URL          string            `json:"url"`
-	Root         string            `json:"root"`
-	Repo         string            `json:"repo"`
-	FixturePath  string            `json:"fixture_path"`
-	Scenarios    map[string]string `json:"scenarios"`
-	BrowserPaths map[string]string `json:"browser_paths"`
-	C4Readiness  string            `json:"c4_readiness"`
+	Label                     string            `json:"label"`
+	URL                       string            `json:"url"`
+	Root                      string            `json:"root"`
+	Repo                      string            `json:"repo"`
+	FixturePath               string            `json:"fixture_path"`
+	Scenarios                 map[string]string `json:"scenarios"`
+	BrowserPaths              map[string]string `json:"browser_paths"`
+	C4Readiness               string            `json:"c4_readiness"`
+	C4SyntheticReadinessCalls int64             `json:"c4_synthetic_readiness_calls,omitempty"`
 }
 
 func (r *acceptanceRuntime) manifest() acceptanceManifest {
 	scenarios := make(map[string]string, len(r.scenarios))
 	for name, id := range r.scenarios {
 		scenarios[name] = id
+	}
+	if r.c4Controls != nil {
+		return acceptanceManifest{Label: "SYNTHETIC C4 CONTROLS ONLY: no Docker, compiler, provider or real account; real C4-C unperformed", URL: r.URL, Root: r.Root, Repo: r.Repo, Scenarios: scenarios, C4Readiness: "synthetic_only; pending mission unapproved; one failure scenario explicitly seeded", C4SyntheticReadinessCalls: r.c4Controls.readiness.Load(), BrowserPaths: map[string]string{"c4_controls_baseline_pending": "Pending decisions → SYNTHETIC C4 controls baseline_pending → prepare readiness → approve → execute → separate baseline approval", "c4_controls_cleanup_failure": "Pending decisions → SYNTHETIC C4 controls cleanup_failure → prepare exact-object cleanup → approve → execute; failed result unchanged"}}
 	}
 	return acceptanceManifest{
 		Label:       "SYNTHETIC ACCEPTANCE ONLY: actual owned loopback SIWC/model protocols; synthetic repository/runner; no cloud, Docker, or real-account validation",

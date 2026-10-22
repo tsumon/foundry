@@ -33,6 +33,7 @@ export function DecisionPanel({
   unsupportedWorkspaceMode = false,
   c4Decision,
   c4Available = false,
+  c4ExecutionAvailable = c4Available,
 }: {
   mission: Mission;
   busy: boolean;
@@ -43,6 +44,7 @@ export function DecisionPanel({
   unsupportedWorkspaceMode?: boolean;
   c4Decision?: React.ReactNode;
   c4Available?: boolean;
+  c4ExecutionAvailable?: boolean;
 }) {
   const [consent, setConsent] = useState(false);
   const [controlledConsent, setControlledConsent] = useState(false);
@@ -317,12 +319,18 @@ export function DecisionPanel({
                   unresolved ||
                   unsupportedWorkspaceMode ||
                   executionAccountBlocked ||
+                  (hasC4(mission) && !c4ExecutionAvailable) ||
                   c4Blocked
                 }
                 onClick={() => onAction("approve")}
               >
                 批准并执行计划
               </button>
+              {mission.spec.c4?.control_version === 1 && !c4ExecutionAvailable && (
+                <p className="warning-copy">
+                  新的执行需要未过期的激活与匹配就绪结果；历史证据不会自动授权再次执行。
+                </p>
+              )}
               {unresolved && (
                 <p className="warning-copy">
                   未解决的失败阻止执行审批；请在计划修订中明确处理。

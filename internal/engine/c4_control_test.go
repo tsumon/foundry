@@ -128,13 +128,17 @@ func TestC4ActivationRejectsMalformedSourceDeclaration(t *testing.T) {
 func TestC4ControlledStatusIsNotLegacySimulationConsent(t *testing.T) {
 	e, _, m, _, _, _ := c4FixtureMode(t, true)
 	status := e.C4ControlledStatus(m)
-	if !status.Available || status.SourceKind != "synthetic_c4_control" || status.Expired || e.C4SimulationAvailable(m) {
+	if !status.Available || !status.StructurallyAvailable || status.SourceKind != "synthetic_c4_control" || status.Expired || e.C4SimulationAvailable(m) {
 		t.Fatal("controlled capability confused with legacy simulation", status)
 	}
 	e.c4Clock = func() time.Time { return time.Now().Add(2 * time.Hour) }
 	status = e.C4ControlledStatus(m)
-	if status.Available || !status.Expired {
+	if status.Available || !status.StructurallyAvailable || !status.Expired {
 		t.Fatal("expired status appears available")
+	}
+	m.BaseCommit = strings.Repeat("f", 40)
+	if e.C4ControlledStatus(m).StructurallyAvailable {
+		t.Fatal("mismatched history available")
 	}
 }
 
@@ -509,6 +513,45 @@ func TestC4ControlledExpiredReceiptRejectsExecutionApproval(t *testing.T) {
 	}
 	if d.creates != 1 {
 		t.Fatal("expired receipt dispatched")
+	}
+}
+
+// Local planning consumes its own context consent, never new transport authority.
+// A passing historical baseline survives expiry, but Worker dispatch does not.
+func TestC4ControlledPlanningAfterExpiryRemainsLocal(t *testing.T) {
+	for _, delay := range []time.Duration{11 * time.Minute, 2 * time.Hour} {
+		t.Run(delay.String(), func(t *testing.T) {
+			e, s, m, d, forbidden, _ := c4FixtureMode(t, true)
+			m = controlReady(t, e, m)
+			m = c4Baseline(t, e, m)
+			creates, starts, inspects, removes := d.creates, d.starts, d.inspects, d.removes
+			readyCalls := 0
+			e.options.C4Controlled.readiness = func(context.Context) (sandbox.C4ReadinessResult, error) {
+				readyCalls++
+				return sandbox.C4ReadinessResult{}, errors.New("unexpected readiness")
+			}
+			gateway := &scripted{outputs: []string{`{"summary":"change","steps":[{"id":"one","title":"change","description":"update","depends_on":[],"files":["main.go"]}]}`}}
+			e.options.C4Controlled.models = gateway
+			e.c4Clock = func() time.Time { return time.Now().Add(delay) }
+			if _, err := e.Plan(context.Background(), m.ID, m.Revision); err != nil {
+				t.Fatal(err)
+			}
+			finishCoding(e)
+			m, err := s.GetMission(m.ID)
+			if err != nil || m.State != "awaiting_approval" {
+				t.Fatal("local planning incorrectly needs fresh transport authority", m.State, m.Error, err)
+			}
+			if len(gateway.roles) != 1 || gateway.roles[0] != domain.Planner {
+				t.Fatal("unexpected role dispatch", gateway.roles)
+			}
+			if _, err = e.Approve(context.Background(), m.ID, m.Revision); err == nil {
+				finishCoding(e)
+				t.Fatal("expired authority dispatched Worker")
+			}
+			if readyCalls != 0 || forbidden.calls != 0 || len(gateway.roles) != 1 || d.creates != creates || d.starts != starts || d.inspects != inspects || d.removes != removes {
+				t.Fatal("local planning or rejected approval escaped local authority")
+			}
+		})
 	}
 }
 

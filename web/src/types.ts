@@ -806,6 +806,7 @@ export interface Delivery {
 }
 export interface Mission {
   c4_operations?: import("./c4").C4Operation[];
+  c4_controls?: import("./c4").C4Control[];
   import_version?: number;
   repository_import?: import("./repositoryImportTypes").RepositoryImportBinding;
   replan_context?: FailureBundle;

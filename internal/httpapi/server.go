@@ -270,10 +270,11 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 		if s.recoveryReadOnly {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"status": "recovery_limited", "version": version, "read_only": true,
-				"recovery_error": s.recoveryError,
-				"model_runtime":  s.modelRuntimeView(),
+				"recovery_error":     s.recoveryError,
+				"c4_controlled_only": s.c4ControlledOnly,
+				"model_runtime":      s.modelRuntimeView(),
 				"capabilities": map[string]bool{
-					"c4_simulation": false, "c4_real_execution": false,
+					"c4_simulation": false, "c4_real_execution": false, "c4_controlled_simulation": false,
 					"model_snapshots": true, "server_sent_events": true,
 					"account_management": false, "credential_versions": false,
 					"provider_login": false, "account_inference": false, "automatic_paid_fallback": false,
@@ -289,6 +290,7 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		control := s.engine.C4ControlledStatus(domain.Mission{})
 		localTest, err := s.engine.LocalMCPTestSelection()
 		if err != nil {
 			writeMappedError(w, err)
@@ -296,20 +298,23 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status": "ok", "version": version,
-			"model_runtime": s.modelRuntimeView(),
+			"c4_controlled_only": s.c4ControlledOnly,
+			"c4_control":         control,
+			"model_runtime":      s.modelRuntimeView(),
 			"capabilities": map[string]bool{
-				"c4_simulation": s.engine.C4SimulationEnabled(), "c4_real_execution": false,
-				"account_management": true, "credential_versions": true, "model_snapshots": true,
+				"c4_simulation": s.engine.C4SimulationEnabled(), "c4_real_execution": control.SourceKind == "docker_c4_control" && !control.Expired,
+				"c4_controlled_simulation": control.SourceKind == "synthetic_c4_control" && !control.Expired,
+				"account_management":       !s.c4ControlledOnly, "credential_versions": !s.c4ControlledOnly, "model_snapshots": true,
 				"provider_login": false, "account_inference": false, "automatic_paid_fallback": false,
-				"planning": true, "execution": true, "docker_verification": true,
-				"local_patch_delivery": true, "model_directory_probe": true,
-				"magpie_discovery": true, "server_sent_events": true,
+				"planning": true, "execution": true, "docker_verification": !s.c4ControlledOnly || control.SourceKind == "docker_c4_control" && !control.Expired,
+				"local_patch_delivery": true, "model_directory_probe": !s.c4ControlledOnly,
+				"magpie_discovery": !s.c4ControlledOnly, "server_sent_events": true,
 				"catalog": true, "package_build": false, "deployment": false,
 				"database_migration": false,
-				"mcp_discovery":      true, "tool_execution": false, "mcp_tool_call": false, "skill_execution": false, "git_write": false,
+				"mcp_discovery":      !s.c4ControlledOnly, "tool_execution": false, "mcp_tool_call": false, "skill_execution": false, "git_write": false,
 				"task_local_mcp":           localTest.Enabled,
-				"controlled_read_creation": s.engine.ControlledReadCreationEnabled(), "controlled_builtin_tools": true, "skill_binding": true,
-				"observation_hooks": true, "hook_scripts": false, "hook_webhooks": false, "git_hooks": false,
+				"controlled_read_creation": s.engine.ControlledReadCreationEnabled(), "controlled_builtin_tools": !s.c4ControlledOnly, "skill_binding": !s.c4ControlledOnly,
+				"observation_hooks": !s.c4ControlledOnly, "hook_scripts": false, "hook_webhooks": false, "git_hooks": false,
 			},
 		})
 	case r.URL.Path == "/api/model-accounts" || strings.HasPrefix(r.URL.Path, "/api/model-accounts/"):

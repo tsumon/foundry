@@ -10,8 +10,10 @@ Preserve the existing workbench navigation, C3 repository admission, context con
 plan revision, execute approval and delivery approval. Add a versioned C4 execution
 profile and an independently approved baseline in the current task decision area.
 Only the disposable local acceptance runtime may use the synthetic C4 driver.
-Production has no C4 enable flag, environment switch, HTTP override or automatic
-fallback. A C4 task must never fall through to the legacy Docker runner or a real
+Production defaults closed. The strict optional startup file and independent
+version-1 readiness/cleanup controls are documented in
+[C4 controlled activation](c4-controlled-activation.md); there is no environment
+enable switch, HTTP override or automatic fallback. A C4 task must never fall through to the legacy Docker runner or a real
 model route. Subscription integration stays paused.
 
 This increment does not select a user's project, contact a Docker daemon, inspect,
@@ -19,6 +21,13 @@ build or pull an image, execute a real container, access credentials, apply chan
 to an original repository, deploy, or authorize arbitrary scripts/Git writes.
 C4-C requires separate confirmation of project, commit, scope, protected tests,
 image provenance/digest/platform, local endpoint and real execution.
+
+The disposable acceptance launcher has an explicit `--c4-controls-fixture` mode
+with a separate synthetic-only runtime/store and two shared-base scenarios:
+readiness pending and simulated cleanup failure. Prepare, approve and execute
+remain separate workbench actions; readiness does not approve baseline/candidate
+execution. Default legacy fixtures are unchanged. These are mock validations;
+real C4-C remains unperformed.
 
 ## Versioned contract
 

@@ -1,4 +1,4 @@
-# Dormant C4 Docker adapter
+# C4 Docker adapter (default closed)
 
 Status: dormant transport implemented and validated with synthetic fixtures and
 an owned Go-test helper subprocess only, not C4-C real acceptance. No Docker
@@ -14,13 +14,15 @@ introducing a Docker SDK and reuses the already reviewed command plan. The legac
 Docker runner is not a fallback. A generic command runner or environment-driven
 enable switch would widen authority and is excluded.
 
-The new transport is an internal library with a zero-value-disabled, trusted
-in-process configuration. Neither production startup, HTTP request fields,
-environment variables nor the workbench construct an enabled adapter. Construction
+The transport is an internal library with a zero-value-disabled, trusted
+configuration. The optional strict production startup configuration and separate
+readiness/cleanup approvals are specified in
+[C4 controlled activation](c4-controlled-activation.md). HTTP request fields,
+environment variables and the workbench cannot enable or configure the adapter. Construction
 of disabled configuration must perform no filesystem trust probes, Docker command,
 socket connection or image inspection. Domain `mode: docker` alone is not authority.
-The ordinary production C4 engine gate remains closed; future activation requires
-a separately reviewed startup/readiness/approval integration. No apparent readiness
+The ordinary production C4 engine gate remains closed without explicit admitted
+startup configuration. This integration has mock validation only. No apparent readiness
 is inferred from implementing or mock-testing a transport.
 
 ## Frozen inputs
@@ -53,8 +55,9 @@ are copied at construction so later mutation cannot widen authority.
 
 ## Readiness and configuration validation
 
-Readiness is not checked on construction or page load. After future explicit
-authorization, create-stage preparation may inspect only the exact approved
+Readiness is not checked on construction or page load. Version-1 controls require
+separate prepare, approve and execute actions before the bounded readiness check.
+After explicit execution authorization, create-stage preparation may inspect only the exact approved
 image. Missing image, wrong ID/platform, declared volumes, nonempty default
 command or unsupported environment/configuration stops before container creation;
 there is no pull/build fallback. Allow only explicitly documented benign image

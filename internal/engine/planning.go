@@ -491,6 +491,11 @@ func (e *Engine) Approve(ctx context.Context, id string, revision int64) (domain
 	if !hasSeal(m, "plan_proposal", seal) {
 		return m, errors.New("plan approval inputs changed")
 	}
+	if m.Spec.C4 != nil && m.Spec.C4.ControlVersion == 1 {
+		if _, err = e.currentC4Readiness(m); err != nil {
+			return m, err
+		}
+	}
 	image, err := e.resolveVerificationImage(ctx, m)
 	if err != nil {
 		return m, err

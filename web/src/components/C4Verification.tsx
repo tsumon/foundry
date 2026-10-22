@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
+import { C4Controls, C4ControlFacts } from "./C4Controls";
 import { activeStates, type Mission } from "../types";
 import {
   c4CleanupState,
@@ -13,16 +14,20 @@ import {
 
 function C4ProfileFacts({ mission }: { mission: Mission }) {
   const p = mission.spec.c4;
+  const docker = p?.control_version === 1 && p.mode === "docker";
   return (
     <>
       <p className="warning-copy">
-        真实 C4 入口关闭 · C4-C 未执行。模拟通过不证明
-        Docker、Go、镜像、隔离或资源就绪。
+        {docker
+          ? "受控 Docker 声明；当前可用性需核对控制状态。历史事实不等于当前就绪，模型推理仍为本地模拟。"
+          : "真实 C4 入口关闭 · C4-C 未执行。模拟通过不证明 Docker、Go、镜像、隔离或资源就绪。"}
       </p>
       <p className="muted small">
-        {c4Supported(mission)
-          ? "模型判断与验证来源均为本地模拟；source_kind=synthetic_stub。"
-          : "配置不支持；来源未确认，不能推断成功。"}
+        {docker
+          ? "验证来源按已记录的 Docker 就绪与操作绑定判断，不从模式声明推断成功。"
+          : c4Supported(mission)
+            ? "模型判断与验证来源均为本地模拟；source_kind=synthetic_stub。"
+            : "配置不支持；来源未确认，不能推断成功。"}
         以下为冻结声明，不是主机探测结果。
       </p>
       <dl className="metadata">
@@ -61,7 +66,7 @@ function C4ProfileFacts({ mission }: { mission: Mission }) {
               根与候选只读；无网络、端口、拉取或
               capabilities；no-new-privileges；禁用 healthcheck / logging
             </dd>
-            <dt>固定 Go 合约（未执行）</dt>
+            <dt>{docker ? "固定 Go 合约声明" : "固定 Go 合约（未执行）"}</dt>
             <dd>
               Go 1.27.3 · <code>go test -json -count=1 -timeout=90s ./...</code>{" "}
               ·
@@ -75,7 +80,15 @@ function C4ProfileFacts({ mission }: { mission: Mission }) {
   );
 }
 
-export function C4Decision({
+export function C4Decision(props: Parameters<typeof LegacyC4Decision>[0]) {
+  return props.mission.spec.c4?.control_version === 1 ? (
+    <C4Controls {...props} />
+  ) : (
+    <LegacyC4Decision {...props} />
+  );
+}
+
+function LegacyC4Decision({
   mission,
   busy,
   onUpdate,
@@ -88,6 +101,7 @@ export function C4Decision({
   onUpdate: (m: Mission) => void;
   onBusyChange?: (busy: boolean) => void;
   onAvailabilityChange?: (available: boolean) => void;
+  onExecutionAvailabilityChange?: (available: boolean) => void;
   inFlight?: { current: boolean };
 }) {
   const [status, setStatus] = useState<C4Status | null>(null);
@@ -385,7 +399,11 @@ function OperationFacts({
             <dd>{fact ? `r${fact.revision} · ${fact.at}` : "未记录"}</dd>
           </Fragment>
         ))}
-        <dt>结果 / 退出码 / 模拟测试数</dt>
+        <dt>
+          {mission.spec.c4?.mode === "docker"
+            ? "结果 / 退出码 / 测试数"
+            : "结果 / 退出码 / 模拟测试数"}
+        </dt>
         <dd>
           {o.result?.class ?? "未知"} / {o.result?.exit_code ?? "未记录"} /{" "}
           {o.result?.tests ?? "未记录"}
@@ -417,8 +435,16 @@ export function C4Verification({ mission }: { mission: Mission }) {
   if (!hasC4(mission)) return null;
   return (
     <section className="review-section">
-      <h2>C4 验证事实{c4Supported(mission) ? " · synthetic_stub" : ""}</h2>
+      <h2>
+        C4 验证事实
+        {c4Supported(mission) && mission.spec.c4?.mode === "synthetic"
+          ? " · synthetic_stub"
+          : ""}
+      </h2>
       <C4ProfileFacts mission={mission} />
+      {mission.spec.c4?.control_version === 1 && (
+        <C4ControlFacts mission={mission} />
+      )}
       {(
         [
           ["baseline", "C4 基线记录"],

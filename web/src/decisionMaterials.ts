@@ -193,9 +193,13 @@ export function decisionMaterial(mission: Mission): DecisionMaterial {
         { label: "基线材料", value: baseline?.material_digest ?? "未记录" },
         {
           label: "来源",
-          value: c4Supported(mission)
-            ? "synthetic_stub · C4-C 未执行"
-            : "来源未确认 · C4-C 未执行",
+          value:
+            mission.spec.c4?.control_version === 1 &&
+            mission.spec.c4.mode === "docker"
+              ? "受控 Docker 声明 · 结果以绑定事实为准；模型推理为本地模拟"
+              : c4Supported(mission)
+                ? "synthetic_stub · C4-C 未执行"
+                : "来源未确认 · C4-C 未执行",
         },
       ],
     };

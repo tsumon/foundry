@@ -98,6 +98,17 @@ export function MissionWorkspace({
     c4Availability.id === mission.id &&
     c4Availability.revision === mission.revision &&
     c4Availability.available;
+  const [c4ExecutionAvailability, setC4ExecutionAvailability] = useState({
+    id: "",
+    revision: 0,
+    available: false,
+  });
+  const c4ExecutionAvailable =
+    mission.spec.c4?.control_version !== 1
+      ? c4Available
+      : c4ExecutionAvailability.id === mission.id &&
+        c4ExecutionAvailability.revision === mission.revision &&
+        c4ExecutionAvailability.available;
   const [localSession, setLocalSession] = useState(() =>
     createMissionSession(mission),
   );
@@ -236,6 +247,7 @@ export function MissionWorkspace({
       demo ||
       unsupportedWorkspaceMode ||
       accountActionBlocked(mission, action) ||
+      (action === "approve" && hasC4(mission) && !c4ExecutionAvailable) ||
       (hasC4(mission) &&
         action !== "pause" &&
         (!c4Available || !c4AdvanceAllowed(mission))) ||
@@ -523,6 +535,7 @@ export function MissionWorkspace({
           planApprovalBlocked={draft.dirty || draft.stale}
           unsupportedWorkspaceMode={unsupportedWorkspaceMode}
           c4Available={c4Available}
+          c4ExecutionAvailable={c4ExecutionAvailable}
           c4Decision={
             !demo && hasC4(mission) ? (
               <C4Decision
@@ -533,6 +546,13 @@ export function MissionWorkspace({
                 onBusyChange={setBusy}
                 onAvailabilityChange={(available) =>
                   setC4Availability({
+                    id: mission.id,
+                    revision: mission.revision,
+                    available,
+                  })
+                }
+                onExecutionAvailabilityChange={(available) =>
+                  setC4ExecutionAvailability({
                     id: mission.id,
                     revision: mission.revision,
                     available,
@@ -630,7 +650,7 @@ export function MissionWorkspace({
               <time>{event.created_at}</time>
             </div>
           ))}
-          {activityOpen && !demo && (
+          {activityOpen && !demo && mission.spec.c4?.control_version !== 1 && (
             <HookRecords
               missionID={mission.id}
               enabled={hooksEnabled}

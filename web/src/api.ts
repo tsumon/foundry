@@ -16,6 +16,7 @@ import type { C4Action, C4Status } from "./c4";
 export interface HealthResponse {
   status: string;
   read_only?: boolean;
+  c4_controlled_only?: boolean;
   recovery_error?: string;
   version: string;
   capabilities: Record<string, boolean>;

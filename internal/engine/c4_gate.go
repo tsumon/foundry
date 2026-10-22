@@ -127,11 +127,8 @@ func (e *Engine) resolveVerificationImage(ctx context.Context, m domain.Mission)
 		if _, err := currentC4Baseline(m); err != nil {
 			return "", err
 		}
-		if m.Spec.C4.ControlVersion == 1 {
-			if _, err := e.currentC4Readiness(m); err != nil {
-				return "", err
-			}
-		}
+		// This is a pure declared-image lookup, also used by local planning.
+		// Execution approval and operation dispatch check live readiness separately.
 		return m.Spec.C4.ImageID, nil
 	}
 	return e.runner.Resolve(ctx, m.Spec.Image)

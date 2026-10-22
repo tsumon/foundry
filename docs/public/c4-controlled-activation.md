@@ -72,6 +72,13 @@ Check receipt freshness at preparation and dispatch, not halfway through an
 already dispatched operation. Loss of freshness never authorizes a retry or
 automatic cleanup outside the already approved bounded lifecycle.
 
+Status separates structural mission/runtime matching from fresh activation
+availability. Expiry does not invalidate completed historical evidence or replace
+the separate delivery approval, and does not itself block local planning/chat.
+New baseline/candidate dispatch and all readiness/recovery-cleanup transport
+actions still require their current unexpired authority. Mismatched history and
+diagnostic read-only mode remain blocked; an expired flag alone grants nothing.
+
 Synthetic control receipts and Docker control receipts are distinct. The runtime
 capability, not request JSON or `mode`, determines provenance. Mock results cannot
 unlock a real runtime. Docker verification evidence may use `isolated_execution`

@@ -31,7 +31,7 @@ func TestC4RoutePermissionsAndStrictActions(t *testing.T) {
 	if rr := f.request("GET", route, "", true); rr.Code != 404 {
 		t.Fatal(rr.Code, rr.Body.String())
 	}
-	for _, mutation := range []string{"host", "origin", "content"} {
+	for _, mutation := range []string{"host", "origin", "missing_origin", "content"} {
 		req := httptest.NewRequest("POST", testOrigin+route, strings.NewReader(`{"action":"prepare","revision":1}`))
 		req.AddCookie(f.cookie)
 		req.Header.Set("Origin", testOrigin)
@@ -41,6 +41,9 @@ func TestC4RoutePermissionsAndStrictActions(t *testing.T) {
 		}
 		if mutation == "origin" {
 			req.Header.Set("Origin", "https://foreign.invalid")
+		}
+		if mutation == "missing_origin" {
+			req.Header.Del("Origin")
 		}
 		if mutation == "content" {
 			req.Header.Set("Content-Type", "text/plain")
@@ -150,6 +153,35 @@ func TestC4HealthDefaultClosed(t *testing.T) {
 			if !present || enabled {
 				t.Fatal("C4 default not explicitly closed", key, view.Capabilities)
 			}
+		}
+	}
+}
+
+func TestC4ControlActionsReachAuthorityAndRejectForgedFields(t *testing.T) {
+	f := newFixture(t)
+	f.authenticate()
+	for _, body := range []string{
+		`{"action":"prepare_readiness","revision":1}`,
+		`{"action":"approve_control","revision":1,"control_id":"control","material_digest":"digest"}`,
+		`{"action":"execute_readiness","revision":1,"control_id":"control","material_digest":"digest"}`,
+		`{"action":"prepare_cleanup","revision":1,"operation_id":"op","material_digest":"digest","container_id":"id"}`,
+		`{"action":"execute_cleanup","revision":1,"control_id":"control","material_digest":"digest"}`,
+	} {
+		if rr := f.request("POST", "/api/missions/missing/c4", body, true); rr.Code != 404 {
+			t.Fatalf("valid action did not reach mission authority: %d %s", rr.Code, rr.Body)
+		}
+	}
+	for _, body := range []string{
+		`{"action":"prepare_readiness","revision":1,"enabled":true}`,
+		`{"action":"prepare_readiness","revision":1,"config":{}}`,
+		`{"action":"prepare_readiness","revision":1,"operation_id":""}`,
+		`{"action":"prepare_readiness","revision":1,"control_id":null}`,
+		`{"action":"prepare_readiness","revision":1,"control_id":"extra"}`,
+		`{"action":"approve_control","revision":1,"operation_id":"op","material_digest":"digest"}`,
+		`{"action":"execute_cleanup","revision":1,"control_id":"c","material_digest":"d","container_id":"foreign"}`,
+	} {
+		if rr := f.request("POST", "/api/missions/missing/c4", body, true); rr.Code != 400 {
+			t.Fatal(rr.Code, rr.Body)
 		}
 	}
 }

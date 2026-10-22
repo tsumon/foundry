@@ -2,6 +2,7 @@ import type { GenerationRef, Mission } from "./types";
 
 export interface C4Profile {
   schema_version: number;
+  control_version?: number;
   id: string;
   mode: string;
   image_id: string;
@@ -26,6 +27,8 @@ export interface C4Operation {
   candidate_generation?: GenerationRef;
   candidate_digest?: string;
   profile_digest: string;
+  readiness_id?: string;
+  readiness_digest?: string;
   material_digest: string;
   container_name: string;
   container_id?: string;
@@ -55,6 +58,44 @@ export interface C4Status {
   read_only: boolean;
   simulation: boolean;
   real_execution: boolean;
+  control?: {
+    available: boolean;
+    structurally_available: boolean;
+    source_kind?: string;
+    expires_at?: string;
+    expired: boolean;
+  };
+  controls?: C4Control[] | null;
+}
+export interface C4Control {
+  schema_version: number;
+  id: string;
+  kind: string;
+  mission_id: string;
+  epoch: number;
+  plan_revision: number;
+  base_commit: string;
+  base_digest: string;
+  profile_digest: string;
+  activation_digest: string;
+  activation_expires_at: string;
+  source_kind: string;
+  prepared_revision: number;
+  prepared_at: string;
+  expires_at: string;
+  operation_id?: string;
+  operation_digest?: string;
+  container_id?: string;
+  material_digest: string;
+  state: string;
+  approval?: C4Fact & { digest: string };
+  dispatch?: C4Fact;
+  result?: C4Fact & {
+    status: string;
+    failure_code?: string;
+    valid_until?: string;
+    fingerprint?: string;
+  };
 }
 type Material = {
   revision: number;
@@ -62,9 +103,41 @@ type Material = {
   material_digest: string;
 };
 export type C4Action =
-  | { action: "prepare"; revision: number }
+  | { action: "prepare" | "prepare_readiness"; revision: number }
   | (Material & { action: "approve" | "execute" })
-  | (Material & { action: "cleanup"; container_id: string });
+  | (Material & { action: "cleanup" | "prepare_cleanup"; container_id: string })
+  | {
+      action: "approve_control" | "execute_readiness" | "execute_cleanup";
+      revision: number;
+      control_id: string;
+      material_digest: string;
+    };
+
+export const c4ControlSource = (m: Mission) =>
+  m.spec.c4?.mode === "docker" ? "docker_c4_control" : "synthetic_c4_control";
+export const c4ControlBound = (m: Mission, c: C4Control) =>
+  c.schema_version === 1 &&
+  c.mission_id === m.id &&
+  c.base_commit === m.base_commit &&
+  c.base_digest === m.repository_import?.base_digest &&
+  c.source_kind === c4ControlSource(m) &&
+  /^[a-f0-9]{64}$/.test(c.material_digest) &&
+  /^[a-f0-9]{64}$/.test(c.profile_digest) &&
+  /^[a-f0-9]{64}$/.test(c.activation_digest);
+export function c4ReadinessFresh(m: Mission, at = Date.now()): boolean {
+  if (m.spec.c4?.control_version !== 1) return true;
+  const c = m.c4_controls?.filter((c) => c.kind === "readiness").at(-1);
+  return (
+    !!c &&
+    c4ControlBound(m, c) &&
+    c.state === "completed" &&
+    !!c.dispatch &&
+    c.approval?.digest === c.material_digest &&
+    c.result?.status === "ready" &&
+    Date.parse(c.result.valid_until ?? "") > at &&
+    Date.parse(c.activation_expires_at) > at
+  );
+}
 
 export const hasC4 = (m: Mission) => !!m.spec.c4 || !!m.c4_operations?.length;
 const c4Opaque = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
@@ -135,7 +208,11 @@ export const c4Supported = (m: Mission) => {
   return (
     p.schema_version === 1 &&
     p.id === "c4_go_v1" &&
-    p.mode === "synthetic" &&
+    ((p.mode === "synthetic" &&
+      (p.control_version === undefined ||
+        p.control_version === 0 ||
+        p.control_version === 1)) ||
+      (p.mode === "docker" && p.control_version === 1)) &&
     /^sha256:[a-f0-9]{64}$/.test(p.image_id) &&
     p.platform === "linux/arm64" &&
     c4Absolute(p.docker_path) &&
@@ -189,6 +266,19 @@ function c4MissionOperationBindings(m: Mission, o: C4Operation): boolean {
     o.base_commit === m.base_commit &&
     !!m.repository_import &&
     o.base_digest === m.repository_import.base_digest &&
+    (m.spec.c4?.control_version !== 1 ||
+      (m.c4_controls ?? []).some(
+        (c) =>
+          c.id === o.readiness_id &&
+          c.material_digest === o.readiness_digest &&
+          c4ControlBound(m, c) &&
+          c.profile_digest === o.profile_digest &&
+          c.kind === "readiness" &&
+          c.result?.status === "ready" &&
+          c.state === "completed" &&
+          !!c.dispatch &&
+          c.approval?.digest === c.material_digest,
+      )) &&
     c4Facts(o).every(
       (fact) => !fact || (c4Fact(fact) && fact.revision <= m.revision),
     )
@@ -288,7 +378,10 @@ export function c4OperationLabel(m: Mission, o: C4Operation): string {
   if (!c4MissionOperationBindings(m, o)) return "配置不支持 · 仅显示原始事实";
   if (o.kind === "candidate" && !c4CandidateApprovalBound(m, o))
     return "审批绑定缺失或不匹配 · 不能确认通过";
-  if (c4Passed(o)) return "模拟验证通过 · 非真实执行";
+  if (c4Passed(o))
+    return m.spec.c4?.mode === "docker"
+      ? "Docker 验证通过 · 已记录隔离执行"
+      : "模拟验证通过 · 非真实执行";
   if (o.result)
     return `${o.result.class} · ${c4CleanupState(o) === "confirmed" ? "清理已确认，结果不变" : "清理未确认，不能继续"}`;
   if (o.state === "prepared" && !o.approval) return "待批准基线材料 · 未执行";
@@ -297,6 +390,10 @@ export function c4OperationLabel(m: Mission, o: C4Operation): string {
   return `${o.state || "未知状态"} · 尚无完成结果`;
 }
 const c4EventNames: Record<string, string> = {
+  "c4.control_prepared": "C4 独立控制材料已准备",
+  "c4.control_approved": "C4 独立控制批准已记录",
+  "c4.control_dispatched": "C4 单次控制派发已记录",
+  "c4.control_completed": "C4 控制结果已记录（不是候选通过）",
   "c4.prepared": "C4 材料已准备",
   "c4.approved": "C4 批准绑定已记录",
   "c4.dispatch": "C4 派发已记录",
