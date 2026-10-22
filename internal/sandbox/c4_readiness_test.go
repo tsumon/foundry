@@ -18,7 +18,7 @@ func c4ReadinessFixture() (domain.C4Profile, C4DockerConfig, []c4ProcessStep) {
 	return p, c, []c4ProcessStep{
 		{args: c4Args("version", "--format", "{{json .}}"), out: `{"Server":{"Version":"27.0.1","Os":"linux","Arch":"arm64"}}`},
 		{args: c4Args("info", "--format", "{{json .}}"), out: `{"ID":"fixture-daemon-id","OSType":"linux","Architecture":"aarch64"}`},
-		{args: c4Args("image", "inspect", p.ImageID), out: string(c4DockerImageFixture())},
+		{args: (C4Plan{profile: p}).imageInspection().Args, out: string(c4DockerImageFixture())},
 	}
 }
 func TestC4ReadinessDisabledMalformedNoEffects(t *testing.T) {

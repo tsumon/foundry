@@ -1,0 +1,48 @@
+package engine
+
+import (
+	"bytes"
+	"fmt"
+
+	"foundry/internal/domain"
+)
+
+// Rendering only: no execution, readiness refresh, mutation or new authority.
+func writeC4ReportSources(out *bytes.Buffer, m domain.Mission) {
+	out.WriteString("\n## C4 · Agent 与测试执行来源\n\nAgent 配置与命令证据分别记录；角色配置不证明真实模型调用，Docker 配置本身不证明测试执行。每项来源与结果独立，未知来源不升级为真实执行。基线不替代候选验证或交付审批。\n\n### Agent 来源\n\n")
+	for _, role := range domain.RolePolicyRoles() {
+		label := "Agent 来源未记录"
+		if p, ok := m.Profiles[role]; ok && p.Kind != "" {
+			label = "非模拟 Agent 配置（不证明真实调用）"
+			if p.Kind == "synthetic" {
+				label = "本地模拟 Agent（任务配置）"
+			}
+		}
+		fmt.Fprintf(out, "- %s · %s\n", role, label)
+	}
+	out.WriteString("\n### 测试执行来源与结果\n\n")
+	if len(m.C4Operations) == 0 {
+		out.WriteString("- 尚无执行记录（不证明已执行）\n")
+	}
+	for i, o := range m.C4Operations {
+		kind := "未知类型"
+		if o.Kind == "baseline" {
+			kind = "基线"
+		} else if o.Kind == "candidate" {
+			kind = "候选"
+		}
+		if o.Result == nil {
+			fmt.Fprintf(out, "- 第 %d 项 · %s · 尚无结果（不证明已执行）\n", i+1, kind)
+			continue
+		}
+		v := domain.Verification{}
+		if !m.C4Invalid && m.Spec.C4 != nil && m.Spec.C4.Validate() == nil && (m.Spec.C4.Mode == "synthetic" || m.Spec.C4.ControlVersion == 1) && o.SchemaVersion == 1 {
+			v = c4Verification(m, o)
+		}
+		label := v.SourceLabel()
+		if v.EffectiveSource() == "isolated_execution" {
+			label = "真实 Docker 测试（隔离命令执行）"
+		}
+		fmt.Fprintf(out, "- 第 %d 项 · %s · %s · %s\n", i+1, kind, label, v.OutcomeLabel())
+	}
+}

@@ -23,6 +23,8 @@ type C4DockerConfig struct {
 }
 
 var errC4Docker = errors.New("C4 Docker adapter unavailable or unconfirmed")
+var errC4DockerCommand = errors.New("C4 Docker command failed")
+var errC4DockerOutputLimit = errors.New("C4 Docker output limit exceeded")
 
 // One instance owns one immutable plan and one exact ID. Serial methods join
 // every process before returning. Reservations are consumed even on failure.
@@ -62,7 +64,7 @@ func (d *c4DockerDriver) run(ctx context.Context, c C4Command, out, stderr io.Wr
 		return -1, ctx.Err()
 	}
 	if d.trust.Check() != nil {
-		return -1, errC4Docker
+		return -1, errors.Join(errC4Docker, errC4DockerTrust)
 	}
 	exit, err := d.process.Run(ctx, c, out, stderr)
 	if ctx.Err() != nil {
@@ -75,7 +77,7 @@ func (d *c4DockerDriver) run(ctx context.Context, c C4Command, out, stderr io.Wr
 		return -1, context.DeadlineExceeded
 	}
 	if err != nil || exit < 0 || exit > 255 {
-		return -1, errC4Docker
+		return -1, errors.Join(errC4Docker, errC4DockerProcess)
 	}
 	return exit, nil
 }
@@ -86,8 +88,11 @@ func (d *c4DockerDriver) control(ctx context.Context, c C4Command, limit int) ([
 		return nil, err
 	}
 	raw, truncated := out.snapshot()
-	if exit != 0 || truncated {
-		return nil, errC4Docker
+	if exit != 0 {
+		return nil, errors.Join(errC4Docker, errC4DockerCommand)
+	}
+	if truncated {
+		return nil, errors.Join(errC4Docker, errC4DockerOutputLimit)
 	}
 	// stderr is human diagnostic data, including benign Docker config warnings.
 	return raw, nil
@@ -99,12 +104,12 @@ func (d *c4DockerDriver) Create(ctx context.Context, c C4Command) (string, error
 		return "", errC4Docker
 	}
 	d.createReserved = true
-	image, err := d.control(ctx, d.plan.command("image", "inspect", d.plan.profile.ImageID), c4DockerInspectLimit)
+	image, err := d.control(ctx, d.plan.imageInspection(), c4DockerInspectLimit)
 	if err != nil {
-		return "", err
+		return "", c4ImageCheckError{err}
 	}
 	if validateC4DockerImage(image, d.plan.profile) != nil {
-		return "", errC4Docker
+		return "", c4ImageCheckError{errC4DockerProtocol}
 	}
 	raw, err := d.control(ctx, c, 128)
 	if err != nil {
@@ -126,9 +131,13 @@ func (d *c4DockerDriver) inspect(ctx context.Context) (c4DockerInspection, error
 	if err != nil {
 		return c4DockerInspection{}, err
 	}
+	raw, err = normalizeC4ContainerEmptyFields(raw)
+	if err != nil {
+		return c4DockerInspection{}, errC4DockerProtocol
+	}
 	v, err := decodeC4DockerInspection(raw, d.plan, d.id)
 	if err != nil {
-		return c4DockerInspection{}, errC4Docker
+		return c4DockerInspection{}, errC4DockerProtocol
 	}
 	return v, nil
 }
@@ -141,24 +150,24 @@ func (d *c4DockerDriver) Start(ctx context.Context, c C4Command) error {
 	d.startReserved = true
 	before, err := d.inspect(ctx)
 	if err != nil {
-		return err
+		return c4StageError{"start_precheck", err}
 	}
 	if !before.StartedAt.IsZero() || before.Running {
-		return errC4Docker
+		return c4StageError{"start_precheck", errC4DockerProtocol}
 	}
 	d.attachExit, err = d.run(ctx, c, d.stdout, d.stderr)
 	if err != nil {
-		return err
+		return c4StageError{"start_attach", err}
 	}
 	after, err := d.inspect(ctx)
 	if err != nil {
-		return err
+		return c4StageError{"start_postcheck", err}
 	}
 	if after.StartedAt.IsZero() {
 		if !after.Running && after.ExitCode == d.attachExit && (d.attachExit == 125 || d.attachExit == 126 || d.attachExit == 127) {
-			return C4StartupError{ExitCode: d.attachExit}
+			return c4StageError{"start_postcheck", C4StartupError{ExitCode: d.attachExit}}
 		}
-		return errC4Docker
+		return c4StageError{"start_postcheck", errC4DockerProtocol}
 	}
 	d.started, d.startedAt = true, after.StartedAt
 	return nil
@@ -247,7 +256,7 @@ func (d *c4DockerDriver) Remove(ctx context.Context, c C4Command) error {
 	}
 	d.removeReserved = true
 	if _, err := d.inspect(ctx); err != nil {
-		return err
+		return c4StageError{"cleanup_remove_precheck", err}
 	}
 	raw, err := d.control(ctx, c, 128)
 	if err != nil {

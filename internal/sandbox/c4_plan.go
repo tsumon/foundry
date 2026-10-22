@@ -80,6 +80,20 @@ func (p C4Plan) command(args ...string) C4Command {
 	return C4Command{Path: p.profile.DockerPath, Args: append([]string{"--host", p.profile.Endpoint}, args...), Env: []string{"DOCKER_CONFIG=/dev/null"}}
 }
 
+// Raw CLI JSON may omit empty Cmd/Volumes. Map indexing emits null only for
+// absent fields, including under missingkey=error. Struct input selects the
+// CLI's buffered raw-JSON template fallback, not another Docker request.
+// Preserve all existing metadata (including case aliases) for the unchanged
+// bounded strict parser; never erase a nonempty or malformed security value.
+func (p C4Plan) imageInspection() C4Command {
+	const projection = `{{$volumes := index .Config "Volumes"}}{{$cmd := index .Config "Cmd"}}[{ ` +
+		`{{$sep := ""}}{{range $key, $value := .}}{{$sep}}{{$sep = ","}}{{json $key}}:` +
+		`{{if eq $key "Config"}}{"Volumes":{{json $volumes}},"Cmd":{{json $cmd}}` +
+		`{{range $k, $v := $value}}{{if and (ne $k "Volumes") (ne $k "Cmd")}},{{json $k}}:{{json $v}}{{end}}{{end}}}` +
+		`{{else}}{{json $value}}{{end}}{{end}}}]`
+	return p.command("image", "inspect", "--format", projection, p.profile.ImageID)
+}
+
 func (p C4Plan) Create() C4Command {
 	o := p.operation
 	args := []string{"create", "--pull=never", "--platform=linux/arm64", "--network=none", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--no-healthcheck", "--pids-limit=128", "--memory=1073741824", "--memory-swap=1073741824", "--cpus=1", "--user=65534:65534", "--entrypoint=/opt/foundry/verify-go-v1", "--log-driver=none", "--name", o.ContainerName,

@@ -23,12 +23,14 @@ func (e *Engine) ExecuteC4Readiness(ctx context.Context, id string, revision int
 	ready, runErr := e.options.C4Controlled.readiness(bounded)
 	r := domain.C4ControlResult{Status: "failed", FailureCode: "failed"}
 	deadline, _ := time.Parse(time.RFC3339Nano, c.ActivationExpiresAt)
-	if runErr == nil && bounded.Err() == nil && e.c4Time().Before(deadline) {
+	if runErr == nil && ready.FailureCode == "" && bounded.Err() == nil && e.c4Time().Before(deadline) {
 		until := e.c4Time().Add(domain.C4ControlTTL)
 		if deadline.Before(until) {
 			until = deadline
 		}
 		r = domain.C4ControlResult{Status: "ready", Fingerprint: ready.Fingerprint, ValidUntil: until.Format(time.RFC3339Nano)}
+	} else if runErr != nil && domain.C4ReadinessFailureCode(ready.FailureCode) {
+		r.FailureCode = ready.FailureCode
 	} else if errors.Is(runErr, context.Canceled) || errors.Is(bounded.Err(), context.Canceled) {
 		r.FailureCode = "canceled"
 	} else if errors.Is(runErr, context.DeadlineExceeded) || errors.Is(bounded.Err(), context.DeadlineExceeded) {

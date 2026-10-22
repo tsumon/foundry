@@ -190,8 +190,8 @@ func TestC4PersistenceFailureStopsNextEffect(t *testing.T) {
 
 func TestC4UnacknowledgedStartRecordsCauseWithoutInventingStarted(t *testing.T) {
 	for _, tc := range []struct{ failure, cause string }{
-		{"start timeout", "C4 start acknowledgment deadline exceeded; execution outcome unknown."},
-		{"start cancel", "C4 start acknowledgment canceled; execution outcome unknown."},
+		{"start timeout", "C4 phase=start_ack reason=timeout; execution outcome unknown. C4 start acknowledgment deadline exceeded; execution outcome unknown."},
+		{"start cancel", "C4 phase=start_ack reason=canceled; execution outcome unknown. C4 start acknowledgment canceled; execution outcome unknown."},
 	} {
 		t.Run(tc.failure, func(t *testing.T) {
 			h := newC4Harness(t)
@@ -333,8 +333,14 @@ func TestC4RecoveryUnknownNeverPassesAndRequiresExactOwnership(t *testing.T) {
 				if err != nil || o.CleanupState() != "confirmed" {
 					t.Fatal(err, o)
 				}
-			} else if err == nil || !reflect.DeepEqual(h.trace, []string{"inspect"}) {
-				t.Fatal("foreign recovery", err, h.trace)
+			} else {
+				if err == nil || !reflect.DeepEqual(h.trace, []string{"inspect", "persist:cleanup"}) || len(o.Cleanup) != 1 || o.CleanupState() != "failed" {
+					t.Fatal("foreign recovery", err, h.trace, o.Cleanup)
+				}
+				c := o.Cleanup[0]
+				if c.Phase != "cleanup_precheck" || c.Reason != "protocol_failed" || c.ContainerID != strings.Repeat("d", 64) || c.Owner != o.Owner {
+					t.Fatal("foreign observation became cleanup authority", c)
+				}
 			}
 		})
 	}

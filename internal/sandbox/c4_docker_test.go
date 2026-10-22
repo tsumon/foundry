@@ -74,7 +74,7 @@ const c4PassedWire = `{"class":"passed","exit_code":0,"tests":1,"output":"verifi
 func c4DriverSteps(plan C4Plan) []c4ProcessStep {
 	id := strings.Repeat("d", 64)
 	return []c4ProcessStep{
-		{args: c4Args("image", "inspect", plan.profile.ImageID), out: string(c4DockerImageFixture())},
+		{args: plan.imageInspection().Args, out: string(c4DockerImageFixture())},
 		{args: plan.Create().Args, out: id + "\n"},
 		{args: c4Args("container", "inspect", id), out: string(c4DockerContainerFixture())},
 		{args: c4Args("container", "start", "--attach", id), out: c4PassedWire, stderr: "benign CLI configuration warning\n"},

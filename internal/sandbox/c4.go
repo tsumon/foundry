@@ -181,7 +181,10 @@ func inspectC4(plan C4Plan, d C4Driver, id string) (C4Inspection, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	v, err := d.Inspect(ctx, c)
-	if err != nil || !ownedC4(plan.operation, id, v) {
+	if err != nil {
+		return C4Inspection{}, err
+	}
+	if !ownedC4(plan.operation, id, v) {
 		return C4Inspection{}, errors.New("C4 exact ownership not established")
 	}
 	return v, nil
@@ -234,10 +237,10 @@ func executeC4(ctx context.Context, plan C4Plan, o domain.C4Operation, d C4Drive
 	cancel()
 	// An ambiguous create never invents an ID or discovers/removes by name.
 	if err != nil || !c4ContainerID.MatchString(id) {
-		return finish(domain.C4Result{Class: "outcome_unknown"}, "")
+		return finish(c4PrestartFailure("create", err, ""), "")
 	}
 	if _, err = inspectC4(plan, d, id); err != nil {
-		return finish(domain.C4Result{Class: "outcome_unknown"}, "")
+		return finish(c4PrestartFailure("initial_inspect", err, id), "")
 	}
 	o, err = persistC4(context.Background(), persist, o, C4Change{Stage: "created", ContainerID: id})
 	if err != nil {
@@ -250,15 +253,15 @@ func executeC4(ctx context.Context, plan C4Plan, o domain.C4Operation, d C4Drive
 	defer cancelExec()
 	command, _ := plan.Command("start", id)
 	if err = d.Start(execCtx, command); err != nil {
-		r := domain.C4Result{Class: "outcome_unknown"}
+		r := c4StartFailure(err)
 		var startup C4StartupError
 		// No Start acknowledgment means no proven Started fact. Preserve the
 		// bounded cause without manufacturing timeout/interrupted execution.
 		switch {
 		case errors.Is(err, context.DeadlineExceeded) || errors.Is(execCtx.Err(), context.DeadlineExceeded):
-			r.Output = "C4 start acknowledgment deadline exceeded; execution outcome unknown."
+			r.Output += " C4 start acknowledgment deadline exceeded; execution outcome unknown."
 		case errors.Is(err, context.Canceled) || errors.Is(execCtx.Err(), context.Canceled):
-			r.Output = "C4 start acknowledgment canceled; execution outcome unknown."
+			r.Output += " C4 start acknowledgment canceled; execution outcome unknown."
 		case errors.As(err, &startup) && (startup.ExitCode == 125 || startup.ExitCode == 126 || startup.ExitCode == 127):
 			r.Class = "infrastructure_failed"
 			r.ExitCode = &startup.ExitCode
@@ -327,17 +330,24 @@ func classifyC4(v C4Inspection, waitErr, ctxErr error) domain.C4Result {
 
 func cleanupC4(plan C4Plan, o domain.C4Operation, id string, d C4Driver, persist C4Persist) (domain.C4Operation, error) {
 	if _, err := inspectC4(plan, d, id); err != nil {
+		// A failed precheck is diagnostic only, not ownership confirmation or
+		// deletion authority. Preserve the failure without changing the result.
+		var saveErr error
+		o, saveErr = persistC4(context.Background(), persist, o, C4Change{Stage: "cleanup", Cleanup: c4CleanupFailure(o, id, "cleanup_precheck", err)})
+		if saveErr != nil {
+			return o, saveErr
+		}
 		return o, ErrC4Execution
 	}
 	c, _ := plan.Command("remove", id)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	err := d.Remove(ctx, c)
 	cancel()
-	state := "confirmed"
+	cleanup := &domain.C4Cleanup{State: "confirmed", ContainerID: id, Owner: o.Owner}
 	if err != nil {
-		state = "failed"
+		cleanup = c4CleanupFailure(o, id, "cleanup_remove", err)
 	}
-	o, saveErr := persistC4(context.Background(), persist, o, C4Change{Stage: "cleanup", Cleanup: &domain.C4Cleanup{State: state, ContainerID: id, Owner: o.Owner}})
+	o, saveErr := persistC4(context.Background(), persist, o, C4Change{Stage: "cleanup", Cleanup: cleanup})
 	if saveErr != nil {
 		return o, saveErr
 	}

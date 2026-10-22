@@ -370,6 +370,42 @@ it("refreshes mission once after network failure without replaying mutation", as
   expect(screen.getByRole("button", { name: "执行就绪检查" })).toBeDisabled();
 });
 
+it.each([
+  "image_command_failed",
+  "info_protocol_failed",
+  "version_trust_failed",
+  "failed",
+])(
+  "shows persisted diagnostic %s without re-enabling execution",
+  async (code) => {
+    const m = initial();
+    m.c4_controls = [
+      prepared(m, {
+        state: "completed",
+        approval: {
+          digest: "a".repeat(64),
+          revision: 7,
+          at: new Date().toISOString(),
+        },
+        dispatch: { revision: 8, at: new Date().toISOString() },
+        result: {
+          status: "failed",
+          failure_code: code,
+          revision: 9,
+          at: new Date().toISOString(),
+        },
+      }),
+    ];
+    vi.spyOn(api, "c4").mockResolvedValue(status(m));
+    const post = vi.spyOn(api, "c4Action");
+    render(<C4Decision mission={m} busy={false} onUpdate={vi.fn()} />);
+    await screen.findByText(new RegExp(`failed · ${code}`));
+    expect(screen.getByRole("button", { name: "执行就绪检查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "准备基线材料" })).toBeDisabled();
+    expect(post).not.toHaveBeenCalled();
+  },
+);
+
 it("prepares cleanup with only the durable exact ID and requires its own approval", async () => {
   const m = initial();
   m.c4_operations = [
@@ -583,7 +619,7 @@ it.each(["digest", "expiry"])(
       ).toBeEnabled(),
     );
     expect(screen.getByRole("button", { name: "准备基线材料" })).toBeDisabled();
-    expect(structural).toHaveBeenLastCalledWith(true);
+    await waitFor(() => expect(structural).toHaveBeenLastCalledWith(true));
     expect(execution).toHaveBeenLastCalledWith(false);
     for (const kind of ["readiness", "cleanup"] as const) {
       for (const state of ["prepared", "approved"] as const) {

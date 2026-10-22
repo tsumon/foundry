@@ -105,3 +105,30 @@ func TestC4DockerTrustRejectsReplacement(t *testing.T) {
 		}
 	}
 }
+
+func TestC4DockerPrivateCopyDoesNotRelaxInstalledPathTrust(t *testing.T) {
+	check, f := c4TrustFixture()
+	f.nodes["/Applications"] = c4TrustNode{mode: fs.ModeDir | 0775, stat: syscall.Stat_t{Uid: 0, Ino: 80, Dev: 1}}
+	f.nodes["/Applications/docker"] = c4TrustNode{mode: 0755, stat: syscall.Stat_t{Uid: 0, Ino: 81, Dev: 1}}
+	check.trust.DockerPath = "/Applications/docker"
+	if check.Check() == nil {
+		t.Fatal("writable installed ancestor accepted")
+	}
+	// A distinct private copy is a separate transport, never an exception for
+	// the installed path. Neither the fixture nor the implementation chmods it.
+	check, f = c4TrustFixture()
+	parent := f.nodes["/trusted"]
+	parent.mode = fs.ModeDir | 0700
+	f.nodes["/trusted"] = parent
+	copy := f.nodes["/trusted/docker"]
+	copy.mode = 0500
+	f.nodes["/trusted/docker"] = copy
+	if err := check.Check(); err != nil {
+		t.Fatal("protected private copy rejected", err)
+	}
+	copy.stat.Ino++
+	f.nodes["/trusted/docker"] = copy
+	if check.Check() == nil {
+		t.Fatal("private copy replacement accepted")
+	}
+}

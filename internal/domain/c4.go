@@ -114,7 +114,10 @@ type C4Result struct {
 // Each cleanup attempt is immutable. Recovery may append exact-owned cleanup
 // evidence even when a crash prevented recording the created-container fact.
 type C4Cleanup struct {
-	State       string `json:"state"`
+	State string `json:"state"`
+	// Optional bounded failure diagnostics never prove ownership or removal.
+	Phase       string `json:"phase,omitempty"`
+	Reason      string `json:"reason,omitempty"`
 	ContainerID string `json:"container_id"`
 	Owner       string `json:"owner"`
 	Revision    int64  `json:"revision"`
@@ -356,6 +359,16 @@ func validateC4Operation(m Mission, o C4Operation) error {
 	confirmed := false
 	container := o.ContainerID
 	for _, c := range o.Cleanup {
+		if c.Phase != "" || c.Reason != "" {
+			if c.State != "failed" || (c.Phase != "cleanup_precheck" && c.Phase != "cleanup_remove_precheck" && c.Phase != "cleanup_remove") {
+				return errors.New("invalid cleanup diagnostic phase")
+			}
+			switch c.Reason {
+			case "protocol_failed", "trust_failed", "process_failed", "command_failed", "output_limit", "timeout", "canceled":
+			default:
+				return errors.New("invalid cleanup diagnostic reason")
+			}
+		}
 		if o.Result == nil || o.Dispatch == nil || confirmed || (c.State != "failed" && c.State != "confirmed") || !c4Opaque.MatchString(c.ContainerID) || c.Owner != o.Owner || (container != "" && container != c.ContainerID) {
 			return errors.New("invalid exact-owned cleanup")
 		}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -173,6 +174,9 @@ func validateC4Control(m Mission, c C4Control) error {
 			if r.ValidUntil != "" || r.Fingerprint != "" || !c4ControlFailureCode(r.FailureCode) {
 				return errC4Control
 			}
+			if C4ReadinessFailureCode(r.FailureCode) && (c.Kind != "readiness" || r.Status != "failed") {
+				return errC4Control
+			}
 		default:
 			return errC4Control
 		}
@@ -188,6 +192,24 @@ func validateC4Control(m Mission, c C4Control) error {
 func c4ControlFailureCode(code string) bool {
 	switch code {
 	case "unavailable", "failed", "timeout", "canceled", "outcome_unknown", "persistence_failed", "interrupted", "trust_failed", "protocol_failed", "stale_authority":
+		return true
+	}
+	return C4ReadinessFailureCode(code)
+}
+
+// C4ReadinessFailureCode admits only the fixed query stage and static reason.
+// It validates evidence, not readiness/approval authority; old generic failures
+// stay readable and must never be retroactively assigned an inferred phase.
+func C4ReadinessFailureCode(code string) bool {
+	if code == "readiness_gate_failed" {
+		return true
+	}
+	stage, reason, ok := strings.Cut(code, "_")
+	if !ok || (stage != "version" && stage != "info" && stage != "image") {
+		return false
+	}
+	switch reason {
+	case "trust_failed", "process_failed", "command_failed", "output_limit", "protocol_failed", "timeout", "canceled":
 		return true
 	}
 	return false

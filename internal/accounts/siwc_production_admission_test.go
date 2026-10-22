@@ -122,7 +122,9 @@ func TestProductionAdapterDurableDispatchWinsOnceAndCancellationJoins(t *testing
 	if err != nil || time.Until(expires) < 598*time.Second || time.Until(expires) > 600*time.Second {
 		t.Fatal("incorrect production login lifetime")
 	}
-	(<-stops)()
+	stop := <-stops
+	stop()
+	stop()
 	terminal, err := s.Wait(flow.OperationID)
 	if err != nil || terminal.State != "canceled" || terminal.HandoffURL != "" {
 		t.Fatalf("cancel did not join: %+v %v", terminal, err)
@@ -135,6 +137,63 @@ func TestProductionAdapterDurableDispatchWinsOnceAndCancellationJoins(t *testing
 	}
 	if _, stop, err := p.Begin(context.Background(), o); err == nil || stop != nil {
 		t.Fatal("recovered adapter replayed")
+	}
+}
+
+// This parent observes the real context cancellation boundary. Blocking its
+// unregister callback lets the terminal observer run before stop returns,
+// deterministically exposing cancel-before-stop without production test hooks.
+type cancellationBarrierContext struct {
+	context.Context
+	done, detached, release chan struct{}
+}
+
+func (c cancellationBarrierContext) Done() <-chan struct{} { return c.done }
+func (c cancellationBarrierContext) AfterFunc(func()) func() bool {
+	return func() bool {
+		close(c.detached)
+		<-c.release
+		return true
+	}
+}
+
+func TestProductionAdapterExplicitStopWinsBeforeContextObserver(t *testing.T) {
+	s, db, secrets, p, a, r := productionAdapter(t, func() bool { return true })
+	o := productionClaim(t, db, p, a, r)
+	parent := cancellationBarrierContext{context.Background(), make(chan struct{}), make(chan struct{}), make(chan struct{})}
+	flow, stop, err := p.Begin(parent, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); stop() }()
+	defer func() {
+		close(parent.release)
+		select {
+		case <-stopped:
+		case <-time.After(5 * time.Second):
+			t.Error("explicit stop did not join")
+		}
+	}()
+	select {
+	case <-parent.detached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("parent cancellation boundary not reached")
+	}
+	s.mu.Lock()
+	terminalDone := s.flows[flow.OperationID].terminalDone
+	s.mu.Unlock()
+	select {
+	case <-terminalDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("terminal observer did not finish")
+	}
+	terminal, err := s.Wait(flow.OperationID)
+	if err != nil || terminal.State != "canceled" || terminal.HandoffURL != "" || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Code != "canceled" || terminal.ConnectionDiagnostic.CredentialCommit != "not_committed" || terminal.ConnectionDiagnostic.Cleanup != "not_required" {
+		t.Fatalf("explicit stop was misclassified: %+v %v", terminal, err)
+	}
+	if secrets.sets+secrets.gets+secrets.deletes != 0 {
+		t.Fatal("explicit stop touched credentials")
 	}
 }
 
@@ -153,6 +212,11 @@ func TestProductionAdapterTimeoutAndOldSimulationClaimCannotReplay(t *testing.T)
 		t.Fatalf("timeout: %+v %v", terminal, err)
 	}
 	stop()
+	stop()
+	terminal, err = s.Wait(flow.OperationID)
+	if err != nil || terminal.State != "expired" || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Code != "expired" {
+		t.Fatalf("explicit stop replaced the timeout result: %+v %v", terminal, err)
+	}
 	if _, _, err = p.Begin(context.Background(), o); err == nil {
 		t.Fatal("timed-out adapter replayed")
 	}

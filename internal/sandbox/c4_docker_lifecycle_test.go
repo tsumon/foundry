@@ -215,7 +215,7 @@ func TestC4DockerLifecycleFaultMatrix(t *testing.T) {
 	}{
 		{"test failure", "test_failed", "confirmed", true}, {"wait disagreement", "infrastructure_failed", "confirmed", true}, {"wait timeout", "timeout", "confirmed", true}, {"wait cancellation", "interrupted", "confirmed", true}, {"oom", "oom", "confirmed", true},
 		{"start cancel", "outcome_unknown", "confirmed", false}, {"start timeout", "outcome_unknown", "confirmed", false}, {"startup127", "infrastructure_failed", "confirmed", false}, {"missing started fact", "outcome_unknown", "confirmed", false},
-		{"malformed envelope", "infrastructure_failed", "confirmed", true}, {"truncated logs", "passed", "confirmed", true}, {"foreign created", "outcome_unknown", "pending", false}, {"foreign result", "outcome_unknown", "pending", true}, {"foreign cleanup", "passed", "pending", true}, {"remove failure", "passed", "failed", true},
+		{"malformed envelope", "infrastructure_failed", "confirmed", true}, {"truncated logs", "passed", "confirmed", true}, {"foreign created", "outcome_unknown", "pending", false}, {"foreign result", "outcome_unknown", "pending", true}, {"foreign cleanup", "passed", "failed", true}, {"remove failure", "passed", "failed", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, f, trust := newC4DockerHarness(t)
@@ -268,6 +268,9 @@ func TestC4DockerLifecycleFaultMatrix(t *testing.T) {
 			o, err := runC4DockerHarness(h, f, trust)
 			if o.Result == nil || o.Result.Class != tc.class || o.CleanupState() != tc.cleanup || (o.Started != nil) != tc.started || strings.Contains(o.Result.Output, "synthetic-secret") {
 				t.Fatalf("fault classification: result=%+v cleanup=%s started=%v err=%v trace=%v", o.Result, o.CleanupState(), o.Started, err, h.trace)
+			}
+			if (tc.name == "missing started fact" || tc.name == "startup127") && !strings.Contains(o.Result.Output, "phase=start_postcheck") {
+				t.Fatal("post-start state rejection lost its stage", o.Result.Output)
 			}
 			if tc.name == "truncated logs" {
 				if err != nil || !o.Result.Truncated || !o.Passed() {

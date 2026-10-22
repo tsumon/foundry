@@ -68,6 +68,24 @@ Unknown unrelated Docker metadata is tolerated; missing, duplicate, malformed or
 conflicting security fields are not. Image inspection is not proof that the
 compiler/verifier exists; actual verification remains a later acceptance gate.
 
+Image inspection uses one fixed CLI Go-template projection to render every policy
+field, including empty `Cmd` and `Volumes` that ordinary Docker JSON may omit.
+Values are JSON-escaped by the CLI; nonempty unsafe values are never replaced.
+The fixed template uses map indexing for these two optional fields, including
+under `missingkey=error`. Typed CLI input selects its buffered raw-JSON rendering
+path within the same inspect call; this is not another Docker request or retry.
+All existing metadata and case aliases are preserved for the unchanged bounded
+parser. Missing required fields, unsafe values, conflicting aliases and malformed
+types still fail closed. Unsupported rendering stops without a transport retry.
+Both readiness and create use the same projection. Offline regressions exercise
+typed-to-raw rendering, omitted/null/empty fields and unsafe/malformed variants.
+
+An installed CLI beneath a group-writable ancestor remains untrusted. Local
+acceptance may use a byte-for-byte, SHA-256-verified copy of the previously verified
+CLI in a private directory, with non-writable group/other ancestors and executable
+mode `0500`. System-directory permissions must not be changed. The existing
+transport trust and replacement checks still apply to that copy and the socket.
+
 After creation and before start, and on subsequent inspections, validate full
 ID/name/owner/task/operation labels, image, entrypoint/command/user/workdir/env,
 read-only mount and allowed tmpfs, network/ports, privileged/capability/security
@@ -198,9 +216,84 @@ tests/build, clean export, secret/dependency/workflow scans and exact-commit CI.
 Only reviewed public source/docs are pushed; private plans and runtime evidence
 remain local. No Release, real readiness check or real Docker acceptance occurs.
 
+## Readiness failure diagnostics (offline verified)
+
+Failed readiness records use the existing `failure_code` field. New diagnostics
+are a closed stage/reason pair: `version`, `info` or `image`, followed by
+`trust_failed`, `process_failed`, `command_failed`, `output_limit`,
+`protocol_failed`, `timeout` or `canceled`. Preflight rejection is
+`readiness_gate_failed`. Unknown error data still becomes `failed`.
+
+No command output, stderr, raw OS error, path, environment value, or daemon
+identity is included. A command failure does not assert why the CLI exited;
+protocol failure does not imply the daemon was unreachable. The existing
+workbench facts display the code without adding navigation or action buttons.
+These codes never grant readiness or execution authority, and each dispatch is
+still consumed once. Old generic results remain unchanged; a historical phase
+must not be invented or backfilled. Diagnostic tests use only local fixtures.
+
+The image projection compatibility change remains distinct from these diagnostic
+codes. A typed fixture alone cannot establish strict raw-JSON rendering behavior;
+both paths are exercised offline. This public specification does not claim real
+acceptance, and neither parser missing-field checks nor image constraints relax.
+
 ## Official CLI references
 
 - [Start and attach](https://docs.docker.com/reference/cli/docker/container/start/)
 - [Wait and printed exit codes](https://docs.docker.com/reference/cli/docker/container/wait/)
 - [Container inspect](https://docs.docker.com/reference/cli/docker/container/inspect/)
 - [Image inspect](https://docs.docker.com/reference/cli/docker/image/inspect/)
+
+## Container inspection compatibility and pre-start diagnostics
+
+The trusted Docker CLI boundary normalizes only omitted `Config.ExposedPorts`
+and `HostConfig.Sysctls` to null. Lossless bounded parsing precedes normalization;
+duplicate keys and case aliases remain rejected. Existing nonempty or malformed
+values are never replaced. The strict security parser and all ownership,
+mount, network, resource, executable and approval checks remain unchanged.
+
+Pre-start failures retain a fixed phase/reason in the existing result output:
+image inspection, creation, or first container inspection. A successful create
+followed by failed inspection retains the observed full ID as explicitly
+unverified diagnostic data. It does not populate the verified `ContainerID` or
+`Created` fact, grant cleanup authority, start a container or retry. Raw CLI
+output is never copied into diagnostics. Uncertain result persistence stops all
+further effects; a crash before that result commit still requires independent
+read-only investigation. Historical unknown results are not rewritten.
+
+The CLI boundary also accepts an explicitly present `HostConfig.OomKillDisable:
+null` as unset/default (false), not as disabling the OOM killer. Moby defaults
+this pointer to false and may reset it to nil for an unsupported kernel
+capability; Docker documents that the flag is discarded under cgroup v2.
+Missing fields, true, wrong types, duplicates and case aliases remain rejected.
+This is field-specific transport normalization, not a general null fallback;
+the strict parser and all memory/resource checks remain unchanged.
+See [Moby's implementation](https://github.com/moby/moby/blob/master/daemon/daemon_unix.go)
+and [Docker's cgroup documentation](https://docs.docker.com/engine/containers/runmetrics/).
+
+Start failures now retain fixed `start_precheck`, `start_attach` or
+`start_postcheck` diagnostics (generic drivers use `start_ack`). Cleanup failures
+persist an immutable failed record with optional closed-enum `phase` and `reason`:
+`cleanup_precheck`, `cleanup_remove_precheck` or `cleanup_remove`. Reasons use the
+same bounded failure vocabulary as readiness. Raw CLI/OS data never enters these
+fields. A failed precheck causes zero removals and is never cleanup confirmation
+or ownership authority; failure to persist the diagnostic stops further effects.
+Legacy records remain valid and are not retroactively annotated.
+
+## Exported report provenance
+
+New C4 reports describe agent configuration separately from command evidence.
+Local fixture agents are labeled as simulated even when their candidate tests
+ran in Docker. Non-synthetic configuration does not prove a real model call.
+Each baseline/candidate operation uses the existing execution-provenance rules:
+Docker mode alone, success text, incomplete lifecycle records or a missing
+trusted readiness receipt cannot establish real execution. Failed tests may
+still be real execution; source and outcome are independent. Baseline evidence
+never replaces candidate verification or a delivery approval.
+
+Historical sealed reports retain their exact bytes, hashes and known renderer
+format. Prepared-export recovery and download still check current evidence,
+intent, approval, artifact binding and hashes; the compatibility path does not
+rewrite reports or accept arbitrary old text. A corrected review copy must be a
+separate derived artifact, explicitly linked to its original report and mission,
+not a replacement seal or a new execution/approval record.

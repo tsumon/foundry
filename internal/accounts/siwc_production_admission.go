@@ -107,5 +107,7 @@ func (p *ProductionConnectionAdmission) Begin(ctx context.Context, claim domain.
 		cancel()
 		return SIWCFlow{}, nil, err
 	}
-	return flow, func() { cancel(); stop() }, nil
+	// Close callback admission and record explicit cancellation before waking
+	// the context observer; otherwise it can misclassify this stop as expiry.
+	return flow, func() { stop(); cancel() }, nil
 }

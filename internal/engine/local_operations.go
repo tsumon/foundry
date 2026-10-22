@@ -316,7 +316,7 @@ func (e *Engine) verifyDeliveryWith(m domain.Mission, readOperation func(string)
 		}
 	}
 	p := op.Result.Export
-	if p.ReportInput != op.ExportReport || (op.ExportReport != marshalReport(m) && (!legacyVerificationMaterial(m) || op.ExportReport != reportWithSources(m, false))) {
+	if p.ReportInput != op.ExportReport || (op.ExportReport != marshalReport(m) && !historicalReportMatches(m, op.ExportReport)) {
 		return errors.New("delivery evidence/report binding changed")
 	}
 	if m.Delivery.PatchPath != p.PatchPath || m.Delivery.ReportPath != p.ReportPath || m.Delivery.PatchSHA256 != p.PatchSHA256 || m.Delivery.ReportSHA256 != p.ReportSHA256 {
@@ -327,6 +327,13 @@ func (e *Engine) verifyDeliveryWith(m domain.Mission, readOperation func(string)
 
 func (e *Engine) exportIntent(m domain.Mission) (domain.LocalOperation, error) {
 	return e.exportIntentForReport(m, marshalReport(m))
+}
+
+// Only exact known historical formats qualify, still bound to the same mission
+// evidence and the existing prepared/committed artifact hashes. Never rewrite.
+func historicalReportMatches(m domain.Mission, report string) bool {
+	return (isC4(m) && report == reportWithSources(m, true)) ||
+		(legacyVerificationMaterial(m) && report == reportWithSources(m, false))
 }
 
 func legacyVerificationMaterial(m domain.Mission) bool {
@@ -381,12 +388,12 @@ func (e *Engine) deliverGeneration(ctx context.Context, m domain.Mission) (domai
 			continue
 		}
 		if prior.IntentDigest != proposed.IntentDigest || prior.ExportReport != proposed.ExportReport {
-			// A previously prepared pre-provenance export keeps its exact bytes;
+			// A previously prepared historical export keeps its exact bytes;
 			// never strip source fields or rewrite/reseal it to obtain a match.
-			if !legacyVerificationMaterial(m) || prior.Result == nil || prior.Result.Export == nil || prior.Result.Export.ReportInput != prior.ExportReport {
+			if !historicalReportMatches(m, prior.ExportReport) || prior.Result == nil || prior.Result.Export == nil || prior.Result.Export.ReportInput != prior.ExportReport {
 				return m, errors.New("existing export intent does not match current delivery")
 			}
-			old, err := e.exportIntentForReport(m, reportWithSources(m, false))
+			old, err := e.exportIntentForReport(m, prior.ExportReport)
 			if err != nil || prior.IntentDigest != old.IntentDigest || prior.ExportReport != old.ExportReport {
 				return m, errors.New("existing export intent does not match current delivery")
 			}

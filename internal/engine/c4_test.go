@@ -347,7 +347,7 @@ func testC4CandidateFailureRepairPass(t *testing.T, controlled bool) {
 		t.Fatal(err)
 	}
 	report, err := e.ReadDelivery(m.ID, "report")
-	if err != nil || !strings.Contains(string(report), "C4 · Synthetic") || !strings.Contains(string(report), "baseline") {
+	if err != nil || !strings.Contains(string(report), "C4 · Agent 与测试执行来源") || !strings.Contains(string(report), "流程模拟（未执行命令）") || !strings.Contains(string(report), "baseline") {
 		t.Fatal("missing C4 report", string(report), err)
 	}
 	if f.calls != 0 || d.creates != 3 || d.removes != 3 || before != importSourceDigest(t, repo) {

@@ -303,12 +303,16 @@ func validateReview(r reviewOutput, m domain.Mission) error {
 	return nil
 }
 func marshalReport(m domain.Mission) string {
-	return reportWithSources(m, true)
+	return reportWithFormat(m, true, true)
 }
 
-// sources=false reproduces the historical bytes only for matching an already
-// prepared legacy export. New exports always use explicit source summaries.
+// Reproduce previous bytes only for matching a sealed/prepared export. New
+// exports use marshalReport, including the separate C4 agent/execution summary.
 func reportWithSources(m domain.Mission, sources bool) string {
+	return reportWithFormat(m, sources, false)
+}
+
+func reportWithFormat(m domain.Mission, sources, c4Sources bool) string {
 	b, _ := json.MarshalIndent(struct {
 		BaseCommit, CandidateDigest, ImageID string
 		Evidence                             []domain.Verification
@@ -351,7 +355,12 @@ func reportWithSources(m domain.Mission, sources bool) string {
 			Profile    *domain.C4Profile    `json:"profile"`
 			Operations []domain.C4Operation `json:"operations"`
 		}{m.Spec.C4, m.C4Operations}, "", "  ")
-		out.WriteString("\n## C4 · Synthetic verification lifecycle\n\nSynthetic models and command outcomes only. No real Docker or Go execution, readiness, isolation, or resource enforcement was verified. Baseline is frozen-source evidence only, never candidate verification or delivery approval.\n\n```json\n")
+		if c4Sources {
+			writeC4ReportSources(&out, m)
+			out.WriteString("\n```json\n")
+		} else {
+			out.WriteString("\n## C4 · Synthetic verification lifecycle\n\nSynthetic models and command outcomes only. No real Docker or Go execution, readiness, isolation, or resource enforcement was verified. Baseline is frozen-source evidence only, never candidate verification or delivery approval.\n\n```json\n")
+		}
 		out.Write(material)
 		out.WriteString("\n```\n")
 	}
