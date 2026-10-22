@@ -36,6 +36,7 @@ const (
 )
 
 type Options struct {
+	C4ControlledOnly bool
 	RecoveryError    string
 	Acceptance       *acceptance.Service
 	RecoveryReadOnly bool
@@ -48,6 +49,7 @@ type Options struct {
 }
 
 type server struct {
+	c4ControlledOnly bool
 	recoveryError    string
 	acceptance       *acceptance.Service
 	recoveryReadOnly bool
@@ -83,33 +85,41 @@ func New(s *store.Store, e *engine.Engine, client *model.Client, secrets model.S
 	}
 	observer := opts.Hooks
 	accountService := opts.Accounts
-	if accountService == nil {
+	if accountService == nil && !opts.C4ControlledOnly {
 		accountService = accounts.New(s, secrets)
 	}
 	modelRouter := opts.ModelRouter
-	if modelRouter == nil {
+	if modelRouter == nil && !opts.C4ControlledOnly {
 		modelRouter = model.NewRouter(client, accountService, model.RouterOptions{})
 	}
 	siwc := opts.SIWC
-	if siwc == nil {
+	if siwc == nil && !opts.C4ControlledOnly {
 		siwc = accounts.NewSIWCService(accountService)
 	}
-	if observer == nil {
+	if observer == nil && !opts.C4ControlledOnly {
 		observer = hooks.New(s)
 	}
 	gates := opts.Acceptance
-	if gates == nil {
+	if gates == nil && !opts.C4ControlledOnly {
 		gates = acceptance.New(s)
 	}
 	if opts.RecoveryError == "" {
 		opts.RecoveryError = "invalid_mission_model_snapshot"
 	}
+	var capabilities *capability.Service
+	if opts.C4ControlledOnly {
+		accountService, modelRouter, siwc, observer, gates = nil, nil, nil, nil, nil
+		client, secrets = nil, nil
+	} else {
+		capabilities = capability.New(s, secrets)
+	}
 	return &server{
+		c4ControlledOnly: opts.C4ControlledOnly,
 		recoveryError:    opts.RecoveryError,
 		acceptance:       gates,
 		recoveryReadOnly: opts.RecoveryReadOnly,
 		accounts:         accountService,
-		store:            s, catalog: catalog.New(s), capability: capability.New(s, secrets), hooks: observer, engine: e, client: client, modelRouter: modelRouter, siwc: siwc, secrets: secrets,
+		store:            s, catalog: catalog.New(s), capability: capabilities, hooks: observer, engine: e, client: client, modelRouter: modelRouter, siwc: siwc, secrets: secrets,
 		host: host, origin: "http://" + host, webDir: webDir,
 		token: hex.EncodeToString(tokenBytes),
 	}
@@ -159,7 +169,53 @@ func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "recovery_read_only", "recovery limited: diagnostic read-only; business mutations and model/tool calls are disabled")
 		return
 	}
+	if s.c4ControlledOnly && !c4ControlledRoute(r.Method, r.URL.Path) {
+		writeError(w, http.StatusForbidden, "c4_controlled_only", "isolated C4 runtime does not expose this capability")
+		return
+	}
 	s.dispatchAPI(w, r)
+}
+
+// Explicit local-only allowlist: new routes do not inherit external authority.
+func c4ControlledRoute(method, path string) bool {
+	read := method == http.MethodGet || method == http.MethodHead
+	if read {
+		switch path {
+		case "/api/health", "/api/profiles", "/api/catalog", "/api/catalog/events", "/api/events", "/api/repository-imports/operations":
+			return true
+		}
+	}
+	if path == "/api/missions" || path == "/api/repository-imports/inspections" {
+		return read || method == http.MethodPost
+	}
+	if !strings.HasPrefix(path, "/api/missions/") {
+		return false
+	}
+	p := strings.Split(strings.TrimPrefix(path, "/api/missions/"), "/")
+	if len(p) == 0 || p[0] == "" {
+		return false
+	}
+	if len(p) == 1 {
+		return read
+	}
+	if len(p) != 2 {
+		return false
+	}
+	if read {
+		switch p[1] {
+		case "c4", "plan-revisions", "local-operations", "recovery-diagnostic", "patch", "report", "invocations":
+			return true
+		}
+		return false
+	}
+	if method != http.MethodPost {
+		return false
+	}
+	switch p[1] {
+	case "c4", "plan", "plan-revisions", "chat", "approve", "pause", "deliver":
+		return true
+	}
+	return false
 }
 
 func (s *server) session(w http.ResponseWriter, r *http.Request) {

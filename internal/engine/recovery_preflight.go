@@ -27,6 +27,26 @@ func CheckRecoveryModelSnapshots(s *store.Store) error {
 	return validateRecoveryModelSnapshots(missions)
 }
 
+// Isolated startup preflight is read-only and never reconciles a legacy runner.
+func (e *Engine) CheckC4ControlledRecovery() error {
+	if e.options.C4Controlled == nil || e.options.C4 != nil {
+		return ErrC4Unavailable
+	}
+	missions, err := e.s.ListMissions()
+	if err != nil {
+		return err
+	}
+	for _, m := range missions {
+		if e.c4ControlledGate(m, false) != nil || domain.ValidateCodingTrace(m) != nil {
+			return ErrC4Unavailable
+		}
+		if err = e.ValidateRepositoryImport(m); err != nil {
+			return ErrC4Unavailable
+		}
+	}
+	return nil
+}
+
 func validateRecoveryModelSnapshots(missions []domain.Mission) error {
 	for _, m := range missions {
 		if err := c4Structure(m); err != nil {

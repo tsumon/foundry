@@ -80,9 +80,18 @@ func c4ExecutionAuthority(m domain.Mission, base string) (string, error) {
 	inner := m
 	inner.Spec.C4 = nil
 	inner.C4Operations = nil
+	inner.C4Controls = nil
 	seal, err := authority(inner, base, true)
 	if err != nil {
 		return "", err
+	}
+	if m.Spec.C4.ControlVersion == 1 {
+		for i := len(m.C4Controls) - 1; i >= 0; i-- {
+			if m.C4Controls[i].Kind == "readiness" {
+				seal += "\x00" + m.C4Controls[i].MaterialDigest
+				break
+			}
+		}
 	}
 	h := sha256.Sum256([]byte("FOUNDRY C4 execution authority v1\x00" + m.Spec.C4.ProfileDigest() + "\x00" + baseline.MaterialDigest + "\x00" + seal))
 	return hex.EncodeToString(h[:]), nil
@@ -99,6 +108,14 @@ func (e *Engine) newC4Operation(m domain.Mission, kind string) (domain.C4Operati
 	// objects in a mixed disposable runtime. C4 itself only cleans exact IDs.
 	owner := sha256.Sum256([]byte("foundry:c4:owner:v1\x00" + e.options.DataDir))
 	o := domain.C4Operation{SchemaVersion: 1, ID: id, Kind: kind, MissionID: m.ID, Epoch: m.Epoch, PlanRevision: c4PlanRevision(m), BaseCommit: m.BaseCommit, BaseDigest: m.RepositoryImport.BaseDigest, ProfileDigest: m.Spec.C4.ProfileDigest(), ContainerName: "foundry-c4-" + id, Owner: hex.EncodeToString(owner[:12]), State: "prepared", PreparedAt: now()}
+	if m.Spec.C4.ControlVersion == 1 {
+		r, err := e.currentC4Readiness(m)
+		if err != nil {
+			return o, err
+		}
+		o.ReadinessID, o.ReadinessDigest = r.ID, r.MaterialDigest
+		o.PreparedAt = e.c4Timestamp()
+	}
 	if kind == "candidate" {
 		ref := *m.CandidateGeneration
 		o.CandidateGeneration = &ref
@@ -113,6 +130,15 @@ func (e *Engine) newC4Operation(m domain.Mission, kind string) (domain.C4Operati
 func (e *Engine) c4Current(m domain.Mission, o domain.C4Operation) error {
 	if err := e.c4Gate(m); err != nil {
 		return err
+	}
+	if m.Spec.C4.ControlVersion == 1 && o.Dispatch == nil {
+		r, err := e.currentC4Readiness(m)
+		if err != nil {
+			return err
+		}
+		if o.ReadinessID != r.ID || o.ReadinessDigest != r.MaterialDigest {
+			return ErrC4Unavailable
+		}
 	}
 	for _, prior := range m.C4Operations {
 		if prior.ID != o.ID && (prior.Result == nil || prior.Dispatch != nil && prior.CleanupState() != "confirmed") {
@@ -143,6 +169,11 @@ func (e *Engine) c4Persist(id string) sandbox.C4Persist {
 	return func(ctx context.Context, expected domain.C4Operation, change sandbox.C4Change) (domain.C4Operation, error) {
 		e.mu.Lock()
 		defer e.mu.Unlock()
+		return e.c4PersistLocked(id)(ctx, expected, change)
+	}
+}
+func (e *Engine) c4PersistLocked(id string) sandbox.C4Persist {
+	return func(ctx context.Context, expected domain.C4Operation, change sandbox.C4Change) (domain.C4Operation, error) {
 		if err := ctx.Err(); err != nil {
 			return expected, err
 		}
@@ -169,7 +200,7 @@ func (e *Engine) c4Persist(id string) sandbox.C4Persist {
 				} else if err := e.c4Current(*current, o); err != nil {
 					return err
 				}
-				if err := change.Apply(&current.C4Operations[i], domain.C4Fact{Revision: current.Revision, At: now()}); err != nil {
+				if err := change.Apply(&current.C4Operations[i], domain.C4Fact{Revision: current.Revision, At: e.c4Timestamp()}); err != nil {
 					return err
 				}
 				committed = current.C4Operations[i]
@@ -181,7 +212,20 @@ func (e *Engine) c4Persist(id string) sandbox.C4Persist {
 	}
 }
 func (e *Engine) c4Trust() sandbox.C4Trust {
+	if c := e.options.C4Controlled; c != nil {
+		return sandbox.C4Trust{DockerPath: c.config.Profile.DockerPath, Endpoint: c.config.Profile.Endpoint, ManagedRoot: filepath.Join(e.c4Root, "missions")}
+	}
 	return sandbox.C4Trust{DockerPath: e.options.C4.dockerPath, Endpoint: e.options.C4.endpoint, ManagedRoot: filepath.Join(e.c4Root, "missions")}
+}
+
+func (e *Engine) executeC4(ctx context.Context, m domain.Mission, o domain.C4Operation, path string) (domain.C4Operation, error) {
+	if c := e.options.C4Controlled; c != nil {
+		if c.source == "docker_c4_control" {
+			return sandbox.ExecuteC4Docker(ctx, *m.Spec.C4, o, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust()}, path, e.c4Persist(m.ID))
+		}
+		return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(), path, c.driver, e.c4Persist(m.ID))
+	}
+	return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(), path, e.options.C4.driver, e.c4Persist(m.ID))
 }
 func (e *Engine) c4Path(path string) (string, error) {
 	rel, err := filepath.Rel(e.options.DataDir, path)

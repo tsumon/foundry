@@ -25,12 +25,14 @@ func NewC4SyntheticCapability(driver *sandbox.C4SyntheticDriver, models model.Ga
 }
 func (e *Engine) C4SimulationEnabled() bool {
 	c := e.options.C4
-	return e.c4Root != "" && c != nil && c.driver != nil && c.models != nil
+	return e.options.C4Controlled == nil && e.c4Root != "" && c != nil && c.driver != nil && c.models != nil
 }
 
 // C4SimulationAvailable is a structural display hint, never action consent.
-func (e *Engine) C4SimulationAvailable(m domain.Mission) bool { return isC4(m) && e.c4Gate(m) == nil }
-func isC4(m domain.Mission) bool                              { return m.Spec.C4 != nil || m.C4Invalid || len(m.C4Operations) > 0 }
+func (e *Engine) C4SimulationAvailable(m domain.Mission) bool {
+	return m.Spec.C4 != nil && m.Spec.C4.ControlVersion == 0 && e.c4Gate(m) == nil
+}
+func isC4(m domain.Mission) bool { return m.Spec.C4 != nil || m.C4Invalid || len(m.C4Operations) > 0 }
 
 func c4Profiles(profiles map[domain.Role]domain.Profile, snapshot *domain.MissionModelSnapshot) error {
 	if snapshot != nil || len(profiles) != 7 {
@@ -49,12 +51,17 @@ func c4Structure(m domain.Mission) error {
 	if !isC4(m) {
 		return nil
 	}
-	if domain.ValidateC4Mission(m) != nil || domain.ValidateMissionModelSnapshot(m) != nil || m.Spec.C4 == nil || m.Spec.C4.Mode != "synthetic" || m.WorkspaceMode != "generations_v1" || m.CodingVersion != 1 || m.ImportVersion != 1 || m.RepositoryImport == nil || m.ToolMode != "" || m.TaskBindings != nil || m.MCPBindings != nil || m.ModelSnapshotInvalid || !reflect.DeepEqual(m.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) {
+	if domain.ValidateC4Mission(m) != nil || domain.ValidateMissionModelSnapshot(m) != nil || m.Spec.C4 == nil || (m.Spec.C4.Mode != "synthetic" && m.Spec.C4.ControlVersion != 1) || m.WorkspaceMode != "generations_v1" || m.CodingVersion != 1 || m.ImportVersion != 1 || m.RepositoryImport == nil || m.ToolMode != "" || m.TaskBindings != nil || m.MCPBindings != nil || m.ModelSnapshotInvalid || !reflect.DeepEqual(m.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) {
 		return ErrC4Unavailable
 	}
 	return c4Profiles(m.Profiles, m.ModelSnapshot)
 }
 func (e *Engine) c4Gate(m domain.Mission) error {
+	if e.options.C4Controlled != nil || m.Spec.C4 != nil && m.Spec.C4.ControlVersion == 1 {
+		// Ongoing dispatched operations may finish after receipt/config expiry;
+		// preparation and dispatch perform the independent live-time checks.
+		return e.c4ControlledGate(m, false)
+	}
 	if !isC4(m) {
 		return nil
 	}
@@ -68,6 +75,21 @@ func (e *Engine) c4Gate(m domain.Mission) error {
 	return nil
 }
 func (e *Engine) c4CreateGate(r CreateRequest) error {
+	if e.options.C4Controlled != nil || r.Spec.C4 != nil && r.Spec.C4.ControlVersion == 1 {
+		c := e.options.C4Controlled
+		if c == nil || e.options.C4 != nil || ValidateC4Activation(c.config, e.c4Time()) != nil || r.Spec.C4 == nil || r.Spec.C4.ProfileDigest() != c.config.Profile.ProfileDigest() || r.ImportVersion != 1 || r.ImportSelection == nil || r.CodingVersion != 1 || r.WorkspaceMode != "generations_v1" || r.ToolMode != "" || r.MCPSelection != nil || r.CapabilitySelection != nil || !reflect.DeepEqual(r.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) {
+			return ErrC4Unavailable
+		}
+		v, err := e.s.GetRepositoryInspection(r.ImportSelection.InspectionID)
+		if err != nil || domain.ValidateImportSelection(v, *r.ImportSelection) != nil || v.Root != c.config.SourceRoot || v.Commit != c.config.BaseCommit || r.RepoPath != c.config.SourceRoot {
+			return ErrC4Unavailable
+		}
+		_, profiles, snapshot, _, err := e.s.ResolveMissionModelSelection(r.Spec.ProfileID)
+		if err != nil {
+			return err
+		}
+		return c4Profiles(profiles, snapshot)
+	}
 	if r.Spec.C4 == nil {
 		return nil
 	}
@@ -86,6 +108,9 @@ func (e *Engine) c4ModelGateway(m domain.Mission) (model.Gateway, error) {
 		if err := e.c4Gate(m); err != nil {
 			return nil, err
 		}
+		if e.options.C4Controlled != nil {
+			return e.options.C4Controlled.models, nil
+		}
 		return e.options.C4.models, nil
 	}
 	if e.gateway == nil {
@@ -101,6 +126,11 @@ func (e *Engine) resolveVerificationImage(ctx context.Context, m domain.Mission)
 		}
 		if _, err := currentC4Baseline(m); err != nil {
 			return "", err
+		}
+		if m.Spec.C4.ControlVersion == 1 {
+			if _, err := e.currentC4Readiness(m); err != nil {
+				return "", err
+			}
 		}
 		return m.Spec.C4.ImageID, nil
 	}

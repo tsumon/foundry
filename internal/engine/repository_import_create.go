@@ -130,6 +130,9 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 	r.Spec.ProfileID = resolved
 	r.Spec.Protected = append(append([]string{}, r.Spec.Protected...), receipt.ProtectedInputs...)
 	m := domain.Mission{ID: id, ImportVersion: 1, RepositoryImport: &binding, CodingVersion: 1, WorkspaceMode: r.WorkspaceMode, Title: r.Title, Goal: r.Goal, RepoPath: receipt.Root, BaseCommit: receipt.Commit, State: "draft", Stage: "brief", Spec: r.Spec, Profiles: frozen, ModelSnapshot: modelSnapshot, ModelPolicySnapshot: modelPolicy, ContextManifest: receipt.ContextManifest, Budget: domain.Budget{MaxCalls: r.Spec.MaxCalls}, CandidateDigest: digest, CandidateGeneration: &ref, Messages: []domain.Message{}, Changes: []domain.Change{}, Evidence: []domain.Verification{}, Reviews: []domain.Review{}, Approvals: []domain.Approval{}}
+	if e.options.C4Controlled != nil && digest != e.options.C4Controlled.config.BaseDigest {
+		return fail("prepare", domain.ImportSourceChanged)
+	}
 	if modelSnapshot != nil {
 		if modelSnapshot.SchemaVersion == 2 {
 			m.WorkspaceMode, err = domain.InferenceWorkspaceMode(m.WorkspaceMode)

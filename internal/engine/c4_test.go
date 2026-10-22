@@ -9,12 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"foundry/internal/c4verify"
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/sandbox"
 	"foundry/internal/store"
+	"foundry/internal/workspace"
 )
 
 // Removing the early gate would import source and create a mission without the
@@ -57,13 +59,14 @@ func (f *c4Forbidden) Run(context.Context, string, string, string, string) (doma
 }
 
 type c4Driver struct {
-	creates, starts, removes  int
-	labels                    map[string]string
-	name, path, dbPath        string
-	class                     string
-	cleanupFail               bool
-	beforeResult, afterCreate func()
-	waiting                   chan struct{}
+	creates, starts, removes, inspects int
+	labels                             map[string]string
+	name, path, dbPath                 string
+	class                              string
+	cleanupFail                        bool
+	beforeResult, afterCreate          func()
+	beforeRemove                       func()
+	waiting                            chan struct{}
 }
 
 func (d *c4Driver) Create(_ context.Context, c sandbox.C4Command) (string, error) {
@@ -103,6 +106,7 @@ func (d *c4Driver) Wait(ctx context.Context, _ sandbox.C4Command) error {
 	return nil
 }
 func (d *c4Driver) Inspect(context.Context, sandbox.C4Command) (sandbox.C4Inspection, error) {
+	d.inspects++
 	class := d.class
 	if class == "" {
 		class = "passed"
@@ -124,6 +128,9 @@ func (d *c4Driver) Logs(_ context.Context, _ sandbox.C4Command, w io.Writer) (bo
 	return false, err
 }
 func (d *c4Driver) Remove(context.Context, sandbox.C4Command) error {
+	if d.beforeRemove != nil {
+		d.beforeRemove()
+	}
 	d.removes++
 	if d.cleanupFail {
 		return errors.New("synthetic cleanup failure")
@@ -132,6 +139,9 @@ func (d *c4Driver) Remove(context.Context, sandbox.C4Command) error {
 }
 
 func c4Fixture(t *testing.T) (*Engine, *store.Store, domain.Mission, *c4Driver, *c4Forbidden, string) {
+	return c4FixtureMode(t, false)
+}
+func c4FixtureMode(t *testing.T, controlled bool) (*Engine, *store.Store, domain.Mission, *c4Driver, *c4Forbidden, string) {
 	t.Helper()
 	e, _, repo, data := importFixture(t)
 	dbPath := filepath.Join(t.TempDir(), "c4.db")
@@ -160,7 +170,24 @@ func c4Fixture(t *testing.T) (*Engine, *store.Store, domain.Mission, *c4Driver, 
 	if err != nil || v.Status != "ready" {
 		t.Fatal(v, err)
 	}
-	m, err := e.Create(context.Background(), CreateRequest{ImportVersion: 1, ImportSelection: &domain.ImportSelection{InspectionID: v.ID, Digest: v.Digest}, CodingVersion: 1, WorkspaceMode: "generations_v1", Title: "C4 synthetic", Goal: "change value", RepoPath: repo, Spec: domain.Spec{Scope: v.Spec.Scope, Acceptance: v.Spec.Acceptance, Image: v.Spec.Image, ProfileID: "synthetic", C4: c4Profile()}})
+	p := c4Profile()
+	if controlled {
+		p.ControlVersion = 1
+		digest, _, _, err := workspace.PrepareRepositoryImport(context.Background(), v.Root, v.Commit, filepath.Join(t.TempDir(), "admitted"), strings.Repeat("d", 32), v.Spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := C4Activation{SchemaVersion: 1, Enabled: true, Profile: *p, SourceRoot: v.Root, BaseCommit: v.Commit, BaseDigest: digest, ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)}
+		cap, err := NewC4ControlledSyntheticCapability(c, sandbox.NewC4SyntheticDriver(d), &scripted{}, func(context.Context) (sandbox.C4ReadinessResult, error) {
+			return sandbox.C4ReadinessResult{Fingerprint: strings.Repeat("c", 64)}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.options.C4, e.options.C4Controlled = nil, cap
+		repo = v.Root
+	}
+	m, err := e.Create(context.Background(), CreateRequest{ImportVersion: 1, ImportSelection: &domain.ImportSelection{InspectionID: v.ID, Digest: v.Digest}, CodingVersion: 1, WorkspaceMode: "generations_v1", Title: "C4 synthetic", Goal: "change value", RepoPath: repo, Spec: domain.Spec{Scope: v.Spec.Scope, Acceptance: v.Spec.Acceptance, Image: v.Spec.Image, ProfileID: "synthetic", C4: p}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,8 +276,17 @@ func TestC4BaselineIndependentConsentAndPlan(t *testing.T) {
 }
 
 func TestC4CandidateFailureRepairPassAndNoLegacyEscape(t *testing.T) {
-	e, s, m, d, f, repo := c4Fixture(t)
+	testC4CandidateFailureRepairPass(t, false)
+}
+func TestC4ControlledCandidateFailureRepairPass(t *testing.T) {
+	testC4CandidateFailureRepairPass(t, true)
+}
+func testC4CandidateFailureRepairPass(t *testing.T, controlled bool) {
+	e, s, m, d, f, repo := c4FixtureMode(t, controlled)
 	before := importSourceDigest(t, repo)
+	if controlled {
+		m = controlReady(t, e, m)
+	}
 	m = c4Baseline(t, e, m)
 	// Changing live settings cannot redirect this mission's frozen profiles.
 	if err := s.PutProfile(domain.Profile{ID: "real-after-create", Name: "unused real declaration", Kind: "openai", Protocol: "chat_completions", BaseURL: "https://example.invalid", Model: "not-used"}); err != nil {
@@ -268,7 +304,11 @@ func TestC4CandidateFailureRepairPassAndNoLegacyEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := &scripted{outputs: []string{`{"summary":"change","steps":[{"id":"one","title":"change","description":"update","depends_on":[],"files":["main.go"]}]}`, `{"summary":"changed","edits":[{"path":"main.go","content":"package demo // broken\n"}]}`, `{"summary":"repaired","edits":[{"path":"main.go","content":"package demo\nfunc Value() int { return 2 }\n"}]}`, codingPass, codingPass, `{"answer":"Synthetic explanation"}`}}
-	e.options.C4.models = &codingReviewGateway{script: script}
+	if controlled {
+		e.options.C4Controlled.models = &codingReviewGateway{script: script}
+	} else {
+		e.options.C4.models = &codingReviewGateway{script: script}
+	}
 	if _, err := e.Plan(context.Background(), m.ID, m.Revision); err != nil {
 		t.Fatal(err)
 	}

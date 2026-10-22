@@ -65,7 +65,7 @@ func (e *Engine) verifyC4Candidate(run *operation) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	finished, executionErr := sandbox.ExecuteC4(run.ctx, *m.Spec.C4, o, e.c4Trust(), candidate, e.options.C4.driver, e.c4Persist(m.ID))
+	finished, executionErr := e.executeC4(run.ctx, m, o, candidate)
 	if errors.Is(executionErr, sandbox.ErrC4Persistence) {
 		return false, codingError("persistence_failed", executionErr)
 	}
@@ -75,7 +75,7 @@ func (e *Engine) verifyC4Candidate(run *operation) (bool, error) {
 	r := finished.Result
 	v := c4Verification(m, finished)
 	_, err = e.update(run, "verification.completed", func(current *domain.Mission) error {
-		if err := e.c4Current(*current, o); err != nil {
+		if err := e.c4Current(*current, finished); err != nil {
 			return err
 		}
 		current.Evidence = append(current.Evidence, v)
@@ -99,5 +99,14 @@ func c4Verification(m domain.Mission, o domain.C4Operation) domain.Verification 
 	if r.ExitCode != nil {
 		code = *r.ExitCode
 	}
-	return domain.Verification{ID: o.ID, CandidateDigest: o.CandidateDigest, ImageID: m.Spec.C4.ImageID, CreatedAt: r.At, AcceptanceRevision: o.PlanRevision, Passed: o.Passed(), SourceVersion: 1, SourceKind: "synthetic_stub", Results: []domain.CommandResult{{Command: m.Spec.C4.Verifier, ExitCode: code, Output: r.Output, TimedOut: r.Class == "timeout"}}}
+	source := "synthetic_stub"
+	if m.Spec.C4.ControlVersion == 1 && m.Spec.C4.Mode == "docker" {
+		source = "unknown"
+		for _, c := range m.C4Controls {
+			if c.ID == o.ReadinessID && c.MaterialDigest == o.ReadinessDigest && c.SourceKind == "docker_c4_control" && c.Result != nil && c.Result.Status == "ready" && o.Dispatch != nil && o.Started != nil && o.CleanupState() == "confirmed" && (r.Class == "passed" || r.Class == "test_failed") && r.ExitCode != nil && r.Tests > 0 {
+				source = "isolated_execution"
+			}
+		}
+	}
+	return domain.Verification{ID: o.ID, CandidateDigest: o.CandidateDigest, ImageID: m.Spec.C4.ImageID, CreatedAt: r.At, AcceptanceRevision: o.PlanRevision, Passed: o.Passed(), SourceVersion: 1, SourceKind: source, Results: []domain.CommandResult{{Command: m.Spec.C4.Verifier, ExitCode: code, Output: r.Output, TimedOut: r.Class == "timeout"}}}
 }

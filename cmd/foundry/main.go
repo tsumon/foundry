@@ -29,6 +29,7 @@ import (
 )
 
 type config struct {
+	c4ControlConfig               string
 	localMCPTest                  bool
 	disableControlledReadCreation bool
 	dataDir                       string
@@ -91,7 +92,7 @@ func run() error {
 }
 
 func runWithArgs(args []string) error {
-	return runWithSecrets(args, model.NewSecrets())
+	return runWithSecrets(args, nil)
 }
 
 func runWithSecrets(args []string, secrets model.Secrets) error {
@@ -101,6 +102,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	}
 	flags := flag.NewFlagSet("foundry", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	flags.StringVar(&cfg.c4ControlConfig, "c4-control-config", "", "explicit isolated C4 activation configuration file")
 	flags.BoolVar(&cfg.localMCPTest, "local-mcp-test", false, "enable the controller-owned synthetic local MCP reference service")
 	flags.StringVar(&cfg.openaiSubscriptionRoute, "openai-subscription-route", "", "explicitly enable one existing OpenAI subscription connection route")
 	flags.StringVar(&cfg.openaiKeychainJournal, "openai-keychain-journal", "", "new absolute private journal for the native startup probe")
@@ -111,6 +113,17 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected startup arguments")
+	}
+	var c4Activation *engine.C4Activation
+	if cfg.c4ControlConfig != "" {
+		if cfg.localMCPTest || cfg.openaiSubscriptionRoute != "" || cfg.openaiKeychainJournal != "" || cfg.openaiCatalogRoute != "" || cfg.openaiInferenceRoute != "" {
+			return errC4Config
+		}
+		c, err := readC4Config(cfg.c4ControlConfig, time.Now())
+		if err != nil {
+			return err
+		}
+		c4Activation = &c
 	}
 	if err := validateOpenAIStartupOptions(cfg); err != nil {
 		return err
@@ -129,6 +142,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 		return err
 	}
 	defer persistent.Close()
+	if c4Activation != nil {
+		return runC4Controlled(cfg, persistent, *c4Activation)
+	}
 	// Decide instance-wide readiness before any recovery, observer or owned
 	// MCP service can mutate history. Do not swallow other startup failures.
 	recoveryReadOnly := false
@@ -158,6 +174,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 		descriptor = &d
 	}
 
+	if secrets == nil {
+		secrets = model.NewSecrets()
+	}
 	client := model.NewClient(secrets)
 	models := newProductionModels(persistent, client, secrets)
 	defer models.siwc.Close()

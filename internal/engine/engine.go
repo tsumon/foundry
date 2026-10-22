@@ -20,6 +20,7 @@ import (
 )
 
 type Options struct {
+	C4Controlled *C4ControlledCapability
 	C4           *C4SyntheticCapability
 	LocalMCPTest *mcptest.Descriptor
 	// Go-only experimental service; never configured by CLI, environment or HTTP.
@@ -54,6 +55,7 @@ type operation struct {
 	finished          chan struct{}
 }
 type Engine struct {
+	c4Clock func() time.Time
 	c4Root  string // Canonical trusted data root pinned at construction; no mission aliases.
 	s       *store.Store
 	gateway model.Gateway
@@ -74,7 +76,7 @@ func New(s *store.Store, gateway model.Gateway, options Options) *Engine {
 	options.DataDir = abs
 	owner := sha256.Sum256([]byte(abs))
 	runner := options.Runner
-	if runner == nil {
+	if runner == nil && options.C4Controlled == nil {
 		runner = sandbox.New(options.DockerPath, hex.EncodeToString(owner[:12]))
 	}
 	c4Root, _ := filepath.EvalSymlinks(abs)
@@ -439,7 +441,7 @@ func (e *Engine) Recover(ctx context.Context) error {
 	// MCP/research reconciliation is local. Unlike ABv1, v2 can also have
 	// explicitly approved execution: retain owner-scoped cleanup without doing
 	// ordinary generation/Git recovery or replaying any execution.
-	ordinaryRecovery := len(missions) == 0 && !e.C4SimulationEnabled()
+	ordinaryRecovery := len(missions) == 0 && !e.C4SimulationEnabled() && e.options.C4Controlled == nil
 	executionCleanup := false
 	for _, m := range missions {
 		if isC4(m) {

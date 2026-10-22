@@ -66,7 +66,7 @@ func (e *Engine) ApproveC4Baseline(ctx context.Context, id string, revision int6
 		}
 		for i := range current.C4Operations {
 			if current.C4Operations[i].ID == o.ID {
-				current.C4Operations[i].Approval = &domain.C4Approval{Digest: digest, Revision: current.Revision, At: now()}
+				current.C4Operations[i].Approval = &domain.C4Approval{Digest: digest, Revision: current.Revision, At: e.c4Timestamp()}
 				current.C4Operations[i].State = "approved"
 				return nil
 			}
@@ -87,6 +87,10 @@ func (e *Engine) runC4Explicit(ctx context.Context, id string, revision int64, o
 	if err != nil {
 		e.mu.Unlock()
 		return m, err
+	}
+	if cleanup && m.Spec.C4 != nil && m.Spec.C4.ControlVersion == 1 {
+		e.mu.Unlock()
+		return m, ErrC4Unavailable
 	}
 	o, err := c4Operation(m, operationID, digest)
 	if err != nil {
@@ -130,7 +134,7 @@ func (e *Engine) runC4Explicit(ctx context.Context, id string, revision int64, o
 		if pathErr != nil {
 			return m, pathErr
 		}
-		_, err = sandbox.ExecuteC4(runCtx, *m.Spec.C4, o, e.c4Trust(), base, e.options.C4.driver, e.c4Persist(id))
+		_, err = e.executeC4(runCtx, m, o, base)
 	}
 	current, getErr := e.s.GetMission(id)
 	if err != nil {

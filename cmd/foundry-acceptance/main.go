@@ -20,6 +20,7 @@ import (
 
 	"foundry/internal/acceptance"
 	"foundry/internal/accounts"
+	"foundry/internal/c4fixture"
 	"foundry/internal/domain"
 	"foundry/internal/engine"
 	"foundry/internal/gitinspect"
@@ -152,7 +153,7 @@ func startAcceptance(webDir string) (_ *acceptanceRuntime, err error) {
 	if err = os.MkdirAll(filepath.Join(root, "managed"), 0700); err != nil {
 		return nil, err
 	}
-	r.engine = engine.New(r.store, codingReplanGateway{fallback: codingLoopGateway{fallback: baseGateway}, store: r.store}, engine.Options{DataDir: filepath.Join(root, "managed"), Runner: codingLoopRunner{fallback: syntheticRunner{}}, LocalMCPTest: &descriptor, C4: engine.NewC4SyntheticCapability(sandbox.NewC4SyntheticDriver(&c4FixtureDriver{}), c4FixtureGateway{store: r.store}, "/synthetic/docker", "unix:///synthetic/docker.sock")})
+	r.engine = engine.New(r.store, codingReplanGateway{fallback: codingLoopGateway{fallback: baseGateway}, store: r.store}, engine.Options{DataDir: filepath.Join(root, "managed"), Runner: codingLoopRunner{fallback: syntheticRunner{}}, LocalMCPTest: &descriptor, C4: engine.NewC4SyntheticCapability(sandbox.NewC4SyntheticDriver(&c4FixtureDriver{}), c4fixture.New(r.store), "/synthetic/docker", "unix:///synthetic/docker.sock")})
 	if err = r.engine.Recover(context.Background()); err != nil {
 		return nil, err
 	}
