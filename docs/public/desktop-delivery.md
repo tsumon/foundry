@@ -51,6 +51,15 @@ installing dependencies and sets both `TEMP` and `TMP` for subsequent steps.
 Production path admission still rejects short aliases; it does not silently
 canonicalize them or relax reparse, ACL, reserved-name or protected-file checks.
 
+Installed Windows acceptance retains a long, non-ASCII, spaced data path instead
+of shortening it to avoid native filesystem limits. Fixed, isolated Git commands
+must explicitly support long paths without changing system/user Git configuration
+or accepting namespace aliases. Native regression compares the legacy disabled
+setting with the controlled long-path setting and verifies a real, applicable
+patch. A nonzero diff result with empty output must never be sealed as a valid
+delivery; changed trees require nonempty patch evidence. Attachment failures must
+identify the artifact type, byte count and digest without printing its content.
+
 The shared race suite has a finite 1,200-second **per-package** budget. The
 600-second normal-suite budget, uncached full test selection, race detector,
 vet and 45-minute workflow bound remain unchanged. A native CI trace exhausted

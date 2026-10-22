@@ -3,12 +3,129 @@ package workspace
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"foundry/internal/testutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestExportRejectsEmptyPatchForDifferentTrees(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"base", "candidate"} {
+		if e := os.Mkdir(filepath.Join(dir, name), 0755); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(filepath.Join(dir, name, "same.txt"), []byte("same content\n"), 0644); e != nil {
+			t.Fatal(e)
+		}
+	}
+	// Git cannot encode a writable-to-readonly change, but our sealed tree
+	// identity includes it. Never publish an empty patch for distinct trees.
+	if e := os.Chmod(filepath.Join(dir, "candidate", "same.txt"), 0444); e != nil {
+		t.Fatal(e)
+	}
+	if _, _, e := Export(context.Background(), dir, "report"); e == nil {
+		t.Fatal("published empty patch for distinct tree identities")
+	}
+	if _, e := os.Stat(filepath.Join(dir, "delivery")); !os.IsNotExist(e) {
+		t.Fatal("failed export published delivery", e)
+	}
+}
+
+func TestExportAllowsActualNoChange(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"base", "candidate"} {
+		if e := os.Mkdir(filepath.Join(dir, name), 0755); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(filepath.Join(dir, name, "same.txt"), []byte("same content\n"), 0644); e != nil {
+			t.Fatal(e)
+		}
+	}
+	patch, _, e := Export(context.Background(), dir, "report")
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := os.ReadFile(patch)
+	if e != nil || len(b) != 0 {
+		t.Fatal("unchanged tree contract changed", e, len(b))
+	}
+}
+
+func TestPatchResultRequiresOutputForExitOne(t *testing.T) {
+	// Obtain a real ExitError without a shell or replacing the trusted Git.
+	dir := t.TempDir()
+	for _, name := range []string{"before", "after"} {
+		if e := os.WriteFile(filepath.Join(dir, name), []byte(name), 0644); e != nil {
+			t.Fatal(e)
+		}
+	}
+	c := testutil.Git(t, "diff", "--no-index", "--", "before", "after")
+	c.Dir = dir
+	b, e := c.Output()
+	var status *exec.ExitError
+	if !errors.As(e, &status) || status.ExitCode() != 1 || len(b) == 0 {
+		t.Fatal("invalid diff fixture", e)
+	}
+	t.Run("empty exit one", func(t *testing.T) {
+		if e := checkPatchResult(nil, nil, e, false); e == nil {
+			t.Fatal("exit 1 with no diff admitted")
+		}
+	})
+	if e := checkPatchResult(b, nil, e, true); e != nil {
+		t.Fatal("ordinary changed diff rejected", e)
+	}
+	t.Run("different empty exit zero", func(t *testing.T) {
+		if e := checkPatchResult(nil, nil, nil, true); e == nil {
+			t.Fatal("distinct trees with empty successful diff admitted")
+		}
+	})
+	if e := checkPatchResult(nil, nil, nil, false); e != nil {
+		t.Fatal("actual no-change rejected", e)
+	}
+	if e := checkPatchResult(b, nil, errors.New("output limit"), true); e == nil {
+		t.Fatal("partial failed output admitted")
+	}
+	t.Run("partial exit one with stderr", func(t *testing.T) {
+		if e := checkPatchResult(b, []byte("fixture failure"), e, true); e == nil {
+			t.Fatal("partial diff with error output admitted")
+		}
+	})
+	t.Run("successful stderr", func(t *testing.T) {
+		if e := checkPatchResult(b, []byte("fixture warning"), nil, true); e == nil {
+			t.Fatal("diff with stderr admitted")
+		}
+	})
+}
+
+func TestGitDiffOutputOverflowCannotMasqueradeAsExitOne(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"before", "after"} {
+		if e := os.WriteFile(filepath.Join(dir, name), []byte(strings.Repeat(name+"\n", 1000)), 0644); e != nil {
+			t.Fatal(e)
+		}
+	}
+	b, stderr, e := gitCommandOutput(context.Background(), dir, 128, "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--", "before", "after")
+	var status *exec.ExitError
+	if e == nil || errors.As(e, &status) {
+		t.Fatalf("output bound hidden by process status: bytes=%d stderr=%d err=%v", len(b), len(stderr), e)
+	}
+}
+
+func TestGitDiffStderrIsCapturedAndRejected(t *testing.T) {
+	dir := t.TempDir()
+	b, stderr, e := gitCommandOutput(context.Background(), dir, 4096, "diff", "--no-index", "--", "absent-one", "absent-two")
+	if e == nil || len(stderr) == 0 {
+		t.Fatal("missing-path fixture did not emit an error")
+	}
+	if e := checkPatchResult(b, stderr, e, true); e == nil {
+		t.Fatal("real Git error accepted as patch")
+	}
+}
 
 func TestExportPreservesNestedDirectoryPrefixes(t *testing.T) {
 	repo := repository(t)

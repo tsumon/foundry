@@ -46,5 +46,8 @@ func New() (Config, error) {
 	}
 	c.Root = system
 	c.Environment = []string{"PATH=" + filepath.Join(programs, "Git", "cmd") + ";" + filepath.Join(system, "System32"), "SYSTEMROOT=" + system, "WINDIR=" + system, "HOME=" + private, "XDG_CONFIG_HOME=" + private, "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_SYSTEM=" + empty, "GIT_CONFIG_GLOBAL=" + empty, "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "GIT_PROTOCOL_FROM_USER=0", "GIT_ATTR_NOSYSTEM=1"}
+	// This owned command-scope setting is not inherited and cannot be disabled
+	// by repository-local config. All filesystem boundary checks remain active.
+	c.Environment = append(c.Environment, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.longpaths", "GIT_CONFIG_VALUE_0=true")
 	return c, nil
 }

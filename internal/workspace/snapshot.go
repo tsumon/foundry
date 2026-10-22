@@ -18,20 +18,26 @@ import (
 const MaxSnapshotBytes = 10 * 1024 * 1024
 
 type limitedBuffer struct {
-	bytes.Buffer
-	limit int
+	buffer   bytes.Buffer
+	limit    int
+	overflow bool
 }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
-	if b.Len()+len(p) > b.limit {
+	if b.buffer.Len()+len(p) > b.limit {
+		b.overflow = true
 		return 0, errors.New("command output exceeds bound")
 	}
-	return b.Buffer.Write(p)
+	return b.buffer.Write(p)
 }
 func gitCommand(ctx context.Context, dir string, limit int, args ...string) ([]byte, error) {
+	b, _, e := gitCommandOutput(ctx, dir, limit, args...)
+	return b, e
+}
+func gitCommandOutput(ctx context.Context, dir string, limit int, args ...string) ([]byte, []byte, error) {
 	config, err := gitexec.New()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer config.Close()
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -48,9 +54,18 @@ func gitCommand(ctx context.Context, dir string, limit int, args ...string) ([]b
 	c.WaitDelay = 100 * time.Millisecond
 	b := &limitedBuffer{limit: limit}
 	c.Stdout = b
-	c.Stderr = &limitedBuffer{limit: 4096}
+	stderr := &limitedBuffer{limit: 4096}
+	c.Stderr = stderr
 	e := c.Run()
-	return b.Bytes(), e
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
+	// os/exec can prioritize an ExitError over a pipe-copy error. Do not let
+	// diff's ordinary exit 1 disguise a truncated stdout or stderr stream.
+	if b.overflow || stderr.overflow {
+		return nil, nil, errors.New("command output exceeds bound")
+	}
+	return b.buffer.Bytes(), stderr.buffer.Bytes(), e
 }
 func hash(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 func Snapshot(ctx context.Context, repo, dir string, scope []string) (string, []domain.FileMeta, error) {

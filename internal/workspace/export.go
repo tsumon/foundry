@@ -34,17 +34,36 @@ func Export(ctx context.Context, dir, report string) (string, string, error) {
 }
 
 func generatePatch(ctx context.Context, dir, candidate string) ([]byte, error) {
-	if _, e := Digest(filepath.Join(dir, "base")); e != nil {
+	baseDigest, e := Digest(filepath.Join(dir, "base"))
+	if e != nil {
 		return nil, e
 	}
-	if _, e := Digest(filepath.Join(dir, candidate)); e != nil {
+	candidateDigest, e := Digest(filepath.Join(dir, candidate))
+	if e != nil {
 		return nil, e
 	}
-	b, e := gitCommand(ctx, dir, 24*1024*1024, "diff", "--no-index", "--no-renames", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "--", "base", candidate)
+	b, stderr, e := gitCommandOutput(ctx, dir, 24*1024*1024, "diff", "--no-index", "--no-renames", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "--", "base", candidate)
+	if e := checkPatchResult(b, stderr, e, baseDigest != candidateDigest); e != nil {
+		return nil, e
+	}
+	return normalizePatch(b, candidate)
+}
+
+func checkPatchResult(b, stderr []byte, e error, different bool) error {
 	var exit *exec.ExitError
-	if e != nil && (!errors.As(e, &exit) || exit.ExitCode() != 1) {
-		return nil, errors.New("patch generation failed")
+	// --no-index uses exit 1 both for differences and some filesystem errors.
+	// Never seal missing/partial output as a successful delivery. Keep stderr
+	// private: it can contain paths or source data, so return only fixed errors.
+	if len(stderr) != 0 || (e != nil && (!errors.As(e, &exit) || exit.ExitCode() != 1)) {
+		return errors.New("patch generation failed")
 	}
+	if len(b) == 0 && (e != nil || different) {
+		return errors.New("patch generation returned no diff for changed trees or exit status")
+	}
+	return nil
+}
+
+func normalizePatch(b []byte, candidate string) ([]byte, error) {
 	lines := strings.Split(string(b), "\n")
 	inHunk := false
 	for i, line := range lines {

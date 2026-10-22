@@ -5,6 +5,17 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+function assertDeliveryArtifact(route, bytes, delivery) {
+  assert.ok(
+    bytes.length > 100,
+    JSON.stringify({
+      artifact: route,
+      bytes: bytes.length,
+      sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+      expected_sha256: delivery?.[route + "_sha256"] ?? null,
+    }),
+  );
+}
 function assertFlowEvidence(m) {
   assert.equal(m.state, "awaiting_delivery");
   assert.equal(m.delivery, null);
@@ -145,7 +156,7 @@ async function installedFlow(child, cookie, authorized, missions) {
       const response = await api("/" + route);
       assert.match(response.headers.get("content-disposition"), /attachment/);
       const bytes = Buffer.from(await response.arrayBuffer());
-      assert.ok(bytes.length > 100);
+      assertDeliveryArtifact(route, bytes, m.delivery);
       if (route === "report") assert.match(bytes.toString(), /synthetic_stub/);
       receipt.push({
         task: m.id,
@@ -163,4 +174,4 @@ async function installedFlow(child, cookie, authorized, missions) {
   }
   return receipt;
 }
-module.exports = { installedFlow, assertFlowEvidence };
+module.exports = { installedFlow, assertFlowEvidence, assertDeliveryArtifact };
