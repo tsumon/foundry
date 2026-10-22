@@ -3,12 +3,16 @@ package workspace
 import (
 	"errors"
 	"fmt"
+	"foundry/internal/platformfs"
 	"path"
 	"strings"
 	"unicode"
 )
 
 func safePath(p string) error {
+	if err := platformfs.ValidateRelative(p); err != nil {
+		return err
+	}
 	if p == "" || p == "." || path.IsAbs(p) || path.Clean(p) != p || strings.Contains(p, "\\") || strings.HasPrefix(p, "../") {
 		return errors.New("invalid relative path")
 	}

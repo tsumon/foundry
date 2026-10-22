@@ -6,8 +6,8 @@ import (
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/store"
+	"foundry/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -75,7 +75,7 @@ func setup(t *testing.T, outputs ...string) (*Engine, *store.Store, *scripted, *
 	os.Mkdir(filepath.Join(repo, "src"), 0755)
 	os.WriteFile(filepath.Join(repo, "src/main.txt"), []byte("before\n"), 0644)
 	for _, a := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "base"}} {
-		c := exec.Command("git", a...)
+		c := testutil.Git(t, a...)
 		c.Dir = repo
 		if b, e := c.CombinedOutput(); e != nil {
 			t.Fatalf("%v %s", e, b)
@@ -155,7 +155,7 @@ func TestCompleteWorkflowAndStaleDelivery(t *testing.T) {
 	if m.State != "delivered" {
 		t.Fatal(m.State)
 	}
-	c := exec.Command("git", "apply", "--check", m.Delivery.PatchPath)
+	c := testutil.Git(t, "apply", "--check", m.Delivery.PatchPath)
 	c.Dir = m.RepoPath
 	if b, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("patch: %v %s", err, b)

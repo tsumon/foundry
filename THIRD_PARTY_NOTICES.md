@@ -10,8 +10,48 @@ deduplicated.
 The inventory covers:
 
 - the npm runtime closure (`react`, `react-dom`, and `scheduler`);
-- the complete npm build and test lock tree; and
-- four Go runtime modules plus two modules present only for dependency tests.
+- the complete **web** npm build and test lock tree; and
+- five Go runtime modules plus two modules present only for dependency tests.
+
+The desktop build lock is separate (`desktop/package-lock.json`). Its npm build
+tools are not installed in the shipped application. This source inventory is not
+a claim that every desktop build dependency has been legally audited.
+
+## Desktop runtime distribution
+
+The installed app includes this file, the complete `third_party/` tree, Foundry's
+Apache-2.0 license, the exact Go toolchain LICENSE/PATENTS and the target Electron
+archive's MIT license and **complete** `LICENSES.chromium.html`. The latter
+includes Chromium, Node.js and native runtime component notices. Open **Help →
+Third-party Notices** to inspect the offline copies. Electron's runtime is not
+covered by Foundry's Apache-2.0 license.
+
+Each platform installer artifact is accompanied by pinned runtime sources and
+their SHA-256 manifest. See [runtime source and replacement guidance](desktop/runtime-sources.md)
+and the [immutable source manifest](desktop/runtime-sources.json). Keep those
+sources when redistributing an installer. This supplies actual source material,
+not a promise of a future three-year source offer. No blanket legal, patent or
+binary-reproducibility clearance is claimed.
+
+In the installed legal directory, open the adjacent `README-runtime-sources.md`
+instead of following source-repository-relative links. Windows NSIS core and
+selected plugin notices are under `third_party/installer-notices/`; their exact
+source pins are in `desktop/installer-sources.json` in the public source tree.
+
+Windows CGO binaries may incorporate static MinGW-w64 and GCC runtime code.
+`third_party/windows-runtime-notices/` preserves MinGW-w64 13.0.0's complete
+static-runtime aggregate, winpthreads notices, GCC 15.2.0's GPLv3 text and GCC
+Runtime Library Exception 3.1, with immutable source pins and byte digests.
+These components are not covered by Go's BSD license or Foundry's Apache-2.0
+license. Native builds check the runtime version and record candidate archive
+hashes. This is not a claim every archive member is linked, an exact compiler
+distribution archive pin, or blanket clearance of all compiler-distribution code.
+
+Git is an independently installed prerequisite, not a bundled MinGit runtime.
+Build tools and platform-specific web compiler bindings are not application
+payload merely because they appear in a lockfile. The Windows installer's native
+stub notices are included with its package; its native build/acceptance evidence
+is separate from the macOS build.
 
 ## Coverage limits and release blockers
 
@@ -24,15 +64,16 @@ entries installed by the reviewed macOS arm64 lock installation. The remaining
 43 entries are optional packages for other operating-system or CPU targets;
 they were not installed, their legal texts were not verified, and they are not
 redistributed in this source candidate. Each is marked
-`unverified-not-installed` in the inventory. Those unresolved texts are a
-public-release blocker for any affected platform, and this distribution makes
-no cross-platform compliance claim.
+`unverified-not-installed` in the inventory. Their legal-text coverage must be
+resolved before redistributing those particular packages; do not infer they are
+bundled into a desktop installer. This distribution makes no blanket
+cross-platform compliance claim.
 
 For installed package roots, the reviewed legal-file set includes
 `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`, `PATENTS*`,
 `THIRD-PARTY-LICENSE*`, and `THIRD-PARTY-NOTICES*`. The 105 installed npm
-entries map to 110 legal-text references. Together with the 8 Go references,
-the inventory contains 118 references to 86 deduplicated byte-exact text
+entries map to 110 legal-text references. Together with the 10 Go references,
+the inventory contains 120 references to 86 deduplicated byte-exact text
 files in this distribution. In particular, `prettier@3.9.10` maps both its
 top-level MIT `LICENSE` and its complete 362,597-byte bundled
 `THIRD-PARTY-NOTICES.md`, which contains the upstream bundled MIT, ISC, BSD,

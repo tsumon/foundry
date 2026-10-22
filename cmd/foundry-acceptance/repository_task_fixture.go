@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"foundry/internal/desktophost"
 	"foundry/internal/domain"
 	"foundry/internal/engine"
 	"foundry/internal/httpapi"
+	"foundry/internal/platformfs"
 	"foundry/internal/repositorytask"
 	"foundry/internal/sandbox"
 	"foundry/internal/store"
@@ -18,7 +20,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -183,6 +184,10 @@ func validateRepositoryTaskFlags(controls, repository bool, path string) error {
 }
 
 func startRepositoryTasksAcceptance(webDir, source string) (_ *acceptanceRuntime, err error) {
+	return startRepositoryTasksDesktop(webDir, source, "", "")
+}
+
+func startRepositoryTasksDesktop(webDir, source, retainedParent, capability string) (_ *acceptanceRuntime, err error) {
 	webDir, err = filepath.Abs(webDir)
 	if err != nil {
 		return nil, err
@@ -190,7 +195,7 @@ func startRepositoryTasksAcceptance(webDir, source string) (_ *acceptanceRuntime
 	if info, e := os.Stat(filepath.Join(webDir, "index.html")); e != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("build the frontend first; --web-dir must contain index.html")
 	}
-	root, err := os.MkdirTemp("", "foundry-repository-tasks-synthetic-")
+	root, err := platformfs.PrivateTemp(retainedParent, "foundry-repository-tasks-synthetic-")
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +298,7 @@ func startRepositoryTasksAcceptance(webDir, source string) (_ *acceptanceRuntime
 	r.URL = "http://" + address
 	serverCtx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	r.server = &http.Server{Handler: httpapi.New(r.store, r.engine, nil, nil, httpapi.Options{Address: address, WebDir: webDir, C4ControlledOnly: true}), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute, BaseContext: func(net.Listener) context.Context { return serverCtx }}
+	r.server = &http.Server{Handler: desktophost.Protect(capability, httpapi.New(r.store, r.engine, nil, nil, httpapi.Options{Address: address, WebDir: webDir, C4ControlledOnly: true})), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute, BaseContext: func(net.Listener) context.Context { return serverCtx }}
 	go func() { r.serveErr <- r.server.Serve(listener) }()
 	return r, nil
 }
@@ -339,9 +344,12 @@ func seedRepositoryTask(repo, name string) error {
 		}
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=Synthetic Acceptance", "-c", "user.email=synthetic@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "SYNTHETIC repository task frozen base"}} {
-		cmd := exec.Command("/usr/bin/git", args...)
+		cmd, cleanup, err := fixtureGitCommand(args...)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
 		cmd.Dir = repo
-		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"}
 		if raw, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("seed repository task: %w %s", err, raw)
 		}

@@ -78,7 +78,7 @@ func TestPrepareGenerationCopiesCompleteTreeWithoutMutatingSource(t *testing.T) 
 	}
 	original, _ := os.Stat(filepath.Join(source, "src/run.sh"))
 	copied, _ := os.Stat(filepath.Join(tree, "src/run.sh"))
-	if copied.Mode().Perm() != 0755 || os.SameFile(original, copied) {
+	if copied.Mode().Perm() != nativeWritableMode() || os.SameFile(original, copied) {
 		t.Fatal("lost executable bits or hardlinked source")
 	}
 	if after, _ := Digest(source); after != before {
@@ -124,7 +124,7 @@ func TestGenerationSealRejectsTamperMissingAndIdentityMismatch(t *testing.T) {
 			case "content":
 				os.WriteFile(filepath.Join(tree, "src/run.sh"), []byte("tamper"), 0755)
 			case "mode":
-				os.Chmod(filepath.Join(tree, "src/run.sh"), 0644)
+				os.Chmod(filepath.Join(tree, "src/run.sh"), nativeChangedMode())
 			case "missing":
 				os.Remove(filepath.Join(tree, "src/run.sh"))
 			case "extra":

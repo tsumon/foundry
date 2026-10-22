@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"foundry/internal/testutil"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,7 +45,7 @@ func runCodingReplanWorkflow(t *testing.T, r *acceptanceRuntime, id string) {
 	}
 	checksum := sha256.Sum256(source)
 	status := func() string {
-		cmd := exec.Command("/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all")
+		cmd := testutil.Git(t, "status", "--porcelain=v1", "--untracked-files=all")
 		cmd.Dir = r.Repo
 		b, err := cmd.CombinedOutput()
 		if err != nil {
@@ -157,7 +157,7 @@ func runCodingReplanWorkflow(t *testing.T, r *acceptanceRuntime, id string) {
 			}
 		}
 	}
-	check := exec.Command("/usr/bin/git", "apply", "--check", m.Delivery.PatchPath)
+	check := testutil.Git(t, "apply", "--check", m.Delivery.PatchPath)
 	check.Dir = r.Repo
 	if b, err := check.CombinedOutput(); err != nil {
 		t.Fatalf("patch check-only: %v %s", err, b)

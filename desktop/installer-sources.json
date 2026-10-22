@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "bundle": {
+    "release": "nsis@1.2.1",
+    "revision": "427d76149394b945fa4e370b3ba42a0276a76879",
+    "nsisVersion": "3.12",
+    "nsisSourceRevision": "e3f60402bcdf7be822d159b531c6e38ddf32de12",
+    "sha256": "56997fdefe25e7928a1a68b4583d08b240b66cf660234053b20131a74cc082f4"
+  },
+  "files": [
+    {
+      "file": "nsis-v312-e3f60402.tar.gz",
+      "url": "https://codeload.github.com/NSIS-Dev/nsis/tar.gz/e3f60402bcdf7be822d159b531c6e38ddf32de12",
+      "disposition": "source",
+      "description": "NSIS 3.12 core, built-in plugins, compression source and SCons build scripts",
+      "bytes": 1849402,
+      "sha256": "8ee1eb69dc7416fdbcec410286babe4404382d7e12bc1efe8973b46caccf7c6e"
+    },
+    {
+      "file": "StdUtils.2018-10-27.zip",
+      "url": "https://github.com/lordmulder/stdutils/releases/download/1.14/StdUtils.2018-10-27.zip",
+      "disposition": "source",
+      "description": "StdUtils 1.14 exact release incl matching source tar, DLLs, LGPL and clarification",
+      "bytes": 391785,
+      "sha256": "3ffe893dc7477fdb1cac551a86ae017509e1f2d0ebdc7185fd0fbaf20870688c"
+    },
+    {
+      "file": "Nsis7z_19.00.7z",
+      "url": "https://nsis.sourceforge.io/mediawiki/images/6/69/Nsis7z_19.00.7z",
+      "disposition": "source",
+      "description": "Nsis7z 19.00 wrapper source, VS2017 project, DLLs and notices",
+      "bytes": 461078,
+      "sha256": "6f2f3730049926f40442ee0c8b7d3e3dee7ace544d82467ff8059ea3f4201c58"
+    },
+    {
+      "file": "lzma1900.7z",
+      "url": "https://www.7-zip.org/a/lzma1900.7z",
+      "disposition": "source",
+      "description": "LZMA SDK 19.00 C/CPP source required by Nsis7z instructions",
+      "bytes": 1082692,
+      "sha256": "00f569e624b3d9ed89cf8d40136662c4c5207eaceb92a70b1044c77f84234bad"
+    },
+    {
+      "file": "UAC.zip",
+      "url": "https://nsis.sourceforge.io/mediawiki/images/8/8f/UAC.zip",
+      "disposition": "source",
+      "description": "Exact UAC plugin archive incl source and zlib license",
+      "bytes": 52034,
+      "sha256": "20e3192af5598568887c16d88de59a52c2ce4a26e42c5fb8bee8105dcbbd1760"
+    }
+  ],
+  "licenseHandling": {
+    "stdutils": "Preserve LGPL.txt + LGPL_CLARIFICATION.txt; exact unmodified DLL source already in official release ZIP. Do not correct upstream clarification wording.",
+    "nsis": "Preserve COPYING/bundle LICENSE including CPL1.0 LZMA exception; provide exact NSIS source alongside installer.",
+    "nsis7z": "Provide plugin archive plus official LZMA SDK19.00 source. Follow source README overlay C/CPP into Contrib/nsis7z and VS2017 project instructions.",
+    "sourceOffer": "No written three-year source offer; pair source sidecar with installer."
+  }
+}

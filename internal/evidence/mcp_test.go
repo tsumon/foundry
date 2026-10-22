@@ -6,7 +6,7 @@ import (
 )
 
 func TestMCPResultIsBoundedUntruncatedEvidence(t *testing.T) {
-	s := New(t.TempDir())
+	s := New(privateTestRoot(t))
 	body := []byte(`{"content":[]}`)
 	envelope := testEnvelope(body)
 	envelope.Kind = "mcp_result"

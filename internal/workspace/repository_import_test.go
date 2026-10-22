@@ -6,6 +6,7 @@ import (
 	"foundry/internal/domain"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -24,6 +25,9 @@ func TestRepositoryImportDetectsCorruptSuccessfulWrites(t *testing.T) {
 						b = []byte("wrong\n")
 					} else {
 						m = 0755
+						if runtime.GOOS == "windows" {
+							m = 0444
+						}
 					}
 				}
 				return actual(p, b, m)
@@ -96,7 +100,7 @@ func TestRepositoryImportExactCommitAndNoReplace(t *testing.T) {
 		t.Fatal(err)
 	}
 	git(t, repo, "add", ".")
-	git(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "mode")
+	git(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "mode")
 	commit := git(t, repo, "rev-parse", "HEAD")
 	if err := os.WriteFile(filepath.Join(repo, "src/main.txt"), []byte("later\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -123,7 +127,7 @@ func TestRepositoryImportExactCommitAndNoReplace(t *testing.T) {
 	}
 	for _, p := range []string{filepath.Join(final, "base/src/main.txt"), filepath.Join(final, "generations", ref.ID, "tree/src/main.txt")} {
 		info, err := os.Stat(p)
-		if err != nil || info.Mode().Perm() != 0755 {
+		if err != nil || info.Mode().Perm() != nativeWritableMode() {
 			t.Fatal(info, err)
 		}
 	}

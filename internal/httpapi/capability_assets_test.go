@@ -3,9 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"foundry/internal/testutil"
 	"net/http"
 	"net/http/httptest"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -72,8 +72,7 @@ func TestGitHTTPRealIdentityWithExistingProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("/usr/bin/git", "init", "-b", "main", root)
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + root, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}
+	cmd := testutil.Git(t, "init", "-b", "main", root)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("fixture init: %s %v", out, err)
 	}

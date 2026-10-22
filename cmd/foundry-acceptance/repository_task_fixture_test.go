@@ -8,9 +8,9 @@ import (
 	"foundry/internal/domain"
 	"foundry/internal/engine"
 	"foundry/internal/repositorytask"
+	"foundry/internal/testutil"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -22,7 +22,7 @@ func TestRepositoryTaskIgnoresWorkingTreeAndFilters(t *testing.T) {
 	if err := seedRepositoryTask(repo, "labels"); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("/usr/bin/git", "config", "filter.fixture.process", "/synthetic/never-execute")
+	cmd := testutil.Git(t, "config", "filter.fixture.process", "/synthetic/never-execute")
 	cmd.Dir = repo
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatal(err, string(b))
@@ -101,7 +101,7 @@ func TestRepositoryTaskExhaustionAndExplicitReplan(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, repositorytask.Descriptor), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("/usr/bin/git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-qam", "scripted exhaustion")
+	cmd := testutil.Git(t, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-qam", "scripted exhaustion")
 	cmd.Dir = repo
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatal(err, string(b))

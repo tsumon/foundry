@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"foundry/internal/domain"
+	"foundry/internal/platformfs"
 	"os"
 	"path/filepath"
 )
@@ -82,7 +83,12 @@ func prepareRepositoryImport(ctx context.Context, fsys filesystem, repo, commit,
 		}
 		for _, f := range tree.files {
 			info, statErr := handle.Stat(f.p)
-			if statErr != nil || !bytes.Equal(files[f.p], f.content) || info.Mode().Perm() != f.mode {
+			var mode os.FileMode
+			var modeErr error
+			if statErr == nil {
+				mode, modeErr = platformfs.CanonicalMode(info.Mode())
+			}
+			if statErr != nil || modeErr != nil || !bytes.Equal(files[f.p], f.content) || mode != f.mode {
 				handle.Close()
 				return fail(errors.New("import snapshot mismatch"))
 			}
@@ -142,5 +148,15 @@ func publishRepositoryImport(fsys filesystem, stage, final string, ref domain.Ge
 	if err = fsys.sync(filepath.Dir(final)); err != nil {
 		return err
 	}
-	return fsys.sync(filepath.Dir(stage))
+	if err := fsys.sync(filepath.Dir(stage)); err != nil {
+		return err
+	}
+	if err := VerifyGeneration(final, ref); err != nil {
+		return err
+	}
+	actual, err = Digest(filepath.Join(final, "base"))
+	if err != nil || actual != digest {
+		return errors.New("published import mismatch")
+	}
+	return nil
 }

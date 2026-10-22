@@ -5,6 +5,7 @@ import (
 	"foundry/internal/domain"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -99,11 +100,18 @@ func TestHistoricalSnapshotStillSupportsLinkedWorktreeAndExecutableMode(t *testi
 		t.Fatal(err)
 	}
 	git(t, repo, "add", ".")
+	git(t, repo, "update-index", "--chmod=+x", "src/main.txt")
 	git(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "mode")
 	linked := filepath.Join(t.TempDir(), "linked")
 	git(t, repo, "worktree", "add", "--detach", linked, "HEAD")
 	dir := filepath.Join(t.TempDir(), "mission")
 	commit, manifest, err := Snapshot(context.Background(), linked, dir, []string{"src/"})
+	if runtime.GOOS == "windows" {
+		if err == nil {
+			t.Fatal("Windows admitted executable tree")
+		}
+		return
+	}
 	if err != nil || commit != git(t, repo, "rev-parse", "HEAD") || len(manifest) != 1 {
 		t.Fatal(commit, manifest, err)
 	}

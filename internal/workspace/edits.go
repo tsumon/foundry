@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"foundry/internal/domain"
+	"foundry/internal/platformfs"
 	"io"
 	"io/fs"
 	"os"
@@ -22,6 +23,9 @@ type Edit struct {
 }
 
 func readTree(dir string) (map[string][]byte, error) {
+	if err := platformfs.ValidateDirectory(dir); err != nil {
+		return nil, err
+	}
 	info, err := os.Lstat(dir)
 	if err != nil {
 		return nil, err
@@ -61,7 +65,7 @@ func readTree(dir string) (map[string][]byte, error) {
 		if !info.Mode().IsRegular() || info.Size() > MaxSnapshotBytes {
 			return errors.New("unsupported candidate file")
 		}
-		f, e := root.Open(p)
+		f, e := platformfs.OpenRootRegular(root, p)
 		if e != nil {
 			return e
 		}
@@ -69,6 +73,9 @@ func readTree(dir string) (map[string][]byte, error) {
 		opened, e := f.Stat()
 		if e != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
 			return errors.New("candidate file changed during read")
+		}
+		if _, e := platformfs.CanonicalMode(opened.Mode()); e != nil {
+			return e
 		}
 		// Files may grow after the metadata check. Bound the actual read too.
 		b, e := io.ReadAll(io.LimitReader(f, int64(MaxSnapshotBytes-total)+1))
@@ -116,7 +123,11 @@ func Digest(dir string) (string, error) {
 		if e != nil {
 			return "", e
 		}
-		fmt.Fprintf(h, "%d:%s:%d:%o:", len(p), p, len(files[p]), info.Mode().Perm())
+		mode, e := platformfs.CanonicalMode(info.Mode())
+		if e != nil {
+			return "", e
+		}
+		fmt.Fprintf(h, "%d:%s:%d:%o:", len(p), p, len(files[p]), mode)
 		h.Write(files[p])
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
@@ -212,7 +223,11 @@ func Reset(base, candidate string) error {
 		if e != nil {
 			return e
 		}
-		if e := root.Chmod(p, info.Mode().Perm()); e != nil {
+		mode, e := platformfs.CanonicalMode(info.Mode())
+		if e != nil {
+			return e
+		}
+		if e := root.Chmod(p, mode); e != nil {
 			return e
 		}
 	}

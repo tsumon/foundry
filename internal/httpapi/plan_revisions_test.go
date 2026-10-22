@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"foundry/internal/testutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -140,7 +140,7 @@ func revisionFixture(t *testing.T) (*fixture, domain.Mission) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "base"}} {
-		c := exec.Command("git", args...)
+		c := testutil.Git(t, args...)
 		c.Dir = repo
 		if out, err := c.CombinedOutput(); err != nil {
 			t.Fatalf("git: %v %s", err, out)

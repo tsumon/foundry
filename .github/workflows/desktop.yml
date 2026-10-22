@@ -1,0 +1,197 @@
+name: Desktop packages
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-sources:
+    name: Pinned native runtime source sidecar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Fetch each immutable source once and check every digest
+        run: |
+          node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources"
+          node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources/installer" installer
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: foundry-runtime-sources
+          if-no-files-found: error
+          path: ${{ runner.temp }}/foundry-runtime-sources/
+
+  macos-installer:
+    name: Native macOS arm64 package and installed backend acceptance
+    needs: runtime-sources
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: "1"
+      GOTOOLCHAIN: local
+      GOENV: "off"
+      GOTELEMETRY: "off"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .go-version
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: foundry-runtime-sources
+          path: ${{ runner.temp }}/foundry-runtime-sources
+      - name: Install exact locked build inputs
+        run: |
+          set -eu
+          npm ci --prefix web
+          npm ci --prefix desktop
+          go mod download
+          go mod verify
+      - name: Desktop boundaries and real Electron download contract
+        run: |
+          set -eu
+          npm test --prefix desktop
+          desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/download-contract.cjs patch
+          desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/download-contract.cjs report
+      - name: Build native ad-hoc app and DMG without signing-account discovery
+        run: |
+          set -eu
+          export FOUNDRY_DESKTOP_OUTPUT="$RUNNER_TEMP/foundry-macos-output"
+          node desktop/build.cjs
+          cp -R "$RUNNER_TEMP/foundry-runtime-sources" "$FOUNDRY_DESKTOP_OUTPUT/runtime-sources"
+      - name: Read-only mount, fresh install, bundled runtime and persistence
+        run: |
+          set -eu
+          output="$RUNNER_TEMP/foundry-macos-output"
+          mountpoint="$RUNNER_TEMP/foundry-mount"
+          install="$RUNNER_TEMP/Foundry Installed"
+          mkdir "$mountpoint" "$install"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$output/Foundry-0.1.0-alpha.1-arm64.dmg"
+          trap 'hdiutil detach "$mountpoint"' EXIT
+          ditto "$mountpoint/Foundry.app" "$install/Foundry.app"
+          codesign --verify --deep --strict "$install/Foundry.app"
+          export FOUNDRY_INSTALLED_RESOURCES="$install/Foundry.app/Contents/Resources"
+          export FOUNDRY_SMOKE_DATA="$RUNNER_TEMP/foundry-installed-data"
+          node desktop/installed-smoke.cjs > "$output/native-smoke.json"
+      - name: Upload only after every native gate passes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: foundry-macos-arm64
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/foundry-macos-output/Foundry-0.1.0-alpha.1-arm64.dmg
+            ${{ runner.temp }}/foundry-macos-output/SHA256SUMS
+            ${{ runner.temp }}/foundry-macos-output/build-inputs.json
+            ${{ runner.temp }}/foundry-macos-output/native-smoke.json
+            ${{ runner.temp }}/foundry-macos-output/runtime-sources/
+
+  windows-installer:
+    name: Native Windows x64 installer and acceptance
+    needs: runtime-sources
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CGO_ENABLED: "1"
+      CC: 'C:\mingw64\bin\gcc.exe'
+      GOTOOLCHAIN: local
+      GOENV: "off"
+      GOTELEMETRY: "off"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.23.2"
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: foundry-runtime-sources
+          path: ${{ runner.temp }}/foundry-runtime-sources
+      - name: Native compiler and trusted Git prerequisites
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((& $env:CC -dumpmachine).Trim() -ne 'x86_64-w64-mingw32') { throw 'Native x64 MinGW required' }
+          if (-not ((& $env:CC -dumpfullversion).Trim().StartsWith('15.2'))) { throw 'GCC 15.2 required' }
+          if (-not (Test-Path 'C:\Program Files\Git\cmd\git.exe')) { throw 'Official Git for Windows required' }
+          if ((npm --version).Trim() -ne '10.9.8') { throw 'npm 10.9.8 required' }
+          go version
+          if ($LASTEXITCODE -ne 0) { throw 'Go unavailable' }
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix web
+          if ($LASTEXITCODE -ne 0) { throw 'web install failed' }
+          npm ci --prefix desktop
+          if ($LASTEXITCODE -ne 0) { throw 'desktop install failed' }
+          go mod download
+          if ($LASTEXITCODE -ne 0) { throw 'Go dependencies failed' }
+      - name: Native CGO commands and Windows boundary/integration gates
+        run: ./desktop/windows-test.ps1
+      - name: Audit Windows-specific reachable Go dependencies
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:GOBIN = Join-Path $env:RUNNER_TEMP 'foundry-security-tools'
+          $toolSource = Join-Path $env:RUNNER_TEMP 'foundry-security-source'
+          New-Item -ItemType Directory -Path $toolSource | Out-Null
+          Push-Location $toolSource
+          try {
+            $module = (& go mod download -json golang.org/x/vuln@v1.9.0) | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'govulncheck source unavailable' }
+            if ($module.Sum -cne 'h1:12VaqnI9kJfqwRoPptxoqsUhQtdfrSbdksT7X/KY/sc=' -or $module.GoModSum -cne 'h1:E/Frwm0xp49fTyBW+6CQHdkvobknbwUM49yEpMGUauw=') { throw 'govulncheck checksum mismatch' }
+            go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+            if ($LASTEXITCODE -ne 0) { throw 'govulncheck build failed' }
+          } finally { Pop-Location }
+          & (Join-Path $env:GOBIN 'govulncheck.exe') -show=verbose ./...
+          if ($LASTEXITCODE -ne 0) { throw 'Windows vulnerability audit failed' }
+      - name: Build per-user unsigned NSIS installer
+        run: |
+          $env:FOUNDRY_DESKTOP_OUTPUT = Join-Path $env:RUNNER_TEMP 'foundry-windows-output'
+          node desktop/build-windows.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed' }
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'foundry-runtime-sources') (Join-Path $env:FOUNDRY_DESKTOP_OUTPUT 'runtime-sources') -Recurse
+      - name: Fresh install, native UI, bundled runtime, restart, and uninstall
+        run: ./desktop/windows-installed-smoke.ps1 -Output (Join-Path $env:RUNNER_TEMP 'foundry-windows-output')
+      - name: Upload only after every native gate passes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: foundry-windows-x64
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/foundry-windows-output/Foundry-0.1.0-alpha.1-x64.exe
+            ${{ runner.temp }}/foundry-windows-output/SHA256SUMS
+            ${{ runner.temp }}/foundry-windows-output/build-inputs.json
+            ${{ runner.temp }}/foundry-windows-output/native-smoke.json
+            ${{ runner.temp }}/foundry-windows-output/windows-ui.png
+            ${{ runner.temp }}/foundry-windows-output/nsis-provenance.json
+            ${{ runner.temp }}/foundry-windows-output/nsis-installer-compiler.log
+            ${{ runner.temp }}/foundry-windows-output/nsis-uninstaller-compiler.log
+            ${{ runner.temp }}/foundry-windows-output/foundry-pe-imports.txt
+            ${{ runner.temp }}/foundry-windows-output/foundry-acceptance-pe-imports.txt
+            ${{ runner.temp }}/foundry-windows-output/shipping-provenance.json
+            ${{ runner.temp }}/foundry-windows-output/runtime-sources/

@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"foundry/internal/domain"
+	"foundry/internal/platformfs"
 )
 
 const (
@@ -123,7 +124,7 @@ func (s *Store) Put(envelope domain.EvidenceEnvelope, body []byte) (domain.Evide
 	}
 	// Link is an atomic no-replace publication on the same controller-owned
 	// filesystem. A racing existing digest must verify byte-for-byte.
-	if err = os.Link(tempName, final); err != nil {
+	if err = publishEvidence(tempName, final); err != nil {
 		if !errors.Is(err, os.ErrExist) {
 			return domain.EvidenceEnvelope{}, fmt.Errorf("publish evidence: %w", err)
 		}
@@ -162,7 +163,7 @@ func (s *Store) Read(envelope domain.EvidenceEnvelope) ([]byte, error) {
 	if info.Size() != envelope.Bytes {
 		return nil, errors.New("evidence blob length mismatch")
 	}
-	file, err := os.Open(path)
+	file, err := platformfs.OpenRegular(path)
 	if err != nil {
 		return nil, fmt.Errorf("open evidence blob: %w", err)
 	}
@@ -215,7 +216,7 @@ func (s *Store) secureSubdirectory(parts ...string) (string, error) {
 			return "", errors.New("invalid evidence directory component")
 		}
 		current = filepath.Join(current, part)
-		if err := os.Mkdir(current, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		if err := platformfs.PrivateDirectory(current); err != nil {
 			return "", fmt.Errorf("create evidence directory: %w", err)
 		}
 		info, err := os.Lstat(current)
@@ -282,7 +283,7 @@ func evidenceLimit(kind string) (int, error) {
 }
 
 func secureMkdir(path string) error {
-	if err := os.MkdirAll(path, 0o700); err != nil {
+	if err := platformfs.PrivateDirectory(path); err != nil {
 		return fmt.Errorf("create evidence directory: %w", err)
 	}
 	info, err := os.Lstat(path)
@@ -296,15 +297,7 @@ func secureMkdir(path string) error {
 }
 
 func syncDirectory(path string) error {
-	dir, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("open evidence directory: %w", err)
-	}
-	defer dir.Close()
-	if err := dir.Sync(); err != nil {
-		return fmt.Errorf("sync evidence directory: %w", err)
-	}
-	return nil
+	return platformfs.SyncPath(path)
 }
 
 func validTime(value string) bool {

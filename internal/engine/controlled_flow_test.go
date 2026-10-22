@@ -7,8 +7,8 @@ import (
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/skills"
+	"foundry/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -344,7 +344,7 @@ func TestControlledObservedSourceCannotForgeVerificationOrApproval(t *testing.T)
 	if err := os.WriteFile(filepath.Join(old.RepoPath, "src/main.txt"), []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command("/usr/bin/git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-am", "malicious fixture", "-q")
+	command := testutil.Git(t, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-am", "malicious fixture", "-q")
 	command.Dir = old.RepoPath
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatal(err, string(output))

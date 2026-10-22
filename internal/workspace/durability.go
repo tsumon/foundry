@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"foundry/internal/platformfs"
 	"io"
 	"io/fs"
 	"os"
@@ -27,23 +28,15 @@ func durableFS() filesystem {
 		if err == nil {
 			err = f.Chmod(mode)
 		}
+		if err == nil {
+			err = platformfs.FlushWritten(f)
+		}
 		closeErr := f.Close()
 		if err != nil {
 			return err
 		}
 		return closeErr
-	}, sync: func(p string) error {
-		f, err := os.Open(p)
-		if err != nil {
-			return err
-		}
-		err = f.Sync()
-		closeErr := f.Close()
-		if err != nil {
-			return err
-		}
-		return closeErr
-	}, publish: publishAbsent}
+	}, sync: platformfs.SyncPath, publish: publishAbsent}
 }
 
 func syncTree(fsys filesystem, dir string) error {

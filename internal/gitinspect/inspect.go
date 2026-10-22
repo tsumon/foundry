@@ -6,23 +6,23 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"foundry/internal/gitexec"
+	"foundry/internal/platformfs"
 	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"foundry/internal/domain"
 )
-
-const trustedGit = "/usr/bin/git"
 
 type inspectionError string
 
@@ -53,13 +53,18 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 }
 
 func run(ctx context.Context, root string, args ...string) (string, int, error) {
-	fixed := []string{"--no-pager", "--no-replace-objects", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "protocol.allow=never", "-c", "maintenance.auto=false", "-c", "gc.auto=0"}
+	config, err := gitexec.New()
+	if err != nil {
+		return "", -1, err
+	}
+	defer config.Close()
+	fixed := []string{"--no-pager", "--no-replace-objects", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + config.Hooks, "-c", "protocol.allow=never", "-c", "maintenance.auto=false", "-c", "gc.auto=0"}
 	if root != "" {
 		fixed = append(fixed, "--git-dir="+filepath.Join(root, ".git"), "--work-tree="+root)
 	}
-	cmd := exec.CommandContext(ctx, trustedGit, append(fixed, args...)...)
-	cmd.Env = childEnvironment()
-	cmd.Dir = "/"
+	cmd := exec.CommandContext(ctx, config.Path, append(fixed, args...)...)
+	cmd.Env = config.Environment
+	cmd.Dir = config.Root
 	if root != "" {
 		cmd.Dir = root
 	}
@@ -67,7 +72,7 @@ func run(ctx context.Context, root string, args ...string) (string, int, error) 
 	var output boundedOutput
 	cmd.Stdout = &output
 	cmd.Stderr = io.Discard
-	err := cmd.Run()
+	err = cmd.Run()
 	code := 0
 	if err != nil {
 		var exit *exec.ExitError
@@ -108,6 +113,9 @@ func Inspect(parent context.Context, path string) (domain.GitObservation, error)
 	if !filepath.IsAbs(path) || len(path) > 4096 || !utf8.ValidString(path) || strings.ContainsFunc(path, unicode.IsControl) {
 		return fail("invalid_repository")
 	}
+	if platformfs.ValidateAbsolute(path) != nil || platformfs.ValidateDirectory(path) != nil {
+		return fail("invalid_repository")
+	}
 	root, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return fail("repository_unavailable")
@@ -131,6 +139,9 @@ func Inspect(parent context.Context, path string) (domain.GitObservation, error)
 		return fail("git_unavailable")
 	}
 	actual, _, err := run(ctx, root, "rev-parse", "--show-toplevel")
+	if runtime.GOOS == "windows" {
+		actual = filepath.Clean(filepath.FromSlash(actual))
+	}
 	if err != nil || actual != root {
 		return fail("inspection_failed")
 	}
@@ -200,6 +211,7 @@ func checkMetadata(ctx context.Context, root string) error {
 			return inspectionError("unsupported_layout")
 		}
 		rel, _ := filepath.Rel(gitdir, p)
+		rel = strings.ToLower(filepath.ToSlash(rel))
 		switch rel {
 		case "commondir", "objects/info/alternates", "objects/info/http-alternates", "config.worktree":
 			return inspectionError("unsupported_layout")
@@ -256,7 +268,7 @@ func checkMetadata(ctx context.Context, root string) error {
 // Protect the actual config read too: preflight metadata checks are not an
 // atomic guarantee against a concurrent rename to a symlink or named pipe.
 func readMetadataConfig(path string) ([]byte, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := platformfs.OpenRegular(path)
 	if err != nil {
 		return nil, inspectionError("unsupported_layout")
 	}

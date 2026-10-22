@@ -3,9 +3,11 @@ package sandbox
 import (
 	"errors"
 	"foundry/internal/domain"
+	"foundry/internal/platformfs"
 	"io/fs"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -51,8 +53,15 @@ func BuildC4Plan(p domain.C4Profile, o domain.C4Operation, trust C4Trust, candid
 
 func validateC4Candidate(root, candidate string) error {
 	for _, p := range []string{root, candidate} {
-		if !filepath.IsAbs(p) || p == "/" || filepath.Clean(p) != p || strings.ContainsAny(p, ",\x00\r\n\t\\") {
+		forbidden := ",\x00\r\n\t\\"
+		if runtime.GOOS == "windows" {
+			forbidden = ",\x00\r\n\t"
+		}
+		if !filepath.IsAbs(p) || p == "/" || filepath.Clean(p) != p || strings.ContainsAny(p, forbidden) {
 			return errors.New("unsafe managed candidate path")
+		}
+		if err := platformfs.ValidateDirectory(p); err != nil {
+			return err
 		}
 		resolved, err := filepath.EvalSymlinks(p)
 		if err != nil || resolved != p {

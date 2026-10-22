@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
+import { supportedRepositoryPath } from "../repositoryPath";
 import { capabilityApi } from "../capabilityApi";
 import { mcpTaskApi } from "../mcpTaskApi";
 import type { CapabilitySnapshot } from "../capabilityTypes";
@@ -325,7 +326,7 @@ export function CreateMission({
     const requestRepo = controlledMode
       ? selectedSource!.observation.root
       : (selectedInspection?.root ?? repo.trim());
-    if (!requestRepo.startsWith("/")) {
+    if (!supportedRepositoryPath(requestRepo)) {
       setError("请输入 Git 仓库的绝对路径，例如 /Users/you/project");
       return;
     }

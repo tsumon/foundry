@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"foundry/internal/domain"
+	"foundry/internal/gitexec"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,8 +16,6 @@ import (
 )
 
 const MaxSnapshotBytes = 10 * 1024 * 1024
-
-const trustedGit = "/usr/bin/git"
 
 type limitedBuffer struct {
 	bytes.Buffer
@@ -30,22 +29,22 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 func gitCommand(ctx context.Context, dir string, limit int, args ...string) ([]byte, error) {
+	config, err := gitexec.New()
+	if err != nil {
+		return nil, err
+	}
+	defer config.Close()
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	prefix := []string{
 		"--no-pager", "--no-optional-locks", "--no-replace-objects",
-		"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
+		"-c", "core.hooksPath=" + config.Hooks, "-c", "core.fsmonitor=false",
 		"-c", "diff.external=", "-c", "core.quotePath=false",
 		"-c", "protocol.allow=never", "-c", "maintenance.auto=false", "-c", "gc.auto=0",
 	}
-	c := exec.CommandContext(ctx, trustedGit, append(prefix, args...)...)
+	c := exec.CommandContext(ctx, config.Path, append(prefix, args...)...)
 	c.Dir = dir
-	c.Env = []string{
-		"PATH=/usr/bin:/bin", "HOME=/dev/null", "XDG_CONFIG_HOME=/dev/null", "LC_ALL=C",
-		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_GLOBAL=/dev/null",
-		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_NO_REPLACE_OBJECTS=1",
-		"GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "GIT_PROTOCOL_FROM_USER=0", "GIT_ATTR_NOSYSTEM=1",
-	}
+	c.Env = config.Environment
 	c.WaitDelay = 100 * time.Millisecond
 	b := &limitedBuffer{limit: limit}
 	c.Stdout = b

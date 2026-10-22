@@ -1,0 +1,9 @@
+# Legal texts and reviewed media retain their upstream/reviewed bytes on every OS.
+LICENSE -text
+third_party/licenses/*.txt -text
+# Verbatim upstream notices: byte/digest checks replace whitespace normalization.
+third_party/installer-notices/*.txt -text -whitespace
+third_party/windows-runtime-notices/*.txt -text -whitespace
+docs/media/*.jpg -text
+docs/media/*.png -text
+desktop/*.ico -text

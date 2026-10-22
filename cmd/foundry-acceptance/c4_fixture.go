@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -165,9 +164,12 @@ func seedC4Repository(repo, mode string) error {
 	// Only this freshly owned disposable repository is committed. No user source
 	// or product Git write is reachable through any runtime action.
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=Synthetic Acceptance", "-c", "user.email=synthetic@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "SYNTHETIC C4 frozen base"}} {
-		cmd := exec.Command("/usr/bin/git", args...)
+		cmd, cleanup, err := fixtureGitCommand(args...)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
 		cmd.Dir = repo
-		cmd.Env = []string{"PATH=/usr/bin:/bin", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"}
 		if raw, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("seed C4 Git: %w %s", err, raw)
 		}

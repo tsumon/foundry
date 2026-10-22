@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"foundry/internal/engine"
+	"foundry/internal/platformfs"
 	"io"
-	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 )
 
@@ -23,7 +22,7 @@ func readC4Config(path string, at time.Time) (engine.C4Activation, error) {
 	if !filepath.IsAbs(path) {
 		return c, errC4Config
 	}
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := platformfs.OpenRegular(path)
 	if err != nil {
 		return c, errC4Config
 	}

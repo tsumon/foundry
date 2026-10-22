@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"foundry/internal/testutil"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"foundry/internal/domain"
@@ -216,7 +216,7 @@ func TestRepositoryRejectsSymlinkSpecialBinaryAndInvalidUTF8(t *testing.T) {
 	}
 	link := target
 	link.Path = "link.txt"
-	if err := syscall.Mkfifo(filepath.Join(root, "pipe"), 0600); err != nil {
+	if err := testutil.SpecialFile(filepath.Join(root, "pipe")); err != nil {
 		t.Fatal(err)
 	}
 	pipe := domain.FileMeta{Path: "pipe", SHA256: strings.Repeat("0", 64), Bytes: 0}

@@ -21,7 +21,7 @@ func testEnvelope(body []byte) domain.EvidenceEnvelope {
 
 // Removing the digest check would accept a same-size, well-formed replacement.
 func TestEvidenceReadRejectsSameLengthValidJSONDigestTamper(t *testing.T) {
-	s := New(t.TempDir())
+	s := New(privateTestRoot(t))
 	body := []byte(`{"a":1}`)
 	tampered := []byte(`{"b":2}`)
 	if len(tampered) != len(body) || !json.Valid(tampered) {
@@ -41,7 +41,7 @@ func TestEvidenceReadRejectsSameLengthValidJSONDigestTamper(t *testing.T) {
 
 // Dropping read-time verification would let a modified blob become trusted tool context.
 func TestEvidencePutReadAndTamperChecks(t *testing.T) {
-	root := t.TempDir()
+	root := privateTestRoot(t)
 	s := New(root)
 	body := []byte(`{"path":"src/a.ts","text":"hello"}`)
 	envelope, err := s.Put(testEnvelope(body), body)
@@ -73,7 +73,7 @@ func TestEvidencePutReadAndTamperChecks(t *testing.T) {
 
 // Missing files and symlinks must be errors, not empty successful evidence.
 func TestEvidenceReadRejectsMissingFileAndSymlink(t *testing.T) {
-	s := New(t.TempDir())
+	s := New(privateTestRoot(t))
 	body := []byte(`{"ok":true}`)
 	envelope := testEnvelope(body)
 	if _, err := s.Read(envelope); err == nil {
@@ -97,7 +97,7 @@ func TestEvidenceReadRejectsMissingFileAndSymlink(t *testing.T) {
 
 // A symlinked digest directory must not redirect controller evidence outside its root.
 func TestEvidencePutRejectsSymlinkedBlobDirectory(t *testing.T) {
-	root := t.TempDir()
+	root := privateTestRoot(t)
 	s := New(root)
 	body := []byte(`{"ok":true}`)
 	envelope := testEnvelope(body)
@@ -118,7 +118,7 @@ func TestEvidencePutRejectsSymlinkedBlobDirectory(t *testing.T) {
 
 // Size and UTF-8 checks must happen before publication.
 func TestEvidencePutRejectsOversizedAndInvalidText(t *testing.T) {
-	s := New(t.TempDir())
+	s := New(privateTestRoot(t))
 	tooLarge := []byte(strings.Repeat("x", (64<<10)+1))
 	if _, err := s.Put(testEnvelope(tooLarge), tooLarge); err == nil {
 		t.Fatal("oversized repository evidence accepted")
@@ -131,7 +131,7 @@ func TestEvidencePutRejectsOversizedAndInvalidText(t *testing.T) {
 
 // A crash before rename may leave staging debris but must never publish authority.
 func TestEvidencePublicationInterruptionLeavesNoPublishedBlob(t *testing.T) {
-	s := New(t.TempDir())
+	s := New(privateTestRoot(t))
 	body := []byte(`{"ok":true}`)
 	envelope := testEnvelope(body)
 	want := errors.New("fixture interruption")

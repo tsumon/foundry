@@ -1,6 +1,11 @@
 # Contributing
 
-FOUNDRY is an experimental source-only macOS arm64 (Apple Silicon) alpha maintained by [tsumon](https://github.com/tsumon). Use [tsumon/foundry](https://github.com/tsumon/foundry) for non-sensitive issues and focused pull requests. This alpha makes no response-time or contribution-acceptance commitment. Report suspected vulnerabilities privately through [SECURITY.md](SECURITY.md), never in a public issue or pull request.
+FOUNDRY is an experimental local-workflow Alpha with macOS arm64 and Windows x64
+desktop targets, maintained by [tsumon](https://github.com/tsumon). Use
+[tsumon/foundry](https://github.com/tsumon/foundry) for non-sensitive issues and
+focused pull requests. This Alpha makes no response-time or contribution-acceptance
+commitment. Report suspected vulnerabilities privately through
+[SECURITY.md](SECURITY.md), never in a public issue or pull request.
 
 ## Safety invariants
 
@@ -18,7 +23,13 @@ Read [architecture](docs/public/architecture.md), [safety](docs/public/safety.md
 
 ## Development setup
 
-Use an Apple Silicon Mac (`darwin/arm64`) with cgo, a C compiler, Go 1.27.3, Node.js 22.23.2, npm 10.9.8, and a system `/usr/bin/git` for which `/usr/bin/git --no-lazy-fetch --version` succeeds. A newer Git elsewhere on `PATH` does not replace the controller's trusted system path. Intel macOS and other OS/CPU targets are unverified and unsupported for this alpha. Install frontend dependencies exactly from the lockfile:
+On Apple Silicon macOS use cgo, a C compiler, Go 1.27.3, Node.js 22.23.2,
+npm 10.9.8, and `/usr/bin/git` supporting `--no-lazy-fetch`. A different Git on
+PATH is not a substitute. Windows native build/acceptance uses the pinned
+`windows-2025` workflow toolchain, cgo and an explicit MinGW-w64 compiler; runtime
+Git is resolved from the OS Program Files directory, not PATH. See the desktop
+workflow for its exact checks. Unsupported targets must not silently inherit a
+pass from cross-compilation. Install frontend dependencies from the lockfile:
 
 ```sh
 cd web
@@ -37,6 +48,24 @@ Run all checks from the repository root unless the command changes directory:
 ```
 
 The shared script checks exact Go/Node.js/npm versions and system Git capabilities, verifies Go modules, runs exporter tests, normal and race-enabled Go tests, `go vet`, frontend tests, and the production build. It is also the verification entrypoint used by CI.
+
+For desktop changes, additionally install the exact desktop lock and run its
+tests (`npm ci --prefix desktop`, `npm test --prefix desktop`). The **Desktop
+packages** workflow performs native packaging and installed-resource acceptance
+on both supported targets. The security workflow audits both npm locks at
+`--audit-level=low`, including build dependencies. Do not omit development
+dependencies or lower the threshold to obtain a green result.
+
+### Desktop builds
+
+On the native target, set `FOUNDRY_DESKTOP_OUTPUT` to a **new absolute directory
+outside the source tree**. Run `npm run package:mac --prefix desktop` or
+`npm run package:windows --prefix desktop`. `FOUNDRY_GO` can select the exact Go
+executable. No signing-account discovery or publishing occurs. Supply the
+runtime-source sidecar described in [its guide](desktop/runtime-sources.md)
+alongside any distributed installer. Building does not prove installation,
+Windows ACL behavior, approval flows or clean uninstall; run the matching native
+acceptance gates. Never reuse personal data for package testing.
 
 Document any skipped check and the exact reason. A local pass does not imply GitHub-hosted CI, a clean machine, Docker smoke, or real-provider compatibility has passed.
 

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"foundry/internal/domain"
 	"foundry/internal/engine"
+	"foundry/internal/testutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,7 +33,7 @@ func TestRepositoryImportCreationAndOperationRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"init", "-qb", "main"}, {"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture"}} {
-		cmd := exec.Command("/usr/bin/git", args...)
+		cmd := testutil.Git(t, args...)
 		cmd.Dir = repo
 		if b, err := cmd.CombinedOutput(); err != nil {
 			t.Fatal(err, string(b))

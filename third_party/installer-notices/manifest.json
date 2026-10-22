@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "bundle": {
+    "release": "nsis@1.2.1",
+    "revision": "427d76149394b945fa4e370b3ba42a0276a76879",
+    "nsisVersion": "3.12",
+    "nsisSourceRevision": "e3f60402bcdf7be822d159b531c6e38ddf32de12",
+    "sha256": "56997fdefe25e7928a1a68b4583d08b240b66cf660234053b20131a74cc082f4"
+  },
+  "sourceManifest": "desktop/installer-sources.json",
+  "texts": [
+    {
+      "file": "NSIS-LICENSE.txt",
+      "original": "bundle/nsis-bundle/LICENSE",
+      "description": "NSIS core zlib/bzip2/CPL1.0 + LZMA linking exception",
+      "bytes": 15488,
+      "sha256": "6cc665347be5c84b76bf0fd6f85fbb0c33261e89b3408aa3e3e55dbe95e12d89"
+    },
+    {
+      "file": "StdUtils-LGPL.txt",
+      "original": "stdutils/LGPL.txt",
+      "description": "StdUtils exact LGPL2.1 text",
+      "bytes": 27032,
+      "sha256": "1e7e6bae5a5bde32f1ae5a7c37a082d1ab03cf89354f7f936ac40be9e39a6531"
+    },
+    {
+      "file": "StdUtils-LGPL_CLARIFICATION.txt",
+      "original": "stdutils/LGPL_CLARIFICATION.txt",
+      "description": "StdUtils author clarification for verbatim plugin DLL in NSIS installers; preserve verbatim",
+      "bytes": 2734,
+      "sha256": "ae0ab3f49b4473152181c1fe5670435faaca079eda0b261ee31a51a6180bc9e7"
+    },
+    {
+      "file": "StdUtils-BUILD_TAG.txt",
+      "original": "stdutils/BUILD_TAG.txt",
+      "description": "StdUtils copyright/build attribution",
+      "bytes": 121,
+      "sha256": "202f37732dc052a47104a63f3e64d38a9332962bdddc8ae957f63d724ffaf2fe"
+    },
+    {
+      "file": "Nsis7z-License.txt",
+      "original": "nsis7z/Contrib/nsis7z/DOC/License.txt",
+      "description": "LZMA SDK public-domain notice provided in plugin archive",
+      "bytes": 476,
+      "sha256": "63fcfe54826809b5a9f9df8a8ff53c04330122319ec67a2dd815085586adaf0e"
+    },
+    {
+      "file": "Nsis7z-readme.txt",
+      "original": "nsis7z/Contrib/nsis7z/DOC/nsis7z.txt",
+      "description": "Nsis7z authorship, LGPL statement and exact SDK19 build directions",
+      "bytes": 5875,
+      "sha256": "881f8ba4da0a0c30e281d324408baa596f14211b03d1f3bf99fe18c4621916c3"
+    },
+    {
+      "file": "UAC-License.txt",
+      "original": "uac/License.txt",
+      "description": "UAC zlib/libpng license",
+      "bytes": 956,
+      "sha256": "997fd014643f27a2f240faf9b9b54a98371775c63eb38134829154794f7326fa"
+    }
+  ],
+  "scope": "Byte-exact notices for selected native NSIS components; not every cached optional plugin. No blanket legal clearance."
+}

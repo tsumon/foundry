@@ -6,9 +6,9 @@ import (
 	"foundry/internal/domain"
 	"foundry/internal/engine"
 	"foundry/internal/sandbox"
+	"foundry/internal/testutil"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -72,7 +72,7 @@ func TestC4HTTPPreparedApprovalFactsAndStaleBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"init", "-qb", "main"}, {"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture"}} {
-		cmd := exec.Command("/usr/bin/git", args...)
+		cmd := testutil.Git(t, args...)
 		cmd.Dir = repo
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatal(err, string(out))

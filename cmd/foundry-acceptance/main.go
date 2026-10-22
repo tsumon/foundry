@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -21,6 +20,7 @@ import (
 	"foundry/internal/acceptance"
 	"foundry/internal/accounts"
 	"foundry/internal/c4fixture"
+	"foundry/internal/desktophost"
 	"foundry/internal/domain"
 	"foundry/internal/engine"
 	"foundry/internal/gitinspect"
@@ -54,6 +54,7 @@ type acceptanceRuntime struct {
 }
 
 func main() {
+	desktop := flag.Bool("desktop", false, "private desktop parent protocol; repository simulation only")
 	webDir := flag.String("web-dir", "web/dist", "built workbench static directory (read-only)")
 	controls := flag.Bool("c4-controls-fixture", false, "isolated synthetic C4 controls only; never enables Docker")
 	repository := flag.Bool("repository-tasks-fixture", false, "isolated descriptor-driven repository simulation; no compiler, Docker or provider execution")
@@ -65,12 +66,29 @@ func main() {
 	if err := validateRepositoryTaskFlags(*controls, *repository, *repositoryPath); err != nil {
 		log.Fatal(err)
 	}
+	var session *desktophost.Session
+	if *desktop {
+		if *controls || !*repository {
+			log.Fatal("desktop acceptance supports repository simulation only")
+		}
+		var err error
+		session, err = desktophost.Open(context.Background(), os.Stdin)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if !filepath.IsAbs(os.Getenv("FOUNDRY_DATA_DIR")) {
+			log.Fatal("desktop requires an absolute retained data directory")
+		}
+	}
 	start := startAcceptance
 	if *controls {
 		start = startC4ControlsAcceptance
 	}
 	if *repository {
 		start = func(web string) (*acceptanceRuntime, error) {
+			if session != nil {
+				return startRepositoryTasksDesktop(web, *repositoryPath, os.Getenv("FOUNDRY_DATA_DIR"), session.Capability)
+			}
 			return startRepositoryTasksAcceptance(web, *repositoryPath)
 		}
 	}
@@ -80,12 +98,27 @@ func main() {
 	}
 	defer runtime.Close()
 	// No token, callback, authorization URL or secret is printed. Artifacts are retained after shutdown.
-	if err := json.NewEncoder(os.Stdout).Encode(runtime.manifest()); err != nil {
-		log.Print(err)
+	var readyErr error
+	if session != nil {
+		readyErr = desktophost.Ready(os.Stdout, runtime.URL, runtime.Root)
+	} else {
+		readyErr = json.NewEncoder(os.Stdout).Encode(runtime.manifest())
+	}
+	if readyErr != nil {
+		log.Print(readyErr)
 		return
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if session != nil {
+		go func() {
+			select {
+			case <-session.Context.Done():
+				stop()
+			case <-ctx.Done():
+			}
+		}()
+	}
 	select {
 	case <-ctx.Done():
 	case err := <-runtime.serveErr:
@@ -268,9 +301,12 @@ func seedRepository(repo string) error {
 		return err
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "src/main.txt"}, {"-c", "user.name=Synthetic Acceptance", "-c", "user.email=synthetic@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "SYNTHETIC base"}} {
-		command := exec.Command("/usr/bin/git", args...)
+		command, cleanup, err := fixtureGitCommand(args...)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
 		command.Dir = repo
-		command.Env = []string{"PATH=/usr/bin:/bin", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"}
 		if raw, err := command.CombinedOutput(); err != nil {
 			return fmt.Errorf("seed synthetic Git: %w %s", err, raw)
 		}

@@ -19,12 +19,14 @@ import (
 
 	"foundry/internal/acceptance"
 	"foundry/internal/accounts"
+	"foundry/internal/desktophost"
 	"foundry/internal/domain"
 	"foundry/internal/engine"
 	"foundry/internal/hooks"
 	"foundry/internal/httpapi"
 	"foundry/internal/mcptest"
 	"foundry/internal/model"
+	"foundry/internal/platformfs"
 	"foundry/internal/store"
 )
 
@@ -43,7 +45,7 @@ type config struct {
 }
 
 type dataLock struct {
-	file *os.File
+	file *platformfs.File
 }
 
 type productionModels struct {
@@ -96,12 +98,20 @@ func runWithArgs(args []string) error {
 }
 
 func runWithSecrets(args []string, secrets model.Secrets) error {
-	cfg, err := loadConfig()
+	if handled, err := prepareDesktopData(args); handled {
+		return err
+	}
+	desktop, err := desktopOptions(args)
+	if err != nil {
+		return err
+	}
+	cfg, err := loadConfigMode(desktop)
 	if err != nil {
 		return err
 	}
 	flags := flag.NewFlagSet("foundry", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	flags.BoolVar(&desktop, "desktop", false, "private desktop parent protocol")
 	flags.StringVar(&cfg.c4ControlConfig, "c4-control-config", "", "explicit isolated C4 activation configuration file")
 	flags.BoolVar(&cfg.localMCPTest, "local-mcp-test", false, "enable the controller-owned synthetic local MCP reference service")
 	flags.StringVar(&cfg.openaiSubscriptionRoute, "openai-subscription-route", "", "explicitly enable one existing OpenAI subscription connection route")
@@ -113,6 +123,15 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected startup arguments")
+	}
+	var desktopSession *desktophost.Session
+	if desktop {
+		desktopSession, err = desktophost.Open(context.Background(), os.Stdin)
+		if err != nil {
+			return err
+		}
+		cfg.dockerPath = "/__foundry_desktop_docker_disabled__"
+		secrets = desktopSecrets{}
 	}
 	var c4Activation *engine.C4Activation
 	if cfg.c4ControlConfig != "" {
@@ -128,7 +147,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	if err := validateOpenAIStartupOptions(cfg); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(cfg.dataDir, 0700); err != nil {
+	if err := platformfs.PrivateDirectory(cfg.dataDir); err != nil {
 		return fmt.Errorf("create data directory: %w", err)
 	}
 	lock, err := acquireDataLock(cfg.dataDir)
@@ -212,9 +231,23 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.address, err)
 	}
+	defer listener.Close()
+	cfg.address = listener.Addr().String()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if desktopSession != nil {
+		go func() {
+			select {
+			case <-desktopSession.Context.Done():
+				stop()
+			case <-ctx.Done():
+			}
+		}()
+	}
 	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly, RecoveryError: recoveryError})
+	if desktopSession != nil {
+		handler = desktophost.Protect(desktopSession.Capability, handler)
+	}
 	server := &http.Server{
 		Addr: cfg.address, Handler: handler,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -227,6 +260,12 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	go func() {
 		serveErr <- server.Serve(listener)
 	}()
+	if desktopSession != nil {
+		if err := desktophost.Ready(os.Stdout, "http://"+cfg.address, cfg.dataDir); err != nil {
+			_ = server.Close()
+			return err
+		}
+	}
 	log.Printf("FOUNDRY 0.1.0 listening at http://%s", cfg.address)
 	if recoveryReadOnly {
 		log.Printf("recovery_limited: diagnostic read-only; %s; all business mutations disabled", recoveryError)
@@ -250,6 +289,10 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 }
 
 func loadConfig() (config, error) {
+	return loadConfigMode(false)
+}
+
+func loadConfigMode(desktop bool) (config, error) {
 	var cfg config
 	if value := os.Getenv("FOUNDRY_DISABLE_CONTROLLED_READ_CREATION"); value != "" {
 		var err error
@@ -281,7 +324,7 @@ func loadConfig() (config, error) {
 		return cfg, errors.New("FOUNDRY_ADDR must be 127.0.0.1:<port>")
 	}
 	portNumber, err := strconv.Atoi(port)
-	if err != nil || portNumber < 1 || portNumber > 65535 {
+	if err != nil || portNumber < 0 || portNumber > 65535 || (!desktop && portNumber == 0) || (desktop && portNumber != 0) {
 		return cfg, errors.New("FOUNDRY_ADDR must contain a valid port")
 	}
 
@@ -329,21 +372,21 @@ func validatedDirectory(path string) (string, error) {
 
 func acquireDataLock(directory string) (*dataLock, error) {
 	path := filepath.Join(directory, "controller.lock")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	file, err := platformfs.OpenLock(path)
 	if err != nil {
 		return nil, fmt.Errorf("open controller lock: %w", err)
 	}
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockExclusive(file.File); err != nil {
 		_ = file.Close()
 		return nil, errors.New("another FOUNDRY controller owns this data directory")
 	}
 	if err := file.Truncate(0); err != nil {
-		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = unlockExclusive(file.File)
 		_ = file.Close()
 		return nil, fmt.Errorf("write controller lock: %w", err)
 	}
 	if _, err := file.WriteString(strconv.Itoa(os.Getpid()) + "\n"); err != nil {
-		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = unlockExclusive(file.File)
 		_ = file.Close()
 		return nil, fmt.Errorf("write controller lock: %w", err)
 	}
@@ -354,7 +397,7 @@ func (l *dataLock) Close() error {
 	if l == nil || l.file == nil {
 		return nil
 	}
-	err := syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
+	err := unlockExclusive(l.file.File)
 	closeErr := l.file.Close()
 	l.file = nil
 	if err != nil {

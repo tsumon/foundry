@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "versions": {
+    "electron": "45.0.0",
+    "electronCommit": "54f961b44b83e4ece81065ab60a182fd0c38c01e",
+    "chromium": "156.0.8078.48",
+    "chromiumCommit": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+    "ffmpegForkCommit": "9db86ce5b5b454dfc96c435f9f0723012980c37f",
+    "node": "24.22.0",
+    "nasmCommit": "525a09a813be0f75b646ee93fc2a31c27b87d722",
+    "opusVendoredUpstream": "55513e81d8f606bd75d0ff773d2144e5f2a732f5"
+  },
+  "files": [
+    {
+      "file": "chromium-ffmpeg-9db86ce5b5b454dfc96c435f9f0723012980c37f.tar.gz",
+      "url": "https://chromium.googlesource.com/chromium/third_party/ffmpeg/+archive/9db86ce5b5b454dfc96c435f9f0723012980c37f.tar.gz",
+      "revision": "9db86ce5b5b454dfc96c435f9f0723012980c37f",
+      "extractTo": "src/third_party/ffmpeg",
+      "stripComponents": 0,
+      "role": "shipped-library-source",
+      "bytes": 18925377,
+      "sha256": "dda8b3d190eabbd0f4f4bbee398c7b346d9de626c32cd790f7517b341f236724"
+    },
+    {
+      "file": "electron-45.0.0-54f961b44b83e4ece81065ab60a182fd0c38c01e.tar.gz",
+      "url": "https://codeload.github.com/electron/electron/tar.gz/54f961b44b83e4ece81065ab60a182fd0c38c01e",
+      "revision": "54f961b44b83e4ece81065ab60a182fd0c38c01e",
+      "extractTo": "src/electron",
+      "stripComponents": 1,
+      "role": "patches-build-configuration-instructions",
+      "bytes": 20249510,
+      "sha256": "a23aa90170dc1ea5d999e2dd1ffeedf0ae836498b081dfaad0ba5aa5a772aa3f"
+    },
+    {
+      "file": "chromium-156.0.8078.48-DEPS",
+      "url": "https://raw.githubusercontent.com/chromium/chromium/156.0.8078.48/DEPS",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "copyTo": "src/DEPS",
+      "role": "dependency-provenance",
+      "bytes": 192396,
+      "sha256": "3535b3175635f9984c82a3f0c2a8e70f0ed2cfdb2a352f40446c9fddf2490703"
+    },
+    {
+      "file": "node-24.22.0-LICENSE",
+      "url": "https://raw.githubusercontent.com/nodejs/node/v24.22.0/LICENSE",
+      "version": "24.22.0",
+      "copyTo": "legal/Node-LICENSE",
+      "role": "bundled-legal-text",
+      "bytes": 157609,
+      "sha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+    },
+    {
+      "file": "chromium-build-d0c02bf.tar.gz",
+      "url": "https://chromium.googlesource.com/chromium/src/+archive/d0c02bfad08ec92a6ffcf989e53cd995e6381a4c/build.tar.gz",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "extractTo": "src/build",
+      "stripComponents": 0,
+      "role": "controlling-build-scripts",
+      "bytes": 1992528,
+      "sha256": "b3b0e613a70d0c56f81d34cd073feb92cdc513e503103ca1a4803d711fe94064"
+    },
+    {
+      "file": "chromium-generate-stubs-d0c02bf.tar.gz",
+      "url": "https://chromium.googlesource.com/chromium/src/+archive/d0c02bfad08ec92a6ffcf989e53cd995e6381a4c/tools/generate_stubs.tar.gz",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "extractTo": "src/tools/generate_stubs",
+      "stripComponents": 0,
+      "role": "windows-definition-generator",
+      "bytes": 15197,
+      "sha256": "a762027e9021b0756457d8234e91e238f44f97eaf9030f731075023619bb5feb"
+    },
+    {
+      "file": "chromium-opus-d0c02bf.tar.gz",
+      "url": "https://chromium.googlesource.com/chromium/src/+archive/d0c02bfad08ec92a6ffcf989e53cd995e6381a4c/third_party/opus.tar.gz",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "extractTo": "src/third_party/opus",
+      "stripComponents": 0,
+      "role": "linked-library-source",
+      "bytes": 4258450,
+      "sha256": "66bdfecce617be70e32ff5ddbd7d0aa0fa792b328ef87e16ccdb4a7f90defd4b"
+    },
+    {
+      "file": "chromium-media-ffmpeg-d0c02bf.tar.gz",
+      "url": "https://chromium.googlesource.com/chromium/src/+archive/d0c02bfad08ec92a6ffcf989e53cd995e6381a4c/media/ffmpeg.tar.gz",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "extractTo": "src/media/ffmpeg",
+      "stripComponents": 0,
+      "role": "integration-build-documentation",
+      "bytes": 105221,
+      "sha256": "c89b485007877e9e8e6c8bfe227de3e440d8ea9e6c99715ffb5a102ce3691cf9"
+    },
+    {
+      "file": "chromium-nasm-525a09a.tar.gz",
+      "url": "https://chromium.googlesource.com/chromium/deps/nasm/+archive/525a09a813be0f75b646ee93fc2a31c27b87d722.tar.gz",
+      "revision": "525a09a813be0f75b646ee93fc2a31c27b87d722",
+      "extractTo": "src/third_party/nasm",
+      "stripComponents": 0,
+      "role": "assembler-source-and-build-integration",
+      "bytes": 2433082,
+      "sha256": "02b3f510e73674b5a6778dc5e5cfc4af0ddcd780a341bea38ee1290c1ac0620f"
+    },
+    {
+      "file": "chromium-LICENSE",
+      "url": "https://chromium.googlesource.com/chromium/src/+/d0c02bfad08ec92a6ffcf989e53cd995e6381a4c/LICENSE?format=TEXT",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "copyTo": "src/LICENSE",
+      "role": "legal-text",
+      "bytes": 1536,
+      "sha256": "368cca1106be99d39ecd32a38d8305585d802a475effb66380b91ffc9bcf709b",
+      "encoding": "base64"
+    },
+    {
+      "file": "chromium-root.gn",
+      "url": "https://raw.githubusercontent.com/chromium/chromium/d0c02bfad08ec92a6ffcf989e53cd995e6381a4c/.gn",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "copyTo": "src/.gn",
+      "role": "root-build-configuration",
+      "bytes": 25602,
+      "sha256": "1c33e1726ea5b347730043bf1837fb17bedbeee4651ae9d8393f0d191fb0dd24"
+    },
+    {
+      "file": "chromium-root-BUILD.gn",
+      "url": "https://raw.githubusercontent.com/chromium/chromium/d0c02bfad08ec92a6ffcf989e53cd995e6381a4c/BUILD.gn",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "copyTo": "src/BUILD.gn",
+      "role": "root-build-configuration",
+      "bytes": 54711,
+      "sha256": "3ac1c40941ec13b48f3a855c6d5aef985b6bdf3cb7272d3940cf6cdf5f188617"
+    },
+    {
+      "file": "chromium-build-overrides-build.gni",
+      "url": "https://chromium.googlesource.com/chromium/src/+/d0c02bfad08ec92a6ffcf989e53cd995e6381a4c/build_overrides/build.gni?format=TEXT",
+      "revision": "d0c02bfad08ec92a6ffcf989e53cd995e6381a4c",
+      "copyTo": "src/build_overrides/build.gni",
+      "role": "controlling-build-configuration",
+      "bytes": 4356,
+      "sha256": "b87805b85d5f0e50919b91f5d863dedfbfe0276333f8eba3647faf3d501daf5b",
+      "encoding": "base64"
+    }
+  ],
+  "patches": [
+    {
+      "source": "src/electron/patches/ffmpeg/link_with_loader_path.patch",
+      "applyTo": "src/third_party/ffmpeg",
+      "sha256": "e2f63a2036ffa803db9a50dfec74c4f5628abc476cb44a5ede9d7e775bc7b238"
+    }
+  ],
+  "configuration": {
+    "source": "src/electron/build/args/release.gn",
+    "ffmpeg_branding": "Chrome",
+    "proprietary_codecs": true,
+    "is_component_ffmpeg": true,
+    "platforms": [
+      {
+        "target_os": "mac",
+        "target_cpu": "arm64",
+        "configPath": "src/third_party/ffmpeg/chromium/config/Chrome/mac/arm64"
+      },
+      {
+        "target_os": "win",
+        "target_cpu": "x64",
+        "configPath": "src/third_party/ffmpeg/chromium/config/Chrome/win/x64"
+      }
+    ]
+  },
+  "externalPrerequisites": [
+    "GN/Ninja or Siso and depot_tools; use included exact-version Electron build documentation",
+    "Platform compiler/linker/SDK and system libraries",
+    "Remaining Chromium project checkout/config-generation dependencies for normal GN environment; no standalone/offline build claim"
+  ]
+}

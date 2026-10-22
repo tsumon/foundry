@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +70,9 @@ func (b *capped) String() string {
 	return s
 }
 func (d *Docker) command(ctx context.Context, args ...string) ([]byte, error) {
+	if runtime.GOOS == "windows" {
+		return nil, errors.New("real Docker is unsupported on Windows")
+	}
 	c := exec.CommandContext(ctx, d.Path, args...)
 	b := &capped{max: 1024 * 1024}
 	c.Stdout = b
@@ -123,6 +127,9 @@ func (d *Docker) remove(name string) error {
 }
 func (d *Docker) Run(ctx context.Context, mission, candidate, image, command string) (domain.CommandResult, error) {
 	result := domain.CommandResult{Command: command, ExitCode: -1}
+	if runtime.GOOS == "windows" {
+		return result, errors.New("real Docker is unsupported on Windows")
+	}
 	b := make([]byte, 8)
 	if _, e := rand.Read(b); e != nil {
 		return result, e

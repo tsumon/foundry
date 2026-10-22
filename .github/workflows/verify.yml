@@ -104,4 +104,5 @@ jobs:
           go mod verify
           "$tools/govulncheck" -show=verbose ./...
           (cd web && npm audit --audit-level=low)
+          (cd desktop && npm audit --audit-level=low)
           "$tools/actionlint" .github/workflows/*.yml

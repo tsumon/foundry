@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"foundry/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -14,9 +15,8 @@ import (
 
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	c := exec.Command("git", args...)
+	c := testutil.Git(t, args...)
 	c.Dir = dir
-	c.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
 	b, e := c.CombinedOutput()
 	if e != nil {
 		t.Fatalf("git: %v %s", e, b)
@@ -203,18 +203,18 @@ func TestExportPreservesPatchContentAndExecutableMode(t *testing.T) {
 	repo := repository(t)
 	os.Chmod(filepath.Join(repo, "src/main.txt"), 0755)
 	git(t, repo, "add", ".")
-	git(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "mode")
+	git(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "mode")
 	dir := filepath.Join(t.TempDir(), "mission")
 	_, _, err := Snapshot(context.Background(), repo, dir, []string{"src/"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	info, _ := os.Stat(filepath.Join(dir, "candidate/src/main.txt"))
-	if info.Mode().Perm() != 0755 {
+	if info.Mode().Perm() != nativeWritableMode() {
 		t.Fatal("executable mode lost")
 	}
 	before, _ := Digest(filepath.Join(dir, "candidate"))
-	os.Chmod(filepath.Join(dir, "candidate/src/main.txt"), 0644)
+	os.Chmod(filepath.Join(dir, "candidate/src/main.txt"), nativeChangedMode())
 	after, _ := Digest(filepath.Join(dir, "candidate"))
 	if before == after {
 		t.Fatal("mode change did not invalidate digest")
@@ -230,6 +230,18 @@ func TestExportPreservesPatchContentAndExecutableMode(t *testing.T) {
 		t.Fatal("patch content rewritten")
 	}
 	git(t, repo, "apply", "--check", patch)
+}
+func nativeWritableMode() os.FileMode {
+	if runtime.GOOS == "windows" {
+		return 0666
+	}
+	return 0755
+}
+func nativeChangedMode() os.FileMode {
+	if runtime.GOOS == "windows" {
+		return 0444
+	}
+	return 0644
 }
 func TestContextBoundsRejectRatherThanTruncate(t *testing.T) {
 	repo := repository(t)

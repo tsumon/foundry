@@ -2,8 +2,8 @@ package main
 
 import (
 	"crypto/sha256"
+	"foundry/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -40,7 +40,7 @@ func TestC4FixtureFullApprovalRepairDelivery(t *testing.T) {
 		source[name] = sha256.Sum256(b)
 	}
 	sourceStatus := func() string {
-		cmd := exec.Command("/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all")
+		cmd := testutil.Git(t, "status", "--porcelain=v1", "--untracked-files=all")
 		cmd.Dir = m.RepoPath
 		b, err := cmd.CombinedOutput()
 		if err != nil {

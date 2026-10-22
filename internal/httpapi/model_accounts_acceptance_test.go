@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"foundry/internal/testutil"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -197,7 +197,7 @@ func accountAcceptanceRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "synthetic base"}} {
-		cmd := exec.Command("git", args...)
+		cmd := testutil.Git(t, args...)
 		cmd.Dir = repo
 		if raw, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("temporary git fixture: %v %s", err, raw)

@@ -26,4 +26,33 @@ SHA-256:
 d2fb2ae3a522603b9c3e4e9276a991ca1241233217603ff92944e6878e6ddd5a  model-acceptance.jpg
 ```
 
-Only these reviewed captures belong in the public source manifest. Runtime databases, fixture credentials, arbitrary screenshots and private acceptance records do not.
+## Desktop capture — 2026-10-23
+
+`desktop-delivery.jpg` is a direct 2880×1920 native-window capture of the installed
+Mac desktop Alpha, built from the reviewed desktop changes on source base
+`ed6b0046f31277327ad3f1e044910d341d6f7e95`. The captured package's SPA build time is
+`2026-10-22T18:41:21.788Z`. It shows the isolated `Normalize labels` descriptor
+simulation after separate baseline, context, execution and delivery approvals.
+The actual installed app saved both patch and report through native save dialogs.
+The title, task and verification record explicitly identify synthetic execution.
+
+Pixels were inspected: no personal account, credential, authorization URL or host
+path appears. The original JPEG's EXIF dimension block, display ICC profile and
+Photoshop metadata blocks were removed losslessly for privacy; the compressed
+image scan is unchanged. No results, labels, UI elements or pixels were generated
+or retouched. This screenshot does not certify cloud models or Docker.
+
+`foundry-icon.png` is the 512×512 output of the checked-in `desktop/icon.swift`,
+reusing the workbench's existing F/vertical-bar mark; it is not a third-party logo.
+`desktop/icon.ico` wraps the same generator's 256×256 PNG in a standard Windows
+ICO frame without changing the image pixels.
+
+```text
+b227d6cf86bc914b0084b923094841365de5642ab1619b960b0fcb5e39792fd3  desktop-delivery.jpg
+7f629728393fb1a15bf10754bf3734e953849ae48f1af484857f3a6c54aa190d  foundry-icon.png
+96a0b60e558c2162e800d4848dfe298abab267c6476e9ff8772b754b239f3ab4  desktop/icon.ico
+```
+
+Only these reviewed captures/assets belong in the public source manifest.
+Runtime databases, fixture credentials, arbitrary screenshots and private
+acceptance records do not.

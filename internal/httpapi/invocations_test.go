@@ -3,10 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"foundry/internal/testutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -203,7 +203,7 @@ func TestControlledPlanConsentIsExplicitAndAcceptedOnlyOnPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "base"}} {
-		command := exec.Command("git", args...)
+		command := testutil.Git(t, args...)
 		command.Dir = repoPath
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, output)

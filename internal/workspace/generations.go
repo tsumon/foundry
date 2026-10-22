@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"foundry/internal/domain"
+	"foundry/internal/platformfs"
 	"io"
 	"os"
 	"path/filepath"
@@ -74,7 +75,11 @@ func prepareGeneration(fsys filesystem, dir, id, source string, parent *domain.G
 		if err != nil {
 			return fail(err)
 		}
-		modes[p] = info.Mode().Perm()
+		mode, err := platformfs.CanonicalMode(info.Mode())
+		if err != nil {
+			return fail(err)
+		}
+		modes[p] = mode
 	}
 	changes := []domain.Change{}
 	if len(edits) > 30 {
@@ -162,6 +167,9 @@ func prepareGeneration(fsys filesystem, dir, id, source string, parent *domain.G
 	if err := fsys.sync(container); err != nil {
 		return fail(err)
 	}
+	if err := VerifyGeneration(dir, ref); err != nil {
+		return fail(err)
+	}
 	return ref, changes, nil
 }
 
@@ -235,6 +243,9 @@ func validHex(s string, n int) bool {
 	return true
 }
 func realDirectory(p string) error {
+	if err := platformfs.ValidateDirectory(p); err != nil {
+		return err
+	}
 	if !filepath.IsAbs(p) || filepath.Clean(p) != p {
 		return errors.New("clean absolute managed path required")
 	}
@@ -307,7 +318,7 @@ func readBoundedFile(p string, limit int64) ([]byte, error) {
 	if !info.Mode().IsRegular() || info.Size() > limit {
 		return nil, errors.New("invalid bounded regular file")
 	}
-	f, err := os.Open(p)
+	f, err := platformfs.OpenRegular(p)
 	if err != nil {
 		return nil, err
 	}

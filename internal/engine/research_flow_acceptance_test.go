@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"foundry/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -76,7 +76,7 @@ func (g *mixedAcceptanceGateway) Complete(ctx context.Context, r model.Request) 
 
 func acceptanceGit(t *testing.T, repo string, args ...string) string {
 	t.Helper()
-	command := exec.Command("git", args...)
+	command := testutil.Git(t, args...)
 	command.Dir = repo
 	raw, err := command.CombinedOutput()
 	if err != nil {

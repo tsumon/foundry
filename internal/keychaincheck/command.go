@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package keychaincheck owns the journaled, exact-item native storage diagnostic.
 package keychaincheck
 

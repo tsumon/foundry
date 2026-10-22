@@ -6,6 +6,13 @@ All notable public-facing changes will be recorded here.
 
 ### Added
 
+- Native desktop Alpha packaging: Apple Silicon DMG and Windows x64 per-user
+  EXE, bundled controller/SPA, private local data, a persistent empty workbench
+  and explicit accountless repository simulations. Independent approvals and
+  patch/report delivery remain unchanged; no live accounts or Docker are enabled.
+- Native Windows path, lock, private-DACL and publication boundaries, installed
+  package CI, runtime source/notices, and truthful bilingual installation guides
+  with an actual installed-workbench screenshot.
 - Source-only macOS arm64 (Apple Silicon) alpha documentation.
 - Apache License 2.0 text.
 - Public architecture, safety, contribution, security, and alpha-status documents.
@@ -31,4 +38,4 @@ All notable public-facing changes will be recorded here.
 
 ### Release status
 
-The public source destination is [tsumon/foundry](https://github.com/tsumon/foundry), with attribution to tsumon and private security reports handled through GitHub. This is a clean source snapshot, not a public copy of the private development history. The initial snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) passed [public GitHub-hosted macOS verification and security checks](https://github.com/tsumon/foundry/actions/runs/39188374585); that evidence is commit-scoped, and each later commit requires its own successful run. No GitHub Release, tag, package, installer, independent-machine acceptance, or real-provider certification is claimed. The reviewed alpha target is macOS arm64; Intel macOS and other OS/CPU targets remain unverified and unsupported. No blanket third-party legal/compliance clearance is claimed. See [alpha status](docs/public/alpha-status.md).
+The public source destination is [tsumon/foundry](https://github.com/tsumon/foundry), with attribution to tsumon and private security reports handled through GitHub. This is a clean source snapshot, not a public copy of private development history. The initial snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) passed [public GitHub-hosted macOS verification and security checks](https://github.com/tsumon/foundry/actions/runs/39188374585); that evidence is commit-scoped. Current desktop artifacts require successful native **Desktop packages** and **Verify** runs for their precise commit. Distribution uses expiring CI artifacts, not a GitHub Release or tag. Mac packages are ad-hoc signed, not notarized; Windows installers are unsigned. No real-provider, independent end-user-machine, production-readiness or blanket legal/compliance certification is claimed. See [alpha status](docs/public/alpha-status.md).

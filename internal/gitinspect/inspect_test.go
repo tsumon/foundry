@@ -3,11 +3,10 @@ package gitinspect
 import (
 	"context"
 	"crypto/sha256"
+	"foundry/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -22,7 +21,7 @@ func TestMetadataConfigOpenRejectsSwappedSymlinkAndFIFO(t *testing.T) {
 		t.Fatal(err)
 	}
 	fifo := filepath.Join(root, "fifo")
-	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+	if err := testutil.SpecialFile(fifo); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{symlink, fifo} {
@@ -31,12 +30,31 @@ func TestMetadataConfigOpenRejectsSwappedSymlinkAndFIFO(t *testing.T) {
 		}
 	}
 }
+func TestMetadataRejectsCaseAliasedForbiddenLayout(t *testing.T) {
+	for _, name := range []string{"COMMONDIR", "objects/info/ALTERNATES", "objects/info/Http-Alternates", "CONFIG.WORKTREE"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, ".git")
+			if e := os.MkdirAll(filepath.Join(dir, "objects", "info"), 0700); e != nil {
+				t.Fatal(e)
+			}
+			if e := os.WriteFile(filepath.Join(dir, "config"), []byte("[core]\n bare=false\n"), 0600); e != nil {
+				t.Fatal(e)
+			}
+			if e := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte("outside"), 0600); e != nil {
+				t.Fatal(e)
+			}
+			if checkMetadata(context.Background(), root) == nil {
+				t.Fatal("case alias bypassed metadata exclusion")
+			}
+		})
+	}
+}
 
 func fixtureGit(t *testing.T, root string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("/usr/bin/git", args...)
+	cmd := testutil.Git(t, args...)
 	cmd.Dir = root
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + root, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_AUTHOR_NAME=Fixture", "GIT_AUTHOR_EMAIL=fixture@example.invalid", "GIT_COMMITTER_NAME=Fixture", "GIT_COMMITTER_EMAIL=fixture@example.invalid"}
 	b, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("fixture git %v: %s %v", args, b, err)

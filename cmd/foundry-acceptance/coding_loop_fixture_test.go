@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"foundry/internal/testutil"
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 
@@ -124,9 +124,8 @@ func TestCodingLoopRepairScenarioUsesContentAndIndependentApprovals(t *testing.T
 	if err != nil || !strings.Contains(string(report), "内容检查模拟（未执行命令）") || !strings.Contains(string(report), "模拟验证未通过") || !strings.Contains(string(report), "模拟验证通过") {
 		t.Fatalf("report lost explicit simulation outcomes: %v %s", err, report)
 	}
-	check := exec.Command("/usr/bin/git", "apply", "--check", delivered.Delivery.PatchPath)
+	check := testutil.Git(t, "apply", "--check", delivered.Delivery.PatchPath)
 	check.Dir = runtime.Repo
-	check.Env = []string{"PATH=/usr/bin:/bin", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1"}
 	if output, checkErr := check.CombinedOutput(); checkErr != nil {
 		t.Fatalf("exported patch does not apply to the frozen source: %v %s", checkErr, output)
 	}

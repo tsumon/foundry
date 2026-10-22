@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"foundry/internal/domain"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,7 +111,7 @@ func readCommittedTree(ctx context.Context, repo, commit string, scope []string)
 			return zero, domain.ImportUnsupportedEntry
 		}
 		fields := strings.Fields(parts[0])
-		if len(fields) != 4 || fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
+		if len(fields) != 4 || fields[1] != "blob" || (fields[0] != "100644" && (fields[0] != "100755" || runtime.GOOS == "windows")) {
 			return zero, domain.ImportUnsupportedEntry
 		}
 		p := parts[1]

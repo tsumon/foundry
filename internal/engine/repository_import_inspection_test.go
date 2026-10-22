@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"foundry/internal/domain"
 	"foundry/internal/store"
+	"foundry/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -454,7 +454,7 @@ func TestInspectRepositoryNeverInvokesHelpersOrFetches(t *testing.T) {
 }
 func importGit(t *testing.T, repo string, args ...string) string {
 	t.Helper()
-	c := exec.Command("/usr/bin/git", args...)
+	c := testutil.Git(t, args...)
 	c.Dir = repo
 	b, err := c.CombinedOutput()
 	if err != nil {

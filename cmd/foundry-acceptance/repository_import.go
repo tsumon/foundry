@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -60,9 +59,12 @@ func seedRepositoryImportScenarios(r *acceptanceRuntime) error {
 		return err
 	}
 	for _, args := range [][]string{{"add", "src/binary.bin"}, {"-c", "user.name=Synthetic Acceptance", "-c", "user.email=synthetic@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "SYNTHETIC unsupported binary"}} {
-		command := exec.Command("/usr/bin/git", args...)
+		command, cleanup, err := fixtureGitCommand(args...)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
 		command.Dir = binaryPath
-		command.Env = []string{"PATH=/usr/bin:/bin", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"}
 		if raw, err := command.CombinedOutput(); err != nil {
 			return fmt.Errorf("seed synthetic binary: %w %s", err, raw)
 		}

@@ -1,8 +1,21 @@
-# Source alpha status
+# Alpha status
 
-FOUNDRY is an experimental, source-only macOS arm64 (Apple Silicon) alpha. This document separates implemented behavior from release readiness.
+FOUNDRY is an experimental local-workflow Alpha. It provides source and native
+desktop packaging for macOS arm64 (Apple Silicon) and Windows x64. A successful
+**Desktop packages** run for the exact source commit is required before treating
+its artifact as accepted; build configuration alone is not a pass. See the
+[desktop guide](desktop-guide.md) for installation and actual capabilities.
 
 ## Implemented
+
+- Native desktop packaging of the unchanged workbench and Go controller: a Mac
+  DMG and Windows per-user EXE. Runtime Go/Node/compiler installation is not
+  required. The native menu distinguishes persistent empty data from disposable,
+  retained **local simulation** runs. Patch/report exports use bounded native
+  save dialogs; installation never grants pending approvals or enables real
+  accounts, Docker, scripts or Git writes. The Mac artifact has an ad-hoc
+  integrity signature only; the Windows installer is unsigned. Neither is a
+  production-signed, notarized or auto-updating release.
 
 - [C4 approval-bound Go verification](coding-verification-c4.md): immutable profile, independent baseline approval/execution, append-only lifecycle, exact-owned cleanup, failure/repair and bound reviews. Production remains default-closed with strict controlled activation and no HTTP/environment bypass or legacy fallback. A separately approved, bounded Double-project C4-C Docker acceptance completed baseline pass → candidate failure → repaired pass with confirmed cleanup. Roles remained simulated; retained historical evidence is not future authority or a general isolation guarantee.
 - [Repository-task orchestration](repository-task-orchestration.md): isolated accountless, descriptor-driven local proposals and exact-content checks for arbitrary bounded goals/nested paths, including declared new source files and dependent multifile edits. Existing controller approvals, immutable generations, repair limits, failure replanning, reviews and patch export are reused. This is not autonomous reasoning, compilation or real repository Docker execution. Existing-path import consumes committed HEAD only and preserves uncommitted work; its descriptor must match the commit.
@@ -38,13 +51,23 @@ The [independent single-inference gate](openai-inference-gate.md) adds a mutuall
 - Generic external MCP `tools/call`, MCP stdio/OAuth, Skill/script execution, hook scripts/webhooks, or Git hooks.
 - Automatic provider fallback, paid fallback, retry/replay of unknown remote outcomes, or automatic Docker image pulls.
 - A browser-triggered native Keychain test or ordinary-startup real-login, live catalog or live-inference action. Only separately confirmed operator activation can prepare the corresponding independent approval workflow; the connection mode's native check is never triggered by a web request. Task inference through live account routes stays closed.
-- An installer, signed/notarized application, package manager formula, or downloadable binary release.
+- A production code-signing/notarization service, automatic updater, package
+  manager formula, or GitHub Release. Installers are versioned CI artifacts with
+  finite retention, not a permanent release channel.
 
 ## Support boundary
 
-The reviewed and supported source-alpha target is macOS arm64 (Apple Silicon). Intel macOS (`darwin/x64`) and all other OS/CPU targets are unverified, including their platform-specific dependency-notice coverage, and are not supported by this alpha.
+The desktop targets are macOS arm64 and Windows x64, subject to each exact
+commit's native CI acceptance. Intel macOS, Windows ARM and Linux desktop
+installers are not supported by this milestone. Windows repository admission is
+deliberately narrower: committed regular `100644` files only, no executable-bit
+entries, symlinks, junctions, aliases or alternate data streams. Windows storage
+uses protected per-user DACLs and native held locks, not POSIX chmod emulation.
 
-The usable credential backend on the supported target is macOS Keychain with cgo. Other platforms may compile portions of the code but can expose an unsupported secret backend; compilation alone does not establish alpha support.
+The source CLI's native credential backend is macOS Keychain with cgo. Desktop
+launches on both platforms disable that backend and real-account operator
+activation. Windows real Keychain and real Docker are unsupported and fail
+closed. Compilation alone does not establish native acceptance.
 
 The expected validation toolchain is Go 1.27.3, Node.js 22.23.2, and npm 10.9.8. The trusted system `/usr/bin/git` must pass `/usr/bin/git --no-lazy-fetch --version`; a newer Git elsewhere on `PATH` does not substitute for it. CI targets the public-repository arm64 `macos-26` image and retains that feature check. The initial public snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) completed both macOS verification and security checks in [public workflow run 39188374585](https://github.com/tsumon/foundry/actions/runs/39188374585). That evidence is commit-scoped; it does not cover later commits or any skipped Docker, Keychain, real-provider, or independent-machine check. Docker-dependent behavior requires a running local daemon and a preloaded trusted image. A skipped Docker smoke test is unverified, not passed.
 
@@ -58,7 +81,8 @@ Legacy accountless model profiles preserve their network capability. New account
 - No external MCP implementation is certified for task execution.
 - No independent fresh Apple Silicon Mac acceptance run is claimed.
 - No security audit, penetration test, dependency legal review, or production-readiness assessment is claimed.
-- No public package, installer, tag, GitHub Release, or support SLA is included with this source snapshot.
+- No tag, GitHub Release or support SLA is included. Installer availability and
+  verification are tied to successful, retained CI artifacts for a precise commit.
 
 Synthetic local tests validate protocol and controller behavior only. They are not evidence that a real provider, account, MCP server, Docker environment, or user repository is compatible or safe.
 
@@ -74,4 +98,5 @@ The source snapshot does not resolve every release-readiness question:
 2. GitHub-hosted evidence is commit-scoped. The [initial successful run](https://github.com/tsumon/foundry/actions/runs/39188374585) covers commit `3d30e5d`; each later commit requires its own successful run. A local pass does not certify a hosted run.
 3. Docker, real Keychain, real-provider, and independent-machine acceptance must each be reported as run, failed, or skipped based on evidence.
 
-Publishing this source snapshot does not create a binary release or certify production readiness.
+Publishing source or a CI installer does not create a GitHub Release or certify
+production readiness. Real models/subscriptions remain paused.

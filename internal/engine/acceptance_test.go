@@ -2,9 +2,9 @@ package engine
 
 import (
 	"context"
+	"foundry/internal/testutil"
 	"foundry/internal/workspace"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,7 +20,7 @@ func TestAcceptanceRunnerFrozenBeforePlanAndEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"add", "."}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "runner"}} {
-		c := exec.Command("git", args...)
+		c := testutil.Git(t, args...)
 		c.Dir = repo
 		if b, err := c.CombinedOutput(); err != nil {
 			t.Fatalf("%v %s", err, b)

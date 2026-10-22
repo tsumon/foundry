@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "scope": "Conservative notices for Windows CGO static runtime contributions; native gates require GCC 15.2.0 and MinGW-w64 13.0.0. Candidate archive hashes do not establish linked members or compiler-distribution archive identity.",
+  "texts": [
+    {
+      "file": "COPYING.MinGW-w64-runtime.txt",
+      "component": "MinGW-w64 runtime",
+      "upstreamVersion": "13.0.0",
+      "sourceCommit": "de62c283f3383bd825c98518cb0a42ba071d4ac2",
+      "url": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/de62c283f3383bd825c98518cb0a42ba071d4ac2/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt",
+      "bytes": 10936,
+      "sha256": "e9b2dc02451ea29092a1f25fa0f3c07207ed421f1807dffb0c4e6dce69dee7bd",
+      "coverage": "Upstream aggregate explicitly intended for statically linked runtime; preserve all notices and caveats"
+    },
+    {
+      "file": "COPYING.winpthreads.txt",
+      "component": "MinGW-w64 winpthreads",
+      "upstreamVersion": "13.0.0",
+      "sourceCommit": "de62c283f3383bd825c98518cb0a42ba071d4ac2",
+      "url": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/de62c283f3383bd825c98518cb0a42ba071d4ac2/mingw-w64-libraries/winpthreads/COPYING",
+      "bytes": 2883,
+      "sha256": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177",
+      "coverage": "Conservative MIT and BSD notice for POSIX-thread distribution; actual static inclusion not established"
+    },
+    {
+      "file": "GCC-COPYING3.txt",
+      "component": "GCC runtime",
+      "upstreamVersion": "15.2.0",
+      "sourceCommit": "5115c7e447fc07457443df874bf57840e8316d5f",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/5115c7e447fc07457443df874bf57840e8316d5f/COPYING3",
+      "bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "coverage": "GPLv3 text, supplied together with Runtime Library Exception; not a claim application is GPL licensed",
+      "attribution": "GCC libgcc2.c: Copyright 1989-2025 Free Software Foundation, Inc.; source-object inclusion not asserted",
+      "attributionSource": "https://github.com/gcc-mirror/gcc/blob/5115c7e447fc07457443df874bf57840e8316d5f/libgcc/libgcc2.c"
+    },
+    {
+      "file": "GCC-COPYING.RUNTIME.txt",
+      "component": "GCC runtime",
+      "upstreamVersion": "15.2.0",
+      "sourceCommit": "5115c7e447fc07457443df874bf57840e8316d5f",
+      "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/5115c7e447fc07457443df874bf57840e8316d5f/COPYING.RUNTIME",
+      "bytes": 3324,
+      "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+      "coverage": "Runtime Library Exception 3.1; conditions apply to exception-covered files and eligible compilation",
+      "attribution": "GCC libgcc2.c: Copyright 1989-2025 Free Software Foundation, Inc.; source-object inclusion not asserted",
+      "attributionSource": "https://github.com/gcc-mirror/gcc/blob/5115c7e447fc07457443df874bf57840e8316d5f/libgcc/libgcc2.c"
+    }
+  ]
+}

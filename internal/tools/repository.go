@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"foundry/internal/platformfs"
 	"io"
 	"io/fs"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"unicode"
 	"unicode/utf8"
 
@@ -397,7 +397,7 @@ func (r Repository) readValidated(ctx context.Context, meta domain.FileMeta) ([]
 	if err := validatePathComponents(root, meta.Path); err != nil {
 		return nil, err
 	}
-	file, err := root.OpenFile(meta.Path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	file, err := platformfs.OpenRootRegular(root, meta.Path)
 	if err != nil {
 		return nil, errors.New("repository source cannot be opened safely")
 	}

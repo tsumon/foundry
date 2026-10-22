@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -57,6 +58,9 @@ func TestExportPreservesNestedDirectoryPrefixes(t *testing.T) {
 func TestPreparedExportIsSealedStableAndAppliesManagedGeneration(t *testing.T) {
 	repo := repository(t)
 	paths := []string{"src/a/base/file name.txt", "src/b/candidate/quote\".txt"}
+	if runtime.GOOS == "windows" {
+		paths[1] = "src/b/candidate/quote-safe.txt"
+	}
 	for _, p := range paths {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, p)), 0755); err != nil {
 			t.Fatal(err)
