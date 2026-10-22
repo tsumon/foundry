@@ -76,7 +76,8 @@ function status(m: Mission): C4Status {
       available: true,
       structurally_available: true,
       source_kind: "synthetic_c4_control",
-      expires_at: future(),
+      activation_digest: "f".repeat(64),
+      expires_at: m.c4_controls?.at(-1)?.activation_expires_at ?? future(),
       expired: false,
     },
   };
@@ -464,45 +465,173 @@ it("does not mislabel configured Docker history as synthetic or closed", () => {
   expect(c4BaselinePassed(m)).toBe(false);
 });
 
-it("disables stale prepared baseline even with fresh readiness", async () => {
-  const m = initial();
-  const receipt = prepared(m, {
-    state: "completed",
-    approval: {
-      digest: "a".repeat(64),
-      revision: 3,
-      at: new Date().toISOString(),
-    },
-    dispatch: { revision: 4, at: new Date().toISOString() },
-    result: {
-      status: "ready",
-      revision: 5,
-      at: new Date().toISOString(),
-      valid_until: future(),
-      fingerprint: "e".repeat(64),
-    },
-  });
-  m.c4_controls = [receipt];
-  m.c4_operations = [
-    {
-      ...c4Operation,
-      id: "7-stale",
-      state: "prepared",
-      approval: undefined,
-      dispatch: undefined,
-      result: undefined,
-      cleanup: [],
-      readiness_id: receipt.id,
-      readiness_digest: receipt.material_digest,
-    },
-  ];
-  vi.spyOn(api, "c4").mockResolvedValue(status(m));
-  render(<C4Decision mission={m} busy={false} onUpdate={vi.fn()} />);
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "准备就绪材料" })).toBeEnabled(),
-  );
-  expect(screen.getByRole("button", { name: "批准基线材料" })).toBeDisabled();
-});
+it.each(["prepared", "approved"])(
+  "prevents readiness preparation from stranding a %s baseline",
+  async (state) => {
+    const m = initial();
+    const receipt = prepared(m, {
+      state: "completed",
+      approval: {
+        digest: "a".repeat(64),
+        revision: 3,
+        at: new Date().toISOString(),
+      },
+      dispatch: { revision: 4, at: new Date().toISOString() },
+      result: {
+        status: "ready",
+        revision: 5,
+        at: new Date().toISOString(),
+        valid_until: future(),
+        fingerprint: "e".repeat(64),
+      },
+    });
+    m.c4_controls = [receipt];
+    m.c4_operations = [
+      {
+        ...c4Operation,
+        id: "9-pending",
+        state,
+        approval:
+          state === "approved"
+            ? { ...c4Operation.approval!, revision: 9 }
+            : undefined,
+        dispatch: undefined,
+        result: undefined,
+        cleanup: [],
+        readiness_id: receipt.id,
+        readiness_digest: receipt.material_digest,
+      },
+    ];
+    vi.spyOn(api, "c4").mockResolvedValue(status(m));
+    const post = vi.spyOn(api, "c4Action");
+    const view = render(
+      <C4Decision mission={m} busy={false} onUpdate={vi.fn()} />,
+    );
+    const baselineLabel =
+      state === "prepared" ? "批准基线材料" : "执行已批准基线（模拟）";
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: baselineLabel })).toBeEnabled(),
+    );
+    const readiness = screen.getByRole("button", { name: "准备就绪材料" });
+    expect(readiness).toBeDisabled();
+    fireEvent.click(readiness);
+    expect(post).not.toHaveBeenCalled();
+    // Stale baseline authority stays blocked; readiness cannot silently replace it.
+    const stale = {
+      ...m,
+      c4_operations: [
+        {
+          ...m.c4_operations![0],
+          id: "7-stale",
+          approval:
+            state === "approved"
+              ? { ...c4Operation.approval!, revision: 7 }
+              : undefined,
+        },
+      ],
+    };
+    view.rerender(
+      <C4Decision mission={stale} busy={false} onUpdate={vi.fn()} />,
+    );
+    expect(screen.getByRole("button", { name: baselineLabel })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "准备就绪材料" })).toBeDisabled();
+    expect(
+      screen.getByText(/若授权已过期或失配，请新建任务/),
+    ).toBeInTheDocument();
+  },
+);
+
+it.each(["digest", "expiry"])(
+  "disables live actions after current activation %s renewal",
+  async (binding) => {
+    const m = initial();
+    const receipt = prepared(m, {
+      state: "completed",
+      approval: {
+        digest: "a".repeat(64),
+        revision: 3,
+        at: new Date().toISOString(),
+      },
+      dispatch: { revision: 4, at: new Date().toISOString() },
+      result: {
+        status: "ready",
+        revision: 5,
+        at: new Date().toISOString(),
+        valid_until: future(),
+      },
+    });
+    m.c4_controls = [receipt];
+    const s = status(m);
+    if (binding === "digest") s.control!.activation_digest = "b".repeat(64);
+    else s.control!.expires_at = new Date(Date.now() + 1200000).toISOString();
+    vi.spyOn(api, "c4").mockResolvedValue(s);
+    const post = vi.spyOn(api, "c4Action");
+    const structural = vi.fn();
+    const execution = vi.fn();
+    const view = render(
+      <C4Decision
+        mission={m}
+        busy={false}
+        onUpdate={vi.fn()}
+        onAvailabilityChange={structural}
+        onExecutionAvailabilityChange={execution}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "准备就绪材料" }),
+      ).toBeEnabled(),
+    );
+    expect(screen.getByRole("button", { name: "准备基线材料" })).toBeDisabled();
+    expect(structural).toHaveBeenLastCalledWith(true);
+    expect(execution).toHaveBeenLastCalledWith(false);
+    for (const kind of ["readiness", "cleanup"] as const) {
+      for (const state of ["prepared", "approved"] as const) {
+        const pending = {
+          ...m,
+          c4_operations:
+            kind === "cleanup"
+              ? [{ ...c4Operation, cleanup: [], state: "cleanup_failed" }]
+              : [],
+          c4_controls: [
+            prepared(m, {
+              kind,
+              state,
+              activation_expires_at: receipt.activation_expires_at,
+              operation_id: kind === "cleanup" ? c4Operation.id : undefined,
+              operation_digest:
+                kind === "cleanup" ? c4Operation.material_digest : undefined,
+              container_id:
+                kind === "cleanup" ? c4Operation.container_id : undefined,
+              approval:
+                state === "approved"
+                  ? {
+                      digest: "a".repeat(64),
+                      revision: 9,
+                      at: new Date().toISOString(),
+                    }
+                  : undefined,
+            }),
+          ],
+        };
+        view.rerender(
+          <C4Decision mission={pending} busy={false} onUpdate={vi.fn()} />,
+        );
+        expect(
+          screen.getByRole("button", {
+            name: kind === "cleanup" ? "批准清理材料" : "批准就绪材料",
+          }),
+        ).toBeDisabled();
+        expect(
+          screen.getByRole("button", {
+            name: kind === "cleanup" ? "执行精确清理" : "执行就绪检查",
+          }),
+        ).toBeDisabled();
+      }
+    }
+    expect(post).not.toHaveBeenCalled();
+  },
+);
 
 it("expires controls locally without another GET or POST", async () => {
   vi.useFakeTimers();

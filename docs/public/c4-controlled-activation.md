@@ -78,6 +78,13 @@ the separate delivery approval, and does not itself block local planning/chat.
 New baseline/candidate dispatch and all readiness/recovery-cleanup transport
 actions still require their current unexpired authority. Mismatched history and
 diagnostic read-only mode remain blocked; an expired flag alone grants nothing.
+Read-only status exposes the current activation digest and exact expiry so live
+UI controls reject old materials even when both activation windows are still
+fresh. Historical evidence remains bound to its recorded activation, not renewed
+authority. Preparing readiness is rejected without mutation while an undispatched
+baseline is pending: replacing its receipt would strand its one-shot approval.
+There is no implicit abandonment or renewal; if that baseline's authority expires
+or no longer matches, start a new task.
 
 Synthetic control receipts and Docker control receipts are distinct. The runtime
 capability, not request JSON or `mode`, determines provenance. Mock results cannot

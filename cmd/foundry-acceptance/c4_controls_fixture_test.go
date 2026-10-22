@@ -50,8 +50,10 @@ func TestC4ControlsFixtureHTTPIndependentActions(t *testing.T) {
 		ReadOnly bool `json:"read_only"`
 		Real     bool `json:"real_execution"`
 		Control  struct {
-			Available bool   `json:"available"`
-			Source    string `json:"source_kind"`
+			Available        bool   `json:"available"`
+			Source           string `json:"source_kind"`
+			ActivationDigest string `json:"activation_digest"`
+			ExpiresAt        string `json:"expires_at"`
 		} `json:"control"`
 	}
 	c.json("GET", route, nil, 200, &status)
@@ -61,6 +63,10 @@ func TestC4ControlsFixtureHTTPIndependentActions(t *testing.T) {
 	post(map[string]any{"action": "prepare", "revision": m.Revision}, 409)
 	post(map[string]any{"action": "prepare_readiness", "revision": m.Revision}, 200)
 	control := m.C4Controls[0]
+	c.json("GET", route, nil, 200, &status)
+	if status.Control.ActivationDigest != control.ActivationDigest || status.Control.ExpiresAt != control.ActivationExpiresAt {
+		t.Fatal("status does not expose current activation binding", status)
+	}
 	action := func(name string, want int) {
 		t.Helper()
 		post(map[string]any{"action": name, "revision": m.Revision, "control_id": control.ID, "material_digest": control.MaterialDigest}, want)
@@ -88,6 +94,12 @@ func TestC4ControlsFixtureHTTPIndependentActions(t *testing.T) {
 	post(map[string]any{"action": "prepare", "revision": m.Revision}, 200)
 	if m.C4Operations[0].Approval != nil {
 		t.Fatal("baseline autoapproved")
+	}
+	before := m
+	post(map[string]any{"action": "prepare_readiness", "revision": m.Revision}, 409)
+	stored, err := r.store.GetMission(m.ID)
+	if err != nil || !reflect.DeepEqual(stored, before) || r.c4Controls.readiness.Load() != 2 {
+		t.Fatal("conflicting preparation changed facts or performed readiness", err)
 	}
 	// Recovery only accepts the recorded exact ID and consumes separate material.
 	m = failed

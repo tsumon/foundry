@@ -10,6 +10,7 @@ import (
 	"foundry/internal/workspace"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -131,6 +132,19 @@ func TestC4ControlledStatusIsNotLegacySimulationConsent(t *testing.T) {
 	if !status.Available || !status.StructurallyAvailable || status.SourceKind != "synthetic_c4_control" || status.Expired || e.C4SimulationAvailable(m) {
 		t.Fatal("controlled capability confused with legacy simulation", status)
 	}
+	m = controlReady(t, e, m)
+	receipt := m.C4Controls[0]
+	if status.ActivationDigest != receipt.ActivationDigest || status.ExpiresAt != receipt.ActivationExpiresAt {
+		t.Fatal("status does not bind current activation")
+	}
+	e.options.C4Controlled.config.ExpiresAt = time.Now().Add(90 * time.Minute).Format(time.RFC3339Nano)
+	status = e.C4ControlledStatus(m)
+	if !status.Available || !status.StructurallyAvailable || status.ActivationDigest == receipt.ActivationDigest || status.ExpiresAt == receipt.ActivationExpiresAt {
+		t.Fatal("renewed activation not distinguishable from old receipt", status)
+	}
+	if _, err := e.currentC4Readiness(m); err == nil {
+		t.Fatal("renewal reused old readiness")
+	}
 	e.c4Clock = func() time.Time { return time.Now().Add(2 * time.Hour) }
 	status = e.C4ControlledStatus(m)
 	if status.Available || !status.StructurallyAvailable || !status.Expired {
@@ -227,17 +241,45 @@ func TestC4ControlFailurePersistenceAndRecovery(t *testing.T) {
 	}
 }
 
-func TestC4ControlFreshReceiptDoesNotRenewOldOperation(t *testing.T) {
-	e, _, m, d, _, _ := c4FixtureMode(t, true)
-	m = controlReady(t, e, m)
-	m, err := e.PrepareC4Baseline(context.Background(), m.ID, m.Revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	o := m.C4Operations[0]
-	m = controlReady(t, e, m)
-	if _, err = e.ApproveC4Baseline(context.Background(), m.ID, m.Revision, o.ID, o.MaterialDigest); err == nil || d.creates != 0 {
-		t.Fatal("old operation inherited new receipt")
+func TestC4ControlReadinessCannotStrandPendingBaseline(t *testing.T) {
+	for _, approved := range []bool{false, true} {
+		t.Run(map[bool]string{false: "prepared", true: "approved"}[approved], func(t *testing.T) {
+			e, s, m, d, f, _ := c4FixtureMode(t, true)
+			m = controlReady(t, e, m)
+			m, err := e.PrepareC4Baseline(context.Background(), m.ID, m.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			o := m.C4Operations[0]
+			if approved {
+				m, err = e.ApproveC4Baseline(context.Background(), m.ID, m.Revision, o.ID, o.MaterialDigest)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := 0
+			e.options.C4Controlled.readiness = func(context.Context) (sandbox.C4ReadinessResult, error) {
+				calls++
+				return sandbox.C4ReadinessResult{}, nil
+			}
+			if _, err = e.PrepareC4Readiness(context.Background(), m.ID, m.Revision); err == nil {
+				t.Fatal("readiness preparation stranded pending baseline")
+			}
+			stored, err := s.GetMission(m.ID)
+			if err != nil || !reflect.DeepEqual(stored, m) || calls != 0 || d.creates != 0 || d.starts != 0 || d.inspects != 0 || d.removes != 0 || f.calls != 0 {
+				t.Fatal("rejected preparation changed durable facts or invoked effects", err)
+			}
+			if !approved {
+				m, err = e.ApproveC4Baseline(context.Background(), m.ID, m.Revision, o.ID, o.MaterialDigest)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			m, err = e.ExecuteC4Baseline(context.Background(), m.ID, m.Revision, o.ID, o.MaterialDigest)
+			if err != nil || !m.C4Operations[0].Passed() || d.creates != 1 {
+				t.Fatal("original baseline no longer executable", err)
+			}
+		})
 	}
 }
 

@@ -64,6 +64,15 @@ func (e *Engine) prepareC4Control(ctx context.Context, id string, revision int64
 	if e.active != nil || ctx.Err() != nil {
 		return m, ErrC4Unavailable
 	}
+	// Re-preparation would advance the revision and strand a baseline whose
+	// one-shot authority has not been dispatched. There is no abandon workflow.
+	if kind == "readiness" {
+		for _, o := range m.C4Operations {
+			if o.Kind == "baseline" && o.Dispatch == nil && o.Result == nil {
+				return m, ErrC4Unavailable
+			}
+		}
+	}
 	c, err := e.newC4Control(m, kind)
 	if err != nil {
 		return m, err

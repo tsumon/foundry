@@ -4,6 +4,7 @@ import { activeStates, type Mission } from "../types";
 import {
   c4CleanupState,
   c4ControlBound,
+  c4ControlActivationMatches,
   c4ControlSource,
   c4OperationLabel,
   c4ReadinessFresh,
@@ -18,6 +19,7 @@ function controlReason(
   m: Mission,
   c: C4Control | undefined,
   at: number,
+  current: C4Status["control"],
 ): string {
   if (!c) return "尚未准备材料";
   if (c.dispatch || c.result || !["prepared", "approved"].includes(c.state))
@@ -29,6 +31,7 @@ function controlReason(
     return "材料或激活已过期";
   if (
     !c4ControlBound(m, c) ||
+    !c4ControlActivationMatches(c, current) ||
     c.epoch !== m.epoch ||
     c.plan_revision !== (m.plan?.revision ?? 0)
   )
@@ -145,7 +148,13 @@ export function C4Controls({
     status.real_execution === (source === "docker_c4_control") &&
     c4Supported(m)
   );
-  const available = configured && c4ReadinessFresh(m, at);
+  const available = configured && c4ReadinessFresh(m, at, status?.control);
+  const pendingBaseline = m.c4_operations?.some(
+    (o) => o.kind === "baseline" && !o.dispatch && !o.result,
+  );
+  const readinessPreparationReason = pendingBaseline
+    ? "已有未执行基线，不能更换就绪材料；若授权已过期或失配，请新建任务"
+    : "";
   useEffect(() => {
     callback.current?.(structural);
     return () => callback.current?.(false);
@@ -174,18 +183,20 @@ export function C4Controls({
   const stopped = (body: C4Action) => failed.includes(key(body));
   const act = async (body: C4Action) => {
     if (reason || lock.current || stopped(body)) return;
+    if (body.action === "prepare_readiness" && pendingBaseline) return;
     if (
       "control_id" in body &&
       controlReason(
         m,
         m.c4_controls?.find((c) => c.id === body.control_id),
         Date.now(),
+        status?.control,
       )
     )
       return;
     if (
       ["prepare", "approve", "execute"].includes(body.action) &&
-      !c4ReadinessFresh(m)
+      !c4ReadinessFresh(m, Date.now(), status?.control)
     )
       return;
     lock.current = true;
@@ -226,7 +237,7 @@ export function C4Controls({
       .filter((c) => c.kind === kind && (!op || c.operation_id === op))
       .at(-1);
   const controlButtons = (c: C4Control | undefined, cleanup = false) => {
-    const why = controlReason(m, c, at);
+    const why = controlReason(m, c, at, status?.control);
     const body = {
       revision: m.revision,
       control_id: c?.id ?? "",
@@ -289,10 +300,16 @@ export function C4Controls({
       </p>
       {reason && <p className="warning-copy">{reason}</p>}
       {error && <p role="alert">{error}</p>}
+      {readinessPreparationReason && (
+        <p className="muted small">{readinessPreparationReason}</p>
+      )}
       {button(
         "准备就绪材料",
         { action: "prepare_readiness", revision: m.revision },
-        readiness && !controlReason(m, readiness, at) ? "已有待决材料" : "",
+        readinessPreparationReason ||
+          (readiness && !controlReason(m, readiness, at, status?.control)
+            ? "已有待决材料"
+            : ""),
       )}
       {controlButtons(readiness)}
       <h4>基线 · 独立审批</h4>
@@ -359,7 +376,12 @@ export function C4Controls({
                   container_id: o.container_id,
                 },
                 latest("cleanup", o.id) &&
-                  !controlReason(m, latest("cleanup", o.id), at)
+                  !controlReason(
+                    m,
+                    latest("cleanup", o.id),
+                    at,
+                    status?.control,
+                  )
                   ? "已有待决清理材料"
                   : "",
               )}

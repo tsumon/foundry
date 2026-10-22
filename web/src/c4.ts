@@ -62,6 +62,7 @@ export interface C4Status {
     available: boolean;
     structurally_available: boolean;
     source_kind?: string;
+    activation_digest?: string;
     expires_at?: string;
     expired: boolean;
   };
@@ -124,12 +125,25 @@ export const c4ControlBound = (m: Mission, c: C4Control) =>
   /^[a-f0-9]{64}$/.test(c.material_digest) &&
   /^[a-f0-9]{64}$/.test(c.profile_digest) &&
   /^[a-f0-9]{64}$/.test(c.activation_digest);
-export function c4ReadinessFresh(m: Mission, at = Date.now()): boolean {
+export const c4ControlActivationMatches = (
+  c: C4Control,
+  current: C4Status["control"],
+) =>
+  !!current &&
+  c.activation_digest === current.activation_digest &&
+  c.activation_expires_at === current.expires_at &&
+  c.source_kind === current.source_kind;
+export function c4ReadinessFresh(
+  m: Mission,
+  at = Date.now(),
+  current?: C4Status["control"],
+): boolean {
   if (m.spec.c4?.control_version !== 1) return true;
   const c = m.c4_controls?.filter((c) => c.kind === "readiness").at(-1);
   return (
     !!c &&
     c4ControlBound(m, c) &&
+    c4ControlActivationMatches(c, current) &&
     c.state === "completed" &&
     !!c.dispatch &&
     c.approval?.digest === c.material_digest &&

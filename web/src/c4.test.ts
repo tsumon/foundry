@@ -6,6 +6,8 @@ import {
   c4OperationLabel,
   c4Passed,
   c4Supported,
+  c4ReadinessFresh,
+  type C4Control,
 } from "./c4";
 import { mission } from "./test/fixtures";
 import {
@@ -16,6 +18,74 @@ import {
 } from "./test/c4Fixtures";
 import { decisionKind } from "./deliveryStatus";
 import { decisionMaterial } from "./decisionMaterials";
+
+it("requires current activation digest and expiry for fresh readiness, not historical pass", () => {
+  const at = Date.parse("2026-10-22T00:00:00Z");
+  const expires = "2026-10-22T00:10:00Z";
+  const receipt: C4Control = {
+    schema_version: 1,
+    id: "ready",
+    kind: "readiness",
+    mission_id: c4Mission.id,
+    epoch: c4Mission.epoch,
+    plan_revision: 0,
+    base_commit: c4Mission.base_commit,
+    base_digest: c4Mission.repository_import!.base_digest,
+    profile_digest: "c".repeat(64),
+    activation_digest: "f".repeat(64),
+    activation_expires_at: expires,
+    source_kind: "synthetic_c4_control",
+    prepared_revision: 1,
+    prepared_at: "2026-10-22T00:00:00Z",
+    expires_at: expires,
+    material_digest: "a".repeat(64),
+    state: "completed",
+    approval: {
+      digest: "a".repeat(64),
+      revision: 2,
+      at: "2026-10-22T00:00:01Z",
+    },
+    dispatch: { revision: 3, at: "2026-10-22T00:00:02Z" },
+    result: {
+      status: "ready",
+      revision: 4,
+      at: "2026-10-22T00:00:03Z",
+      valid_until: expires,
+    },
+  };
+  const m = {
+    ...c4Mission,
+    spec: {
+      ...c4Mission.spec,
+      c4: { ...c4Mission.spec.c4!, control_version: 1 },
+    },
+    c4_controls: [receipt],
+    c4_operations: [
+      {
+        ...c4Operation,
+        readiness_id: "ready",
+        readiness_digest: receipt.material_digest,
+      },
+    ],
+  };
+  const current = {
+    available: true,
+    structurally_available: true,
+    expired: false,
+    source_kind: "synthetic_c4_control",
+    activation_digest: "f".repeat(64),
+    expires_at: expires,
+  };
+  expect(c4ReadinessFresh(m, at, current)).toBe(true);
+  expect(
+    c4ReadinessFresh(m, at, { ...current, activation_digest: "b".repeat(64) }),
+  ).toBe(false);
+  expect(
+    c4ReadinessFresh(m, at, { ...current, expires_at: "2026-10-22T00:20:00Z" }),
+  ).toBe(false);
+  expect(c4ReadinessFresh(m, at)).toBe(false);
+  expect(c4BaselinePassed(m)).toBe(true);
+});
 
 it("sends only the typed action bindings to the task-scoped endpoint", async () => {
   const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(

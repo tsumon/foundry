@@ -81,6 +81,7 @@ func (e *Engine) c4Timestamp() string { return e.c4Time().Format(time.RFC3339Nan
 
 // Display only: availability never grants action consent.
 type C4ControlledStatus struct {
+	ActivationDigest      string `json:"activation_digest,omitempty"`
 	Available             bool   `json:"available"`
 	StructurallyAvailable bool   `json:"structurally_available"`
 	SourceKind            string `json:"source_kind,omitempty"`
@@ -94,7 +95,7 @@ func (e *Engine) C4ControlledStatus(m domain.Mission) C4ControlledStatus {
 		return C4ControlledStatus{}
 	}
 	deadline, _ := time.Parse(time.RFC3339Nano, c.config.ExpiresAt)
-	return C4ControlledStatus{Available: e.c4ControlledGate(m, true) == nil, StructurallyAvailable: e.c4ControlledGate(m, false) == nil, SourceKind: c.source, ExpiresAt: c.config.ExpiresAt, Expired: !e.c4Time().Before(deadline)}
+	return C4ControlledStatus{ActivationDigest: c.config.Digest(), Available: e.c4ControlledGate(m, true) == nil, StructurallyAvailable: e.c4ControlledGate(m, false) == nil, SourceKind: c.source, ExpiresAt: c.config.ExpiresAt, Expired: !e.c4Time().Before(deadline)}
 }
 func (e *Engine) c4ControlledGate(m domain.Mission, fresh bool) error {
 	c := e.options.C4Controlled
