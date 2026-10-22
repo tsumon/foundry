@@ -5,13 +5,64 @@ const { test } = require("node:test"),
   path = require("node:path"),
   os = require("node:os"),
   crypto = require("node:crypto");
+const { execFileSync } = require("node:child_process");
 const {
+  capturePEHeaders,
   peImports,
   electronCredits,
   verifyFiles,
   compilerVersions,
   toolchainFile,
 } = require("../windows-provenance.cjs");
+
+// Replace only the unavailable Windows tool with a real child process, retaining
+// the production capture options and complete stdout/error behavior on any OS.
+function peOutputProcess(bytes, tail = " DLL Name: msvcrt.dll\n") {
+  return (command, args, options) => {
+    assert.equal(command, "C:\\mingw64\\bin\\objdump.exe");
+    assert.deepEqual(args, ["-p", "fixture.exe"]);
+    return execFileSync(
+      process.execPath,
+      [
+        "-e",
+        `
+      process.stdout.write("fixture.exe: file format pei-x86-64\\n DLL Name: KERNEL32.dll\\n");
+      process.stdout.write("x".repeat(${bytes}) + "\\n");
+      process.stdout.write(${JSON.stringify(tail)});
+    `,
+      ],
+      options,
+    );
+  };
+}
+
+test("PE capture retains complete output larger than the default 1 MiB subprocess limit", () => {
+  const output = capturePEHeaders(
+    "fixture.exe",
+    peOutputProcess(2 * 1024 * 1024),
+  );
+  assert.equal(output.length, 2 * 1024 * 1024 + 83);
+  assert.ok(output.endsWith(" DLL Name: msvcrt.dll\n"));
+  assert.deepEqual(peImports(output), ["KERNEL32.dll", "msvcrt.dll"]);
+});
+test("PE capture does not hide an unknown DLL at the end of a large tool response", () => {
+  assert.throws(
+    () =>
+      peImports(
+        capturePEHeaders(
+          "fixture.exe",
+          peOutputProcess(2 * 1024 * 1024, " DLL Name: surprise.dll\n"),
+        ),
+      ),
+    /unexpected.*DLL/i,
+  );
+});
+test("PE capture refuses output exceeding its finite 16 MiB bound rather than returning a prefix", () => {
+  assert.throws(
+    () => capturePEHeaders("fixture.exe", peOutputProcess(17 * 1024 * 1024)),
+    (error) => error.code === "ENOBUFS",
+  );
+});
 test("compiler notices gate exact GCC and actual MinGW64 header versions, not compatibility aliases", () => {
   const macros =
     '#define __GNUC__ 15\n#define __GNUC_MINOR__ 2\n#define __GNUC_PATCHLEVEL__ 0\n#define __MINGW64_VERSION_MAJOR 13\n#define __MINGW64_VERSION_MINOR 0\n#define __MINGW64_VERSION_BUGFIX 0\n#define __MINGW64_VERSION_RC 0\n#define __MINGW64_VERSION_STATE "alpha"\n#define __MINGW32_MAJOR_VERSION 3\n';

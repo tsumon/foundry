@@ -12,6 +12,7 @@ const {
   perUserNsisOptions,
 } = require("./nsis-template.cjs");
 const {
+  capturePEHeaders,
   peImports,
   electronCredits,
   verifyFiles,
@@ -134,11 +135,7 @@ async function main() {
       },
     );
     const file = path.join(inputs, "bin", name + ".exe");
-    const imports = execFileSync(
-      "C:\\mingw64\\bin\\objdump.exe",
-      ["-p", file],
-      { encoding: "utf8" },
-    );
+    const imports = capturePEHeaders(file);
     fs.writeFileSync(path.join(output, name + "-pe-imports.txt"), imports);
     goBinaries.push({
       file: name + ".exe",

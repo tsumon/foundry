@@ -4,6 +4,14 @@ const fs = require("node:fs"),
   path = require("node:path"),
   crypto = require("node:crypto");
 const { verifyInput } = require("./runtime-sources.cjs");
+const { execFileSync } = require("node:child_process");
+function capturePEHeaders(file, execute = execFileSync) {
+  return execute("C:\\mingw64\\bin\\objdump.exe", ["-p", file], {
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: 60000,
+  });
+}
 function compilerVersions(gcc, macros) {
   if (gcc !== "15.2.0")
     throw Error("GCC 15.2.0 required for pinned runtime notices");
@@ -150,6 +158,7 @@ function verifyShipping(sourceKit, legal) {
   };
 }
 module.exports = {
+  capturePEHeaders,
   peImports,
   electronCredits,
   verifyFiles,
