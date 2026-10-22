@@ -21,14 +21,15 @@ const C4OperationLimit = 64
 // C4Profile is a declaration, not proof of readiness or permission to execute.
 // Policy is derived from the version, never accepted as caller overrides.
 type C4Profile struct {
-	SchemaVersion int    `json:"schema_version"`
-	ID            string `json:"id"`
-	Mode          string `json:"mode"`
-	ImageID       string `json:"image_id"`
-	Platform      string `json:"platform"`
-	DockerPath    string `json:"docker_path"`
-	Endpoint      string `json:"endpoint"`
-	Verifier      string `json:"verifier"`
+	SchemaVersion  int    `json:"schema_version"`
+	ControlVersion int    `json:"control_version,omitempty"`
+	ID             string `json:"id"`
+	Mode           string `json:"mode"`
+	ImageID        string `json:"image_id"`
+	Platform       string `json:"platform"`
+	DockerPath     string `json:"docker_path"`
+	Endpoint       string `json:"endpoint"`
+	Verifier       string `json:"verifier"`
 }
 
 type C4Tmpfs struct {
@@ -132,6 +133,8 @@ type C4Operation struct {
 	CandidateGeneration *GenerationRef `json:"candidate_generation,omitempty"`
 	CandidateDigest     string         `json:"candidate_digest,omitempty"`
 	ProfileDigest       string         `json:"profile_digest"`
+	ReadinessID         string         `json:"readiness_id,omitempty"`
+	ReadinessDigest     string         `json:"readiness_digest,omitempty"`
 	MaterialDigest      string         `json:"material_digest"`
 	ContainerName       string         `json:"container_name"`
 	ContainerID         string         `json:"container_id,omitempty"`
@@ -184,6 +187,9 @@ func c4Absolute(p string) bool {
 }
 
 func (p C4Profile) Validate() error {
+	if p.ControlVersion != 0 && p.ControlVersion != 1 {
+		return errors.New("unsupported C4 control version")
+	}
 	u, err := url.Parse(p.Endpoint)
 	if p.SchemaVersion != 1 || p.ID != "c4_go_v1" || (p.Mode != "synthetic" && p.Mode != "docker") || p.Platform != "linux/arm64" || p.Verifier != "/opt/foundry/verify-go-v1" || !strings.HasPrefix(p.ImageID, "sha256:") || !c4SHA.MatchString(strings.TrimPrefix(p.ImageID, "sha256:")) || !c4Absolute(p.DockerPath) || err != nil || u.Scheme != "unix" || u.Host != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || !c4Absolute(u.Path) || p.Endpoint != "unix://"+u.Path {
 		return errors.New("invalid or unsupported C4 profile")
@@ -193,6 +199,9 @@ func (p C4Profile) Validate() error {
 
 // ValidateC4Mission never normalizes unrecognized data into a valid declaration.
 func ValidateC4Mission(m Mission) error {
+	if err := ValidateC4Controls(m); err != nil {
+		return err
+	}
 	if m.C4Invalid {
 		return errors.New("corrupt C4 record")
 	}
@@ -223,6 +232,9 @@ func ValidateC4Mission(m Mission) error {
 		materials[key] = true
 		if err := validateC4Operation(m, o); err != nil {
 			return fmt.Errorf("C4 operation %s: %w", o.ID, err)
+		}
+		if err := validateC4ReadinessBinding(m, o); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -381,6 +393,9 @@ func c4ExecuteApproval(m Mission, o C4Operation) bool {
 // ValidateC4Transition checks snapshots, not aliases. Callers must freeze before
 // invoking mutation. Historical outcomes survive replans but cannot be rewritten.
 func ValidateC4Transition(before, after Mission) error {
+	if err := ValidateC4ControlTransition(before, after); err != nil {
+		return err
+	}
 	if err := ValidateC4Mission(before); err != nil {
 		return err
 	}
@@ -452,6 +467,9 @@ func ValidateC4Transition(before, after Mission) error {
 		}
 	}
 	for _, o := range after.C4Operations[len(before.C4Operations):] {
+		if err := validateC4ReadinessBinding(before, o); err != nil {
+			return err
+		}
 		if o.State != "prepared" || !c4Current(before, o) || !c4Current(after, o) {
 			return errors.New("C4 append must prepare current material")
 		}

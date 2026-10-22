@@ -4,7 +4,6 @@ import (
 	"errors"
 	"foundry/internal/domain"
 	"io/fs"
-	"math"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -37,7 +36,7 @@ func validateC4Binding(p domain.C4Profile, o domain.C4Operation, trust C4Trust) 
 	if p.DockerPath != trust.DockerPath || p.Endpoint != trust.Endpoint {
 		return errors.New("untrusted C4 transport declaration")
 	}
-	return domain.ValidateC4Mission(domain.Mission{ID: o.MissionID, Epoch: o.Epoch, Revision: math.MaxInt64, Spec: domain.Spec{C4: &p}, C4Operations: []domain.C4Operation{o}})
+	return domain.ValidateC4Operation(p, o)
 }
 
 func BuildC4Plan(p domain.C4Profile, o domain.C4Operation, trust C4Trust, candidate string) (C4Plan, error) {

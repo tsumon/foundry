@@ -163,6 +163,7 @@ func (s *Store) createMission(m domain.Mission, importOperation *domain.Reposito
 	// approval/dispatch facts or an already authorized candidate operation.
 	c4Initial := m
 	c4Initial.C4Operations = nil
+	c4Initial.C4Controls = nil
 	c4Initial.Approvals = nil
 	if err := domain.ValidateC4Transition(c4Initial, m); err != nil {
 		return domain.Mission{}, err
@@ -577,6 +578,7 @@ func decodeMission(data []byte) (domain.Mission, error) {
 		*domain.Mission
 		Spec                json.RawMessage `json:"spec"`
 		C4Operations        json.RawMessage `json:"c4_operations"`
+		C4Controls          json.RawMessage `json:"c4_controls"`
 		RepositoryImport    json.RawMessage `json:"repository_import"`
 		ImportVersion       json.RawMessage `json:"import_version"`
 		CodingAttempts      json.RawMessage `json:"coding_attempts"`
@@ -596,7 +598,10 @@ func decodeMission(data []byte) (domain.Mission, error) {
 		}
 		if len(spec.C4) > 0 {
 			var profile domain.C4Profile
-			if string(spec.C4) == "null" || decodeStoredJSON(spec.C4, &profile) != nil {
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal(spec.C4, &fields)
+			version, hasVersion := fields["control_version"]
+			if string(spec.C4) == "null" || (hasVersion && string(bytes.TrimSpace(version)) != "1") || decodeStoredJSON(spec.C4, &profile) != nil {
 				mission.C4Invalid = true
 			} else {
 				mission.Spec.C4 = &profile
@@ -606,6 +611,36 @@ func decodeMission(data []byte) (domain.Mission, error) {
 	if len(projection.C4Operations) > 0 {
 		if decodeStoredJSON(projection.C4Operations, &mission.C4Operations) != nil {
 			mission.C4Invalid = true
+		}
+	}
+	if len(projection.C4Controls) > 0 {
+		if bytes.Equal(bytes.TrimSpace(projection.C4Controls), []byte("null")) || decodeStoredJSON(projection.C4Controls, &mission.C4Controls) != nil || mission.Spec.C4 == nil || mission.Spec.C4.ControlVersion != 1 {
+			mission.C4Invalid = true
+		}
+	}
+	if len(projection.C4Controls) > 0 || mission.Spec.C4 != nil && mission.Spec.C4.ControlVersion == 1 {
+		// Projection decoding must not hide duplicate enclosing fields or accept
+		// a case-insensitive alias for the versioned authority journal.
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.UseNumber()
+		value, err := storedJSONValue(decoder)
+		root, ok := value.(map[string]any)
+		if err != nil || !ok {
+			mission.C4Invalid = true
+		}
+		for key := range root {
+			for _, exact := range []string{"spec", "c4_controls", "c4_operations"} {
+				if strings.EqualFold(key, exact) && key != exact {
+					mission.C4Invalid = true
+				}
+			}
+		}
+		if spec, ok := root["spec"].(map[string]any); ok {
+			for key := range spec {
+				if strings.EqualFold(key, "c4") && key != "c4" {
+					mission.C4Invalid = true
+				}
+			}
 		}
 	}
 	if len(projection.ImportVersion) > 0 {
