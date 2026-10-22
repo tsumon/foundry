@@ -817,6 +817,8 @@ desktop/test/windows-provenance.test.cjs
 desktop/windows-installed-smoke.ps1
 desktop/windows-provenance.cjs
 desktop/windows-test.ps1
+desktop/windows-ui-ready.cjs
+desktop/windows-ui-snapshot.ps1
 docs/media/desktop-delivery.jpg
 docs/media/foundry-icon.png
 docs/public/desktop-delivery.md

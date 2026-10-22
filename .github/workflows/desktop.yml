@@ -201,6 +201,7 @@ jobs:
             ${{ runner.temp }}/foundry-windows-output/build-inputs.json
             ${{ runner.temp }}/foundry-windows-output/native-smoke.json
             ${{ runner.temp }}/foundry-windows-output/windows-ui.png
+            ${{ runner.temp }}/foundry-windows-output/windows-ui-restart.png
             ${{ runner.temp }}/foundry-windows-output/nsis-provenance.json
             ${{ runner.temp }}/foundry-windows-output/nsis-installer-compiler.log
             ${{ runner.temp }}/foundry-windows-output/nsis-uninstaller-compiler.log

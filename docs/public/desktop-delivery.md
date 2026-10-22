@@ -60,6 +60,14 @@ patch. A nonzero diff result with empty output must never be sealed as a valid
 delivery; changed trees require nonempty patch evidence. Attachment failures must
 identify the artifact type, byte count and digest without printing its content.
 
+Native Windows UI acceptance must wait for the rendered workbench, not merely a
+window title or a responsive process. A bounded OS UI Automation query binds the
+window handle and owner PID, then requires the document's navigation, create-task
+control and received-data/connected-event-stream state. First launch and restart
+must both pass. Foreground-window client-area paint and retained screenshots are
+additional checks, never substitutes for semantic readiness. A blank window fails
+the gate; no renderer debug port, activation switch or relaxed approval is added.
+
 The shared race suite has a finite 1,200-second **per-package** budget. The
 600-second normal-suite budget, uncached full test selection, race detector,
 vet and 45-minute workflow bound remain unchanged. A native CI trace exhausted
