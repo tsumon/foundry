@@ -262,7 +262,7 @@ func TestC4CleanupControlTargetsOlderOperationWithFreshAuthority(t *testing.T) {
 			case "epoch":
 				c.Epoch--
 			case "activation":
-				c.ActivationDigest = strings.Repeat("b", 64)
+				c.ActivationDigest = "malformed"
 			case "confirmed":
 				for _, m := range []*Mission{&a, &b} {
 					o := &m.C4Operations[0]
@@ -295,5 +295,91 @@ func TestC4ControlsRejectMalformedProfileDirectly(t *testing.T) {
 	m.C4Controls[0].MaterialDigest = C4ControlDigest(m.C4Controls[0])
 	if ValidateC4Controls(m) == nil {
 		t.Fatal("malformed profile accepted")
+	}
+}
+
+func TestC4ControlRequiresDistinctPostApprovalRevisions(t *testing.T) {
+	for _, stage := range []string{"dispatch", "result", "all"} {
+		t.Run(stage, func(t *testing.T) {
+			m := readyC4Fixture()
+			c := &m.C4Controls[0]
+			switch stage {
+			case "dispatch":
+				c.Dispatch.Revision = c.Approval.Revision
+			case "result":
+				c.Result.Revision = c.Dispatch.Revision
+			case "all":
+				c.Dispatch.Revision = 2
+				c.Result.Revision = 2
+			}
+			if ValidateC4Mission(m) == nil {
+				t.Fatal("collapsed lifecycle revisions accepted")
+			}
+		})
+	}
+	m := controlledC4Fixture()
+	c := &m.C4Controls[0]
+	c.State = "approved"
+	c.Approval = &C4Approval{Digest: c.MaterialDigest, Revision: c.PreparedRevision, At: c.PreparedAt}
+	if err := ValidateC4Mission(m); err != nil {
+		t.Fatal("create-prepared approval equality must remain valid", err)
+	}
+}
+
+func TestC4CleanupRenewedActivationKeepsOriginalTargetImmutable(t *testing.T) {
+	before, c := cleanupC4Fixture()
+	original, _ := json.Marshal(before)
+	c.PreparedAt = "2026-10-21T01:10:00Z"
+	c.ExpiresAt = "2026-10-21T01:20:00Z"
+	c.ActivationExpiresAt = "2026-10-21T02:00:00Z"
+	c.ActivationDigest = strings.Repeat("e", 64)
+	c.MaterialDigest = C4ControlDigest(c)
+	after := cloneC4(before)
+	after.C4Controls = append(after.C4Controls, c)
+	if err := ValidateC4Transition(before, after); err != nil {
+		t.Fatal("fresh separately bound cleanup activation rejected", err)
+	}
+	for _, kind := range []string{"profile", "base", "source", "id", "digest", "container", "old approval", "old dispatch"} {
+		t.Run(kind, func(t *testing.T) {
+			n := cloneC4(after)
+			c := &n.C4Controls[1]
+			switch kind {
+			case "profile":
+				c.ProfileDigest = strings.Repeat("b", 64)
+			case "base":
+				c.BaseDigest = strings.Repeat("b", 64)
+			case "source":
+				c.SourceKind = "docker_c4_control"
+			case "id":
+				c.OperationID = "other"
+			case "digest":
+				c.OperationDigest = strings.Repeat("b", 64)
+			case "container":
+				c.ContainerID = strings.Repeat("b", 64)
+			case "old approval":
+				c.State = "approved"
+				c.Approval = n.C4Controls[0].Approval
+			case "old dispatch":
+				c.State = "dispatched"
+				c.Approval = n.C4Controls[0].Approval
+				c.Dispatch = n.C4Controls[0].Dispatch
+			}
+			c.MaterialDigest = C4ControlDigest(*c)
+			if ValidateC4Transition(before, n) == nil {
+				t.Fatal("renewed activation widened target or reused consent")
+			}
+		})
+	}
+	n := cloneC4(after)
+	n.C4Controls[0].ActivationDigest = c.ActivationDigest
+	n.C4Controls[0].MaterialDigest = C4ControlDigest(n.C4Controls[0])
+	if ValidateC4Transition(before, n) == nil {
+		t.Fatal("old receipt rewritten")
+	}
+	remaining := cloneC4(after)
+	remaining.C4Controls = remaining.C4Controls[:1]
+	bytes, _ := json.Marshal(remaining)
+	if string(bytes) != string(original) {
+		t.Fatal("renewal changed original history")
 	}
 }

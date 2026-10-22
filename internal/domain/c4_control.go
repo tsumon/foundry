@@ -150,13 +150,13 @@ func validateC4Control(m Mission, c C4Control) error {
 		state = "approved"
 	}
 	if c.Dispatch != nil {
-		if state != "approved" || !check(c.Dispatch.Revision, c.Dispatch.At, true) {
+		if state != "approved" || c.Dispatch.Revision <= rev || !check(c.Dispatch.Revision, c.Dispatch.At, true) {
 			return errC4Control
 		}
 		state = "dispatched"
 	}
 	if r := c.Result; r != nil {
-		if state != "dispatched" || !check(r.Revision, r.At, false) {
+		if state != "dispatched" || r.Revision <= rev || !check(r.Revision, r.At, false) {
 			return errC4Control
 		}
 		switch r.Status {
@@ -198,7 +198,10 @@ func c4CleanupTarget(m Mission, c C4Control) *C4Operation {
 		o := &m.C4Operations[i]
 		if o.ID == c.OperationID && o.MaterialDigest == c.OperationDigest && o.ContainerID == c.ContainerID && o.BaseCommit == c.BaseCommit && o.BaseDigest == c.BaseDigest && o.ProfileDigest == c.ProfileDigest {
 			for _, r := range m.C4Controls {
-				if r.ID == o.ReadinessID && r.MaterialDigest == o.ReadinessDigest && r.ActivationDigest == c.ActivationDigest && r.ActivationExpiresAt == c.ActivationExpiresAt && r.SourceKind == c.SourceKind {
+				// Recovery may use a newly confirmed activation after the original
+				// expires. Preserve target/profile/base/provenance, not old consent.
+				// The engine matches this new material to current trusted activation.
+				if r.ID == o.ReadinessID && r.MaterialDigest == o.ReadinessDigest && r.SourceKind == c.SourceKind {
 					return o
 				}
 			}

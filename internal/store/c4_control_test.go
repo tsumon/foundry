@@ -150,3 +150,71 @@ func TestC4ControlStoredNullVersionReadOnly(t *testing.T) {
 		}
 	}
 }
+
+func assertC4StoredCorruptionReadOnly(t *testing.T, raw string, revision int64) {
+	t.Helper()
+	s := openTestStore(t)
+	if _, err := s.db.Exec(`INSERT INTO missions(id,revision,state,updated_at,data) VALUES('c4',?,'running','now',?)`, revision, raw); err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.GetMission("c4")
+	if err != nil {
+		t.Fatal("corruption must remain inspectable", err)
+	}
+	if domain.ValidateC4Mission(m) == nil {
+		t.Fatal("corrupt authority became writable")
+	}
+	called := false
+	if _, err := s.UpdateMission("c4", revision, "erase", func(m *domain.Mission) error {
+		called = true
+		m.C4Invalid = false
+		m.C4Controls = nil
+		m.Spec.C4 = nil
+		return nil
+	}); err == nil || called {
+		t.Fatal("corruption reached mutation", err)
+	}
+	var stored string
+	if err := s.db.QueryRow(`SELECT data FROM missions WHERE id='c4'`).Scan(&stored); err != nil || stored != raw {
+		t.Fatal("original bytes changed", err)
+	}
+}
+
+func TestC4ControlHiddenByDuplicateEnvelopeRemainsReadOnly(t *testing.T) {
+	controlled, _ := json.Marshal(c4ControlStoreMission().Spec.C4)
+	legacy, _ := json.Marshal(c4StoreMission().Spec.C4)
+	for name, raw := range map[string]string{
+		"duplicate spec empty last":       `{"id":"c4","spec":{"c4":` + string(controlled) + `},"spec":{}}`,
+		"duplicate spec legacy last":      `{"id":"c4","spec":{"c4":` + string(controlled) + `},"spec":{"c4":` + string(legacy) + `}}`,
+		"aliased spec empty last":         `{"id":"c4","Spec":{"c4":` + string(controlled) + `},"spec":{}}`,
+		"duplicate nested c4 legacy last": `{"id":"c4","spec":{"c4":` + string(controlled) + `,"c4":` + string(legacy) + `}}`,
+		"aliased nested c4 legacy last":   `{"id":"c4","spec":{"C4":` + string(controlled) + `,"c4":` + string(legacy) + `}}`,
+	} {
+		t.Run(name, func(t *testing.T) { assertC4StoredCorruptionReadOnly(t, raw, 1) })
+	}
+}
+
+func TestC4ControlCollapsedPersistedRevisionsRemainReadOnly(t *testing.T) {
+	for _, stage := range []string{"dispatch", "result", "all"} {
+		t.Run(stage, func(t *testing.T) {
+			m := c4ControlStoreMission()
+			m.Revision = 10
+			c := &m.C4Controls[0]
+			c.State = "completed"
+			c.Approval = &domain.C4Approval{Digest: c.MaterialDigest, Revision: 2, At: c.PreparedAt}
+			c.Dispatch = &domain.C4Fact{Revision: 3, At: c.PreparedAt}
+			c.Result = &domain.C4ControlResult{Status: "ready", Revision: 4, At: c.PreparedAt, ValidUntil: c.ExpiresAt, Fingerprint: strings.Repeat("f", 64)}
+			switch stage {
+			case "dispatch":
+				c.Dispatch.Revision = 2
+			case "result":
+				c.Result.Revision = 3
+			case "all":
+				c.Dispatch.Revision = 2
+				c.Result.Revision = 2
+			}
+			raw, _ := json.Marshal(m)
+			assertC4StoredCorruptionReadOnly(t, string(raw), m.Revision)
+		})
+	}
+}

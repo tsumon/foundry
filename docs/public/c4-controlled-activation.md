@@ -111,6 +111,13 @@ through a new material bound to the current mission, without reauthorizing start
 Unknown IDs cannot be typed in to discover or remove an object. Failed checks or
 failed dispatch persistence mean zero trust probes, inspect or remove calls.
 
+An expired activation cannot be reused. A newly confirmed activation may authorize
+cleanup of an older operation only when the project/base/profile and transport
+provenance still match, with a fresh current cleanup material and approval. Bind
+that material to the new activation, not the expired readiness activation. This
+permits explicit recovery after expiry without renewing readiness, start, execution
+or any prior approval. Exact original ID/ownership/path checks remain mandatory.
+
 Persist the one-shot cleanup dispatch before calling the adapter, retaining
 serialization across the bounded cleanup and outcome commit (use a lock-aware
 persister, not a recursive engine lock). Existing exact-owned effective-config

@@ -571,6 +571,9 @@ func (s *Store) PutSettings(settings domain.Settings) error {
 
 func decodeMission(data []byte) (domain.Mission, error) {
 	var mission domain.Mission
+	// Inspect the original envelope before a last-wins projection can erase an
+	// earlier control declaration. Valid legacy records remain unchanged.
+	mission.C4Invalid = invalidC4StoredEnvelope(data)
 	// Isolate snapshot type errors without relaxing decoding of the legacy
 	// mission body. Get/List remain inspectable; every mutation validates the
 	// diagnostic and leaves the original stored bytes untouched.
@@ -618,31 +621,6 @@ func decodeMission(data []byte) (domain.Mission, error) {
 			mission.C4Invalid = true
 		}
 	}
-	if len(projection.C4Controls) > 0 || mission.Spec.C4 != nil && mission.Spec.C4.ControlVersion == 1 {
-		// Projection decoding must not hide duplicate enclosing fields or accept
-		// a case-insensitive alias for the versioned authority journal.
-		decoder := json.NewDecoder(bytes.NewReader(data))
-		decoder.UseNumber()
-		value, err := storedJSONValue(decoder)
-		root, ok := value.(map[string]any)
-		if err != nil || !ok {
-			mission.C4Invalid = true
-		}
-		for key := range root {
-			for _, exact := range []string{"spec", "c4_controls", "c4_operations"} {
-				if strings.EqualFold(key, exact) && key != exact {
-					mission.C4Invalid = true
-				}
-			}
-		}
-		if spec, ok := root["spec"].(map[string]any); ok {
-			for key := range spec {
-				if strings.EqualFold(key, "c4") && key != "c4" {
-					mission.C4Invalid = true
-				}
-			}
-		}
-	}
 	if len(projection.ImportVersion) > 0 {
 		if err := json.Unmarshal(projection.ImportVersion, &mission.ImportVersion); err != nil {
 			mission.RepositoryImportInvalid = true
@@ -676,6 +654,31 @@ func decodeMission(data []byte) (domain.Mission, error) {
 		}
 	}
 	return mission, nil
+}
+
+func invalidC4StoredEnvelope(data []byte) bool {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	value, err := storedJSONValue(decoder)
+	root, ok := value.(map[string]any)
+	if err != nil || !ok {
+		return true
+	}
+	for key := range root {
+		for _, exact := range []string{"spec", "c4_controls", "c4_operations"} {
+			if strings.EqualFold(key, exact) && key != exact {
+				return true
+			}
+		}
+	}
+	if spec, ok := root["spec"].(map[string]any); ok {
+		for key := range spec {
+			if strings.EqualFold(key, "c4") && key != "c4" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func insertEvent(tx *sql.Tx, missionID, kind string, revision int64, createdAt string) error {
