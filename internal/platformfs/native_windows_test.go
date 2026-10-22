@@ -2,22 +2,57 @@ package platformfs
 
 import (
 	"encoding/binary"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/windows"
 )
 
+func nativeFixtureRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := WindowsAbsolute(root); err != nil {
+		t.Fatalf("native fixture requires an admitted long-path TEMP/TMP root, got %q: %v", root, err)
+	}
+	return root
+}
+
+func TestWindowsLongPathUnicodeSpacePrivateDirectoryAndRead(t *testing.T) {
+	root := filepath.Join(nativeFixtureRoot(t), "用户 Source Folder")
+	if err := PrivateDirectory(root); err != nil {
+		t.Fatal(err)
+	}
+	// Reopening checks the owner, protected DACL and exact user/SYSTEM ACEs.
+	if err := PrivateDirectory(root); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "数据 file.txt")
+	if err := os.WriteFile(file, []byte("native long-path content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := OpenRegular(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	got, err := io.ReadAll(f)
+	if err != nil || string(got) != "native long-path content" {
+		t.Fatalf("read native long path = %q, %v", got, err)
+	}
+}
+
 func TestWindowsPrivateDirectoryRefusesInheritedPublicRoot(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "private")
+	root := filepath.Join(nativeFixtureRoot(t), "private")
 	if err := PrivateDirectory(root); err != nil {
 		t.Fatal(err)
 	}
 	if err := PrivateDirectory(root); err != nil {
 		t.Fatal(err)
 	}
-	public := filepath.Join(t.TempDir(), "public")
+	public := filepath.Join(nativeFixtureRoot(t), "public")
 	if err := os.Mkdir(public, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +62,7 @@ func TestWindowsPrivateDirectoryRefusesInheritedPublicRoot(t *testing.T) {
 }
 
 func TestWindowsReadRetainsAncestorsAndRejectsDirectory(t *testing.T) {
-	root := t.TempDir()
+	root := nativeFixtureRoot(t)
 	dir := filepath.Join(root, "dir")
 	if e := os.Mkdir(dir, 0700); e != nil {
 		t.Fatal(e)
@@ -93,7 +128,7 @@ func testJunction(t *testing.T, link, target string) {
 }
 
 func TestWindowsReadRejectsJunctionAncestorAndTerminal(t *testing.T) {
-	root := t.TempDir()
+	root := nativeFixtureRoot(t)
 	target := filepath.Join(root, "target")
 	link := filepath.Join(root, "junction")
 	if err := os.Mkdir(target, 0700); err != nil {
@@ -110,11 +145,17 @@ func TestWindowsReadRejectsJunctionAncestorAndTerminal(t *testing.T) {
 	if f, err := OpenRegular(filepath.Join(link, "file")); err == nil {
 		f.Close()
 		t.Fatal("junction ancestor admitted")
+	} else if !strings.Contains(err.Error(), "reparse") {
+		t.Fatalf("junction rejected before the reparse boundary: %v", err)
 	}
 	if err := ValidateDirectory(link); err == nil {
 		t.Fatal("terminal junction admitted as directory")
+	} else if !strings.Contains(err.Error(), "reparse") {
+		t.Fatalf("directory rejected before the reparse boundary: %v", err)
 	}
 	if err := PrivateDirectory(link); err == nil {
 		t.Fatal("terminal junction admitted as private root")
+	} else if !strings.Contains(err.Error(), "reparse") {
+		t.Fatalf("private directory rejected before the reparse boundary: %v", err)
 	}
 }

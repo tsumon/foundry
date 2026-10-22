@@ -37,6 +37,28 @@ Git execution uses an explicit trusted installation, with configuration, hooks, 
 
 The bilingual README must state which installed workflows were accepted, explain unsigned/notarized status, and distinguish local simulation, historical bounded real tests, and capabilities that remain closed. Screenshots must come from the real application with disposable data, not imagined results.
 
+### Native CI corrections
+
+The pinned Electron package exposes an explicit runtime installer rather than a
+`postinstall` hook. Each native job must run that installer after `npm ci` and
+before runtime contract tests; the source-only verifier must not download an
+Electron runtime. Installation remains version/checksum-bound by the locked
+Electron package. Native package and installed-app checks remain mandatory.
+
+Windows runner defaults can expose a short 8.3 temporary path (`RUNNER~1`).
+Native CI creates a fresh, explicit long-form temporary directory before
+installing dependencies and sets both `TEMP` and `TMP` for subsequent steps.
+Production path admission still rejects short aliases; it does not silently
+canonicalize them or relax reparse, ACL, reserved-name or protected-file checks.
+
+The shared race suite has a finite 1,200-second **per-package** budget. The
+600-second normal-suite budget, uncached full test selection, race detector,
+vet and 45-minute workflow bound remain unchanged. A native CI trace exhausted
+the former cumulative race-package budget at the penultimate acceptance test,
+only one second into that test; it was not evidence of a 600-second individual
+test hang. This adjustment must be validated by a complete race pass, not by
+skipping tests or treating a timeout as success.
+
 ## Gitiles source archive integrity
 
 Gitiles regenerates archive timestamps, so six immutable-revision source archives

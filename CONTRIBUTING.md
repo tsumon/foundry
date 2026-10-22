@@ -58,6 +58,11 @@ dependencies or lower the threshold to obtain a green result.
 
 ### Desktop builds
 
+After the locked desktop dependency install, explicitly install its pinned
+Electron runtime with `node desktop/node_modules/electron/install.js`. This
+Electron version has no automatic `postinstall` hook. The native CI jobs perform
+this step before runtime contract tests; source-only checks do not need it.
+
 On the native target, set `FOUNDRY_DESKTOP_OUTPUT` to a **new absolute directory
 outside the source tree**. Run `npm run package:mac --prefix desktop` or
 `npm run package:windows --prefix desktop`. `FOUNDRY_GO` can select the exact Go

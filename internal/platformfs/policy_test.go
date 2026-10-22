@@ -36,3 +36,30 @@ func TestWindowsModesPreserveReadonlyAndRejectUnsupported(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsTemporaryPathsRequireLongSpelling(t *testing.T) {
+	// GetTempPath can return the inherited TEMP/TMP spelling unchanged. CI must
+	// choose a long-path temporary root, not weaken alias admission for fixtures.
+	for _, tc := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"profile long path", `C:\Users\runneradmin\AppData\Local\Temp\TestWindowsRead123\001\file`, true},
+		{"runner long path", `D:\a\_temp\Foundry native 测试\TestWindowsRead123\001\file`, true},
+		{"forward separators", `D:/a/_temp/Foundry native 测试/file`, true},
+		{"profile short alias", `C:\Users\RUNNER~1\AppData\Local\Temp\TestWindowsRead123\001\file`, false},
+		{"short child alias", `D:\a\_temp\FOUNDR~1\file`, false},
+		{"UNC", `\\server\share\Foundry native 测试\file`, false},
+		{"device namespace", `\\?\D:\a\_temp\Foundry native 测试\file`, false},
+		{"stream", `D:\a\_temp\Foundry native 测试\file:stream`, false},
+		{"trailing dot", `D:\a\_temp\Foundry native 测试.\file`, false},
+		{"parent alias", `D:\a\_temp\Foundry native 测试\..\file`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := WindowsAbsolute(tc.path); (err == nil) != tc.want {
+				t.Fatalf("WindowsAbsolute(%q) = %v, want admitted %v", tc.path, err, tc.want)
+			}
+		})
+	}
+}

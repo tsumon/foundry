@@ -65,6 +65,7 @@ jobs:
           set -eu
           npm ci --prefix web
           npm ci --prefix desktop
+          node desktop/node_modules/electron/install.js
           go mod download
           go mod verify
       - name: Desktop boundaries and real Electron download contract
@@ -145,12 +146,22 @@ jobs:
           if ((npm --version).Trim() -ne '10.9.8') { throw 'npm 10.9.8 required' }
           go version
           if ($LASTEXITCODE -ne 0) { throw 'Go unavailable' }
+      - name: Prepare long-form native temporary directory
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nativeTemp = Join-Path $env:RUNNER_TEMP 'Foundry Native Temp'
+          if (-not [System.IO.Path]::IsPathFullyQualified($nativeTemp) -or $nativeTemp.Contains('~')) { throw 'An explicit long-form temporary path is required' }
+          if (Test-Path -LiteralPath $nativeTemp) { throw 'Native temporary directory already exists' }
+          New-Item -ItemType Directory -Path $nativeTemp | Out-Null
+          @("TEMP=$nativeTemp", "TMP=$nativeTemp") | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Install locked dependencies
         run: |
           npm ci --prefix web
           if ($LASTEXITCODE -ne 0) { throw 'web install failed' }
           npm ci --prefix desktop
           if ($LASTEXITCODE -ne 0) { throw 'desktop install failed' }
+          node desktop/node_modules/electron/install.js
+          if ($LASTEXITCODE -ne 0) { throw 'Electron runtime install failed' }
           go mod download
           if ($LASTEXITCODE -ne 0) { throw 'Go dependencies failed' }
       - name: Native CGO commands and Windows boundary/integration gates
