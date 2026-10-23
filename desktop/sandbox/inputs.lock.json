@@ -1103,6 +1103,15 @@
   "windows": {
     "mode": "source-build",
     "bootstrap": {
+      "keyring": [
+        { "path": "usr/bin/pacman-key", "bytes": 23497, "sha256": "5d2e5e67ca59e49e84d5f0b2f7e4166e3783f707cd2292c09ce61a79c7cc149f" },
+        { "path": "usr/bin/gpg.exe", "bytes": 1129818, "sha256": "14953ed8b4549020e185c0f7ab600bb9d0384457ea74da9d574e8d31139aff4f" },
+        { "path": "usr/bin/gpgconf.exe", "bytes": 145721, "sha256": "5432e0f3363e7f2ba5c6322ab0888c901381f8c8e46cfa12fa7a50d8768d08ad" },
+        { "path": "usr/share/pacman/keyrings/msys2.gpg", "bytes": 54878, "sha256": "1257d4ccc536c53333445a618039af4c3ea3f56b96601de9af89151ea529c19a" },
+        { "path": "usr/share/pacman/keyrings/msys2-trusted", "bytes": 220, "sha256": "a8d39040a7b6cc14bf4394b5d9c838443925c32b00a7d34e8729c972392dca04" },
+        { "path": "usr/share/pacman/keyrings/msys2-revoked", "bytes": 164, "sha256": "62b67ba0217745c7df189092a70d6b7a5781577f6428a5391dccd897edb5756a" },
+        { "path": "etc/pacman.conf", "bytes": 2623, "sha256": "0f25288c70ade80c7fac57d3149209b64a7ba23f00232b7e42103f6330b0c1c0" }
+      ],
       "archive": "msys2-base-x86_64-20260927.tar.xz",
       "root": "msys64",
       "tools": [

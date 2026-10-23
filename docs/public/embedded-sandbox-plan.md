@@ -20,6 +20,10 @@ The first DMG's local upgrade was also observed: the previous alpha.2 app was re
 
 ## Global Constraints
 
+### Windows portable build bootstrap correction — 2026-10-23
+
+The first native Windows package job reached the pinned MSYS2 bootstrap but stopped before package installation: a portable extraction has no initialized pacman trust database. The fix verifies the bootstrap's exact `pacman-key`, GnuPG tools, packaged MSYS2 keyring/trust/revocation files and unchanged `pacman.conf`, then initializes and populates only that dedicated build root's keyring. It uses a non-login shell, no network key refresh, no signature-policy relaxation and no automatic retry. Local package installation follows only successful initialization. Regression checks cover command ordering, tampered/missing/nonregular trust inputs and fail-closed command errors. Native Windows build and installed WHPX acceptance must still pass in CI; local command-boundary tests are not native acceptance.
+
 - Built-in `embedded_vm` is the default for new tasks; Docker remains explicitly optional.
 - No host execution, TCG, automatic backend/accelerator fallback, real credentials/provider calls, automatic retries or paid API switching.
 - Existing UI/navigation and independent readiness/baseline/context/execute/delivery approvals remain.

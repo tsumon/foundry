@@ -54,3 +54,40 @@ test("build bootstrap verifies exact regular tool bytes before package manager e
   fs.writeFileSync(path.join(root, "usr/bin/pacman.exe"), "changed");
   assert.throws(() => build.verifyBootstrapRoot({ lock, msysRoot: root }), /integrity/i);
 });
+function keyringFixture(t) {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-msys-keyring-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const names = ["usr/bin/pacman-key", "usr/bin/gpg.exe", "usr/bin/gpgconf.exe", "usr/share/pacman/keyrings/msys2.gpg", "usr/share/pacman/keyrings/msys2-trusted", "usr/share/pacman/keyrings/msys2-revoked", "etc/pacman.conf"];
+  const files = names.map(name => { const raw = Buffer.from("pinned fixture: " + name), target = path.join(root, name); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, raw); return { path: name, bytes: raw.length, sha256: crypto.createHash("sha256").update(raw).digest("hex") }; });
+  return { msysRoot: root, lock: { windows: { bootstrap: { keyring: files } } } };
+}
+test("offline keyring setup precedes package installation without login, network key refresh or weakened signatures", t => {
+  assert.equal(typeof build.installBuildPackages, "function", "Offline keyring setup is missing");
+  const fixture = keyringFixture(t), calls = [];
+  build.installBuildPackages({ ...fixture, archives: [{ file: "compiler.pkg.tar.zst" }], inputs: path.join(fixture.msysRoot, "inputs"), run: (program, args) => { calls.push({ program, args }); return ""; } });
+  const bin = name => path.join(fixture.msysRoot, "usr/bin", name);
+  assert.deepEqual(calls, [
+    { program: bin("bash.exe"), args: ["--noprofile", "--norc", "/usr/bin/pacman-key", "--gpgdir", "/etc/pacman.d/gnupg", "--init"] },
+    { program: bin("bash.exe"), args: ["--noprofile", "--norc", "/usr/bin/pacman-key", "--gpgdir", "/etc/pacman.d/gnupg", "--populate", "msys2"] },
+    { program: bin("gpgconf.exe"), args: ["--homedir", "/etc/pacman.d/gnupg", "--kill", "all"] },
+    { program: bin("pacman.exe"), args: ["-U", "--noconfirm", path.join(fixture.msysRoot, "inputs/compiler.pkg.tar.zst")] },
+  ]);
+});
+test("keyring setup refuses tampered, missing, symlinked or unpinned trust material before any command", t => {
+  assert.equal(typeof build.installBuildPackages, "function", "Offline keyring setup is missing");
+  for (const damage of ["tampered", "missing", "symlink", "unpinned"]) {
+    const fixture = keyringFixture(t), target = path.join(fixture.msysRoot, "usr/share/pacman/keyrings/msys2.gpg"); let calls = 0;
+    if (damage === "tampered") fs.writeFileSync(target, "changed");
+    if (damage === "missing" || damage === "symlink") fs.unlinkSync(target);
+    if (damage === "symlink") fs.symlinkSync(path.join(fixture.msysRoot, "usr/share/pacman/keyrings/msys2-trusted"), target);
+    if (damage === "unpinned") fixture.lock.windows.bootstrap.keyring.pop();
+    assert.throws(() => build.installBuildPackages({ ...fixture, archives: [], inputs: fixture.msysRoot, run: () => calls++ })); assert.equal(calls, 0);
+  }
+});
+test("keyring command failure stops before installing packages and does not retry", t => {
+  assert.equal(typeof build.installBuildPackages, "function", "Offline keyring setup is missing");
+  for (const failedAt of [1, 2, 3]) {
+    const fixture = keyringFixture(t); let calls = 0;
+    assert.throws(() => build.installBuildPackages({ ...fixture, archives: [], inputs: fixture.msysRoot, run: () => { if (++calls === failedAt) throw Error("fixture keyring failure"); } }), /fixture keyring failure/);
+    assert.equal(calls, failedAt);
+  }
+});

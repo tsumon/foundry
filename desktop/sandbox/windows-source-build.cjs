@@ -118,7 +118,7 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const bash = path.join(msysRoot, "usr", "bin", "bash.exe"), tar = path.join(msysRoot, "usr", "bin", "bsdtar.exe"), pacman = path.join(msysRoot, "usr", "bin", "pacman.exe");
   for (const file of [bash, tar, pacman]) if (!fs.lstatSync(file).isFile()) throw Error("Dedicated MSYS2 bootstrap is missing a regular build tool");
   const archives = lock.windows.build_packages.map(n => lock.assets.find(e => e.package === n));
-  run(pacman, ["-U", "--noconfirm", ...archives.map(e => path.join(inputs, e.file))]); // local archives only: no -S/-y and no retry.
+  installBuildPackages({ lock, msysRoot, archives, inputs, run });
   for (const e of archives) { const actual = run(pacman, ["-Q", e.package]).trim(); if (actual !== e.package + " " + e.version) throw Error("Installed toolchain version mismatch: " + e.package); }
   const toolchainAudit = run(pacman, ["-Qkk", ...archives.map(e => e.package)]);
   fs.writeFileSync(path.join(outputRoot, "toolchain-file-audit.txt"), toolchainAudit, { flag: "wx" });
@@ -159,7 +159,28 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   fs.writeFileSync(path.join(outputRoot, "legal", "windows-runtime-build.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx" });
   return receipt;
 }
-module.exports = { minimalBuildPlan, auditConfiguration, assertMinimalClosure, assembleLegal, verifyBootstrapRoot, bootstrapWindowsBuildHost, buildMinimalWindowsRuntime };
+// A freshly extracted portable MSYS2 has no trust database. Use only its pinned
+// offline keyring, not the login-shell post-install hook (which refreshes keys).
+function installBuildPackages({ lock, msysRoot, archives, inputs, run }) {
+  regularDirectory(msysRoot);
+  const required = new Set(["usr/bin/pacman-key", "usr/bin/gpg.exe", "usr/bin/gpgconf.exe", "usr/share/pacman/keyrings/msys2.gpg", "usr/share/pacman/keyrings/msys2-trusted", "usr/share/pacman/keyrings/msys2-revoked", "etc/pacman.conf"]);
+  const files = lock.windows.bootstrap.keyring;
+  if (!Array.isArray(files) || files.length !== required.size) throw Error("Pinned bootstrap keyring required");
+  for (const entry of files) {
+    if (!required.delete(entry.path)) throw Error("Unknown or duplicate bootstrap keyring path");
+    const file = path.join(msysRoot, entry.path); regularDirectory(path.dirname(file));
+    if (!fs.lstatSync(file).isFile()) throw Error("Regular bootstrap keyring file required");
+    const raw = fs.readFileSync(file);
+    if (raw.length !== entry.bytes || digest(raw) !== entry.sha256) throw Error("Bootstrap keyring integrity failure");
+  }
+  const bash = path.join(msysRoot, "usr/bin/bash.exe");
+  const keyArgs = ["--noprofile", "--norc", "/usr/bin/pacman-key", "--gpgdir", "/etc/pacman.d/gnupg"];
+  run(bash, [...keyArgs, "--init"]);
+  run(bash, [...keyArgs, "--populate", "msys2"]);
+  run(path.join(msysRoot, "usr/bin/gpgconf.exe"), ["--homedir", "/etc/pacman.d/gnupg", "--kill", "all"]);
+  run(path.join(msysRoot, "usr/bin/pacman.exe"), ["-U", "--noconfirm", ...archives.map(e => path.join(inputs, e.file))]); // local archives only; no -S/-y, refresh or retry.
+}
+module.exports = { minimalBuildPlan, auditConfiguration, assertMinimalClosure, assembleLegal, verifyBootstrapRoot, bootstrapWindowsBuildHost, buildMinimalWindowsRuntime, installBuildPackages };
 if (require.main === module) {
   const lock = require("./inputs.lock.json"), cacheRoot = process.env.FOUNDRY_SANDBOX_INPUTS;
   const action = process.argv[2] === "--bootstrap" ? bootstrapWindowsBuildHost({ lock, outputRoot: process.argv[3] || "", cacheRoot }) : buildMinimalWindowsRuntime({ lock, outputRoot: process.argv[2] || "", msysRoot: process.argv[3] || "", cacheRoot, installPinnedBuildPackages: process.argv[4] === "--install-pinned-build-packages" });
