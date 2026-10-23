@@ -99,14 +99,16 @@ func c4Verification(m domain.Mission, o domain.C4Operation) domain.Verification 
 	if r.ExitCode != nil {
 		code = *r.ExitCode
 	}
-	source := "synthetic_stub"
-	if m.Spec.C4.ControlVersion == 1 && m.Spec.C4.Mode == "docker" {
-		source = "unknown"
+	source := "unknown"
+	if m.Spec.C4.Mode == "synthetic" {
+		source = "synthetic_stub"
+	}
+	if m.Spec.C4.ControlVersion == 1 && (m.Spec.C4.Mode == "docker" || m.Spec.C4.Mode == "embedded_vm") {
 		for _, c := range m.C4Controls {
-			if c.ID == o.ReadinessID && c.MaterialDigest == o.ReadinessDigest && c.SourceKind == "docker_c4_control" && c.Result != nil && c.Result.Status == "ready" && o.Dispatch != nil && o.Started != nil && o.CleanupState() == "confirmed" && (r.Class == "passed" || r.Class == "test_failed") && r.ExitCode != nil && r.Tests > 0 {
+			if c.ID == o.ReadinessID && c.MaterialDigest == o.ReadinessDigest && domain.C4SourceMatches(m.Spec.C4.Mode, c.SourceKind) && c.Result != nil && c.Result.Status == "ready" && o.Dispatch != nil && o.Started != nil && o.CleanupState() == "confirmed" && (r.Class == "passed" || r.Class == "test_failed") && r.ExitCode != nil && r.Tests > 0 {
 				source = "isolated_execution"
 			}
 		}
 	}
-	return domain.Verification{ID: o.ID, CandidateDigest: o.CandidateDigest, ImageID: m.Spec.C4.ImageID, CreatedAt: r.At, AcceptanceRevision: o.PlanRevision, Passed: o.Passed(), SourceVersion: 1, SourceKind: source, Results: []domain.CommandResult{{Command: m.Spec.C4.Verifier, ExitCode: code, Output: r.Output, TimedOut: r.Class == "timeout"}}}
+	return domain.Verification{ID: o.ID, CandidateDigest: o.CandidateDigest, ImageID: m.Spec.C4.ExecutionIdentity(), CreatedAt: r.At, AcceptanceRevision: o.PlanRevision, Passed: o.Passed(), SourceVersion: 1, SourceKind: source, Results: []domain.CommandResult{{Command: m.Spec.C4.Verifier, ExitCode: code, Output: r.Output, TimedOut: r.Class == "timeout"}}}
 }

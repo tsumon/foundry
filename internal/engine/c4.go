@@ -220,10 +220,16 @@ func (e *Engine) c4Trust(m domain.Mission) sandbox.C4Trust {
 
 func (e *Engine) executeC4(ctx context.Context, m domain.Mission, o domain.C4Operation, path string) (domain.C4Operation, error) {
 	if c := e.options.C4Controlled; c != nil {
-		if c.source == "docker_c4_control" {
+		switch c.sourceFor(m.Spec.C4) {
+		case "embedded_vm_c4_control":
+			return sandbox.ExecuteC4VM(ctx, *m.Spec.C4, o, c.vm, path, e.c4Persist(m.ID))
+		case "docker_c4_control":
 			return sandbox.ExecuteC4Docker(ctx, *m.Spec.C4, o, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust(m)}, path, e.c4Persist(m.ID))
+		case "synthetic_c4_control":
+			return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(m), path, c.driver, e.c4Persist(m.ID))
+		default:
+			return o, ErrC4Unavailable
 		}
-		return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(m), path, c.driver, e.c4Persist(m.ID))
 	}
 	return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(m), path, e.options.C4.driver, e.c4Persist(m.ID))
 }

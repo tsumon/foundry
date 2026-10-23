@@ -22,12 +22,16 @@ func TestCodingTasksMetadataClosedWithoutCapability(t *testing.T) {
 		t.Fatal(r.Code, r.Body.String())
 	}
 	var view struct {
-		Enabled   bool   `json:"enabled"`
-		Available bool   `json:"available"`
-		Reason    string `json:"reason"`
+		Enabled        bool   `json:"enabled"`
+		Available      bool   `json:"available"`
+		Reason         string `json:"reason"`
+		DefaultBackend string `json:"default_backend"`
 	}
 	if json.Unmarshal(r.Body.Bytes(), &view) != nil || view.Enabled || view.Available || view.Reason == "" {
 		t.Fatal(r.Body.String())
+	}
+	if view.DefaultBackend != "embedded_vm" {
+		t.Fatalf("default backend must be built-in VM: %s", r.Body.String())
 	}
 	r = f.request(http.MethodPost, "/api/coding-tasks", `{}`, true)
 	if r.Code != 403 {
@@ -164,8 +168,12 @@ func TestCodingTasksMetadataEnablesConfigurationOnly(t *testing.T) {
 	}
 	var v map[string]any
 	json.Unmarshal(r.Body.Bytes(), &v)
-	if v["enabled"] != true || v["available"] != true {
+	if v["enabled"] != true || v["available"] != false || v["reason"] != "embedded_vm_bundle_unavailable" || v["default_backend"] != "embedded_vm" {
 		t.Fatal(v)
+	}
+	backends := v["backends"].([]any)
+	if len(backends) != 2 || backends[1].(map[string]any)["mode"] != "docker" || backends[1].(map[string]any)["available"] != true {
+		t.Fatal("explicit Docker selection missing", backends)
 	}
 	p := v["profile"].(map[string]any)
 	if p["id"] != "c4_go_model_v1" || p["image_id"] != "" {

@@ -34,6 +34,18 @@ func (e *Engine) deliveryReport(m domain.Mission) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if m.Spec.C4.Mode == "embedded_vm" {
+		raw, err = json.MarshalIndent(struct {
+			Snapshot *domain.MissionModelSnapshot `json:"model_snapshot"`
+			Identity *domain.C4VMIdentity         `json:"embedded_vm"`
+			Controls []domain.C4Control           `json:"vm_controls"`
+			Calls    []domain.Invocation          `json:"model_invocations"`
+		}{m.ModelSnapshot, m.Spec.C4.EmbeddedVM, m.C4Controls, calls}, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return report + "\n## Model-backed coding · independent provenance\n\nModel receipts and built-in VM readiness, baseline, candidate tests and owned cleanup are distinct facts. Local model protocol fixtures do not prove real-provider acceptance.\n\n```json\n" + string(raw) + "\n```\n", nil
+	}
 	return report + "\n## Model-backed coding · independent provenance\n\nSimulation routes are owned local integration observations, not real-provider acceptance. Each model receipt, Docker readiness, baseline, candidate test and cleanup is a distinct fact. Token usage is not remaining quota or a monetary hard cap.\n\n```json\n" + string(raw) + "\n```\n", nil
 }
 
@@ -72,6 +84,9 @@ func writeC4ReportSources(out *bytes.Buffer, m domain.Mission) {
 		label := v.SourceLabel()
 		if v.EffectiveSource() == "isolated_execution" {
 			label = "真实 Docker 测试（隔离命令执行）"
+			if m.Spec.C4.Mode == "embedded_vm" {
+				label = "真实内置 VM 测试（隔离命令执行）"
+			}
 		}
 		fmt.Fprintf(out, "- 第 %d 项 · %s · %s · %s\n", i+1, kind, label, v.OutcomeLabel())
 	}

@@ -22,10 +22,14 @@ func (e *Engine) ExecuteC4Readiness(ctx context.Context, id string, revision int
 	defer cancel()
 	var ready sandbox.C4ReadinessResult
 	var runErr error
-	if e.options.C4Controlled.modelBacked && e.options.C4Controlled.source == "docker_c4_control" {
+	if e.options.C4Controlled.sourceFor(m.Spec.C4) == "embedded_vm_c4_control" {
+		ready, runErr = sandbox.CheckC4VMReadiness(bounded, *m.Spec.C4, e.options.C4Controlled.vm)
+	} else if e.options.C4Controlled.modelBacked && e.options.C4Controlled.sourceFor(m.Spec.C4) == "docker_c4_control" {
 		ready, runErr = sandbox.CheckC4DockerReadiness(bounded, *m.Spec.C4, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust(m)})
-	} else {
+	} else if e.options.C4Controlled.readiness != nil && (e.options.C4Controlled.sourceFor(m.Spec.C4) == "docker_c4_control" || e.options.C4Controlled.sourceFor(m.Spec.C4) == "synthetic_c4_control") {
 		ready, runErr = e.options.C4Controlled.readiness(bounded)
+	} else {
+		runErr = ErrC4Unavailable
 	}
 	r := domain.C4ControlResult{Status: "failed", FailureCode: "failed"}
 	deadline, _ := time.Parse(time.RFC3339Nano, c.ActivationExpiresAt)
@@ -62,7 +66,7 @@ func (e *Engine) currentC4Readiness(m domain.Mission) (domain.C4Control, error) 
 			continue
 		}
 		// Latest attempted material supersedes previous authority; no fallback.
-		if c.Result == nil || c.Result.Status != "ready" || c.ActivationDigest != e.c4Activation(m).Digest() || c.ActivationExpiresAt != e.options.C4Controlled.config.ExpiresAt || c.SourceKind != e.options.C4Controlled.source || c.BaseCommit != m.BaseCommit || c.BaseDigest != m.RepositoryImport.BaseDigest || c.ProfileDigest != m.Spec.C4.ProfileDigest() {
+		if c.Result == nil || c.Result.Status != "ready" || c.ActivationDigest != e.c4Activation(m).Digest() || c.ActivationExpiresAt != e.options.C4Controlled.config.ExpiresAt || c.SourceKind != e.options.C4Controlled.sourceFor(m.Spec.C4) || c.BaseCommit != m.BaseCommit || c.BaseDigest != m.RepositoryImport.BaseDigest || c.ProfileDigest != m.Spec.C4.ProfileDigest() {
 			return domain.C4Control{}, ErrC4Unavailable
 		}
 		until, err := time.Parse(time.RFC3339Nano, c.Result.ValidUntil)

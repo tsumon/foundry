@@ -16,7 +16,7 @@ func c4Control(m domain.Mission, id, digest string) (domain.C4Control, error) {
 	return domain.C4Control{}, store.ErrConflict
 }
 func (e *Engine) c4ControlCurrent(m domain.Mission, c domain.C4Control) error {
-	if e.c4ControlledGate(m, true) != nil || c.MissionID != m.ID || c.Epoch != m.Epoch || c.PlanRevision != c4PlanRevision(m) || c.BaseCommit != m.BaseCommit || c.BaseDigest != m.RepositoryImport.BaseDigest || c.ProfileDigest != m.Spec.C4.ProfileDigest() || c.ActivationDigest != e.c4Activation(m).Digest() || c.ActivationExpiresAt != e.options.C4Controlled.config.ExpiresAt || c.SourceKind != e.options.C4Controlled.source || c.MaterialDigest != domain.C4ControlDigest(c) {
+	if e.c4ControlledGate(m, true) != nil || c.MissionID != m.ID || c.Epoch != m.Epoch || c.PlanRevision != c4PlanRevision(m) || c.BaseCommit != m.BaseCommit || c.BaseDigest != m.RepositoryImport.BaseDigest || c.ProfileDigest != m.Spec.C4.ProfileDigest() || c.ActivationDigest != e.c4Activation(m).Digest() || c.ActivationExpiresAt != e.options.C4Controlled.config.ExpiresAt || c.SourceKind != e.options.C4Controlled.sourceFor(m.Spec.C4) || c.MaterialDigest != domain.C4ControlDigest(c) {
 		return ErrC4Unavailable
 	}
 	expiry, err := time.Parse(time.RFC3339Nano, c.ExpiresAt)
@@ -51,7 +51,7 @@ func (e *Engine) newC4Control(m domain.Mission, kind string) (domain.C4Control, 
 	if deadline.Before(expiry) {
 		expiry = deadline
 	}
-	return domain.C4Control{SchemaVersion: 1, ID: id, Kind: kind, MissionID: m.ID, Epoch: m.Epoch, PlanRevision: c4PlanRevision(m), BaseCommit: m.BaseCommit, BaseDigest: m.RepositoryImport.BaseDigest, ProfileDigest: m.Spec.C4.ProfileDigest(), ActivationDigest: e.c4Activation(m).Digest(), ActivationExpiresAt: c.config.ExpiresAt, SourceKind: c.source, PreparedRevision: m.Revision, PreparedAt: at.Format(time.RFC3339Nano), ExpiresAt: expiry.Format(time.RFC3339Nano), State: "prepared"}, nil
+	return domain.C4Control{SchemaVersion: 1, ID: id, Kind: kind, MissionID: m.ID, Epoch: m.Epoch, PlanRevision: c4PlanRevision(m), BaseCommit: m.BaseCommit, BaseDigest: m.RepositoryImport.BaseDigest, ProfileDigest: m.Spec.C4.ProfileDigest(), ActivationDigest: e.c4Activation(m).Digest(), ActivationExpiresAt: c.config.ExpiresAt, SourceKind: c.sourceFor(m.Spec.C4), PreparedRevision: m.Revision, PreparedAt: at.Format(time.RFC3339Nano), ExpiresAt: expiry.Format(time.RFC3339Nano), State: "prepared"}, nil
 }
 
 func (e *Engine) prepareC4Control(ctx context.Context, id string, revision int64, kind, operationID, digest, exactID string) (domain.Mission, error) {

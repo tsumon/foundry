@@ -9,6 +9,7 @@ import (
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/sandbox"
+	"foundry/internal/vmruntime"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -52,6 +53,7 @@ type C4ControlledCapability struct {
 	models      model.Gateway
 	driver      *sandbox.C4SyntheticDriver
 	readiness   func(context.Context) (sandbox.C4ReadinessResult, error)
+	vm          *vmruntime.Runtime
 }
 
 // Production accepts only the accountless frozen local fixture, never a router.
@@ -97,7 +99,7 @@ func (e *Engine) C4ControlledStatus(m domain.Mission) C4ControlledStatus {
 		return C4ControlledStatus{}
 	}
 	deadline, _ := time.Parse(time.RFC3339Nano, c.config.ExpiresAt)
-	return C4ControlledStatus{ActivationDigest: e.c4Activation(m).Digest(), Available: e.c4ControlledGate(m, true) == nil, StructurallyAvailable: e.c4ControlledGate(m, false) == nil, SourceKind: c.source, ExpiresAt: c.config.ExpiresAt, Expired: !e.c4Time().Before(deadline)}
+	return C4ControlledStatus{ActivationDigest: e.c4Activation(m).Digest(), Available: e.c4ControlledGate(m, true) == nil, StructurallyAvailable: e.c4ControlledGate(m, false) == nil, SourceKind: c.sourceFor(m.Spec.C4), ExpiresAt: c.config.ExpiresAt, Expired: !e.c4Time().Before(deadline)}
 }
 func (e *Engine) c4ControlledGate(m domain.Mission, fresh bool) error {
 	c := e.options.C4Controlled
@@ -105,7 +107,10 @@ func (e *Engine) c4ControlledGate(m domain.Mission, fresh bool) error {
 		return ErrC4Unavailable
 	}
 	config := e.c4Activation(m)
-	if c.modelBacked != isModelC4(m) || e.options.C4 != nil || e.c4Root == "" || c.models == nil || c4Structure(m) != nil || m.Spec.C4 == nil || m.Spec.C4.ControlVersion != 1 || m.Spec.C4.ProfileDigest() != config.Profile.ProfileDigest() || m.RepositoryImport == nil || m.RepositoryImport.Root != config.SourceRoot || m.RepoPath != config.SourceRoot || m.BaseCommit != config.BaseCommit || m.RepositoryImport.BaseDigest != config.BaseDigest || c.modelBacked && ((c.source == "docker_c4_control") != (m.Spec.C4.Mode == "docker")) {
+	if m.Spec.C4 == nil || !domain.C4SourceMatches(m.Spec.C4.Mode, c.sourceFor(m.Spec.C4)) || c.sourceFor(m.Spec.C4) == "embedded_vm_c4_control" && !c.vmProfileMatches(*m.Spec.C4) {
+		return ErrC4Unavailable
+	}
+	if c.modelBacked != isModelC4(m) || e.options.C4 != nil || e.c4Root == "" || c.models == nil || c4Structure(m) != nil || m.Spec.C4 == nil || m.Spec.C4.ControlVersion != 1 || m.Spec.C4.ProfileDigest() != config.Profile.ProfileDigest() || m.RepositoryImport == nil || m.RepositoryImport.Root != config.SourceRoot || m.RepoPath != config.SourceRoot || m.BaseCommit != config.BaseCommit || m.RepositoryImport.BaseDigest != config.BaseDigest {
 		return ErrC4Unavailable
 	}
 	deadline, err := time.Parse(time.RFC3339Nano, c.config.ExpiresAt)

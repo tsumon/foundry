@@ -5,6 +5,9 @@ import (
 	"foundry/internal/engine"
 	"foundry/internal/model"
 	"foundry/internal/store"
+	"foundry/internal/vmruntime"
+	"os"
+	"path/filepath"
 	"runtime"
 )
 
@@ -21,6 +24,19 @@ func newCodingRuntime(s *store.Store, dataDir string, secrets model.Secrets) (pr
 		return e.AdmitCodingModelCall(ctx, q)
 	}})
 	cap, err := engine.NewCodingDockerCapability(p.router)
+	// Missing/untrusted VM assets stay visibly unavailable. Docker remains a
+	// distinct explicitly selected new-task capability, never a run fallback.
+	if bundle := os.Getenv("FOUNDRY_VM_BUNDLE"); bundle != "" {
+		instanceRoot := filepath.Join(dataDir, "vm-instances")
+		if root, resolveErr := filepath.EvalSymlinks(dataDir); resolveErr == nil {
+			instanceRoot = filepath.Join(root, "vm-instances")
+		}
+		if mkdirErr := os.MkdirAll(instanceRoot, 0700); mkdirErr == nil {
+			if vm, loadErr := vmruntime.Load(bundle, instanceRoot); loadErr == nil {
+				cap, err = engine.NewCodingVMCapability(p.router, vm)
+			}
+		}
+	}
 	if err != nil && runtime.GOOS != "windows" {
 		p.siwc.Close()
 		p.acceptance.Close()

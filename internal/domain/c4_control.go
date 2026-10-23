@@ -105,11 +105,10 @@ func ValidateC4Controls(m Mission) error {
 }
 
 func validateC4Control(m Mission, c C4Control) error {
-	source := "synthetic_c4_control"
-	if m.Spec.C4.Mode == "docker" {
-		source = "docker_c4_control"
+	if !C4SourceMatches(m.Spec.C4.Mode, c.SourceKind) {
+		return errC4Control
 	}
-	if c.SchemaVersion != 1 || !c4Opaque.MatchString(c.ID) || c.MissionID != m.ID || c.Epoch < 0 || c.Epoch > m.Epoch || c.PlanRevision < 0 || !c4Commit.MatchString(c.BaseCommit) || !c4SHA.MatchString(c.BaseDigest) || c.ProfileDigest != m.Spec.C4.ProfileDigest() || !c4SHA.MatchString(c.ActivationDigest) || c.SourceKind != source || c.MaterialDigest != C4ControlDigest(c) || c.PreparedRevision < 1 || c.PreparedRevision > m.Revision {
+	if c.SchemaVersion != 1 || !c4Opaque.MatchString(c.ID) || c.MissionID != m.ID || c.Epoch < 0 || c.Epoch > m.Epoch || c.PlanRevision < 0 || !c4Commit.MatchString(c.BaseCommit) || !c4SHA.MatchString(c.BaseDigest) || c.ProfileDigest != m.Spec.C4.ProfileDigest() || !c4SHA.MatchString(c.ActivationDigest) || c.MaterialDigest != C4ControlDigest(c) || c.PreparedRevision < 1 || c.PreparedRevision > m.Revision {
 		return errC4Control
 	}
 	prepared, e1 := time.Parse(time.RFC3339Nano, c.PreparedAt)

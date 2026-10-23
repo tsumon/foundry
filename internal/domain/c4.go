@@ -21,15 +21,16 @@ const C4OperationLimit = 64
 // C4Profile is a declaration, not proof of readiness or permission to execute.
 // Policy is derived from the version, never accepted as caller overrides.
 type C4Profile struct {
-	SchemaVersion  int    `json:"schema_version"`
-	ControlVersion int    `json:"control_version,omitempty"`
-	ID             string `json:"id"`
-	Mode           string `json:"mode"`
-	ImageID        string `json:"image_id"`
-	Platform       string `json:"platform"`
-	DockerPath     string `json:"docker_path"`
-	Endpoint       string `json:"endpoint"`
-	Verifier       string `json:"verifier"`
+	SchemaVersion  int           `json:"schema_version"`
+	ControlVersion int           `json:"control_version,omitempty"`
+	ID             string        `json:"id"`
+	Mode           string        `json:"mode"`
+	ImageID        string        `json:"image_id"`
+	Platform       string        `json:"platform"`
+	DockerPath     string        `json:"docker_path"`
+	Endpoint       string        `json:"endpoint"`
+	Verifier       string        `json:"verifier"`
+	EmbeddedVM     *C4VMIdentity `json:"embedded_vm,omitempty"`
 }
 
 type C4Tmpfs struct {
@@ -81,6 +82,12 @@ func c4Digest(kind string, value any) string {
 }
 
 func (p C4Profile) ProfileDigest() string {
+	if p.Mode == "embedded_vm" {
+		return c4Digest("vm-profile", struct {
+			Profile C4Profile  `json:"profile"`
+			Policy  C4VMPolicy `json:"policy"`
+		}{p, FixedC4VMPolicy()})
+	}
 	return c4Digest("profile", struct {
 		Profile C4Profile `json:"profile"`
 		Policy  C4Policy  `json:"policy"`
@@ -190,6 +197,15 @@ func c4Absolute(p string) bool {
 }
 
 func (p C4Profile) Validate() error {
+	if p.Mode == "embedded_vm" {
+		if p.SchemaVersion != 1 || p.ControlVersion != 1 || p.ID != "c4_go_model_v1" || p.ImageID != "" || p.DockerPath != "" || p.Endpoint != "" || p.Verifier != "/opt/foundry/verify-go-v1" || p.EmbeddedVM == nil || p.EmbeddedVM.Validate() != nil || p.Platform != p.EmbeddedVM.GuestPlatform {
+			return errors.New("invalid or unsupported VM profile")
+		}
+		return nil
+	}
+	if p.EmbeddedVM != nil {
+		return errors.New("mixed VM and Docker authority")
+	}
 	if p.ControlVersion != 0 && p.ControlVersion != 1 {
 		return errors.New("unsupported C4 control version")
 	}
@@ -244,6 +260,19 @@ func ValidateC4Mission(m Mission) error {
 }
 
 func validateC4Operation(m Mission, o C4Operation) error {
+	if m.Spec.C4.Mode == "embedded_vm" {
+		if r := o.Result; r != nil && (r.Class == "passed" || r.Class == "test_failed") && (r.Tests <= 0 || r.Truncated) {
+			return errors.New("incomplete VM verification result")
+		}
+		if o.ContainerID != "" && !c4SHA.MatchString(o.ContainerID) {
+			return errors.New("invalid VM instance handle")
+		}
+		for _, c := range o.Cleanup {
+			if !c4SHA.MatchString(c.ContainerID) {
+				return errors.New("invalid VM cleanup handle")
+			}
+		}
+	}
 	if o.SchemaVersion != 1 || !c4Opaque.MatchString(o.ID) || o.MissionID != m.ID || o.Epoch < 0 || o.Epoch > m.Epoch || o.PlanRevision < 0 || !c4Commit.MatchString(o.BaseCommit) || !c4SHA.MatchString(o.BaseDigest) || o.ProfileDigest != m.Spec.C4.ProfileDigest() || o.MaterialDigest != C4MaterialDigest(o) || !c4Opaque.MatchString(o.ContainerName) || !c4Opaque.MatchString(o.Owner) {
 		return errors.New("invalid immutable binding")
 	}

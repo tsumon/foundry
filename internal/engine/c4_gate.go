@@ -84,7 +84,10 @@ func (e *Engine) c4CreateGate(r CreateRequest) error {
 	}
 	if e.CodingWorkbenchEnabled() {
 		c := e.options.C4Controlled
-		if !e.CodingWorkbenchAvailable() || r.Spec.C4 == nil || r.Spec.C4.ID != "c4_go_model_v1" || r.Spec.C4.Validate() != nil || ((c.source == "docker_c4_control") != (r.Spec.C4.Mode == "docker")) || r.ImportVersion != 1 || r.ImportSelection == nil || r.CodingVersion != 1 || r.WorkspaceMode != "generations_v1" || r.ToolMode != "" || r.MCPSelection != nil || r.CapabilitySelection != nil || !reflect.DeepEqual(r.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) || r.Spec.MaxCalls > 16 {
+		if r.Spec.C4 == nil || !domain.C4SourceMatches(r.Spec.C4.Mode, c.sourceFor(r.Spec.C4)) || c.sourceFor(r.Spec.C4) == "embedded_vm_c4_control" && !c.vmProfileMatches(*r.Spec.C4) {
+			return ErrC4Unavailable
+		}
+		if !e.CodingWorkbenchAvailable() || r.Spec.C4 == nil || r.Spec.C4.ID != "c4_go_model_v1" || r.Spec.C4.Validate() != nil || r.ImportVersion != 1 || r.ImportSelection == nil || r.CodingVersion != 1 || r.WorkspaceMode != "generations_v1" || r.ToolMode != "" || r.MCPSelection != nil || r.CapabilitySelection != nil || !reflect.DeepEqual(r.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) || r.Spec.MaxCalls > 16 {
 			return ErrC4Unavailable
 		}
 		_, profiles, snapshot, _, err := e.s.ResolveMissionModelSelection(r.Spec.ProfileID)
@@ -147,7 +150,7 @@ func (e *Engine) resolveVerificationImage(ctx context.Context, m domain.Mission)
 		}
 		// This is a pure declared-image lookup, also used by local planning.
 		// Execution approval and operation dispatch check live readiness separately.
-		return m.Spec.C4.ImageID, nil
+		return m.Spec.C4.ExecutionIdentity(), nil
 	}
 	return e.runner.Resolve(ctx, m.Spec.Image)
 }

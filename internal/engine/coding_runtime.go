@@ -6,10 +6,53 @@ import (
 	"errors"
 	"foundry/internal/domain"
 	"foundry/internal/model"
+	"foundry/internal/vmruntime"
 	"reflect"
 	"runtime"
 	"time"
 )
+
+// NewCodingVMCapability accepts only sealed, installed runtime provenance.
+// Construction and metadata never probe hardware or boot a guest.
+func NewCodingVMCapability(g *model.Router, vm *vmruntime.Runtime) (*C4ControlledCapability, error) {
+	if g == nil || vm == nil || !vm.Trusted() || vm.Identity().Validate() != nil {
+		return nil, ErrC4Unavailable
+	}
+	id, err := opaque()
+	if err != nil {
+		return nil, err
+	}
+	return &C4ControlledCapability{modelBacked: true, vm: vm, source: "embedded_vm_c4_control", models: g, config: C4Activation{SchemaVersion: 1, Enabled: true, RuntimeID: id, ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339Nano)}}, nil
+}
+
+func (c *C4ControlledCapability) vmProfileMatches(p domain.C4Profile) bool {
+	return c != nil && c.vm != nil && c.vm.Trusted() && p.Validate() == nil && p.Mode == "embedded_vm" && p.EmbeddedVM != nil && *p.EmbeddedVM == c.vm.Identity()
+}
+
+func (c *C4ControlledCapability) sourceFor(p *domain.C4Profile) string {
+	if c == nil {
+		return ""
+	}
+	if p == nil {
+		return c.source
+	}
+	// Explicit Docker selection on a new model-backed task is separate
+	// authority; no execution failure ever changes this frozen selection.
+	if c.modelBacked && c.source == "embedded_vm_c4_control" && p.Mode == "docker" && runtime.GOOS != "windows" {
+		return "docker_c4_control"
+	}
+	return c.source
+}
+
+// CodingVMProfile returns a detached copy of startup-owned metadata only.
+func (e *Engine) CodingVMProfile() (domain.C4Profile, bool) {
+	c := e.options.C4Controlled
+	if c == nil || c.source != "embedded_vm_c4_control" || c.vm == nil || !c.vm.Trusted() {
+		return domain.C4Profile{}, false
+	}
+	v := c.vm.Identity()
+	return domain.C4Profile{SchemaVersion: 1, ControlVersion: 1, ID: "c4_go_model_v1", Mode: "embedded_vm", Platform: v.GuestPlatform, Verifier: "/opt/foundry/verify-go-v1", EmbeddedVM: &v}, true
+}
 
 // NewCodingDockerCapability configures a separate model-backed runtime. It does
 // not inspect Docker, resolve credentials, read source or execute any command.
