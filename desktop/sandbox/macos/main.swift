@@ -5,14 +5,30 @@ import Virtualization
 // This helper has exactly one application-owned invocation. It never opens a
 // network device, directory share, disk, graphics device or management socket.
 // Standard output belongs exclusively to the trusted guest serial protocol.
-func fail(_ code: Int32) -> Never { exit(code) }
+func fail(_ code: Int32, _ stage: String, _ error: Error? = nil) -> Never {
+    // Only application-owned stage names and numeric native error codes leave
+    // this process. Do not retain localized messages, input paths or user data.
+    if code != 0 {
+        var diagnostic: [String: Any] = ["schema_version": 1, "stage": stage, "exit_code": code]
+        if let native = error as NSError? {
+            let domains = ["VZErrorDomain", "NSPOSIXErrorDomain", "NSCocoaErrorDomain"]
+            diagnostic["error_domain"] = domains.contains(native.domain) ? native.domain : "other"
+            diagnostic["error_code"] = native.code
+        }
+        if var data = try? JSONSerialization.data(withJSONObject: diagnostic, options: [.sortedKeys]) {
+            data.append(10)
+            try? FileHandle.standardError.write(contentsOf: data)
+        }
+    }
+    exit(code)
+}
 
 let args = CommandLine.arguments
-guard args.count == 5, args[1] == "--kernel", args[3] == "--initrd" else { fail(64) }
+guard args.count == 5, args[1] == "--kernel", args[3] == "--initrd" else { fail(64, "invalid_arguments") }
 for path in [args[2], args[4]] {
-    guard path.hasPrefix("/"), URL(fileURLWithPath: path).standardizedFileURL.path == path else { fail(64) }
+    guard path.hasPrefix("/"), URL(fileURLWithPath: path).standardizedFileURL.path == path else { fail(64, "invalid_arguments") }
     var info = stat()
-    guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { fail(65) }
+    guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { fail(65, "invalid_input") }
 }
 
 @available(macOS 12.0, *)
@@ -71,7 +87,7 @@ final class VMOwner: NSObject, VZVirtualMachineDelegate {
             DispatchQueue.main.async { self?.stop() }
         }
         vm.start { result in
-            if case .failure = result { fail(70) }
+            if case .failure(let error) = result { fail(70, "start_failed", error) }
         }
     }
 
@@ -79,11 +95,14 @@ final class VMOwner: NSObject, VZVirtualMachineDelegate {
         guard !stopping else { return }
         stopping = true
         // force stop, not a guest-cooperative shutdown request
-        vm.stop { _ in fail(71) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { fail(72) }
+        vm.stop { error in
+            if let error = error { fail(71, "stop_failed", error) }
+            fail(71, "owner_stopped")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { fail(72, "stop_deadline") }
     }
-    func guestDidStop(_ virtualMachine: VZVirtualMachine) { fail(0) }
-    func virtualMachine(_ virtualMachine: VZVirtualMachine, didStopWithError error: Error) { fail(73) }
+    func guestDidStop(_ virtualMachine: VZVirtualMachine) { fail(0, "guest_stopped") }
+    func virtualMachine(_ virtualMachine: VZVirtualMachine, didStopWithError error: Error) { fail(73, "guest_failed", error) }
 }
 
 if #available(macOS 12.0, *) {
@@ -91,5 +110,5 @@ if #available(macOS 12.0, *) {
         let owner = try VMOwner(kernel: args[2], initrd: args[4])
         owner.run()
         withExtendedLifetime(owner) { dispatchMain() }
-    } catch { fail(70) }
-} else { fail(69) }
+    } catch { fail(70, "configuration_failed", error) }
+} else { fail(69, "platform_unsupported") }

@@ -3,29 +3,30 @@
 ## Delivery goal and verification boundary
 
 This work connects the existing account-backed model router, immutable repository
-imports, candidate generations and controlled Go/Docker verifier in one desktop
+imports, candidate generations and controlled Go sandbox verifier in one desktop
 task. It does not replace the workbench or treat installation as evidence of a
 successful real-model task. One delivery milestone covers the whole path.
 
 Real credentials and provider calls require the operator's separate permission.
 Development and CI use owned loopback model servers, fake credential stores and
-synthetic Docker process boundaries. Those results must remain labeled as local
-integration tests. Actual provider and Docker acceptance is a separate observation,
+synthetic process boundaries. Separate native acceptance uses the production
+VM runtime with the same loopback model fixtures: those are real Linux tests,
+not real provider calls. Actual provider and sandbox acceptance are separate observations,
 never inferred from configuration, an installer, a model name or a green fixture.
 
 ## Architecture
 
 The normal desktop launch remains closed. A deliberate native-menu entry opens a
 controlled coding workbench; this enables configuration, not model traffic or
-Docker commands. The renderer keeps its current sandbox, local capability header,
+sandbox commands. The renderer keeps its current sandbox, local capability header,
 origin checks, download guard and lack of a Node/filesystem bridge. Account
 metadata and credentials remain separate. Only an explicit credential operation
 may use the native Foundry namespace; startup and read-only views must not read,
 enumerate, refresh or clean up credentials.
 
 The new task path accepts an inspected committed repository, a selected
-account-backed role snapshot, an immutable local image ID and the existing fixed
-Go verification policy. It cannot consume descriptor-supplied solutions. The old
+account-backed role snapshot, a frozen built-in VM identity (default) or explicit
+supported Docker profile, and the fixed Go verification policy. It cannot consume descriptor-supplied solutions. The old
 synthetic paths and their evidence remain unchanged. A separate model-backed C4
 capability composes the router with the existing controlled verifier; globally
 removing synthetic restrictions or falling back to the legacy runner is forbidden.
@@ -40,7 +41,7 @@ Existing connection/catalog/single-inference acceptances are not task approval.
 
 1. Import consent reads committed files and freezes the baseline, protected inputs
    and context manifest. It does not send source to a provider.
-2. Docker readiness and baseline execution retain their separate material,
+2. Sandbox readiness and baseline execution retain their separate material,
    approval, dispatch, result and exact-owned cleanup records.
 3. Context approval binds the repository, selected accounts/models, context and
    call budget. Researcher and Planner may then produce proposals.
@@ -59,7 +60,7 @@ the mission, epoch, role, current authority, frozen selection and sealed input
 before credential resolution and again before sending. Consume at most one
 dispatch for an invocation. A URL, role label, renderer checkbox or unclaimed
 request is not transport authority. Denied, stale, expired or malformed authority
-must produce no corresponding network/Docker effect.
+must produce no corresponding model/sandbox effect.
 
 ## Data, budgets and failure recovery
 
@@ -79,10 +80,10 @@ requires streaming, non-stored requests and omits `max_output_tokens`; a client
 call/timeout limit must not be presented as provider-enforced output or cost control.
 
 Authentication expiry, allowance exhaustion, rate limits, transport ambiguity,
-invalid model output, changed authority or unconfirmed container cleanup stop the
+invalid model output, changed authority or unconfirmed sandbox cleanup stop the
 task. Unknown outcomes retain the consumed call reservation. Restart records
 interruption and never replays a model call, refreshes a token, reruns tests or
-cleans containers automatically. Recovery preserves all prior evidence and needs
+cleans sandboxes automatically. Recovery preserves all prior evidence and needs
 fresh applicable authority; it never manufactures a pass.
 
 A committed model-backed delivery is terminal for new model chats, readiness or
@@ -92,17 +93,17 @@ from invalidating the delivered review and provenance bindings.
 
 ## Supported project and platform limits
 
-The real verifier remains the pinned Go 1.27.3 Linux image contract with protected
-tests/module/configuration files, offline dependencies, no network, no pull,
+The real verifier uses the pinned Go 1.27.3 Linux guest/image contract with protected
+tests/module/configuration files, standard-library-only inputs, no guest network, no pull,
 non-root execution and fixed CPU/memory/PID/time/output limits. Existing import
 size and entry-type restrictions remain. This is not arbitrary-language execution,
 dependency installation, test rewriting, host scripting, deployment or migration.
 
 Native credentials on supported desktop platforms must use OS-backed Foundry-only
-storage, not plaintext files. Windows Docker support must establish equivalent
-executable/endpoint trust before being advertised; otherwise its real execution
-entry stays visibly unavailable. Packaging and live-execution support are distinct
-claims and are documented separately.
+storage, not plaintext files. The default [built-in VM](embedded-sandbox.md)
+supports Apple Silicon and Windows x64/WHPX. Its readiness/permissions do not
+authorize Docker. Windows Docker remains unavailable; no host or software-emulation
+fallback is allowed. Packaging and successful native execution are separate claims.
 
 ## Acceptance
 

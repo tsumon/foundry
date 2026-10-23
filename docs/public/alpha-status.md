@@ -10,19 +10,27 @@ its artifact as accepted; build configuration alone is not a pass. See the
 
 - [Model-driven coding workbench](live-coding.md): a native opt-in composes OpenAI
   account-backed role calls, committed Go imports, immutable candidates, controlled
-  Docker verification, at most two confirmed-failure repairs and final review/
+  sandbox verification, at most two confirmed-failure repairs and final review/
   delivery. Each model send needs an exact durable claimed invocation under the
   current independent approval. It uses no descriptor-supplied solution. Tests
-  exercise the production protocol with owned loopback services and a synthetic
-  Docker boundary; real-account end-to-end acceptance remains pending authorization.
-  Mac supports the controlled runtime; Windows real Docker remains unavailable.
+  exercise the production protocol with owned loopback services; synthetic tests
+  and native-VM tests have separate evidence. Real-account end-to-end acceptance
+  remains pending authorization. Windows Docker remains unavailable.
+
+- [Built-in sandbox](embedded-sandbox.md): the default for new controlled coding
+  tasks is a bundled Linux VM (Apple Virtualization on Mac arm64; headless
+  QEMU/WHPX on Windows x64), with separate readiness/baseline/execute approvals.
+  Standard-library Go tests run without a guest NIC or host filesystem share.
+  Docker is explicitly optional on the supported Mac path. Missing hardware,
+  changed assets and uncertain shutdown block; no host, TCG or automatic Docker
+  fallback. Native installed acceptance is required, not inferred from unit tests.
 
 - Native desktop packaging of the unchanged workbench and Go controller: a Mac
   DMG and Windows per-user EXE. Runtime Go/Node/compiler installation is not
   required. The native menu distinguishes persistent empty data from disposable,
   retained **local simulation** runs. Patch/report exports use bounded native
   save dialogs; installation never grants pending approvals or real effects.
-  A separate coding menu enables configuration, not account/Docker execution.
+  A separate coding menu enables configuration, not account/sandbox execution.
   The Mac artifact has an ad-hoc
   integrity signature only; the Windows installer is unsigned. Neither is a
   production-signed, notarized or auto-updating release.

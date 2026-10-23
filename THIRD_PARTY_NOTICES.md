@@ -53,6 +53,29 @@ payload merely because they appear in a lockfile. The Windows installer's native
 stub notices are included with its package; its native build/acceptance evidence
 is separate from the macOS build.
 
+## Built-in sandbox runtime
+
+Alpha.3 bundles a separate Linux guest, not Docker Desktop. Its pinned input
+versions, official download sources, sizes and hashes are in
+`desktop/sandbox/inputs.lock.json`. The installed `sandbox/legal/` directory
+contains the Linux GPL-2.0 text, Go LICENSE/PATENTS, a component notice and the
+exact corresponding-source sidecar inventory. The Mac helper uses Apple's
+system Virtualization.framework and is Foundry Apache-2.0 source.
+
+The `sandbox-sources` sidecar contains Linux 6.18, the 6.18.58 patch, the pinned
+Alpine linux-lts build recipe/configurations/patches and Foundry's assembler
+recipes. Windows additionally includes the minimal QEMU 11.1.2/WHPX source build,
+required linked-library sources, license texts and exact build configuration.
+Only the measured DLL dependency closure is shipped; the general-purpose MSYS2
+QEMU GUI package and MSYS2 build environment are not installed with Foundry.
+QEMU and the Linux guest are not relicensed under Foundry's Apache-2.0 license.
+
+Keep both the Electron/installer runtime source material and `sandbox-sources`
+with redistribution. The build records hashes and includes corresponding source
+bytes rather than relying only on download links. This is not blanket legal or
+security clearance. Native acceptance and published vulnerability assessment
+remain separate from source/license inventory checks.
+
 ## Coverage limits and release blockers
 
 This material is attribution evidence, not a legal audit or blanket license

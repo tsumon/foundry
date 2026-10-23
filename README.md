@@ -6,7 +6,7 @@
 
 ### 一个人的开发，也应该有清楚的交付过程。
 
-计划 · 独立候选 · 失败修复 · 验证证据 · 审批 · 本地补丁
+计划 · 隔离修改 · 内置沙盒 · 失败修复 · 审批 · 本地补丁
 
 [![Verify](https://github.com/tsumon/foundry/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/verify.yml)
 [![Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)
@@ -25,7 +25,7 @@
 Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git 快照，把计划、候选修改、失败记录、复验和最终交付放在同一个可核对的流程里。原仓库保持只读，最后得到的是 **patch 与 Markdown 报告**，而不是一次未经审阅的自动推送。
 
 > [!IMPORTANT]
-> **这是有审批边界的 Coding Alpha，不是无人值守的自主开发产品。** 新的受控编程入口把 OpenAI 模型、独立候选和 Docker 验证接到同一任务；默认仍关闭，安装和打开入口都不等于授权调用。开发验收使用本地协议模拟，**尚不宣称真实账号端到端验收通过**。原模拟入口继续明确标记为 `synthetic_stub`。
+> **这是有审批边界的 Coding Alpha，不是无人值守的自主开发产品。** 受控编程任务默认使用随应用安装的 Linux 轻量虚拟机，Docker 是显式可选项；不需要 Docker Desktop，也不会悄悄在宿主机执行仓库代码。模型接入与测试权限分别控制，安装和打开入口都不等于授权调用。原生沙盒验收使用本地模型协议响应，**不宣称真实账号端到端验收通过**；原纯模拟入口仍明确标记为 `synthetic_stub`。
 
 ## 先看到结果，再决定是否交付
 
@@ -35,26 +35,28 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 
 ## 安装桌面版
 
-从 [Desktop packages 的成功运行](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)下载对应平台的 artifact。核对其提交与 `SHA256SUMS`；保留随包提供的 runtime source 材料。**这里只使用 CI artifacts，不创建 GitHub Release。**
+从 [Desktop packages 的成功运行](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)下载对应平台的 artifact。核对其提交与 `SHA256SUMS`；保留随包提供的 runtime source 和 `sandbox-sources` 材料。**这里只使用 CI artifacts，不创建 GitHub Release；不要把旧版产物当成当前版本。**
 
 | 平台 | 安装包 | 需要知道 |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | `Foundry-0.1.0-alpha.2-arm64.dmg` | 复制到 Applications；本地 ad-hoc 签名，未公证 |
-| Windows x64 | `Foundry-0.1.0-alpha.2-x64.exe` | 当前用户安装；未签名；真实 Docker 编程入口暂不可用 |
+| Apple Silicon Mac | `Foundry-0.1.0-alpha.3-arm64.dmg` | 内置 Apple Virtualization 沙盒；ad-hoc 签名，未公证 |
+| Windows x64 | `Foundry-0.1.0-alpha.3-x64.exe` | 内置 QEMU/WHPX 沙盒；需硬件虚拟化与已启用的 Windows Hypervisor Platform；当前用户安装，未签名 |
 
-应用内置前端和本地控制器，运行不需要另装 Go、Node.js、npm 或编译器。仓库功能需要受支持的本机 Git。GitHub 下载 artifact 可能要求登录，且产物会过期；不是永久下载地址。请不要关闭系统安全保护来绕过未签名提示。平台限制、Git 要求、数据位置与卸载说明见[桌面使用指南](docs/public/desktop-guide.md)。
+应用内置前端、控制器、Linux 客户系统和 Go 工具链，不需要另装 Go、Node.js、npm、MSYS2 或 Docker。仓库功能仍需要受支持的本机 Git。虚拟化不可用时明确阻断，不启用系统功能、不自动重启，不降级到主机、软件模拟或 Docker。GitHub artifact 可能要求登录且会过期；不是永久下载地址。不要关闭系统安全保护来绕过未签名提示。平台限制、数据位置与卸载说明见[桌面使用指南](docs/public/desktop-guide.md)。
 
 ## 从需求到可审阅补丁
 
-在 Mac 的原生菜单中选择 **Controlled Coding Workbench**，进入与普通工作台、演示数据隔离的持久编程空间：
+在应用菜单中选择 **Controlled Coding Workbench**，进入与普通工作台、演示数据隔离的持久编程空间：
 
 1. 明确选择 OpenAI 账户、路由和各角色模型。API Key 与订阅是不同路由，不会互相兜底；订阅需要已有且有效的授权。
-2. 创建任务时填写需求、已提交的 Go 仓库、可修改文件和受保护文件，选择已在本机存在的固定镜像 ID。此时不请求模型，也不运行 Docker。
-3. 分别审批并执行 Docker 就绪检查、基线测试；基线通过后，再审批发送上下文，由 Researcher 和 Planner 生成计划。
+2. 填写需求、已提交的 Go 仓库、可修改文件和受保护文件。默认内置沙盒，运行时摘要随任务冻结；创建任务不调用模型，也不启动虚拟机。
+3. 分别审批并执行沙盒就绪检查、基线测试；基线通过后，再审批发送上下文，由 Researcher 和 Planner 生成计划。
 4. 审阅或修订计划，单独批准执行。Worker 提出候选补丁；真实验证器发现明确的测试失败后，Debugger 最多修复两轮，再复验。
 5. QA、Auditor 审查当前候选和测试证据；交付仍需独立批准，最后导出 patch 与报告。
 
-**当前范围是受限的 Go 项目，不是任意技术栈。** 不安装依赖、不拉取镜像、不运行主机脚本，不改原仓库或受保护测试。凭据过期、额度不足、网络结果不明或容器清理未确认就停止；不会重试、刷新或改用收费 API。调用次数与超时上限不是费用硬上限。完整配置与限制见[受控编程设计](docs/public/live-coding.md)和[使用指南](docs/public/desktop-guide.md)。
+**当前范围是使用标准库的受限 Go 项目，不是任意技术栈。** Mac 和 Windows 都运行 Linux 客户系统中的测试，不等于验证原生 DMG、EXE、浏览器或移动应用。没有依赖安装、主机共享目录或客户系统网络，不改原仓库或受保护测试。凭据过期、额度不足、结果不明或沙盒关闭未确认就停止；不会自动重试、刷新或改用收费 API。调用次数与超时不是费用硬上限。见[内置沙盒设计](docs/public/embedded-sandbox.md)和[使用指南](docs/public/desktop-guide.md)。
+
+需要已有 Docker 环境时，可在**新任务**中明确选择 Docker（当前仅 Mac 受控路径）。它有自己的固定镜像、就绪检查和审批材料，不继承内置沙盒的批准。
 
 ## 不用账号，也能体验流程
 
@@ -75,11 +77,12 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 | 能力 | 当前真实边界 |
 | :--- | :--- |
 | 项目与资产工作台 | 项目、交付目标、环境、共享资源台账与任务关联 |
-| 模型驱动仓库任务 | 单独启用的 Mac 编程入口；OpenAI 冻结账户/模型快照、已提交 Go 仓库、独立候选、修复与导出 |
+| 模型驱动仓库任务 | 单独启用的编程入口；OpenAI 冻结账户/模型快照、已提交 Go 仓库、独立候选、修复与导出 |
+| 默认内置沙盒 | Mac Virtualization / Windows WHPX；无客户系统网络和主机共享，Go 测试由独立客户系统执行；原生验收与模拟分开记录 |
 | 演示 Agent / 验证 | 本地脚本响应与内容断言；**不是**真实模型推理或编译器测试 |
 | 审批与恢复 | 控制器绑定 revision/digest；重启不自动重放未知结果或扩大授权 |
 | MCP / Skills / hooks | 管理、发现与静态说明；源码 CLI 有单独获批的本地 MCP fixture。桌面演示不启用外部工具执行 |
-| Docker | Mac 受控编程入口复用独立就绪、基线、候选验证和精确归属清理；Windows 真实执行仍关闭 |
+| 可选 Docker | Mac 显式选择已有固定镜像，独立就绪、基线和候选审批；Windows Docker 仍关闭，不作为兜底 |
 | 真实模型 / 订阅 | 生产协议已接线；真实账户验收另行授权。任务不隐式登录、查目录、刷新、重试或切换收费 API |
 | 自动 apply / Git 写入 / 部署 / 数据库迁移 | **不提供**；导出的 patch 由你在产品外处理 |
 

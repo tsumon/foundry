@@ -11,13 +11,13 @@ Use the **Desktop packages** workflow in
 [GitHub Actions](https://github.com/tsumon/foundry/actions/workflows/desktop.yml).
 Select a successful run for the source revision you intend to install. Download
 the matching platform artifact, its `SHA256SUMS` and the accompanying runtime
-source material. GitHub may require sign-in to download workflow artifacts;
+source material, including `sandbox-sources`. GitHub may require sign-in to download workflow artifacts;
 these artifacts expire and are not a GitHub Release or an update channel.
 
 | Target | Package | Trust status |
 | --- | --- | --- |
-| macOS Apple Silicon | `Foundry-0.1.0-alpha.2-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
-| Windows x64 | `Foundry-0.1.0-alpha.2-x64.exe` | Unsigned per-user installer; no verified publisher |
+| macOS Apple Silicon | `Foundry-0.1.0-alpha.3-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
+| Windows x64 | `Foundry-0.1.0-alpha.3-x64.exe` | Unsigned per-user installer; no verified publisher |
 
 Do not treat a checksum as publisher authentication. Do not disable Gatekeeper,
 SmartScreen, antivirus or other OS protections to install the Alpha. If your
@@ -44,10 +44,13 @@ and the existing settings UI. It does not invent a configured model or silently
 turn on account access. Creating account metadata is not a successful connection.
 
 **Controlled Coding Workbench** is an explicit native-menu opt-in with its own
-retained data. Opening it enables configuration, not a provider call or Docker
-probe. On Mac it composes the account-backed model router with the controlled
-Go/Docker verifier. On Windows the entry displays the unavailable real-Docker
-boundary; native packaging and credential storage do not establish Docker trust.
+retained data. Opening it enables configuration, not a provider call or a VM boot.
+New tasks default to a bundled Linux VM: Apple's Virtualization.framework on
+Apple Silicon and bundled, headless QEMU with WHPX on Windows x64. Windows needs
+hardware virtualization and Windows Hypervisor Platform already available;
+Foundry does not enable features, reboot or substitute software emulation.
+Docker remains an explicit Mac-only alternative for a new task. Installed
+metadata is not evidence of successful readiness or permission to execute.
 Normal launch and the simulation retain their original closed behavior.
 
 **New Isolated Local Repository Simulation**, in the Foundry menu, creates fresh
@@ -76,13 +79,15 @@ Closing the app stops its own controller. It does not erase retained evidence,
 restart failed work, or grant any pending approval. Starting a new simulation
 creates a new run; it does not resume the previous simulation automatically.
 
-## Model-driven Go tasks (Mac, opt-in)
+## Model-driven Go tasks (opt-in)
 
 The new coding mode does not require `foundry.task.json` or preset patches. It
-uses a committed repository snapshot, a goal and protected/scoped files. Supply
-an existing local immutable image ID matching the fixed Go 1.27.3 verifier
-contract. Foundry does not download/build images or install dependencies for you.
-The source repository and protected tests remain untouched.
+uses a committed repository snapshot, a goal and protected/scoped files. The
+bundled verifier runs standard-library Go 1.27.3 tests in Linux, not native Mac or
+Windows application tests. No guest NIC, host share, dependency installation or
+host-script fallback is provided. The source repository and protected tests remain
+untouched. If you explicitly choose Docker on Mac, supply an existing immutable
+local image matching the verifier contract; Foundry does not pull or build it.
 
 1. Open **Controlled Coding Workbench**. Configure an explicit OpenAI account and
    route in the existing model settings, then choose role models. An API-key route
@@ -91,7 +96,7 @@ The source repository and protected tests remain untouched.
 2. In task creation, inspect the repository and freeze its committed base, file
    scope, model selections, call budget and immutable local verification profile.
    Creation grants neither network nor execution permission.
-3. Prepare, approve and explicitly execute the separate Docker readiness check.
+3. Prepare, approve and explicitly execute the separate sandbox readiness check.
    Prepare, approve and execute baseline verification. A passing baseline is
    required; this mode does not ask a model to repair an already-failing baseline.
 4. Approve sending the bounded repository context to the selected role models.
@@ -172,6 +177,9 @@ Back up retained evidence explicitly; uninstall is not evidence cleanup.
   it is not permission to query a catalog or begin OAuth.
 - Real Docker remains closed in normal/simulation mode and on Windows. Mac coding
   mode still needs separate readiness, baseline and task execution approvals.
+- Built-in VM execution also requires independent readiness, baseline and task
+  approvals. Changing its bundle/profile requires new material. No automatic
+  backend switch, host execution or TCG fallback is allowed.
 - No host scripts, Git writes, deployment or migration.
 - No automatic model/provider retry, token refresh, paid fallback or updates.
 - The renderer has no Node.js or filesystem bridge. A random per-launch capability
@@ -195,6 +203,13 @@ focus the existing window rather than start a second controller on the same data
 bypass the check. Retain the failing inputs for diagnosis. Broken or altered
 installed resources require a clean verified application copy, not editing its
 manifest.
+
+**Built-in sandbox unavailable:** missing or changed bundled assets require a
+verified installation. Unavailable hardware virtualization or WHPX blocks the
+task; it is not a simulated pass. On managed Windows machines, ask the device
+administrator about the prerequisite. Foundry never changes it automatically.
+Unconfirmed shutdown preserves evidence and blocks further work instead of
+killing processes by name. See [sandbox design](embedded-sandbox.md).
 
 **Simulation versus real verification:** inspect `source_kind`, the attempt trace
 and the exported report. A screenshot, exit code or model review alone does not

@@ -69,8 +69,9 @@ additional checks, never substitutes for semantic readiness. A blank window fail
 the gate; no renderer debug port, activation switch or relaxed approval is added.
 
 The coding-mode extension also exercises the actual packaged native menu and its
-configuration-only confirmation. Windows must visibly retain its unavailable real
-Docker boundary. Tests switch back to the ordinary workbench, restart and
+configuration-only confirmation. Windows displays its bundled VM as configurable,
+but not yet readiness-checked; the separate Docker path remains unavailable.
+Tests switch back to the ordinary workbench, restart and
 uninstall while checking retained coding data. Only a separately opted-in CI
 diagnostic test touches its fresh synthetic Credential Manager probe; it never
 enumerates account entries or accesses a real account. These checks do not certify

@@ -6,7 +6,7 @@
 
 ### A clear delivery process—even when the team is just you.
 
-Plans · Isolated candidates · Repairs · Evidence · Approvals · Local patches
+Plans · Isolated candidates · Built-in sandbox · Repairs · Approvals · Local patches
 
 [![Verify](https://github.com/tsumon/foundry/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/verify.yml)
 [![Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)
@@ -25,7 +25,7 @@ Plans · Isolated candidates · Repairs · Evidence · Approvals · Local patche
 Foundry is a software-delivery workbench for a one-person team. It reads a committed Git snapshot and keeps plans, candidate changes, failures, rechecks and delivery in one inspectable workflow. Your source repository stays read-only. The output is a **patch and Markdown report**, not an unreviewed automatic push.
 
 > [!IMPORTANT]
-> **This is an approval-bound coding Alpha, not an unattended autonomous developer.** The controlled coding entry connects OpenAI models, isolated candidates and Docker verification in one task. It remains opt-in: installation or opening the entry grants no call permission. Development acceptance uses local protocol fixtures; **real-account end-to-end acceptance is not claimed**. The original simulation remains explicitly labeled `synthetic_stub`.
+> **This is an approval-bound coding Alpha, not an unattended autonomous developer.** Coding tasks default to a bundled lightweight Linux VM; Docker is an explicit alternative. Docker Desktop is not required, and repository code never silently runs on the host. Model access and test execution have separate approvals; installation grants neither. Native sandbox acceptance uses local model-protocol responses—**real-account end-to-end acceptance is not claimed**. The original fully synthetic workflow remains labeled `synthetic_stub`.
 
 ## Inspect the outcome before you deliver
 
@@ -35,26 +35,28 @@ Foundry is a software-delivery workbench for a one-person team. It reads a commi
 
 ## Install the desktop app
 
-Download the platform artifact from a [successful Desktop packages run](https://github.com/tsumon/foundry/actions/workflows/desktop.yml). Check its source revision and `SHA256SUMS`; keep the accompanying runtime sources. **Distribution uses CI artifacts, not a GitHub Release.**
+Download the platform artifact from a [successful Desktop packages run](https://github.com/tsumon/foundry/actions/workflows/desktop.yml). Check its source revision and `SHA256SUMS`; retain both runtime sources and `sandbox-sources`. **Distribution uses CI artifacts, not a GitHub Release. Older artifacts do not represent the current version.**
 
 | Platform | Installer | Know before installing |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | `Foundry-0.1.0-alpha.2-arm64.dmg` | Copy to Applications; ad-hoc signed, not notarized |
-| Windows x64 | `Foundry-0.1.0-alpha.2-x64.exe` | Per-user, unsigned; real Docker coding remains unavailable |
+| Apple Silicon Mac | `Foundry-0.1.0-alpha.3-arm64.dmg` | Bundled Apple Virtualization sandbox; ad-hoc signed, not notarized |
+| Windows x64 | `Foundry-0.1.0-alpha.3-x64.exe` | Bundled QEMU/WHPX; requires hardware virtualization and Windows Hypervisor Platform already enabled; per-user, unsigned |
 
-The app bundles its frontend and local controller. Running it does not require Go, Node.js, npm or a compiler. Repository operations require a supported local Git installation. GitHub may require sign-in for artifact downloads, and artifacts expire; this is not a permanent download channel. Do not disable OS security protections to bypass unsigned-app warnings. See the [desktop guide](docs/public/desktop-guide.md) for platform limits, Git prerequisites, data storage and uninstall behavior.
+The app bundles its frontend, controller, Linux guest and Go toolchain. No separate Go, Node.js, npm, MSYS2 or Docker installation is needed. Repository operations still require supported local Git. Missing virtualization blocks execution: no automatic OS feature enablement, reboot, host execution, software emulation or Docker fallback. GitHub artifacts may require sign-in and expire; this is not a permanent download channel. Do not disable OS security protections to bypass unsigned-app warnings. See the [desktop guide](docs/public/desktop-guide.md) for prerequisites, storage and uninstall behavior.
 
 ## From a request to a reviewable patch
 
-On Mac, choose **Controlled Coding Workbench** in the native menu. It has its own persistent data, separate from the ordinary workbench and demonstrations:
+Choose **Controlled Coding Workbench** in the application menu. It has its own persistent data, separate from the ordinary workbench and demonstrations:
 
 1. Explicitly select an OpenAI account, route and role models. API-key and subscription routes are distinct, never fallbacks for each other. Subscription use requires an existing valid authorization.
-2. Create a task with a goal, committed Go repository, editable/protected file scope and an already-present immutable local image ID. Creation neither contacts a model nor runs Docker.
-3. Separately approve and execute Docker readiness and baseline verification. After a passing baseline, approve context sharing for Researcher and Planner to produce the plan.
+2. Provide a goal, committed Go repository and editable/protected file scope. The built-in sandbox is selected by default and its identity is frozen with the task. Creation neither calls a model nor boots a VM.
+3. Separately approve and execute sandbox readiness and baseline verification. After a passing baseline, approve context sharing for Researcher and Planner to produce the plan.
 4. Review or revise the plan, then approve execution. Workers propose isolated changes. A confirmed test failure can trigger at most two Debugger repairs, each followed by verification.
 5. QA and Auditor review the current candidate and test evidence. Independently approve delivery to export the patch/report.
 
-**The current scope is bounded Go projects, not arbitrary stacks.** There is no dependency installation, image pull, host script, source-checkout write or protected-test edit. Credential expiry, quota exhaustion, ambiguous transport and unconfirmed cleanup stop the task: no retry, refresh or paid-API substitution. Call-count and timeout limits are not monetary caps. See the [coding design](docs/public/live-coding.md) and [desktop guide](docs/public/desktop-guide.md) for configuration and limits.
+**The current scope is bounded, standard-library Go projects—not arbitrary stacks.** Both hosts test inside Linux; this does not validate native DMG/EXE, browser or mobile applications. There is no package installation, guest networking, host filesystem share, source-checkout write or protected-test edit. Credential expiry, quota exhaustion, ambiguous outcomes and unconfirmed shutdown stop the task: no automatic retry, refresh or paid-API substitution. Call-count and time limits are not monetary caps. See the [sandbox design](docs/public/embedded-sandbox.md) and [desktop guide](docs/public/desktop-guide.md).
+
+An existing Docker environment can be explicitly selected for a **new task** on the supported Mac path. Its immutable image, readiness and approval material are separate; a VM approval never authorizes Docker.
 
 ## Try the workflow without an account
 
@@ -75,11 +77,12 @@ Have a disposable repository? **Open Committed Descriptor Repository…** accept
 | Capability | Actual boundary |
 | :--- | :--- |
 | Project and asset workbench | Projects, delivery targets, environments, shared-resource ledger and task associations |
-| Model-driven repository tasks | Opt-in Mac coding entry; frozen OpenAI account/model selection, committed Go inputs, isolated candidates, repairs and export |
+| Model-driven repository tasks | Opt-in coding entry; frozen OpenAI account/model selection, committed Go inputs, isolated candidates, repairs and export |
+| Default built-in sandbox | Mac Virtualization / Windows WHPX; independent Linux Go tests, no guest network or host shares; native and synthetic evidence recorded separately |
 | Demonstration agents / verification | Scripted local responses and content assertions; **not** real model reasoning or compiler tests |
 | Approvals and recovery | Controller-bound revisions/digests; restart never replays unknown outcomes or widens permission |
 | MCP / Skills / hooks | Management, discovery and static descriptions; source CLI has an independently approved local MCP fixture. Desktop simulation enables no external tool execution |
-| Docker | Mac coding entry reuses separate readiness, baseline, candidate verification and exact-owned cleanup; Windows real execution stays closed |
+| Optional Docker | Explicit Mac selection of an existing immutable image, separate readiness/baseline/candidate approvals; Windows Docker remains closed, never a fallback |
 | Real models / subscriptions | Production protocol wired; real-account acceptance requires separate authorization. Tasks never implicitly log in, query catalogs, refresh, retry or switch to paid APIs |
 | Automatic apply / Git writes / deployment / migrations | **Not provided**; exported patches are handled outside the product |
 
