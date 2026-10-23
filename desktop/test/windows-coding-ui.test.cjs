@@ -161,6 +161,39 @@ test("native mode driver stays compatible with the fixed Windows PowerShell 5.1 
   assert.match(source, /创建交付任务/);
 });
 
+test("native mode gate foregrounds the exact owned window without focusing a non-focusable UIA root", () => {
+  const modeBytes = fs.readFileSync(
+    path.join(__dirname, "../windows-ui-mode.ps1"),
+  );
+  const modeSource = modeBytes.toString("utf8").replace(/^\uFEFF/, "");
+  assert.doesNotMatch(modeSource, /\.SetFocus\(\)/);
+
+  const smokeSource = fs.readFileSync(
+    path.join(__dirname, "../windows-installed-smoke.ps1"),
+    "utf8",
+  );
+  assert.match(
+    smokeSource,
+    /function Assert-WorkbenchForeground\(\$Process, \[string\]\$Title\)/,
+  );
+  assert.match(
+    smokeSource,
+    /\$Process\.MainWindowTitle -cne \$Title[^}]+\$Process\.Responding/,
+  );
+  assert.match(
+    smokeSource,
+    /SetForegroundWindow\(\$handle\)[^}]+GetForegroundWindow\(\) -ne \$handle/,
+  );
+  assert.match(
+    smokeSource,
+    /\$codingSourceHandle = Assert-WorkbenchForeground \$ui 'Foundry — Persistent Workbench'\r?\n\s*\$codingActionRaw = & \$node[^\r\n]+\$codingSourceHandle\.ToInt64\(\)/,
+  );
+  assert.match(
+    smokeSource,
+    /\$persistentSourceHandle = Assert-WorkbenchForeground \$ui 'Foundry — Controlled Coding Workbench'\r?\n\s*\$persistentActionRaw = & \$node[^\r\n]+\$persistentSourceHandle\.ToInt64\(\)/,
+  );
+});
+
 test("native Windows gate runs the focused coding and fake credential suites", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../windows-test.ps1"),

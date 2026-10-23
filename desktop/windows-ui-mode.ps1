@@ -167,7 +167,6 @@ $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$Windo
 if ($null -eq $root -or $root.Current.ProcessId -ne $OwnerProcess) { throw 'Window ownership mismatch' }
 $expectedSource = if ($Action -eq 'coding') { 'Foundry — Persistent Workbench' } else { 'Foundry — Controlled Coding Workbench' }
 if ($root.Current.Name -cne $expectedSource) { throw 'Unexpected native mode source' }
-$root.SetFocus()
 $foundry = Find-DescendantExact $root ([System.Windows.Automation.ControlType]::MenuItem) 'Foundry'
 Expand-Exact $foundry
 $targetName = if ($Action -eq 'coding') { 'Controlled Coding Workbench' } else { 'Persistent Workbench' }

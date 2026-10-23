@@ -22,6 +22,7 @@ export function RoleBindings({
   profiles,
   accounts = [],
   settings,
+  liveTaskInference = false,
   disabled,
   onChange,
   onSave,
@@ -29,6 +30,7 @@ export function RoleBindings({
   profiles: Profile[];
   accounts?: ModelAccount[];
   settings: Settings;
+  liveTaskInference?: boolean;
   disabled: boolean;
   onChange: (settings: Settings) => void;
   onSave: () => void;
@@ -138,7 +140,10 @@ export function RoleBindings({
                       <>
                         {billingLabels[account.billing_mode]}
                         <br />
-                        身份未验证 · 额度未知 · 真实调用未开放
+                        身份未验证 · 额度未知 ·{" "}
+                        {liveTaskInference
+                          ? "仅受支持的账户编码任务按独立审批"
+                          : "真实调用未开放"}
                       </>
                     ) : (
                       "账户 / 额度未知"

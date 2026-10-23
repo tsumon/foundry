@@ -62,8 +62,44 @@ it("shows key versions exactly but labels SIWC roles by stable authorization bin
 
   const main = screen.getByRole("row", { name: /Main/ });
   expect(main).toHaveTextContent("版本 4");
+  expect(main).toHaveTextContent("真实调用未开放");
   const worker = screen.getByRole("row", { name: /Worker/ });
   expect(worker).toHaveTextContent("OpenAI SIWC 稳定授权（可用性由后端复核）");
   expect(within(worker).queryByText(/版本 0/)).not.toBeInTheDocument();
   expect(within(worker).queryByText(/未配置/)).not.toBeInTheDocument();
+});
+
+it("labels live coding role transport as independently approved without enabling edits", () => {
+  const account = {
+    id: "live-account",
+    name: "Live account",
+    auth_method: "api_key",
+    current_credential_version: 2,
+    billing_mode: "api_credits",
+  } as ModelAccount;
+  const liveProfile = {
+    id: "live-profile",
+    name: "Live profile",
+    account_id: account.id,
+  } as Profile;
+  render(
+    <RoleBindings
+      profiles={[liveProfile]}
+      accounts={[account]}
+      settings={{
+        default_profile_id: liveProfile.id,
+        role_bindings: {},
+      }}
+      liveTaskInference
+      disabled
+      onChange={vi.fn()}
+      onSave={vi.fn()}
+    />,
+  );
+
+  const main = screen.getByRole("row", { name: /Main/ });
+  expect(main).toHaveTextContent("仅受支持的账户编码任务按独立审批");
+  expect(main).not.toHaveTextContent("真实调用未开放");
+  expect(within(main).getByRole("combobox")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "保存角色分配" })).toBeDisabled();
 });

@@ -95,6 +95,16 @@ public static class FoundryWindow {
       return @{ clientPaint=($colors.Count -ge 8); foreground=$true; colorBuckets=$colors.Count }
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
   }
+  function Assert-WorkbenchForeground($Process, [string]$Title) {
+    $Process.Refresh()
+    if ($Process.HasExited -or $Process.MainWindowHandle -eq [IntPtr]::Zero -or $Process.MainWindowTitle -cne $Title -or -not $Process.Responding) {
+      throw 'Native mode source window mismatch'
+    }
+    $handle = $Process.MainWindowHandle
+    [FoundryWindow]::SetForegroundWindow($handle) | Out-Null
+    if ([FoundryWindow]::GetForegroundWindow() -ne $handle) { throw 'Native mode source is not foreground' }
+    return $handle
+  }
   $ui = Start-Process -FilePath $app -PassThru
   try {
     $firstReady = Wait-Window $ui 'Foundry — Persistent Workbench' 'persistent' 'windows-ui.png'
@@ -102,14 +112,16 @@ public static class FoundryWindow {
     $second = Start-Process -FilePath $app -PassThru
     if (-not $second.WaitForExit(15000)) { throw 'Second native instance did not yield ownership' }
     $firstReady = Wait-Window $ui 'Foundry — Persistent Workbench' 'persistent' 'windows-ui.png'
-    $codingActionRaw = & $node (Join-Path $PSScriptRoot 'windows-ui-mode.cjs') $ui.MainWindowHandle.ToInt64().ToString() $ui.Id.ToString() 'coding'
+    $codingSourceHandle = Assert-WorkbenchForeground $ui 'Foundry — Persistent Workbench'
+    $codingActionRaw = & $node (Join-Path $PSScriptRoot 'windows-ui-mode.cjs') $codingSourceHandle.ToInt64().ToString() $ui.Id.ToString() 'coding'
     if ($LASTEXITCODE -ne 0) { throw 'Native coding menu action failed' }
     $codingAction = ($codingActionRaw -join "`n") | ConvertFrom-Json
     if (-not $codingAction.ok -or $codingAction.action -ne 'coding') { throw 'Native coding menu receipt invalid' }
     $codingReady = Wait-Window $ui 'Foundry — Controlled Coding Workbench' 'coding-unavailable' 'windows-ui-coding.png'
     $codingDB = Join-Path $actualData 'coding\foundry.db'
     if (-not (Test-Path $codingDB)) { throw 'Native coding database missing' }
-    $persistentActionRaw = & $node (Join-Path $PSScriptRoot 'windows-ui-mode.cjs') $ui.MainWindowHandle.ToInt64().ToString() $ui.Id.ToString() 'persistent'
+    $persistentSourceHandle = Assert-WorkbenchForeground $ui 'Foundry — Controlled Coding Workbench'
+    $persistentActionRaw = & $node (Join-Path $PSScriptRoot 'windows-ui-mode.cjs') $persistentSourceHandle.ToInt64().ToString() $ui.Id.ToString() 'persistent'
     if ($LASTEXITCODE -ne 0) { throw 'Native persistent menu action failed' }
     $persistentAction = ($persistentActionRaw -join "`n") | ConvertFrom-Json
     if (-not $persistentAction.ok -or $persistentAction.action -ne 'persistent') { throw 'Native persistent menu receipt invalid' }

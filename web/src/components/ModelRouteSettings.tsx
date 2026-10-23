@@ -97,6 +97,13 @@ export function ModelRouteSettings({
   }, []);
 
   const selected = accounts.find((account) => account.id === form.account_id);
+  const liveTaskInference = runtime?.live_inference === true;
+  const adapterTaskInferenceAvailable = (adapterID: string) =>
+    liveTaskInference &&
+    runtime?.adapters.some(
+      (adapter) =>
+        adapter.id === adapterID && adapter.implemented && adapter.live_enabled,
+    ) === true;
   const adapters = (runtime?.adapters ?? []).filter(
     (adapter) => selected && supportsAccount(adapter, selected),
   );
@@ -131,10 +138,17 @@ export function ModelRouteSettings({
           <p className="eyebrow">受控接入</p>
           <h2>模型路由与运行门禁</h2>
         </div>
-        <span className="route-lock">生产真实接入关闭</span>
+        <span className="route-lock">
+          {liveTaskInference
+            ? "受支持账户编码任务逐次门禁"
+            : "生产真实接入关闭"}
+        </span>
       </div>
       <p className="note">
-        全局账户路由的真实授权、目录发现与推理保持关闭；账户级订阅连接另由独立验收审批处理。单次目录与固定单次推理也各需当前进程明确准入、独立材料批准与执行，不启用全局任务路由。旧式独立连接的既有行为保持不变。不会自动切换到付费
+        {liveTaskInference
+          ? "当前进程仅开放受支持账户模型编码任务的真实推理传输，仅受支持的账户编码任务按独立审批；这不代表账户已连接或验证，也不开放登录、目录、刷新或一般账户路由。"
+          : "全局账户路由的真实授权、目录发现与推理保持关闭；账户级订阅连接另由独立验收审批处理。单次目录与固定单次推理也各需当前进程明确准入、独立材料批准与执行，不启用全局任务路由。旧式独立连接的既有行为保持不变。"}
+        不会自动切换到付费
         API；每条路由都必须明确选择账户、适配器与额外用量声明。
       </p>
       {!loaded && (
@@ -154,11 +168,11 @@ export function ModelRouteSettings({
           <dt>真实授权 / 发现 / 推理</dt>
           <dd>
             {runtime
-              ? runtime.live_authorization ||
-                runtime.live_discovery ||
-                runtime.live_inference
+              ? runtime.live_authorization || runtime.live_discovery
                 ? "状态冲突，界面仍禁用"
-                : "关闭"
+                : liveTaskInference
+                  ? "仅受支持的账户编码任务按独立审批"
+                  : "关闭"
               : "未读取"}
           </dd>
         </div>
@@ -201,7 +215,13 @@ export function ModelRouteSettings({
               <code>{adapter.id}</code>
               <span>
                 {adapter.implemented ? "已实现" : "未实现"} · 真实接入
-                {adapter.live_enabled ? "状态冲突" : "待确认"}
+                {adapterTaskInferenceAvailable(adapter.id)
+                  ? "任务调用按独立审批"
+                  : adapter.live_enabled
+                    ? "状态冲突"
+                    : liveTaskInference
+                      ? "真实调用未开放"
+                      : "待确认"}
               </span>
             </div>
           ))}
@@ -220,7 +240,9 @@ export function ModelRouteSettings({
                 <span>
                   {route.environment === "simulation"
                     ? "本地模拟"
-                    : "真实环境（关闭）"}
+                    : adapterTaskInferenceAvailable(route.adapter)
+                      ? "真实环境（任务调用按独立审批）"
+                      : "真实环境（关闭）"}
                   {" · "}
                   {route.spend_class} · extra usage {route.extra_usage}
                 </span>
@@ -296,7 +318,11 @@ export function ModelRouteSettings({
                 })
               }
             >
-              <option value="live">真实环境（当前关闭）</option>
+              <option value="live">
+                {adapterTaskInferenceAvailable(form.adapter)
+                  ? "真实环境（任务调用按独立审批）"
+                  : "真实环境（当前关闭）"}
+              </option>
               <option value="simulation">本地模拟（需进程显式启用）</option>
             </select>
             <label htmlFor="route-extra-usage">额外用量声明</label>

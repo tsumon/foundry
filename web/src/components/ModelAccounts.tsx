@@ -109,7 +109,10 @@ export function ModelAccounts({
     <section className="model-accounts" aria-label="模型账户">
       <h2>模型账户</h2>
       <p className="note">
-        账户只是本地配置记录：身份未验证、额度未知、真实账户调用尚未开放。厂商与计费渠道均为用户声明；保存不会登录、探测或自动付费降级。账户级真实订阅连接需操作员显式启动，并独立审批验收材料。
+        {runtime?.live_inference
+          ? "账户只是本地配置记录：身份未验证、额度未知；仅受支持的账户编码任务按独立审批，配置不代表已连接、已授权或可调用。"
+          : "账户只是本地配置记录：身份未验证、额度未知、真实账户调用尚未开放。"}
+        厂商与计费渠道均为用户声明；保存不会登录、探测或自动付费降级。账户级真实订阅连接需操作员显式启动，并独立审批验收材料。
       </p>
       {(error || readError) && (
         <p role="alert" className="form-error">

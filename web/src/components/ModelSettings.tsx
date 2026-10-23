@@ -489,7 +489,7 @@ export function ModelSettings() {
             </div>
             <span className="muted small">
               {profile.account_id
-                ? `账户绑定 · ${accounts.find((account) => account.id === profile.account_id)?.name ?? profile.account?.name ?? profile.account_id} · 真实调用未开放`
+                ? `账户绑定 · ${accounts.find((account) => account.id === profile.account_id)?.name ?? profile.account?.name ?? profile.account_id} · ${modelRuntime?.live_inference ? "仅受支持的账户编码任务按独立审批" : "真实调用未开放"}`
                 : profile.has_key
                   ? "旧凭据已配置（不可覆盖）"
                   : "旧式连接 · 未配置凭据"}
@@ -510,6 +510,7 @@ export function ModelSettings() {
             profiles={profiles}
             accounts={accounts}
             settings={settings}
+            liveTaskInference={modelRuntime?.live_inference === true}
             disabled={busy || loading}
             onChange={(next) => {
               if (!loading && !busy) setSettings(next);

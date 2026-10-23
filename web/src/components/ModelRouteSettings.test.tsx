@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { response } from "../test/fixtures";
@@ -78,6 +79,115 @@ it("reads route metadata only and keeps every production live control visibly cl
     "/api/model-routes",
   ]);
   expect(storage).not.toHaveBeenCalled();
+});
+
+it("labels an available coding transport as independently approved without opening login", async () => {
+  const liveRuntime = {
+    ...runtime,
+    live_inference: true,
+    adapters: runtime.adapters.map((adapter) => ({
+      ...adapter,
+      live_enabled: true,
+    })),
+  };
+  const liveRoute = {
+    id: "coding-route",
+    account_id: account.id,
+    adapter: "openai_api_responses",
+    protocol: "responses",
+    base_url: account.base_url,
+    environment: "live",
+    spend_class: "explicit_api",
+    extra_usage: "off",
+    created_at: "2026-10-23T00:00:00Z",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response({ routes: [liveRoute], runtime: liveRuntime })),
+  );
+
+  render(<ModelRouteSettings accounts={[account]} onSnapshot={vi.fn()} />);
+
+  expect(
+    (await screen.findAllByText(/任务调用按独立审批/)).length,
+  ).toBeGreaterThan(0);
+  expect(screen.queryByText(/状态冲突/)).not.toBeInTheDocument();
+  expect(
+    screen.getAllByText(/真实环境（任务调用按独立审批）/).length,
+  ).toBeGreaterThan(0);
+  expect(
+    screen.getByRole("button", { name: "OpenAI 真实登录（未开放）" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByText(/Claude 订阅与智谱 Coding Plan 未开放/),
+  ).toBeVisible();
+});
+
+it("keeps a disabled provider route closed when another coding transport is available", async () => {
+  const mixedRuntime = {
+    ...runtime,
+    live_inference: true,
+    adapters: [
+      {
+        ...runtime.adapters[1],
+        live_enabled: true,
+      },
+      {
+        id: "anthropic_api_messages",
+        provider: "anthropic",
+        auth_method: "api_key",
+        protocol: "messages",
+        spend_class: "explicit_api",
+        implemented: true,
+        live_enabled: false,
+      },
+    ],
+  };
+  const routes = [
+    {
+      id: "openai-route",
+      account_id: account.id,
+      adapter: "openai_api_responses",
+      protocol: "responses",
+      base_url: account.base_url,
+      environment: "live",
+      spend_class: "explicit_api",
+      extra_usage: "off",
+      created_at: "2026-10-23T00:00:00Z",
+    },
+    {
+      id: "anthropic-route",
+      account_id: "account-anthropic",
+      adapter: "anthropic_api_messages",
+      protocol: "messages",
+      base_url: "https://api.anthropic.com",
+      environment: "live",
+      spend_class: "explicit_api",
+      extra_usage: "off",
+      created_at: "2026-10-23T00:00:00Z",
+    },
+  ];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response({ routes, runtime: mixedRuntime })),
+  );
+
+  render(<ModelRouteSettings accounts={[account]} onSnapshot={vi.fn()} />);
+
+  const supported = (await screen.findByText("openai-route")).closest(
+    "article",
+  )!;
+  expect(supported).toHaveTextContent("真实环境（任务调用按独立审批）");
+  const unsupported = screen.getByText("anthropic-route").closest("article")!;
+  expect(unsupported).toHaveTextContent("真实环境（关闭）");
+  expect(unsupported).not.toHaveTextContent("任务调用按独立审批");
+
+  fireEvent.click(screen.getByText(/查看适配器定义/));
+  const disabledAdapter = screen
+    .getByText("anthropic_api_messages")
+    .closest("div")!;
+  expect(within(disabledAdapter).getByText(/真实调用未开放/)).toBeVisible();
+  expect(disabledAdapter).not.toHaveTextContent("任务调用按独立审批");
 });
 
 it("creates an immutable route with the exact account revision and explicit usage declaration", async () => {

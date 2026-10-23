@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { vi, it, expect } from "vitest";
 import { ModelSettings } from "./ModelSettings";
 import { profile as savedProfile, response } from "../test/fixtures";
@@ -57,6 +63,101 @@ const stubProfileFetch = (
             )
           : fetcher(path, init),
   );
+
+it("labels live coding account, profile, and role setup as approval-bound without granting authority", async () => {
+  const account = {
+    id: "coding-account",
+    revision: 1,
+    name: "Coding API account",
+    provider: "openai",
+    base_url: "https://api.openai.com/v1",
+    auth_method: "api_key",
+    billing_mode: "api_credits",
+    enabled: true,
+    current_credential_version: 1,
+    created_at: "2026-10-23T00:00:00Z",
+    updated_at: "2026-10-23T00:00:00Z",
+    identity_status: "unverified",
+    usage_status: "unknown",
+    inference_enabled: false,
+  };
+  const route = {
+    id: "coding-route",
+    account_id: account.id,
+    adapter: "openai_api_responses",
+    protocol: "responses",
+    base_url: account.base_url,
+    environment: "live",
+    spend_class: "explicit_api",
+    extra_usage: "off",
+    created_at: "2026-10-23T00:00:00Z",
+  };
+  const bound = {
+    ...profile,
+    id: "coding-profile",
+    name: "Coding profile",
+    account_id: account.id,
+    route_id: route.id,
+    account,
+  };
+  const fetcher = vi.fn(async (path: string) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [bound],
+        settings: {
+          default_profile_id: bound.id,
+          role_bindings: {},
+        },
+      });
+    if (path === "/api/model-accounts")
+      return response({ accounts: [account] });
+    if (path === "/api/model-routes")
+      return response({
+        routes: [route],
+        runtime: {
+          live_authorization: false,
+          live_discovery: false,
+          live_inference: true,
+          simulation_inference: false,
+          simulation_authorization: false,
+          automatic_paid_fallback: false,
+          adapters: [
+            {
+              id: route.adapter,
+              provider: "openai",
+              auth_method: "api_key",
+              protocol: "responses",
+              spend_class: "explicit_api",
+              implemented: true,
+              live_enabled: true,
+            },
+          ],
+        },
+      });
+    return response({ error: { message: "not configured" } }, 503);
+  });
+  vi.stubGlobal("fetch", fetcher);
+
+  render(<ModelSettings />);
+
+  expect(
+    await screen.findByText(
+      "账户绑定 · Coding API account · 仅受支持的账户编码任务按独立审批",
+    ),
+  ).toBeVisible();
+  expect(
+    within(screen.getByRole("region", { name: "模型账户" })).getByText(
+      /仅受支持的账户编码任务按独立审批.*不代表已连接、已授权或可调用/,
+    ),
+  ).toBeVisible();
+  expect(screen.getByRole("row", { name: /Main/ })).toHaveTextContent(
+    "仅受支持的账户编码任务按独立审批",
+  );
+  expect(screen.queryByText(/状态冲突/)).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "OpenAI 真实登录（未开放）" }),
+  ).toBeDisabled();
+});
 
 it("never displays returned secrets and saves an allowlisted DTO then clears the write-only key", async () => {
   const fetcher = vi
