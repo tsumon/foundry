@@ -134,7 +134,7 @@ function assembleLegal({ lock, inputsRoot, sourceRoot, outputRoot, tar = "tar" }
     if (raw.length !== f.bytes || digest(raw) !== f.sha256) throw Error("License notice integrity failure");
     const target = path.join(outputRoot, f.path); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, raw, { flag: "wx" });
   }
-  const recipes = [["windows-source-build.cjs", fs.readFileSync(__filename)], ...["windows-bundle.cjs", "assets.cjs", "windows-zlib.cjs", "zlib-regression.c", "windows-stdio.cjs"].map(n => [n, fs.readFileSync(path.join(__dirname, n))]), ["inputs.lock.json", Buffer.from(JSON.stringify(lock, null, 2) + "\n")]];
+  const recipes = [["windows-source-build.cjs", fs.readFileSync(__filename)], ...["windows-bundle.cjs", "assets.cjs", "windows-zlib.cjs", "zlib-regression.c", "windows-stdio.cjs", "windows-utf8.cjs", "windows-utf8-probe.c"].map(n => [n, fs.readFileSync(path.join(__dirname, n))]), ["inputs.lock.json", Buffer.from(JSON.stringify(lock, null, 2) + "\n")]];
   for (const [name, raw] of recipes) { fs.writeFileSync(path.join(kitRoot, name), raw, { flag: "wx" }); files.push({ file: name, bytes: raw.length, sha256: digest(raw), kind: "local-build-recipe" }); }
   const result = { schema_version: 1, files, digest: digest(Buffer.from(JSON.stringify(files))), redistribution: lock.windows.redistribution || [] };
   const index = JSON.stringify(result, null, 2) + "\n";
@@ -170,11 +170,13 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const sourceTar = path.join(outputRoot, "qemu-source.tar.xz"); fs.writeFileSync(sourceTar, sourceRaw, { flag: "wx" });
   const sourceRoot = extractQemuSource({ lock, sourceTar, outputRoot, run }), buildRoot = path.join(outputRoot, "build"), plan = minimalBuildPlan();
   const qemuStdio = require("./windows-stdio.cjs").patchStdioSource(sourceRoot);
+  const qemuUTF8 = require("./windows-utf8.cjs").patchUTF8Source(sourceRoot);
   fs.mkdirSync(buildRoot); fs.writeFileSync(path.join(sourceRoot, "configs", "devices", "x86_64-softmmu", "foundry.mak"), plan.devices, { flag: "wx" });
   runLoggedBuildStep({ run, program: bash, args: [path.join(sourceRoot, "configure").replaceAll("\\", "/"), ...plan.configure], cwd: buildRoot, outputRoot, step: "configure" });
   const { options, devices, host, target } = readGeneratedConfiguration(buildRoot);
   auditConfiguration({ options, devices, host, target });
   runLoggedBuildStep({ run, program: path.join(msysRoot, "ucrt64", "bin", "ninja.exe"), args: ["-j2", ...plan.targets], cwd: buildRoot, outputRoot, step: "ninja" });
+  const unicodeRegression = require("./windows-utf8.cjs").runUTF8Regression({ outputRoot, msysRoot, qemu: path.join(buildRoot, "qemu-system-x86_64.exe"), run });
   const runtime = path.join(outputRoot, "runtime"); fs.mkdirSync(runtime); const available = new Map();
   available.set("qemu-system-x86_64.exe", fs.readFileSync(path.join(buildRoot, "qemu-system-x86_64.exe")));
   for (const f of lock.windows.dependency_files) {
@@ -191,7 +193,7 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const firmware = path.join(runtime, "share", "qemu"); fs.mkdirSync(firmware, { recursive: true });
   for (const name of ["bios-256k.bin", "linuxboot_dma.bin"]) { const raw = fs.readFileSync(path.join(sourceRoot, "pc-bios", name)); fs.writeFileSync(path.join(firmware, name), raw, { flag: "wx" }); files.push({ path: "runtime/share/qemu/" + name, bytes: raw.length, sha256: digest(raw) }); }
   const sourceKit = assembleLegal({ lock, inputsRoot: inputs, sourceRoot, outputRoot, tar });
-  const receipt = { schema_version: 1, kind: "source-built-minimal-qemu", version: lock.windows.qemu_version, source_sha256: lock.windows.source_sha256, source_kit: sourceKit, build_packages: archives, configure: plan.configure, devices, host, target, options, imports, files, zlib: zlib.receipt, qemu_stdio: qemuStdio, native_acceptance: "not_performed" };
+  const receipt = { schema_version: 1, kind: "source-built-minimal-qemu", version: lock.windows.qemu_version, source_sha256: lock.windows.source_sha256, source_kit: sourceKit, build_packages: archives, configure: plan.configure, devices, host, target, options, imports, files, zlib: zlib.receipt, qemu_stdio: qemuStdio, qemu_utf8: qemuUTF8, unicode_regression: unicodeRegression, native_acceptance: "not_performed" };
   fs.writeFileSync(path.join(outputRoot, "windows-runtime-build.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx" });
   fs.writeFileSync(path.join(outputRoot, "legal", "windows-runtime-build.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx" });
   return receipt;

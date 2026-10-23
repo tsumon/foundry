@@ -122,4 +122,8 @@ The Windows pipe regression fixture in
 `chardev/char-win-stdio.c`, with its original Fabrice Bellard copyright and MIT
 permission notice retained. The application-specific pipe correction is in
 `desktop/sandbox/windows-stdio.cjs`; its recipe accompanies the complete pinned
-QEMU source archive in Windows sandbox source sidecars.
+QEMU source. The exact `desktop/test/fixtures/qemu-11.1.2-version.rc` resource
+fixture is also from QEMU 11.1.2 (GPL-2.0-or-later). The build-only UTF-8 manifest
+recipe and native regression source are shipped in the corresponding-source kit.
+These recipes accompany the complete pinned QEMU source archive in Windows
+sandbox source sidecars.

@@ -884,6 +884,10 @@ desktop/sandbox/windows-bundle.cjs
 desktop/sandbox/windows-source-build.cjs
 desktop/sandbox/windows-zlib.cjs
 desktop/sandbox/windows-stdio.cjs
+desktop/sandbox/windows-utf8.cjs
+desktop/sandbox/windows-utf8-probe.c
+desktop/test/windows-utf8.test.cjs
+desktop/test/fixtures/qemu-11.1.2-version.rc
 desktop/test/windows-stdio.test.cjs
 desktop/test/fixtures/qemu-11.1.2-win-stdio.c
 desktop/sandbox/zlib-regression.c

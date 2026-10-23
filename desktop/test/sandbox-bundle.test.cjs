@@ -33,16 +33,25 @@ function pe() {
   b.write(".rdata", 392); b.writeUInt32LE(1536, 400); b.writeUInt32LE(4096, 404); b.writeUInt32LE(1536, 408); b.writeUInt32LE(512, 412);
   b.writeUInt32LE(4608, 524); b.write("KERNEL32.dll\0", 1024); return b;
 }
+function unicodeProof() {
+  const passed = { acp: 65001, argv_ok: true, access_ok: true, read_ok: true, manifest_ok: true };
+  return { qemu_utf8: require("../sandbox/windows-utf8.cjs").utf8PatchIdentity, unicode_regression: { legacy: { ...passed }, fixed: { ...passed } } };
+}
 test("Windows bundle re-derives PE imports instead of trusting build receipt claims", t => {
   assert.equal(typeof verifyBuiltWindowsRuntime, "function");
   const root = fixture(t), runtime = path.join(root, "windows"); fs.mkdirSync(runtime);
   for (const [name, bytes] of [["qemu-system-x86_64.exe", pe()], ["share/qemu/bios-256k.bin", Buffer.from("bios")], ["share/qemu/linuxboot_dma.bin", Buffer.from("boot")]]) {
     fs.mkdirSync(path.dirname(path.join(runtime, name)), { recursive: true }); fs.writeFileSync(path.join(runtime, name), bytes);
   }
-  const proof = { qemu_stdio: require("../sandbox/windows-stdio.cjs").stdioPatchIdentity, files: sourceInventory(runtime).map(e => ({ path: "runtime/" + e.path, bytes: e.size, sha256: e.sha256 })), imports: [{ file: "qemu-system-x86_64.exe", imports: ["kernel32.dll"] }] };
+  const proof = { ...unicodeProof(), qemu_stdio: require("../sandbox/windows-stdio.cjs").stdioPatchIdentity, files: sourceInventory(runtime).map(e => ({ path: "runtime/" + e.path, bytes: e.size, sha256: e.sha256 })), imports: [{ file: "qemu-system-x86_64.exe", imports: ["kernel32.dll"] }] };
   const lock = { windows: { allowed_runtime_dlls: [] } };
   assert.deepEqual(verifyBuiltWindowsRuntime(runtime, proof, lock), proof.imports);
   assert.throws(() => verifyBuiltWindowsRuntime(runtime, { ...proof, qemu_stdio: undefined }, lock), /stdio.*provenance/i);
+  assert.throws(() => verifyBuiltWindowsRuntime(runtime, { ...proof, qemu_utf8: undefined }, lock), /UTF-8.*provenance/i);
+  assert.throws(() => verifyBuiltWindowsRuntime(runtime, { ...proof, qemu_utf8: { ...proof.qemu_utf8, manifest_sha256: "0".repeat(64) } }, lock), /UTF-8.*provenance/i);
+  assert.throws(() => verifyBuiltWindowsRuntime(runtime, { ...proof, unicode_regression: undefined }, lock), /comparison/i);
+  const failedUnicode = structuredClone(proof); failedUnicode.unicode_regression.fixed.read_ok = false;
+  assert.throws(() => verifyBuiltWindowsRuntime(runtime, failedUnicode, lock), /regression/i);
   assert.throws(() => verifyBuiltWindowsRuntime(runtime, { ...proof, qemu_stdio: { ...proof.qemu_stdio, sha256: "0".repeat(64) } }, lock), /stdio.*provenance/i);
   assert.throws(() => verifyBuiltWindowsRuntime(runtime, { ...proof, imports: [{ file: "qemu-system-x86_64.exe", imports: [] }] }, lock), /imports/);
   const changed = pe(); changed.write("evilcore.dll\0", 1024); fs.writeFileSync(path.join(runtime, "qemu-system-x86_64.exe"), changed);
@@ -56,7 +65,7 @@ test("Windows assembler rejects the known vulnerable zlib even with a matching r
   for (const [name, bytes] of [["qemu-system-x86_64.exe", executable], ["zlib1.dll", oldZlib], ["share/qemu/bios-256k.bin", Buffer.from("bios")], ["share/qemu/linuxboot_dma.bin", Buffer.from("boot")]]) {
     fs.mkdirSync(path.dirname(path.join(runtime, name)), { recursive: true }); fs.writeFileSync(path.join(runtime, name), bytes);
   }
-  const proof = { qemu_stdio: require("../sandbox/windows-stdio.cjs").stdioPatchIdentity, files: sourceInventory(runtime).map(e => ({ path: "runtime/" + e.path, bytes: e.size, sha256: e.sha256 })), imports: [{ file: "qemu-system-x86_64.exe", imports: ["zlib1.dll"] }, { file: "zlib1.dll", imports: ["kernel32.dll"] }] };
+  const proof = { ...unicodeProof(), qemu_stdio: require("../sandbox/windows-stdio.cjs").stdioPatchIdentity, files: sourceInventory(runtime).map(e => ({ path: "runtime/" + e.path, bytes: e.size, sha256: e.sha256 })), imports: [{ file: "qemu-system-x86_64.exe", imports: ["zlib1.dll"] }, { file: "zlib1.dll", imports: ["kernel32.dll"] }] };
   const lock = { windows: { allowed_runtime_dlls: ["zlib1.dll"], zlib: { rejected_runtime_sha256: hash(oldZlib) } } };
   assert.throws(() => verifyBuiltWindowsRuntime(runtime, proof, lock), /vulnerable.*rejected/i);
   lock.windows.zlib.rejected_runtime_sha256 = "0".repeat(64);

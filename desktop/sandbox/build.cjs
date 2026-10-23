@@ -33,6 +33,8 @@ function writeVMManifest(root, host) {
 }
 function verifyBuiltWindowsRuntime(root, proof, lock) {
   if (!require("node:util").isDeepStrictEqual(proof.qemu_stdio, require("./windows-stdio.cjs").stdioPatchIdentity)) throw Error("QEMU stdio provenance mismatch");
+  if (!require("node:util").isDeepStrictEqual(proof.qemu_utf8, require("./windows-utf8.cjs").utf8PatchIdentity)) throw Error("QEMU UTF-8 provenance mismatch");
+  require("./windows-utf8.cjs").validateUTF8Proof(proof.unicode_regression);
   const inventory = sourceInventory(root), byPath = new Map();
   if (!Array.isArray(proof.files) || !Array.isArray(proof.imports) || proof.files.length !== inventory.length) throw Error("Runtime inventory mismatch");
   for (const e of proof.files) {
@@ -64,7 +66,7 @@ function verifyWindowsRedistribution(root, proof, lock) {
     const e = matches[0]; require("./assets.cjs").validateAsset(e);
     return { file: e.file, bytes: e.bytes, sha256: e.sha256, url: e.url, license: e.license };
   });
-  for (const name of ["windows-source-build.cjs", "windows-bundle.cjs", "assets.cjs", "windows-zlib.cjs", "zlib-regression.c", "windows-stdio.cjs", "inputs.lock.json"]) {
+  for (const name of ["windows-source-build.cjs", "windows-bundle.cjs", "assets.cjs", "windows-zlib.cjs", "zlib-regression.c", "windows-stdio.cjs", "windows-utf8.cjs", "windows-utf8-probe.c", "inputs.lock.json"]) {
     const raw = name === "inputs.lock.json" ? Buffer.from(JSON.stringify(lock, null, 2) + "\n") : fs.readFileSync(path.join(__dirname, name));
     files.push({ file: name, bytes: raw.length, sha256: sha256(raw), kind: "local-build-recipe" });
   }

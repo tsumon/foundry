@@ -9,3 +9,4 @@ docs/media/*.png -text
 desktop/*.ico -text
 # Exact pinned upstream C fixture: preserve its source digest on Windows.
 desktop/test/fixtures/qemu-11.1.2-win-stdio.c -text
+desktop/test/fixtures/qemu-11.1.2-version.rc -text

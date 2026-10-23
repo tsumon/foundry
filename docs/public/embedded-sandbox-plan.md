@@ -366,3 +366,29 @@ the OS directory despite poisoned parent environment. Test malformed inputs and
 Unicode encoding offline. Keep suspended admission, Job/handle ownership and all
 execution restrictions unchanged. Then re-run installed Windows acceptance; the
 crypto test alone cannot certify WHPX boot, repair, UI, restart or uninstall.
+
+### Unicode installation path / firmware diagnosis — 2026-10-23
+
+Run 39964561670 passed the corrected native crypto regression, but installed
+readiness stopped with the fixed firmware category. The verified bundle contains
+both required firmware files. Upstream QEMU's ordinary main receives narrow argv;
+its firmware search uses narrow access/open, while the installed test deliberately
+uses Chinese paths. Its version resource has no UTF-8 process manifest. This is
+a path-encoding hypothesis pending the native differential test, not proof that
+WHPX or firmware has passed. Retain the Unicode install case and exact readiness.
+
+Add a build-only UCRT regression using the actual pinned compiler: launch identical
+narrow-argv/access/fopen probes with and without a process UTF-8 manifest against
+an owned Chinese/emoji file. Record only numeric code page and fixed booleans.
+Require complete reads and arguments in the manifested probe, and inspect the
+actual built QEMU's RT_MANIFEST resource. Do not change Windows system locale,
+feature settings, host permissions, approved environment or paths to ASCII.
+The per-process mechanism is documented by Microsoft:
+https://learn.microsoft.com/en-us/windows/apps/design/globalizing/use-utf8-code-page
+
+Pin the original and patched version.rc plus manifest hashes, apply only to fresh
+verified QEMU source, bind the patch and native regression receipt into assembly,
+and ship the recipe, probe and upstream source/license sidecars. Test rejection
+of drift, links, repeat application, missing native facts and failed reads before
+building. Then run unchanged installed WHPX baseline/failure/repair, native UI,
+restart and uninstall gates. No TCG, host repository execution or real accounts.
