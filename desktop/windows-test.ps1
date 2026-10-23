@@ -20,7 +20,7 @@ Checked 'go' @('test', '-count=1', './cmd/foundry', '-run', 'Test(Desktop|DataDi
 # Actual SQLite/controller source import, multi-file repair, export, explicit
 # approval-before-action, protected drift, and recovery without replay.
 Checked 'go' @('test', '-count=1', './cmd/foundry-acceptance', '-run', 'Test(RepositoryTask|DesktopRepository)')
-Checked 'node' @('--test', 'desktop/test/security.test.cjs', 'desktop/test/downloads.test.cjs', 'desktop/test/build.test.cjs', 'desktop/test/windows.test.cjs', 'desktop/test/native-notices.test.cjs', 'desktop/test/nsis-template.test.cjs', 'desktop/test/coding-mode.test.cjs', 'desktop/test/coding-smoke.test.cjs', 'desktop/test/installed-smoke-module.test.cjs', 'desktop/test/windows-coding-ui.test.cjs')
+Checked 'node' @('--test', 'desktop/test/security.test.cjs', 'desktop/test/downloads.test.cjs', 'desktop/test/build.test.cjs', 'desktop/test/windows.test.cjs', 'desktop/test/native-notices.test.cjs', 'desktop/test/nsis-template.test.cjs', 'desktop/test/coding-mode.test.cjs', 'desktop/test/coding-smoke.test.cjs', 'desktop/test/installed-smoke-module.test.cjs', 'desktop/test/native-vm-smoke.test.cjs', 'desktop/test/windows-coding-ui.test.cjs')
 $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 Checked $windowsPowerShell @('-NoProfile', '-NonInteractive', '-File', (Join-Path $PWD 'desktop/windows-taskdialog-action.test.ps1'))
 # Real native Electron session/cookie/attachment events, in disposable profiles.

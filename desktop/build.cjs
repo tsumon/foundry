@@ -57,7 +57,11 @@ async function main() {
     "darwin/arm64",
   );
   run(npm, ["run", "build"], path.join(source, "web"));
-  for (const name of ["foundry", "foundry-acceptance"]) {
+  for (const name of [
+    "foundry",
+    "foundry-acceptance",
+    "foundry-vm-acceptance",
+  ]) {
     run(
       go,
       [

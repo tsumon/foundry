@@ -281,6 +281,7 @@ function verifyResources(root, expectedManifestHash) {
   for (const name of [
     "bin/" + executableName("foundry"),
     "bin/" + executableName("foundry-acceptance"),
+    "bin/" + executableName("foundry-vm-acceptance"),
     "web/index.html",
     "sandbox/manifest.json",
   ])

@@ -22,7 +22,12 @@ while ($queue.Count -gt 0) {
   $name = $current.Name
   if ($name.Length -gt 512) { throw 'UI name exceeds bound' }
   $index = $nodes.Count
-  $nodes.Add(@{ parent=$item.parent; type=($current.ControlType.ProgrammaticName -replace '^ControlType\.', ''); name=$name; visible=(-not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0 -and $current.BoundingRectangle.Height -gt 0); enabled=$current.IsEnabled })
+  $record = @{ parent=$item.parent; type=($current.ControlType.ProgrammaticName -replace '^ControlType\.', ''); name=$name; visible=(-not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0 -and $current.BoundingRectangle.Height -gt 0); enabled=$current.IsEnabled }
+  if ($current.ControlType -eq [System.Windows.Automation.ControlType]::CheckBox) {
+    $toggle = $null
+    $record.toggleState = if ($element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$toggle)) { $toggle.Current.ToggleState.ToString() } else { 'Unavailable' }
+  }
+  $nodes.Add($record)
   $child = $walker.GetFirstChild($element)
   while ($null -ne $child) {
     if ($nodes.Count + $queue.Count -ge 2048) { throw 'UI tree exceeds bound' }

@@ -34,7 +34,7 @@ jobs:
           path: ${{ runner.temp }}/foundry-runtime-sources/
 
   macos-installer:
-    name: Native macOS arm64 package and installed backend acceptance
+    name: macOS arm64 package and installed contracts (not VM execution)
     needs: runtime-sources
     runs-on: macos-26
     timeout-minutes: 45
@@ -74,43 +74,54 @@ jobs:
           npm test --prefix desktop
           desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/download-contract.cjs patch
           desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/download-contract.cjs report
+      - name: Assemble pinned sandbox and corresponding-source sidecar (no VM boot)
+        id: sandbox-bundle
+        run: |
+          set -eu
+          export FOUNDRY_GO="$(command -v go)"
+          node desktop/sandbox/build.cjs "$RUNNER_TEMP/foundry-macos-sandbox"
       - name: Build native ad-hoc app and DMG without signing-account discovery
+        id: desktop-package
         run: |
           set -eu
           export FOUNDRY_DESKTOP_OUTPUT="$RUNNER_TEMP/foundry-macos-output"
+          export FOUNDRY_SANDBOX_BUNDLE="$RUNNER_TEMP/foundry-macos-sandbox/bundle"
           node desktop/build.cjs
           cp -R "$RUNNER_TEMP/foundry-runtime-sources" "$FOUNDRY_DESKTOP_OUTPUT/runtime-sources"
-      - name: Read-only mount, fresh install, bundled runtime and persistence
+          cp -R "$RUNNER_TEMP/foundry-macos-sandbox/sandbox-sources" "$FOUNDRY_DESKTOP_OUTPUT/sandbox-sources"
+      - name: Installed backend contracts and persistence (no hardware VM acceptance)
+        id: installed-contract
         run: |
           set -eu
           output="$RUNNER_TEMP/foundry-macos-output"
           mountpoint="$RUNNER_TEMP/foundry-mount"
           install="$RUNNER_TEMP/Foundry Installed"
           mkdir "$mountpoint" "$install"
-          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$output/Foundry-0.1.0-alpha.2-arm64.dmg"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$output/Foundry-0.1.0-alpha.3-arm64.dmg"
           trap 'hdiutil detach "$mountpoint"' EXIT
           ditto "$mountpoint/Foundry.app" "$install/Foundry.app"
           codesign --verify --deep --strict "$install/Foundry.app"
           export FOUNDRY_INSTALLED_RESOURCES="$install/Foundry.app/Contents/Resources"
           export FOUNDRY_SMOKE_DATA="$RUNNER_TEMP/foundry-installed-data"
           node desktop/installed-smoke.cjs > "$output/native-smoke.json"
-      - name: Upload only after every native gate passes
+      - name: Upload after package contracts; physical Mac VM acceptance remains separate
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: foundry-macos-arm64
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/foundry-macos-output/Foundry-0.1.0-alpha.2-arm64.dmg
+            ${{ runner.temp }}/foundry-macos-output/Foundry-0.1.0-alpha.3-arm64.dmg
             ${{ runner.temp }}/foundry-macos-output/SHA256SUMS
             ${{ runner.temp }}/foundry-macos-output/build-inputs.json
             ${{ runner.temp }}/foundry-macos-output/native-smoke.json
             ${{ runner.temp }}/foundry-macos-output/runtime-sources/
+            ${{ runner.temp }}/foundry-macos-output/sandbox-sources/
 
   windows-installer:
     name: Native Windows x64 installer and acceptance
     needs: runtime-sources
     runs-on: windows-2025
-    timeout-minutes: 60
+    timeout-minutes: 120
     defaults:
       run:
         shell: pwsh
@@ -191,13 +202,35 @@ jobs:
           } finally { Pop-Location }
           & (Join-Path $env:GOBIN 'govulncheck.exe') -show=verbose ./...
           if ($LASTEXITCODE -ne 0) { throw 'Windows vulnerability audit failed' }
+      - name: Build pinned minimal QEMU with WHPX only in a dedicated build environment
+        id: windows-vm-runtime
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $buildHost = Join-Path $env:RUNNER_TEMP 'foundry-windows-vm-buildhost'
+          $runtimeOutput = Join-Path $env:RUNNER_TEMP 'foundry-windows-vm-runtime'
+          node desktop/sandbox/windows-source-build.cjs --bootstrap $buildHost
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned VM build host bootstrap failed' }
+          node desktop/sandbox/windows-source-build.cjs $runtimeOutput (Join-Path $buildHost 'msys64') --install-pinned-build-packages
+          if ($LASTEXITCODE -ne 0) { throw 'Minimal WHPX runtime source build failed' }
+      - name: Assemble pinned Windows sandbox and corresponding-source sidecar
+        id: sandbox-bundle
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:FOUNDRY_GO = (Get-Command go).Source
+          $env:FOUNDRY_WINDOWS_VM_RUNTIME = Join-Path $env:RUNNER_TEMP 'foundry-windows-vm-runtime'
+          node desktop/sandbox/build.cjs (Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox')
+          if ($LASTEXITCODE -ne 0) { throw 'Windows sandbox assembly failed' }
       - name: Build per-user unsigned NSIS installer
+        id: desktop-package
         run: |
           $env:FOUNDRY_DESKTOP_OUTPUT = Join-Path $env:RUNNER_TEMP 'foundry-windows-output'
+          $env:FOUNDRY_SANDBOX_BUNDLE = Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox/bundle'
           node desktop/build-windows.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed' }
           Copy-Item (Join-Path $env:RUNNER_TEMP 'foundry-runtime-sources') (Join-Path $env:FOUNDRY_DESKTOP_OUTPUT 'runtime-sources') -Recurse
-      - name: Fresh install, native UI, bundled runtime, restart, and uninstall
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox/sandbox-sources') (Join-Path $env:FOUNDRY_DESKTOP_OUTPUT 'sandbox-sources') -Recurse
+      - name: Fresh install, mandatory WHPX guest, native UI, restart, and uninstall
+        id: installed-contract
         run: ./desktop/windows-installed-smoke.ps1 -Output (Join-Path $env:RUNNER_TEMP 'foundry-windows-output')
       - name: Upload only after every native gate passes
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -205,10 +238,11 @@ jobs:
           name: foundry-windows-x64
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/foundry-windows-output/Foundry-0.1.0-alpha.2-x64.exe
+            ${{ runner.temp }}/foundry-windows-output/Foundry-0.1.0-alpha.3-x64.exe
             ${{ runner.temp }}/foundry-windows-output/SHA256SUMS
             ${{ runner.temp }}/foundry-windows-output/build-inputs.json
             ${{ runner.temp }}/foundry-windows-output/native-smoke.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-acceptance.json
             ${{ runner.temp }}/foundry-windows-output/windows-ui.png
             ${{ runner.temp }}/foundry-windows-output/windows-ui-coding.png
             ${{ runner.temp }}/foundry-windows-output/windows-ui-return.png
@@ -218,5 +252,7 @@ jobs:
             ${{ runner.temp }}/foundry-windows-output/nsis-uninstaller-compiler.log
             ${{ runner.temp }}/foundry-windows-output/foundry-pe-imports.txt
             ${{ runner.temp }}/foundry-windows-output/foundry-acceptance-pe-imports.txt
+            ${{ runner.temp }}/foundry-windows-output/foundry-vm-acceptance-pe-imports.txt
             ${{ runner.temp }}/foundry-windows-output/shipping-provenance.json
             ${{ runner.temp }}/foundry-windows-output/runtime-sources/
+            ${{ runner.temp }}/foundry-windows-output/sandbox-sources/

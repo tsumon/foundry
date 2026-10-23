@@ -174,7 +174,7 @@ function fixture(t, body) {
   fs.mkdirSync(path.join(root, "bin"));
   fs.mkdirSync(path.join(root, "web"));
   fs.writeFileSync(path.join(root, "web/index.html"), "SPA");
-  for (const name of ["foundry", "foundry-acceptance"])
+  for (const name of ["foundry", "foundry-acceptance", "foundry-vm-acceptance"])
     fs.writeFileSync(
       path.join(root, "bin", name),
       "#!" + process.execPath + "\n" + body,

@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'Native Windows required' }
 $node = (Get-Command node.exe).Source
-$installer = Join-Path $Output 'Foundry-0.1.0-alpha.2-x64.exe'
+$installer = Join-Path $Output 'Foundry-0.1.0-alpha.3-x64.exe'
 $testRoot = Join-Path $env:RUNNER_TEMP ('Foundry 验收 ' + [Guid]::NewGuid().ToString('N'))
 $installed = Join-Path $testRoot '用户安装 Foundry'
 New-Item -ItemType Directory -Path $testRoot | Out-Null
@@ -22,6 +22,14 @@ $env:FOUNDRY_INSTALLED_RESOURCES = $resources
 $env:FOUNDRY_SMOKE_DATA = Join-Path $testRoot '保留 evidence'
 try {
   # Test driver uses a pinned Node path; children have no node/go/gcc on PATH.
+  # Mandatory real WHPX guest gate. No feature installation, reboot, TCG,
+  # unsupported-host skip, account credential, or real-provider request.
+  $env:FOUNDRY_VM_ACCEPTANCE_DATA = Join-Path $testRoot 'native-vm-evidence'
+  $env:FOUNDRY_VM_ACCEPTANCE_REPORT = Join-Path $Output 'native-vm-acceptance.json'
+  $vmResult = & $node (Join-Path $PSScriptRoot 'native-vm-smoke.cjs')
+  if ($LASTEXITCODE -ne 0) { throw 'Mandatory installed WHPX guest acceptance failed; see bounded native-vm-acceptance.json when available' }
+  $nativeVM = ($vmResult -join "`n") | ConvertFrom-Json
+  if ($nativeVM.passed -ne $true -or $nativeVM.acceleration -cne 'whpx') { throw 'Missing native WHPX guest receipt' }
   $runtimeResult = & $node (Join-Path $PSScriptRoot 'installed-smoke.cjs')
   if ($LASTEXITCODE -ne 0) { throw 'Installed bundled backend smoke failed' }
   $runtime = ($runtimeResult -join "`n") | ConvertFrom-Json
@@ -118,7 +126,7 @@ public static class FoundryWindow {
     if ($LASTEXITCODE -ne 0) { throw 'Native coding menu action failed' }
     $codingAction = ($codingActionRaw -join "`n") | ConvertFrom-Json
     if (-not $codingAction.ok -or $codingAction.action -ne 'coding') { throw 'Native coding menu receipt invalid' }
-    $codingReady = Wait-Window $ui 'Foundry — Controlled Coding Workbench' 'coding-unavailable' 'windows-ui-coding.png'
+    $codingReady = Wait-Window $ui 'Foundry — Controlled Coding Workbench' 'coding-vm-configurable' 'windows-ui-coding.png'
     $codingDB = Join-Path $actualData 'coding\foundry.db'
     if (-not (Test-Path $codingDB)) { throw 'Native coding database missing' }
     $persistentSourceHandle = Assert-WorkbenchForeground $ui 'Foundry — Controlled Coding Workbench'
@@ -152,5 +160,5 @@ public static class FoundryWindow {
   while ((Test-Path $app) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
   if (Test-Path $app) { throw 'Uninstall left installed executable' }
   if (-not (Test-Path $profileDB) -or -not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash -or -not (Test-Path $runtimeCodingDB) -or (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash -ne $runtimeCodingHash -or (Get-FileHash $evidenceDB -Algorithm SHA256).Hash -ne $evidenceHash) { throw 'Uninstall changed persistent evidence' }
-  @{ result='PASS'; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; nativeUI='OS UI Automation opened the fixed native coding menu and confirmation, observed the rendered Windows-unavailable coding boundary, returned to persistent mode, and captured painted clients; no manual interactive acceptance claimed'; firstUI=$firstReady; codingAction=$codingAction; codingUI=$codingReady; persistentAction=$persistentAction; switchedUI=$switchedReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS; defaulted to persistent mode and retained coding data'; uninstall='PASS; persistent, coding, and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
+  @{ result='PASS'; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; nativeUI='OS UI Automation opened the fixed native coding menu and confirmation, observed configurable VM metadata with opt-in unchecked and independent approvals, returned to persistent mode, and captured painted clients; no manual interactive acceptance claimed'; firstUI=$firstReady; codingAction=$codingAction; codingUI=$codingReady; persistentAction=$persistentAction; switchedUI=$switchedReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS; defaulted to persistent mode and retained coding data'; uninstall='PASS; persistent, coding, and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
 } finally { $env:PATH=$oldPath }

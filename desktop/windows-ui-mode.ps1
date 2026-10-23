@@ -248,7 +248,7 @@ function Find-DescendantPresent([object]$Root, [object]$Type, [string]$Name) {
 }
 
 function Coding-SectionAnchorsVisible([object]$Element) {
-  $checkbox = Find-DescendantPresent $Element ([System.Windows.Automation.ControlType]::CheckBox) '启用账户模型与受控 Docker（仅创建配置，不批准或执行）'
+  $checkbox = Find-DescendantPresent $Element ([System.Windows.Automation.ControlType]::CheckBox) '启用账户模型与内置 VM（仅创建配置，不批准或执行）'
   $refresh = Find-DescendantPresent $Element ([System.Windows.Automation.ControlType]::Button) '刷新编码能力'
   return (
     $null -ne $checkbox -and

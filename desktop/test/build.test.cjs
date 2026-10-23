@@ -124,6 +124,58 @@ function workflowJob(workflow, name) {
     .split(`  ${name}:\n`)[1]
     .split(/^  [a-z-]+:\n/m)[0];
 }
+test("desktop jobs build the verified sandbox before packaging and publish its source sidecar only after gates", () => {
+  const workflow = require("../node_modules/js-yaml").load(
+    fs.readFileSync(
+      path.join(__dirname, "../../.github/workflows/desktop.yml"),
+      "utf8",
+    ),
+  );
+  for (const name of ["macos-installer", "windows-installer"]) {
+    const job = workflow.jobs[name],
+      steps = job.steps;
+    const sandbox = steps.findIndex((s) => s.id === "sandbox-bundle");
+    const packaging = steps.findIndex((s) => s.id === "desktop-package");
+    const installed = steps.findIndex((s) => s.id === "installed-contract");
+    const upload = steps.findIndex((s) =>
+      s.uses?.startsWith("actions/upload-artifact@"),
+    );
+    assert.ok(
+      sandbox >= 0 &&
+        packaging > sandbox &&
+        installed > packaging &&
+        upload > installed,
+      name,
+    );
+    assert.match(steps[sandbox].run, /node desktop\/sandbox\/build\.cjs/);
+    assert.match(steps[packaging].run, /FOUNDRY_SANDBOX_BUNDLE/);
+    assert.match(steps[packaging].run, /sandbox-sources/);
+    assert.match(steps[upload].with.path, /alpha\.3/);
+    assert.match(steps[upload].with.path, /sandbox-sources\//);
+    for (const step of [
+      steps[sandbox],
+      steps[packaging],
+      steps[installed],
+      steps[upload],
+    ]) {
+      assert.equal(step["continue-on-error"], undefined);
+      assert.equal(step.if, undefined);
+    }
+    if (name === "windows-installer") {
+      const bootstrap = steps.findIndex((s) => s.id === "windows-vm-runtime");
+      assert.ok(bootstrap >= 0 && bootstrap < sandbox);
+      assert.match(steps[bootstrap].run, /--bootstrap/);
+      assert.match(steps[bootstrap].run, /--install-pinned-build-packages/);
+      assert.match(steps[sandbox].run, /FOUNDRY_WINDOWS_VM_RUNTIME/);
+      assert.match(steps[installed].name, /mandatory WHPX guest/);
+      assert.match(steps[upload].with.path, /native-vm-acceptance\.json/);
+      assert.match(
+        steps[upload].with.path,
+        /foundry-vm-acceptance-pe-imports\.txt/,
+      );
+    } else assert.match(job.name, /not VM execution/);
+  }
+});
 test("workflow boundary checks parse LF and native Windows CRLF identically", () => {
   const workflow = fs.readFileSync(
     path.join(__dirname, "../../.github/workflows/desktop.yml"),
@@ -215,6 +267,7 @@ test("manifest covers all static inputs and detects modification", (t) => {
   for (const file of [
     "bin/" + executableName("foundry"),
     "bin/" + executableName("foundry-acceptance"),
+    "bin/" + executableName("foundry-vm-acceptance"),
     "web/index.html",
     "web/app.js",
     "legal/LICENSE",

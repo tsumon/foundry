@@ -78,10 +78,10 @@ function codingWorkbenchReadiness(snapshot, expected) {
     document: false,
     status: false,
     setup: false,
-    unavailable: false,
-    unavailableWarning: false,
-    providerUnavailable: false,
-    closed: false,
+    vmConfigurable: false,
+    independentApprovals: false,
+    providerConfigurable: false,
+    unchecked: false,
   };
   if (
     !snapshot ||
@@ -125,7 +125,8 @@ function codingWorkbenchReadiness(snapshot, expected) {
   if (document < 0) return missing;
   const status = find(
     document,
-    (node) => node.type === "Group" && node.name === "工作台状态" && node.enabled,
+    (node) =>
+      node.type === "Group" && node.name === "工作台状态" && node.enabled,
   );
   const statusReady =
     status >= 0 &&
@@ -140,8 +141,7 @@ function codingWorkbenchReadiness(snapshot, expected) {
     (node) =>
       node.type === "Group" && node.name === "账户模型编码设置" && node.enabled,
   );
-  if (setup < 0)
-    return { ...missing, document: true, status: statusReady };
+  if (setup < 0) return { ...missing, document: true, status: statusReady };
   const children = nodes.map(() => []);
   for (let index = 1; index < nodes.length; index += 1)
     children[nodes[index].parent].push(index);
@@ -157,39 +157,43 @@ function codingWorkbenchReadiness(snapshot, expected) {
   }
   const normalizeWhitespace = (value) => value.replace(/\s+/gu, "");
   const setupText = normalizeWhitespace(setupTextParts.join(""));
-  const unavailableWarning = setupText.includes(
+  const independentApprovals = setupText.includes(
     normalizeWhitespace(
-      "账户模型编码不可用：windows_docker_trust_unavailable。配置记录不是授权或成功证据。",
+      "元数据可用不等于已授权。创建只冻结仓库、七角色账户/模型/消费类别与此配置；readiness、baseline、context、execute、delivery 仍分别决定。",
     ),
   );
-  const providerUnavailable = setupText.includes(
-    normalizeWhitespace("不可用 · openai"),
+  const providerConfigurable = setupText.includes(
+    normalizeWhitespace("可配置 · openai"),
   );
-  const unavailable = unavailableWarning && providerUnavailable;
-  const closed =
+  const unchecked =
     find(
       setup,
       (node) =>
         node.type === "CheckBox" &&
-        node.name ===
-          "启用账户模型与受控 Docker（仅创建配置，不批准或执行）" &&
-        !node.enabled,
+        node.name === "启用账户模型与内置 VM（仅创建配置，不批准或执行）" &&
+        node.enabled &&
+        node.toggleState === "Off",
     ) >= 0;
   const refresh =
     find(
       setup,
       (node) =>
-        node.type === "Button" && node.name === "刷新编码能力" && !node.enabled,
+        node.type === "Button" && node.name === "刷新编码能力" && node.enabled,
     ) >= 0;
   return {
-    ready: statusReady && unavailable && closed && refresh,
+    ready:
+      statusReady &&
+      independentApprovals &&
+      providerConfigurable &&
+      unchecked &&
+      refresh,
     document: true,
     status: statusReady,
     setup: true,
-    unavailable,
-    unavailableWarning,
-    providerUnavailable,
-    closed,
+    vmConfigurable: providerConfigurable && unchecked,
+    independentApprovals,
+    providerConfigurable,
+    unchecked,
   };
 }
 
@@ -205,7 +209,7 @@ if (require.main === module) {
     process.platform !== "win32" ||
     !/^[1-9][0-9]{0,18}$/.test(window || "") ||
     !/^[1-9][0-9]{0,9}$/.test(pid || "") ||
-    !["persistent", "coding-unavailable"].includes(mode)
+    !["persistent", "coding-vm-configurable"].includes(mode)
   )
     process.exit(2);
   let receipt;
@@ -238,7 +242,7 @@ if (require.main === module) {
     const snapshot = JSON.parse(output.replace(/^\uFEFF/, ""));
     const expected = { window, processId: Number(pid) };
     receipt =
-      mode === "coding-unavailable"
+      mode === "coding-vm-configurable"
         ? codingWorkbenchReadiness(snapshot, expected)
         : workbenchReadiness(snapshot, expected);
   } catch {
