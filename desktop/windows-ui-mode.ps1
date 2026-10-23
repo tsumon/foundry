@@ -10,6 +10,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Native
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName Accessibility
+. (Join-Path $PSScriptRoot 'windows-taskdialog-action.ps1')
 $accessibilityAssembly = [Accessibility.IAccessible].Assembly.Location
 Add-Type -ReferencedAssemblies @($accessibilityAssembly) -TypeDefinition @'
 using System;
@@ -231,102 +232,6 @@ function Find-DescendantExact([object]$Root, [object]$Type, [string]$Name) {
   return $null
 }
 
-function Write-OwnedDialogDiagnostic([object]$Root, [string]$Phase) {
-  $rootCurrent = $Root.Current
-  if ($rootCurrent.ProcessId -ne $OwnerProcess) { throw 'Owned dialog diagnostic identity mismatch' }
-  $items = $Root.FindAll(
-    [System.Windows.Automation.TreeScope]::Descendants,
-    [System.Windows.Automation.Condition]::TrueCondition
-  )
-  if ($items.Count -gt 256) {
-    $summary = [ordered]@{
-      phase=$Phase
-      total=$items.Count
-      overBound=$true
-      emitted=0
-      candidates=@()
-    } | ConvertTo-Json -Depth 3 -Compress
-    [Console]::Error.WriteLine('Owned dialog candidates: ' + $summary)
-    return
-  }
-  $candidates = New-Object 'System.Collections.Generic.List[object]'
-  $total = 0
-  $buttons = 0
-  $exactName = 0
-  $exactNameButtons = 0
-  $exactNameEnabledButtons = 0
-  $exactNameDisabledButtons = 0
-  $exactNameOffscreenButtons = 0
-  foreach ($element in $items) {
-    try {
-      $current = $element.Current
-      if ($current.ProcessId -ne $OwnerProcess) { continue }
-      $total++
-      $isButton = $current.ControlType -eq [System.Windows.Automation.ControlType]::Button
-      if ($isButton) { $buttons++ }
-      $rawName = [string]$current.Name
-      if ($rawName -ceq 'Open Coding Workbench') {
-        $exactName++
-        if ($isButton) {
-          $exactNameButtons++
-          if ($current.IsEnabled) { $exactNameEnabledButtons++ } else { $exactNameDisabledButtons++ }
-          if ($current.IsOffscreen) { $exactNameOffscreenButtons++ }
-        }
-      }
-      if ($candidates.Count -lt 32) {
-        $name = $rawName
-        if ($name.Length -gt 80) { $name = $name.Substring(0, 80) }
-        $name = [Regex]::Replace($name, '[^\p{L}\p{Nd} ._():/+&…—-]', '?')
-        $candidates.Add([ordered]@{
-          type=[string]$current.ControlType.ProgrammaticName
-          enabled=[bool]$current.IsEnabled
-          offscreen=[bool]$current.IsOffscreen
-          name=$name
-        }) | Out-Null
-      }
-    } catch [System.Windows.Automation.ElementNotAvailableException] {
-      continue
-    }
-  }
-  $summary = [ordered]@{
-    phase=$Phase
-    total=$total
-    buttons=$buttons
-    exactName=$exactName
-    exactNameButtons=$exactNameButtons
-    exactNameEnabledButtons=$exactNameEnabledButtons
-    exactNameDisabledButtons=$exactNameDisabledButtons
-    exactNameOffscreenButtons=$exactNameOffscreenButtons
-    overBound=$false
-    emitted=$candidates.Count
-    truncated=($total -gt $candidates.Count)
-    candidates=$candidates.ToArray()
-  } | ConvertTo-Json -Depth 4 -Compress
-  [Console]::Error.WriteLine('Owned dialog candidates: ' + $summary)
-}
-
-function Wait-DescendantExact(
-  [object]$Root,
-  [object]$Type,
-  [string]$Name,
-  [ValidateRange(1,5)]
-  [int]$Seconds,
-  [ValidateSet('coding-confirmation-button')]
-  [string]$Phase
-) {
-  $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
-  while ([DateTime]::UtcNow -lt $deadline) {
-    if ($Root.Current.ProcessId -ne $OwnerProcess) { throw "${Phase}: owned dialog identity mismatch" }
-    $element = Find-DescendantExact $Root $Type $Name
-    if ($null -ne $element) { return $element }
-    Start-Sleep -Milliseconds 100
-  }
-  try { Write-OwnedDialogDiagnostic $Root $Phase } catch {
-    [Console]::Error.WriteLine("${Phase}: owned dialog diagnostic unavailable")
-  }
-  throw "${Phase}: required owned dialog element unavailable"
-}
-
 function Find-DescendantPresent([object]$Root, [object]$Type, [string]$Name) {
   $items = $Root.FindAll(
     [System.Windows.Automation.TreeScope]::Descendants,
@@ -370,7 +275,7 @@ function Has-DescendantText([object]$Root, [string]$Fragment) {
 
 function Invoke-Exact(
   [object]$Element,
-  [ValidateSet('coding-mode-menu-item','persistent-mode-menu-item','coding-confirmation-button','create-mission-button')]
+  [ValidateSet('coding-mode-menu-item','persistent-mode-menu-item','create-mission-button')]
   [string]$Phase
 ) {
   if ($null -eq $Element) { throw "${Phase}: required UI action unavailable" }
@@ -607,7 +512,7 @@ $createForm = $false
 $codingSectionVisible = $false
 if ($Action -eq 'coding') {
   $dialog = Wait-OwnedExact ([System.Windows.Automation.ControlType]::Window) 'Open Controlled Coding Workbench?' 5
-  $button = Wait-DescendantExact $dialog ([System.Windows.Automation.ControlType]::Button) 'Open Coding Workbench' 5 'coding-confirmation-button'
+  $button = Wait-CodingTaskDialogAction $dialog $OwnerProcess 5
   $fixedExplanation =
     (Has-DescendantText $dialog 'Open live coding configuration?') -and
     (Has-DescendantText $dialog 'This enables configuration only.') -and
@@ -615,7 +520,7 @@ if ($Action -eq 'coding') {
     (Has-DescendantText $dialog 'no Docker commands') -and
     (Has-DescendantText $dialog 'separate approvals')
   if (-not $fixedExplanation) { throw 'Native coding explanation mismatch' }
-  Invoke-Exact $button 'coding-confirmation-button'
+  Invoke-CodingTaskDialogAction $dialog $button $OwnerProcess
   $confirmation = $true
   $destinationHandle = Wait-Destination 'Foundry — Controlled Coding Workbench' 30
   $destinationRoot = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$destinationHandle)
