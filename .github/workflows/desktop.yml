@@ -160,7 +160,12 @@ jobs:
       - name: Read-only WHPX host prerequisite (never enables features)
         id: whpx-preflight
         run: |
-          node desktop/native-vm-smoke.cjs --windows-hypervisor-preflight
+          $ErrorActionPreference = 'Stop'
+          $probe = Join-Path $env:RUNNER_TEMP 'foundry-whpx-probe.exe'
+          if (Test-Path -LiteralPath $probe) { throw 'Fresh probe output required' }
+          & $env:CC -std=c11 -Wall -Wextra -Werror -Os -static-libgcc desktop/windows-hypervisor-probe.c -o $probe
+          if ($LASTEXITCODE -ne 0) { throw 'Native WHPX probe compilation failed' }
+          node desktop/native-vm-smoke.cjs --windows-hypervisor-preflight $probe
           if ($LASTEXITCODE -ne 0) { throw 'Native WHPX prerequisite unavailable; no fallback or package publication' }
       - name: Prepare long-form native temporary directory
         run: |

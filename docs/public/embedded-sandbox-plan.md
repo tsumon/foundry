@@ -183,6 +183,20 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 
 ## Completion gate
 
+Run 39943888763 failed before the WHPX query: the bounded marker remained
+`started` while PowerShell Add-Type cold compilation exceeded 60 seconds. Do
+not infer missing virtualization or keep increasing the timeout. Replace that
+runtime compiler with a tiny CI-built native C probe, using the already-required
+fixed GCC. Compile as a separate fail-closed step, then query once with a
+15-second execution budget. Load WinHvPlatform.dll using System32-only lookup;
+keep the exact HypervisorPresent query, numeric tuple and BOOL/written-size
+checks. No partition creation, feature mutation, reboot or runtime fallback.
+Offline compiled-C API-stub tests verify loader flags, query arguments, one-call
+behavior and release; the native CI then queries the real system. Preserve all
+QEMU, installed-guest, UI and artifact gates. References: Microsoft
+[WHvGetCapability](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvgetcapability)
+and [LoadLibraryExW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw).
+
 Run 39939245820 confirms WHPX availability on its runner, but the installed
 QEMU process still exits1 during readiness after native Job admission; termination
 is confirmed. Windows currently discards stderr, so no runtime cause is inferred.

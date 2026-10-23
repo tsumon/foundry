@@ -400,7 +400,7 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
 }
 // Build/acceptance diagnostic only. Query the system API; do not create a
 // partition, enable a feature, reboot, or substitute for the actual guest gate.
-function probeWindowsHypervisor(systemRoot, execute = execFileSync) {
+function probeWindowsHypervisor(probe, systemRoot, execute = execFileSync) {
   const base = {
     kind: "foundry-windows-hypervisor-preflight",
     available: false,
@@ -408,58 +408,29 @@ function probeWindowsHypervisor(systemRoot, execute = execFileSync) {
   let output;
   try {
     assert.ok(
+      typeof probe === "string" &&
+        /^[A-Za-z]:\\/.test(probe) &&
+        !/[\x00\r\n]/.test(probe) &&
+        path.win32.basename(probe) === "foundry-whpx-probe.exe",
+    );
+    assert.ok(
       typeof systemRoot === "string" &&
         /^[A-Za-z]:\\/.test(systemRoot) &&
         !/[\x00\r\n]/.test(systemRoot),
     );
-    const script = [
-      "$ErrorActionPreference = 'Stop'",
-      "[Console]::Error.WriteLine('foundry-whpx:started')",
-      "Add-Type -TypeDefinition @'",
-      "using System;",
-      "using System.Runtime.InteropServices;",
-      "public static class FoundryHypervisorProbe {",
-      " [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]",
-      ' [DllImport("WinHvPlatform.dll", ExactSpelling=true)]',
-      " private static extern int WHvGetCapability(uint code, ref ulong value, uint size, out uint written);",
-      " public static ulong[] Read() {",
-      "  try { ulong value = 0; uint written; int hr = WHvGetCapability(0, ref value, 8, out written);",
-      "    return new ulong[] {1, unchecked((uint)hr), written, value}; }",
-      "  catch (DllNotFoundException) { return new ulong[] {0,0,0,0}; }",
-      "  catch (EntryPointNotFoundException) { return new ulong[] {0,0,0,0}; }",
-      "  catch (BadImageFormatException) { return new ulong[] {0,0,0,0}; }",
-      " }",
-      "}",
-      "'@",
-      "[Console]::Error.WriteLine('foundry-whpx:compiled')",
-      "$capability = [FoundryHypervisorProbe]::Read()",
-      "[Console]::Error.WriteLine('foundry-whpx:queried')",
-      "$capability | ConvertTo-Json -Compress",
-    ].join("\n");
     const system32 = path.win32.join(systemRoot, "System32");
-    output = execute(
-      path.win32.join(system32, "WindowsPowerShell", "v1.0", "powershell.exe"),
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-EncodedCommand",
-        Buffer.from(script, "utf16le").toString("base64"),
-      ],
-      {
-        encoding: "utf8",
-        timeout: 60000,
-        maxBuffer: 4096,
-        windowsHide: true,
-        env: {
-          SystemRoot: systemRoot,
-          WINDIR: systemRoot,
-          PATH: system32,
-          TEMP: process.env.TEMP,
-          TMP: process.env.TMP,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
+    output = execute(probe, [], {
+      encoding: "utf8",
+      timeout: 15000,
+      maxBuffer: 4096,
+      windowsHide: true,
+      env: {
+        SystemRoot: systemRoot,
+        WINDIR: systemRoot,
+        PATH: system32,
       },
-    );
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   } catch (error) {
     let stage = "unknown";
     const progress = Buffer.isBuffer(error.stderr)
@@ -467,7 +438,7 @@ function probeWindowsHypervisor(systemRoot, execute = execFileSync) {
       : error.stderr;
     if (typeof progress === "string" && Buffer.byteLength(progress) <= 256) {
       const records = progress.trim().split(/\r?\n/);
-      const stages = ["started", "compiled", "queried"];
+      const stages = ["started", "queried"];
       if (
         records.length >= 1 &&
         records.length <= stages.length &&
@@ -524,12 +495,12 @@ module.exports = {
 if (require.main === module)
   (async () => {
     if (
-      process.argv.length === 3 &&
+      process.argv.length === 4 &&
       process.argv[2] === "--windows-hypervisor-preflight"
     ) {
       const result =
         process.platform === "win32" && process.arch === "x64"
-          ? probeWindowsHypervisor(process.env.SystemRoot)
+          ? probeWindowsHypervisor(process.argv[3], process.env.SystemRoot)
           : {
               kind: "foundry-windows-hypervisor-preflight",
               available: false,

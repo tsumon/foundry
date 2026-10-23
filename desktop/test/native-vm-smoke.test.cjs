@@ -99,20 +99,19 @@ test("WHPX preflight queries once and admits only a successful native BOOL capab
   for (const [output, status, available] of cases) {
     let calls = 0;
     const result = probeWindowsHypervisor(
+      "C:\\Foundry Native\\foundry-whpx-probe.exe",
       "C:\\Windows",
       (binary, args, config) => {
         calls++;
-        assert.equal(
-          binary,
-          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-        );
-        assert.deepEqual(args.slice(0, 3), [
-          "-NoProfile",
-          "-NonInteractive",
-          "-EncodedCommand",
-        ]);
-        assert.equal(config.timeout, 60000);
+        assert.equal(binary, "C:\\Foundry Native\\foundry-whpx-probe.exe");
+        assert.deepEqual(args, []);
+        assert.equal(config.timeout, 15000);
         assert.equal(config.maxBuffer, 4096);
+        assert.deepEqual(config.env, {
+          SystemRoot: "C:\\Windows",
+          WINDIR: "C:\\Windows",
+          PATH: "C:\\Windows\\System32",
+        });
         return output;
       },
     );
@@ -126,30 +125,41 @@ test("WHPX preflight queries once and admits only a successful native BOOL capab
 test("WHPX capability transport failure never retries or exposes raw errors", () => {
   assert.equal(typeof probeWindowsHypervisor, "function");
   let calls = 0;
-  const result = probeWindowsHypervisor("C:\\Windows", () => {
-    calls++;
-    throw Object.assign(new Error("PRIVATE_SENTINEL"), {
-      stdout: "[1,0,4,1]",
-      stderr: "foundry-whpx:started\r\nfoundry-whpx:compiled\r\n",
-      code: "ETIMEDOUT",
-    });
-  });
+  const result = probeWindowsHypervisor(
+    "C:\\Foundry Native\\foundry-whpx-probe.exe",
+    "C:\\Windows",
+    () => {
+      calls++;
+      throw Object.assign(new Error("PRIVATE_SENTINEL"), {
+        stdout: "[1,0,4,1]",
+        stderr: "foundry-whpx:started\r\n",
+        code: "ETIMEDOUT",
+      });
+    },
+  );
   assert.equal(calls, 1);
   assert.deepEqual(result, {
     kind: "foundry-windows-hypervisor-preflight",
     available: false,
     status: "probe_failed",
     failure: "timeout",
-    stage: "compiled",
+    stage: "started",
   });
   for (const stderr of [
     "PRIVATE_SENTINEL",
     "foundry-whpx:compiled\n",
     "x".repeat(5000),
   ]) {
-    const failed = probeWindowsHypervisor("C:\\Windows", () => {
-      throw Object.assign(new Error("PRIVATE_SENTINEL"), { status: 1, stderr });
-    });
+    const failed = probeWindowsHypervisor(
+      "C:\\Foundry Native\\foundry-whpx-probe.exe",
+      "C:\\Windows",
+      () => {
+        throw Object.assign(new Error("PRIVATE_SENTINEL"), {
+          status: 1,
+          stderr,
+        });
+      },
+    );
     assert.deepEqual(failed, {
       kind: "foundry-windows-hypervisor-preflight",
       available: false,
@@ -160,7 +170,7 @@ test("WHPX capability transport failure never retries or exposes raw errors", ()
   }
   let invalidCalls = 0;
   assert.equal(
-    probeWindowsHypervisor("relative", () => {
+    probeWindowsHypervisor("relative", "C:\\Windows", () => {
       invalidCalls++;
       throw Error("must not run");
     }).status,
