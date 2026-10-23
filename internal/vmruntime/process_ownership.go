@@ -24,17 +24,43 @@ type ownedProcess struct {
 	process, job         uintptr
 	assigned, terminated bool
 	calls                ownedProcessCalls
+	stage                string
+	exit                 *int64
+	nativeError          *int64
 }
 
 func (p *ownedProcess) admit(ctx context.Context, thread uintptr) error {
+	p.setAdmission("assign_job", nil)
 	if e := p.calls.assign(p.job, p.process); e != nil {
+		p.setAdmission("assign_job", e)
 		return e
 	}
+	p.mu.Lock()
 	p.assigned = true
+	p.mu.Unlock()
+	p.setAdmission("context_admission", nil)
 	if e := ctx.Err(); e != nil {
 		return e
 	}
-	return p.calls.resume(thread)
+	p.setAdmission("resume_thread", nil)
+	if e := p.calls.resume(thread); e != nil {
+		p.setAdmission("resume_thread", e)
+		return e
+	}
+	p.setAdmission("running", nil)
+	return nil
+}
+func (p *ownedProcess) setAdmission(stage string, e error) {
+	f := admissionFacts(admissionFailure(stage, e))
+	p.mu.Lock()
+	p.stage = f.AdmissionStage
+	p.nativeError = f.NativeErrorCode
+	p.mu.Unlock()
+}
+func (p *ownedProcess) facts() nativeFacts {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return nativeFacts{TerminationConfirmed: p.terminated, ExitCode: p.exit, AdmissionStage: p.stage, NativeErrorCode: p.nativeError, DiagnosticStatus: "absent"}
 }
 func (p *ownedProcess) stop() error {
 	p.mu.Lock()
@@ -83,6 +109,10 @@ func (p *ownedProcess) waitForTermination(ctx context.Context) error {
 		}
 		p.mu.Lock()
 		code, exitErr := p.calls.exitCode(p.process)
+		if exitErr == nil {
+			n := int64(code)
+			p.exit = &n
+		}
 		// A signaled process handle is positive termination evidence even when
 		// the exit code is nonzero or cannot be queried. Only now release handles.
 		p.terminated = true

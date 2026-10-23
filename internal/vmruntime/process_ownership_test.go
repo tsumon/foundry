@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -112,6 +113,27 @@ func TestSuspendedOwnershipFailureRetainsHandlesAndRetries(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestOwnedProcessRetainsNumericAdmissionAndExitFacts(t *testing.T) {
+	owner := &ownedProcess{process: 11, job: 22, calls: ownedProcessCalls{assign: func(uintptr, uintptr) error { return syscall.Errno(5) }}}
+	if owner.admit(context.Background(), 33) == nil {
+		t.Fatal("expected admission failure")
+	}
+	f := owner.facts()
+	if f.AdmissionStage != "assign_job" || f.NativeErrorCode == nil || *f.NativeErrorCode != 5 || f.ExitCode != nil || f.TerminationConfirmed {
+		t.Fatalf("wrong admission facts: %+v", f)
+	}
+	owner.calls.wait = func(uintptr, uint32) (bool, error) { return true, nil }
+	owner.calls.exitCode = func(uintptr) (uint32, error) { return 123, nil }
+	owner.calls.close = func(uintptr) error { return nil }
+	if owner.waitForTermination(context.Background()) == nil {
+		t.Fatal("nonzero exit accepted")
+	}
+	f = owner.facts()
+	if !f.TerminationConfirmed || f.ExitCode == nil || *f.ExitCode != 123 || f.AdmissionStage != "assign_job" {
+		t.Fatalf("native exit facts lost: %+v", f)
 	}
 }
 

@@ -165,7 +165,7 @@ func (r *Runtime) Probe(ctx context.Context) error {
 	cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if x := s.Close(cleanup); x != nil {
-		return x
+		return errors.Join(e, x)
 	}
 	return e
 }
@@ -179,10 +179,14 @@ func (s *Session) Matches(q Request) bool {
 	return s != nil && s.owner.OperationID == q.OperationID && s.owner.MissionID == q.MissionID && s.owner.Owner == q.Owner && s.owner.Name == q.Name && s.owner.CandidateDigest == q.CandidateDigest
 }
 func (s *Session) receipt(stage string) error {
+	return s.receiptWithNative(stage, nil)
+}
+func (s *Session) receiptWithNative(stage string, facts *nativeFacts) error {
 	b, e := json.Marshal(struct {
 		SchemaVersion                                                                   int `json:"schema_version"`
 		ID, OperationID, MissionID, Owner, Name, CandidateDigest, ManifestDigest, Stage string
-	}{1, s.id, s.owner.OperationID, s.owner.MissionID, s.owner.Owner, s.owner.Name, s.owner.CandidateDigest, s.runtime.identity.ManifestDigest, stage})
+		Native                                                                          *nativeFacts `json:"native,omitempty"`
+	}{1, s.id, s.owner.OperationID, s.owner.MissionID, s.owner.Owner, s.owner.Name, s.owner.CandidateDigest, s.runtime.identity.ManifestDigest, stage, facts})
 	if e != nil {
 		return errors.New("cannot encode instance receipt")
 	}
@@ -233,11 +237,17 @@ func (s *Session) Start(ctx context.Context) error {
 	if e != nil || p == nil {
 		cancel()
 		if p == nil {
-			s.finish(c4verify.Result{}, false, errors.New("native VM start failed"))
+			facts := admissionFacts(e)
+			failure := withNativeFacts(errors.New("native VM start failed"), facts)
+			if receiptErr := s.receiptWithNative("terminal", &facts); receiptErr != nil {
+				failure = errors.Join(failure, receiptErr)
+			}
+			s.finish(c4verify.Result{}, false, failure)
+			return failure
 		} else {
 			go s.failedStart(p)
 		}
-		return errors.New("native VM start failed")
+		return withNativeFacts(errors.New("native VM start failed"), processDiagnostics(p))
 	}
 	started := make(chan error, 1)
 	go func() {
@@ -252,6 +262,14 @@ func (s *Session) Start(ctx context.Context) error {
 	case e := <-started:
 		return e
 	case <-life.Done():
+		select {
+		case <-s.done:
+			s.mu.Lock()
+			final := s.err
+			s.mu.Unlock()
+			return final
+		default:
+		}
 		p.Stop()
 		return life.Err()
 	}
@@ -265,8 +283,10 @@ func (s *Session) failedStart(p nativeProcess) {
 	if !p.Terminated() {
 		err = errors.New("native VM failed-start termination unconfirmed")
 	}
-	if e := s.receipt("terminal"); e != nil {
-		err = e
+	facts := processDiagnostics(p)
+	err = withNativeFacts(err, facts)
+	if e := s.receiptWithNative("terminal", &facts); e != nil {
+		err = errors.Join(err, e)
 	}
 	s.finish(c4verify.Result{}, false, err)
 }
@@ -274,6 +294,7 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 	var result c4verify.Result
 	valid := false
 	var final error
+	startReported := false
 	defer func() {
 		if final != nil {
 			p.Stop()
@@ -281,36 +302,42 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 		waitErr := p.Wait()
 		p.Input().Close()
 		p.Output().Close()
-		if final == nil && (waitErr != nil || !p.Terminated()) {
-			final = errors.New("native VM termination failed")
+		if !p.Terminated() {
+			final = errors.Join(final, errors.New("native VM termination unconfirmed"))
+			valid = false
+		} else if waitErr != nil {
+			final = errors.Join(final, errors.New("native VM exited unsuccessfully"))
 			valid = false
 		}
 		if ctx.Err() != nil {
-			final = ctx.Err()
+			final = errors.Join(final, ctx.Err())
 			valid = false
 		}
-		if e := s.receipt("terminal"); e != nil {
-			final = e
+		facts := processDiagnostics(p)
+		final = withNativeFacts(final, facts)
+		if e := s.receiptWithNative("terminal", &facts); e != nil {
+			final = errors.Join(final, e)
 			valid = false
 		}
 		s.finish(result, valid, final)
+		if !startReported {
+			started <- final
+		}
 	}()
 	marker := make([]byte, len(ReadyMarker))
 	if _, e := io.ReadFull(p.Output(), marker); e != nil || string(marker) != ReadyMarker {
 		final = errors.New("trusted guest readiness missing")
-		started <- final
 		return
 	}
 	if e := WriteRequest(p.Input(), s.wire); e != nil {
 		final = errors.New("guest input transfer failed")
-		started <- final
 		return
 	}
 	if e := s.receipt("started"); e != nil {
 		final = e
-		started <- e
 		return
 	}
+	startReported = true
 	started <- nil
 	response, e := ReadResponse(p.Output(), s.wire)
 	if e != nil {
@@ -331,10 +358,10 @@ func (s *Session) finish(result c4verify.Result, valid bool, e error) {
 	s.result = result
 	s.valid = valid
 	s.err = e
+	close(s.done)
 	if s.cancel != nil {
 		s.cancel()
 	}
-	close(s.done)
 	s.mu.Unlock()
 }
 func (s *Session) Wait(ctx context.Context) error {

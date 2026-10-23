@@ -21,9 +21,10 @@ type windowsProcess struct {
 	in, out *os.File
 }
 
-func (p *windowsProcess) Input() io.WriteCloser { return p.in }
-func (p *windowsProcess) Output() io.ReadCloser { return p.out }
-func (p *windowsProcess) Terminated() bool      { return p.owner.terminatedState() }
+func (p *windowsProcess) Input() io.WriteCloser    { return p.in }
+func (p *windowsProcess) Output() io.ReadCloser    { return p.out }
+func (p *windowsProcess) Terminated() bool         { return p.owner.terminatedState() }
+func (p *windowsProcess) diagnostics() nativeFacts { return p.owner.facts() }
 func (p *windowsProcess) Stop() error {
 	p.in.Close()
 	return p.owner.stop()
@@ -67,7 +68,17 @@ func windowsOwnedCalls() ownedProcessCalls {
 		close: func(h uintptr) error { return windows.CloseHandle(windows.Handle(h)) },
 	}
 }
-func launchNative(ctx context.Context, c command) (nativeProcess, error) {
+func launchNative(ctx context.Context, c command) (process nativeProcess, err error) {
+	stage := "create_job"
+	defer func() {
+		if err != nil {
+			if p, ok := process.(*windowsProcess); ok {
+				err = &nativeAdmissionError{facts: p.owner.facts()}
+			} else {
+				err = admissionFailure(stage, err)
+			}
+		}
+	}()
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
@@ -82,6 +93,7 @@ func launchNative(ctx context.Context, c command) (nativeProcess, error) {
 		}
 	}()
 	limits := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	stage = "job_limits"
 	limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | windows.JOB_OBJECT_LIMIT_ACTIVE_PROCESS | windows.JOB_OBJECT_LIMIT_PROCESS_MEMORY | windows.JOB_OBJECT_LIMIT_PROCESS_TIME
 	limits.BasicLimitInformation.ActiveProcessLimit = 1
 	limits.BasicLimitInformation.PerProcessUserTimeLimit = 180 * 10000000
@@ -89,6 +101,7 @@ func launchNative(ctx context.Context, c command) (nativeProcess, error) {
 	if _, e = windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits))); e != nil {
 		return nil, e
 	}
+	stage = "stdio"
 	childIn, parentIn, e := os.Pipe()
 	if e != nil {
 		return nil, e
@@ -113,6 +126,7 @@ func launchNative(ctx context.Context, c command) (nativeProcess, error) {
 			parentOut.Close()
 		}
 	}()
+	stage = "handle_list"
 	handles := []windows.Handle{windows.Handle(childIn.Fd()), windows.Handle(childOut.Fd()), windows.Handle(null.Fd())}
 	for _, h := range handles {
 		if e = windows.SetHandleInformation(h, windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT); e != nil {
@@ -128,6 +142,7 @@ func launchNative(ctx context.Context, c command) (nativeProcess, error) {
 		return nil, e
 	}
 	si := windows.StartupInfoEx{StartupInfo: windows.StartupInfo{Cb: uint32(unsafe.Sizeof(windows.StartupInfoEx{})), Flags: windows.STARTF_USESTDHANDLES, StdInput: handles[0], StdOutput: handles[1], StdErr: handles[2]}, ProcThreadAttributeList: attributes.List()}
+	stage = "process_arguments"
 	application, e := windows.UTF16PtrFromString(c.Path)
 	if e != nil {
 		return nil, e
@@ -148,6 +163,7 @@ func launchNative(ctx context.Context, c command) (nativeProcess, error) {
 	env = append(env, 0)
 	pi := windows.ProcessInformation{}
 	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_NO_WINDOW | windows.CREATE_UNICODE_ENVIRONMENT | windows.EXTENDED_STARTUPINFO_PRESENT)
+	stage = "create_process"
 	if e = windows.CreateProcess(application, args, nil, nil, true, flags, &env[0], dir, &si.StartupInfo, &pi); e != nil {
 		return nil, e
 	}
