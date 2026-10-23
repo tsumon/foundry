@@ -33,6 +33,8 @@ Guest inputs are pinned Linux kernel and Go 1.27.3 archives, the source-built st
 
 Windows builds QEMU 11.1.2 from pinned source in a dedicated, pinned MSYS2 build environment. The build disables TCG, optional devices, GUI, network/share integrations, audio and plugins, then checks generated configuration and the actual PE dependency closure. The general-purpose QEMU binary package is not distributed. Q35's compiled AHCI support is not instantiated: the fixed host command uses `sata=off,usb=off`. A Linux kernel/source sidecar and, on Windows, QEMU/library corresponding sources accompany the installer. Each packaged file is hash-bound; no installed app performs these downloads or builds.
 
+Windows runtime zlib is a Foundry source-built backport: zlib 1.3.2 plus upstream commit `df84af25dc1942490e1d1c899a07619152a46148` for CVE-2026-85091, retaining the pinned MSYS2 large-file ABI patch. The old MSYS2 zlib package is build-only and cannot supply the distributed DLL. Packaging requires native zlib example/gzip/ABI/regression tests, matching exports and a measured DLL receipt; the source sidecar contains the exact source, patches and build recipe. These gates do not imply that a Windows build or WHPX acceptance has already passed.
+
 ## Guest and process restrictions
 
 The runtime has no network adapter, host filesystem share, USB, clipboard, Docker socket or inherited credentials. Repository input is a bounded ordinary-file snapshot transferred over a private serial protocol, not a writable host mount. Only approved candidate bytes enter the VM. The guest supervisor creates a root-owned read-only workspace; protected tests are checked before execution and candidate digest is bound to material.

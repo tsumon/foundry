@@ -14,6 +14,10 @@ test("official libstdc++ archive names are accepted without allowing path syntax
   validateAsset({ ...entry(), file: "mingw-w64-ucrt-x86_64-pkgconf-1~3.0.10-1-any.pkg.tar.zst" });
   for (const file of ["a+/../b", "a+\\b", "a+:b", "a+%2fb"]) assert.throws(() => validateAsset({ ...entry(), file }));
 });
+test("GitHub source access is restricted to immutable official zlib commit patches", () => {
+  validateAsset({ ...entry(), url: "https://github.com/madler/zlib/commit/df84af25dc1942490e1d1c899a07619152a46148.patch" });
+  for (const url of ["https://github.com/other/zlib/commit/df84af25dc1942490e1d1c899a07619152a46148.patch", "https://github.com/madler/zlib/commit/main.patch", "https://github.com/madler/zlib/releases/latest", "https://github.com/madler/zlib/commit/df84af25dc1942490e1d1c899a07619152a46148.patch?raw=1"]) assert.throws(() => validateAsset({ ...entry(), url }), /origin/);
+});
 test("only exact declared origins redirect; one fetch and no retry on error", async () => {
   let calls = 0;
   const got = await fetchAsset(entry(), async () => { calls++; return new Response(raw); });

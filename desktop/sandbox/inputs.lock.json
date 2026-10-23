@@ -18,7 +18,11 @@
       "url": "https://dl.google.com/go/go1.27.3.linux-arm64.tar.gz",
       "bytes": 67076044,
       "sha256": "a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49",
-      "kind": "toolchain", "platforms": ["darwin/arm64"], "license": "BSD-3-Clause",
+      "kind": "toolchain",
+      "platforms": [
+        "darwin/arm64"
+      ],
+      "license": "BSD-3-Clause",
       "provenance": "Official go.dev download JSON, fixed Go 1.27.3 Linux arm64 archive"
     },
     {
@@ -26,7 +30,11 @@
       "url": "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz",
       "bytes": 70588678,
       "sha256": "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
-      "kind": "toolchain", "platforms": ["windows/amd64"], "license": "BSD-3-Clause",
+      "kind": "toolchain",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "BSD-3-Clause",
       "provenance": "Official go.dev download JSON, fixed Go 1.27.3 Linux amd64 archive"
     },
     {
@@ -34,7 +42,11 @@
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/netboot-3.24.3/vmlinuz-virt",
       "bytes": 10412544,
       "sha256": "849394914e6a93cc9bb17e901f445ce21fcd7e4528541d9496a74d6a6ccee319",
-      "kind": "kernel", "platforms": ["darwin/arm64"], "license": "GPL-2.0-only",
+      "kind": "kernel",
+      "platforms": [
+        "darwin/arm64"
+      ],
+      "license": "GPL-2.0-only",
       "provenance": "Member boot/vmlinuz-virt of official Alpine netboot 3.24.3 aarch64 archive, release archive SHA256 0ac085f19648562d33deb8bfdc339d747e40f456a49a43385d468ea46a888147"
     },
     {
@@ -42,26 +54,50 @@
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/netboot-3.24.3/vmlinuz-virt",
       "bytes": 12641280,
       "sha256": "17fbd3efd16f2e7cb1b945f06423b37399ba7d5ac8cdd3665e7f13f363500e85",
-      "kind": "kernel", "platforms": ["windows/amd64"], "license": "GPL-2.0-only",
+      "kind": "kernel",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "GPL-2.0-only",
       "provenance": "Member boot/vmlinuz-virt of official Alpine netboot 3.24.3 x86_64 archive, release archive SHA256 0228553464c9588ffeb63ec04d26abb5f79405006b74574034394199af47dab4"
     },
     {
-      "file": "linux-6.18.tar.xz", "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.tar.xz",
-      "bytes": 154309096, "sha256": "9106a4605da9e31ff17659d958782b815f9591ab308d03b0ee21aad6c7dced4b",
-      "kind": "source", "platforms": ["darwin/arm64", "windows/amd64"], "license": "GPL-2.0-only",
+      "file": "linux-6.18.tar.xz",
+      "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.tar.xz",
+      "bytes": 154309096,
+      "sha256": "9106a4605da9e31ff17659d958782b815f9591ab308d03b0ee21aad6c7dced4b",
+      "kind": "source",
+      "platforms": [
+        "darwin/arm64",
+        "windows/amd64"
+      ],
+      "license": "GPL-2.0-only",
       "provenance": "Alpine aports e9951ece7106a5c898b0812cfa7b47d56379b361 main/linux-lts APKBUILD source SHA512 independently verified"
     },
     {
-      "file": "patch-6.18.58.xz", "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/patch-6.18.58.xz",
-      "bytes": 4871040, "sha256": "70227f1efc89edab62d4e4c1c46e46b9a7ff8d94c7cf1512859b45978f42b891",
-      "kind": "source", "platforms": ["darwin/arm64", "windows/amd64"], "license": "GPL-2.0-only",
+      "file": "patch-6.18.58.xz",
+      "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/patch-6.18.58.xz",
+      "bytes": 4871040,
+      "sha256": "70227f1efc89edab62d4e4c1c46e46b9a7ff8d94c7cf1512859b45978f42b891",
+      "kind": "source",
+      "platforms": [
+        "darwin/arm64",
+        "windows/amd64"
+      ],
+      "license": "GPL-2.0-only",
       "provenance": "Alpine aports e9951ece7106a5c898b0812cfa7b47d56379b361 main/linux-lts APKBUILD patch SHA512 independently verified"
     },
     {
       "file": "aports-e9951ece7106a5c898b0812cfa7b47d56379b361.tar.gz",
       "url": "https://codeload.github.com/alpinelinux/aports/tar.gz/e9951ece7106a5c898b0812cfa7b47d56379b361",
-      "bytes": 14071915, "sha256": "e04819e56c336949932c190d8a0e9c67528ebca389488d270269e203b63476ad",
-      "kind": "recipe", "platforms": ["darwin/arm64", "windows/amd64"], "license": "MIT AND GPL-2.0-only",
+      "bytes": 14071915,
+      "sha256": "e04819e56c336949932c190d8a0e9c67528ebca389488d270269e203b63476ad",
+      "kind": "recipe",
+      "platforms": [
+        "darwin/arm64",
+        "windows/amd64"
+      ],
+      "license": "MIT AND GPL-2.0-only",
       "provenance": "Official alpinelinux/aports exact v3.24.3 tagged commit; includes kernel build recipes, configuration and distribution patches"
     },
     {
@@ -174,7 +210,7 @@
       "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
       "bytes": 111475,
       "sha256": "841401182976d2f9e17e5c0ebaac51f2a8014140ea53d67625e91c8fb3c85ea0",
-      "kind": "dependency",
+      "kind": "toolchain",
       "platforms": [
         "windows/amd64"
       ],
@@ -1038,6 +1074,30 @@
       "upstream": [
         "mingw-w64-gcc/gcc-16.2.0.tar.xz"
       ]
+    },
+    {
+      "file": "mingw-w64-zlib-1.3.2-2.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-2.src.tar.zst",
+      "bytes": 1326375,
+      "sha256": "eef69dea52357e01b272d6fd6dc4d7c0773f71260cb7bcde6047c8c383518db3",
+      "kind": "source",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "Zlib",
+      "provenance": "Official MSYS2 source package; inner upstream1.3.2 tar SHA256 cross-checked against exact PKGBUILD"
+    },
+    {
+      "file": "zlib-df84af25dc1942490e1d1c899a07619152a46148.patch",
+      "url": "https://github.com/madler/zlib/commit/df84af25dc1942490e1d1c899a07619152a46148.patch",
+      "bytes": 854,
+      "sha256": "110ff14375733173d8aa54574473424fbd7dfe4b81f1ca34a759c6fe14b15b14",
+      "kind": "source",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "Zlib",
+      "provenance": "Official madler/zlib commit df84af25dc1942490e1d1c899a07619152a46148 fixing CVE-2026-85091"
     }
   ],
   "windows": {
@@ -1138,11 +1198,12 @@
         "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
       },
       {
-        "archive": "mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
-        "member": "ucrt64/share/licenses/zlib/LICENSE",
+        "archive": "mingw-w64-zlib-1.3.2-2.src.tar.zst",
+        "member": "mingw-w64-zlib/zlib-1.3.2.tar.xz",
         "path": "legal/licenses/mingw-w64-ucrt-x86_64-zlib/LICENSE",
         "bytes": 1002,
-        "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+        "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+        "inner_member": "zlib-1.3.2/LICENSE"
       },
       {
         "archive": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
@@ -1264,13 +1325,14 @@
         "source_archive": "mingw-w64-gettext-1.0-1.src.tar.zst"
       },
       {
-        "archive": "mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
-        "package": "mingw-w64-ucrt-x86_64-zlib",
+        "archive": "mingw-w64-zlib-1.3.2-2.src.tar.zst",
+        "package": "foundry-zlib-1.3.2-df84af25",
         "license": "Zlib",
         "notices": [
           "legal/licenses/mingw-w64-ucrt-x86_64-zlib/LICENSE"
         ],
-        "source_not_required_reason": "Permissive runtime license; distribute the included copyright/license notice. Build tools from this package are not in the runtime payload."
+        "source_archive": "mingw-w64-zlib-1.3.2-2.src.tar.zst",
+        "source_patch": "zlib-df84af25dc1942490e1d1c899a07619152a46148.patch"
       },
       {
         "archive": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
@@ -1353,7 +1415,9 @@
       "mingw-w64-glib2-2.90.1-1.src.tar.zst",
       "mingw-w64-gettext-1.0-1.src.tar.zst",
       "mingw-w64-libiconv-1.19-1.src.tar.zst",
-      "mingw-w64-gcc-16.2.0-6.src.tar.zst"
+      "mingw-w64-gcc-16.2.0-6.src.tar.zst",
+      "mingw-w64-zlib-1.3.2-2.src.tar.zst",
+      "zlib-df84af25dc1942490e1d1c899a07619152a46148.patch"
     ],
     "allowed_runtime_dlls": [
       "libglib-2.0-0.dll",
@@ -1490,24 +1554,6 @@
         ]
       },
       {
-        "archive": "mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
-        "member": "ucrt64/bin/zlib1.dll",
-        "path": "runtime/zlib1.dll",
-        "bytes": 127291,
-        "sha256": "11cd91171765cd65f1c3362e3df67e5f5a618a6b88c8cdec899b802eaf1c7b0d",
-        "imports": [
-          "kernel32.dll",
-          "api-ms-win-crt-convert-l1-1-0.dll",
-          "api-ms-win-crt-heap-l1-1-0.dll",
-          "api-ms-win-crt-locale-l1-1-0.dll",
-          "api-ms-win-crt-private-l1-1-0.dll",
-          "api-ms-win-crt-runtime-l1-1-0.dll",
-          "api-ms-win-crt-stdio-l1-1-0.dll",
-          "api-ms-win-crt-string-l1-1-0.dll",
-          "api-ms-win-crt-utility-l1-1-0.dll"
-        ]
-      },
-      {
         "archive": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
         "member": "ucrt64/bin/libgcc_s_seh-1.dll",
         "path": "runtime/libgcc_s_seh-1.dll",
@@ -1561,6 +1607,505 @@
       "file": "mingw-w64-ucrt-x86_64-qemu-11.1.2-1-any.pkg.tar.zst",
       "sha256": "55f87e3a1448f5cf1cd7d7b9f061846a13b9571eb9b1a1df51eab3d9a9d42429",
       "reason": "Generic build imports 105 DLLs including JACK -> Berkeley DB AGPL; not a permitted runtime input."
+    },
+    "zlib": {
+      "version": "1.3.2",
+      "advisory": "CVE-2026-85091",
+      "fix_commit": "df84af25dc1942490e1d1c899a07619152a46148",
+      "source_archive": "mingw-w64-zlib-1.3.2-2.src.tar.zst",
+      "source_member": "mingw-w64-zlib/zlib-1.3.2.tar.xz",
+      "source_sha256": "d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3",
+      "source_bytes": 1320064,
+      "rejected_runtime_sha256": "11cd91171765cd65f1c3362e3df67e5f5a618a6b88c8cdec899b802eaf1c7b0d",
+      "build_only_package": "mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+      "patches": [
+        {
+          "archive": "mingw-w64-zlib-1.3.2-2.src.tar.zst",
+          "member": "mingw-w64-zlib/04-fix-largefile-support.patch",
+          "sha256": "8e1cdf8edfc6ac08b0e660ca42a977942a88fab3ff59c01c87ba96500e2c3e63",
+          "files": [
+            {
+              "path": "zconf.h",
+              "before_sha256": "cb7c2c84211473b4699223edd363d3207b43b9578e739b5bf638f42204ea6e0f",
+              "sha256": "62d3285eb37e083020ac252f5d7184ab22e7d8d20dea855a6c7cde81a75e9f1e"
+            },
+            {
+              "path": "zconf.h.in",
+              "before_sha256": "cb7c2c84211473b4699223edd363d3207b43b9578e739b5bf638f42204ea6e0f",
+              "sha256": "21e99920e19b52a4c840f66360ef33eeaab1b22ec3760c1e59e7c04bd4b000f1"
+            }
+          ]
+        },
+        {
+          "asset": "zlib-df84af25dc1942490e1d1c899a07619152a46148.patch",
+          "sha256": "110ff14375733173d8aa54574473424fbd7dfe4b81f1ca34a759c6fe14b15b14",
+          "files": [
+            {
+              "path": "gzwrite.c",
+              "before_sha256": "2ce783294c688330c716bfe106f43167d3dae5be84994176bc304d205d4f5b04",
+              "sha256": "31d0da140edf382b82b13e2d87a22f59e158d9014ee026459e01cf437d0ab07d"
+            }
+          ]
+        }
+      ],
+      "abi_exports": [
+        {
+          "name": "_dist_code",
+          "ordinal": 1
+        },
+        {
+          "name": "_length_code",
+          "ordinal": 2
+        },
+        {
+          "name": "_tr_align",
+          "ordinal": 3
+        },
+        {
+          "name": "_tr_flush_bits",
+          "ordinal": 4
+        },
+        {
+          "name": "_tr_flush_block",
+          "ordinal": 5
+        },
+        {
+          "name": "_tr_init",
+          "ordinal": 6
+        },
+        {
+          "name": "_tr_stored_block",
+          "ordinal": 7
+        },
+        {
+          "name": "_tr_tally",
+          "ordinal": 8
+        },
+        {
+          "name": "adler32",
+          "ordinal": 9
+        },
+        {
+          "name": "adler32_combine",
+          "ordinal": 10
+        },
+        {
+          "name": "adler32_combine64",
+          "ordinal": 11
+        },
+        {
+          "name": "adler32_z",
+          "ordinal": 12
+        },
+        {
+          "name": "compress",
+          "ordinal": 13
+        },
+        {
+          "name": "compress2",
+          "ordinal": 14
+        },
+        {
+          "name": "compress2_z",
+          "ordinal": 15
+        },
+        {
+          "name": "compressBound",
+          "ordinal": 16
+        },
+        {
+          "name": "compressBound_z",
+          "ordinal": 17
+        },
+        {
+          "name": "compress_z",
+          "ordinal": 18
+        },
+        {
+          "name": "crc32",
+          "ordinal": 19
+        },
+        {
+          "name": "crc32_combine",
+          "ordinal": 20
+        },
+        {
+          "name": "crc32_combine64",
+          "ordinal": 21
+        },
+        {
+          "name": "crc32_combine_gen",
+          "ordinal": 22
+        },
+        {
+          "name": "crc32_combine_gen64",
+          "ordinal": 23
+        },
+        {
+          "name": "crc32_combine_op",
+          "ordinal": 24
+        },
+        {
+          "name": "crc32_z",
+          "ordinal": 25
+        },
+        {
+          "name": "deflate",
+          "ordinal": 26
+        },
+        {
+          "name": "deflateBound",
+          "ordinal": 27
+        },
+        {
+          "name": "deflateBound_z",
+          "ordinal": 28
+        },
+        {
+          "name": "deflateCopy",
+          "ordinal": 29
+        },
+        {
+          "name": "deflateEnd",
+          "ordinal": 30
+        },
+        {
+          "name": "deflateGetDictionary",
+          "ordinal": 31
+        },
+        {
+          "name": "deflateInit2_",
+          "ordinal": 32
+        },
+        {
+          "name": "deflateInit_",
+          "ordinal": 33
+        },
+        {
+          "name": "deflateParams",
+          "ordinal": 34
+        },
+        {
+          "name": "deflatePending",
+          "ordinal": 35
+        },
+        {
+          "name": "deflatePrime",
+          "ordinal": 36
+        },
+        {
+          "name": "deflateReset",
+          "ordinal": 37
+        },
+        {
+          "name": "deflateResetKeep",
+          "ordinal": 38
+        },
+        {
+          "name": "deflateSetDictionary",
+          "ordinal": 39
+        },
+        {
+          "name": "deflateSetHeader",
+          "ordinal": 40
+        },
+        {
+          "name": "deflateTune",
+          "ordinal": 41
+        },
+        {
+          "name": "deflateUsed",
+          "ordinal": 42
+        },
+        {
+          "name": "deflate_copyright",
+          "ordinal": 43
+        },
+        {
+          "name": "get_crc_table",
+          "ordinal": 44
+        },
+        {
+          "name": "gz_error",
+          "ordinal": 45
+        },
+        {
+          "name": "gz_intmax",
+          "ordinal": 46
+        },
+        {
+          "name": "gzbuffer",
+          "ordinal": 47
+        },
+        {
+          "name": "gzclearerr",
+          "ordinal": 48
+        },
+        {
+          "name": "gzclose",
+          "ordinal": 49
+        },
+        {
+          "name": "gzclose_r",
+          "ordinal": 50
+        },
+        {
+          "name": "gzclose_w",
+          "ordinal": 51
+        },
+        {
+          "name": "gzdirect",
+          "ordinal": 52
+        },
+        {
+          "name": "gzdopen",
+          "ordinal": 53
+        },
+        {
+          "name": "gzeof",
+          "ordinal": 54
+        },
+        {
+          "name": "gzerror",
+          "ordinal": 55
+        },
+        {
+          "name": "gzflush",
+          "ordinal": 56
+        },
+        {
+          "name": "gzfread",
+          "ordinal": 57
+        },
+        {
+          "name": "gzfwrite",
+          "ordinal": 58
+        },
+        {
+          "name": "gzgetc",
+          "ordinal": 59
+        },
+        {
+          "name": "gzgetc_",
+          "ordinal": 60
+        },
+        {
+          "name": "gzgets",
+          "ordinal": 61
+        },
+        {
+          "name": "gzoffset",
+          "ordinal": 62
+        },
+        {
+          "name": "gzoffset64",
+          "ordinal": 63
+        },
+        {
+          "name": "gzopen",
+          "ordinal": 64
+        },
+        {
+          "name": "gzopen64",
+          "ordinal": 65
+        },
+        {
+          "name": "gzopen_w",
+          "ordinal": 66
+        },
+        {
+          "name": "gzprintf",
+          "ordinal": 67
+        },
+        {
+          "name": "gzputc",
+          "ordinal": 68
+        },
+        {
+          "name": "gzputs",
+          "ordinal": 69
+        },
+        {
+          "name": "gzread",
+          "ordinal": 70
+        },
+        {
+          "name": "gzrewind",
+          "ordinal": 71
+        },
+        {
+          "name": "gzseek",
+          "ordinal": 72
+        },
+        {
+          "name": "gzseek64",
+          "ordinal": 73
+        },
+        {
+          "name": "gzsetparams",
+          "ordinal": 74
+        },
+        {
+          "name": "gztell",
+          "ordinal": 75
+        },
+        {
+          "name": "gztell64",
+          "ordinal": 76
+        },
+        {
+          "name": "gzungetc",
+          "ordinal": 77
+        },
+        {
+          "name": "gzvprintf",
+          "ordinal": 78
+        },
+        {
+          "name": "gzwrite",
+          "ordinal": 79
+        },
+        {
+          "name": "inflate",
+          "ordinal": 80
+        },
+        {
+          "name": "inflateBack",
+          "ordinal": 81
+        },
+        {
+          "name": "inflateBackEnd",
+          "ordinal": 82
+        },
+        {
+          "name": "inflateBackInit_",
+          "ordinal": 83
+        },
+        {
+          "name": "inflateCodesUsed",
+          "ordinal": 84
+        },
+        {
+          "name": "inflateCopy",
+          "ordinal": 85
+        },
+        {
+          "name": "inflateEnd",
+          "ordinal": 86
+        },
+        {
+          "name": "inflateGetDictionary",
+          "ordinal": 87
+        },
+        {
+          "name": "inflateGetHeader",
+          "ordinal": 88
+        },
+        {
+          "name": "inflateInit2_",
+          "ordinal": 89
+        },
+        {
+          "name": "inflateInit_",
+          "ordinal": 90
+        },
+        {
+          "name": "inflateMark",
+          "ordinal": 91
+        },
+        {
+          "name": "inflatePrime",
+          "ordinal": 92
+        },
+        {
+          "name": "inflateReset",
+          "ordinal": 93
+        },
+        {
+          "name": "inflateReset2",
+          "ordinal": 94
+        },
+        {
+          "name": "inflateResetKeep",
+          "ordinal": 95
+        },
+        {
+          "name": "inflateSetDictionary",
+          "ordinal": 96
+        },
+        {
+          "name": "inflateSync",
+          "ordinal": 97
+        },
+        {
+          "name": "inflateSyncPoint",
+          "ordinal": 98
+        },
+        {
+          "name": "inflateUndermine",
+          "ordinal": 99
+        },
+        {
+          "name": "inflateValidate",
+          "ordinal": 100
+        },
+        {
+          "name": "inflate_copyright",
+          "ordinal": 101
+        },
+        {
+          "name": "inflate_fast",
+          "ordinal": 102
+        },
+        {
+          "name": "inflate_fixed",
+          "ordinal": 103
+        },
+        {
+          "name": "inflate_table",
+          "ordinal": 104
+        },
+        {
+          "name": "uncompress",
+          "ordinal": 105
+        },
+        {
+          "name": "uncompress2",
+          "ordinal": 106
+        },
+        {
+          "name": "uncompress2_z",
+          "ordinal": 107
+        },
+        {
+          "name": "uncompress_z",
+          "ordinal": 108
+        },
+        {
+          "name": "zError",
+          "ordinal": 109
+        },
+        {
+          "name": "z_errmsg",
+          "ordinal": 110
+        },
+        {
+          "name": "zcalloc",
+          "ordinal": 111
+        },
+        {
+          "name": "zcfree",
+          "ordinal": 112
+        },
+        {
+          "name": "zlibCompileFlags",
+          "ordinal": 113
+        },
+        {
+          "name": "zlibVersion",
+          "ordinal": 114
+        }
+      ]
     }
   }
 }

@@ -4,7 +4,8 @@ const fs = require("node:fs"), path = require("node:path"), crypto = require("no
 const origins = new Set(["https://dl-cdn.alpinelinux.org", "https://dl.google.com", "https://go.dev", "https://cdn.kernel.org", "https://raw.githubusercontent.com", "https://codeload.github.com", "https://mirror.msys2.org", "https://repo.msys2.org", "https://download.qemu.org"]);
 function sourceURL(raw) {
   const u = new URL(raw);
-  if (!origins.has(u.origin) || u.username || u.password || u.hash || u.search) throw Error("Unapproved sandbox asset origin");
+  const upstreamPatch = u.origin === "https://github.com" && /^\/madler\/zlib\/commit\/[a-f0-9]{40}\.patch$/.test(u.pathname);
+  if ((!origins.has(u.origin) && !upstreamPatch) || u.username || u.password || u.hash || u.search) throw Error("Unapproved sandbox asset origin");
   return u;
 }
 function validateAsset(e) {

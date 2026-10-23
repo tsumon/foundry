@@ -4,7 +4,7 @@
 const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto"), cp = require("node:child_process");
 const { validateAsset, verifyAsset, fetchAsset } = require("./assets.cjs");
 const SYSTEM_DLLS = new Set(("advapi32 authz avrt bcrypt cfgmgr32 comctl32 comdlg32 crypt32 cryptbase d2d1 d3d11 d3d9 d3dcompiler_47 dcomp dbghelp dnsapi dsound dwmapi dwrite dxgi gdi32 gdiplus glu32 hid imm32 iphlpapi kernel32 ksuser mf mfplat mfreadwrite mfuuid mpr msimg32 msvcrt ncrypt netapi32 normaliz ntdll ole32 oleaut32 opengl32 powrprof propsys psapi rpcrt4 secur32 setupapi shell32 shlwapi ucrtbase user32 userenv usp10 uxtheme version windowscodecs winhttp winhvplatform wininet winmm winspool wldap32 ws2_32 wtsapi32").split(" ").map(n => n + ".dll"));
-function readPEImports(raw) {
+function peView(raw) {
   const fail = message => { throw Error("Invalid AMD64 PE: " + message); };
   const bound = (at, size) => { if (!Number.isSafeInteger(at) || at < 0 || at + size > raw.length) fail("truncated structure"); };
   bound(0, 64); if (raw.toString("ascii", 0, 2) !== "MZ") fail("signature");
@@ -19,7 +19,10 @@ function readPEImports(raw) {
     if (matches.length !== 1) fail("unmapped or ambiguous RVA");
     const at = matches[0].offset + rva - matches[0].rva; bound(at, size); return at;
   };
-  const imports = new Set();
+  return { fail, offset, opt };
+}
+function readPEImports(raw) {
+  const { fail, offset, opt } = peView(raw), imports = new Set();
   for (const [index, stride, nameField] of [[1, 20, 12], [13, 32, 4]]) {
     const rva = raw.readUInt32LE(opt + 112 + index * 8), size = raw.readUInt32LE(opt + 116 + index * 8);
     if (!rva && !size) continue;
@@ -37,6 +40,26 @@ function readPEImports(raw) {
     if (!terminated) fail("unterminated import directory");
   }
   return [...imports].sort();
+}
+function readPEExports(raw) {
+  const { fail, offset, opt } = peView(raw);
+  const rva = raw.readUInt32LE(opt + 112), size = raw.readUInt32LE(opt + 116);
+  if (!rva || size < 40 || size > 1024 * 1024) fail("export directory");
+  const at = offset(rva, 40), base = raw.readUInt32LE(at + 16), count = raw.readUInt32LE(at + 20), named = raw.readUInt32LE(at + 24);
+  if (!count || count > 4096 || count !== named) fail("unnamed export or invalid count");
+  const functions = offset(raw.readUInt32LE(at + 28), count * 4), names = offset(raw.readUInt32LE(at + 32), named * 4), ordinals = offset(raw.readUInt32LE(at + 36), named * 2);
+  const seen = new Set(), seenNames = new Set(), result = [];
+  for (let i = 0; i < named; i++) {
+    const index = raw.readUInt16LE(ordinals + i * 2);
+    if (index >= count || seen.has(index) || base + index > 65535) fail("export ordinal"); seen.add(index);
+    const target = raw.readUInt32LE(functions + index * 4);
+    if (target >= rva && target < rva + size) fail("forwarded export"); offset(target);
+    const nameRva = raw.readUInt32LE(names + i * 4); let name = "", terminated = false;
+    for (let j = 0; j < 160; j++) { const c = raw[offset(nameRva + j)]; if (!c) { terminated = true; break; } name += String.fromCharCode(c); }
+    if (!terminated || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || seenNames.has(name)) fail("export name"); seenNames.add(name);
+    result.push({ name, ordinal: base + index });
+  }
+  return result.sort((a, b) => a.ordinal - b.ordinal);
 }
 SYSTEM_DLLS.add("winspool.drv");
 SYSTEM_DLLS.add("mswsock.dll");
@@ -122,4 +145,4 @@ async function acquireWindowsRuntime({ lock, cacheRoot, outputRoot, fetchImpl })
   fs.writeFileSync(path.join(legal, "windows-runtime-inventory.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx", mode: 0o644 });
   return receipt;
 }
-module.exports = { readPEImports, validateClosure, isSystemImport, acquireWindowsRuntime };
+module.exports = { readPEImports, readPEExports, validateClosure, isSystemImport, acquireWindowsRuntime };

@@ -49,6 +49,7 @@ function verifyBuiltWindowsRuntime(root, proof, lock) {
   require("./windows-source-build.cjs").assertMinimalClosure(imports, lock);
   const canonical = entries => JSON.stringify(entries.map(e => ({ file: e.file, imports: [...e.imports].sort() })).sort((a, b) => a.file.localeCompare(b.file)));
   if (canonical(imports) !== canonical(proof.imports)) throw Error("Runtime imports disagree with actual PE files");
+  if (pe.has("zlib1.dll")) require("./windows-zlib.cjs").verifyZlibArtifact(pe.get("zlib1.dll"), proof.zlib, lock);
   return imports;
 }
 function verifyWindowsRedistribution(root, proof, lock) {
@@ -62,7 +63,7 @@ function verifyWindowsRedistribution(root, proof, lock) {
     const e = matches[0]; require("./assets.cjs").validateAsset(e);
     return { file: e.file, bytes: e.bytes, sha256: e.sha256, url: e.url, license: e.license };
   });
-  for (const name of ["windows-source-build.cjs", "windows-bundle.cjs", "assets.cjs", "inputs.lock.json"]) {
+  for (const name of ["windows-source-build.cjs", "windows-bundle.cjs", "assets.cjs", "windows-zlib.cjs", "zlib-regression.c", "inputs.lock.json"]) {
     const raw = name === "inputs.lock.json" ? Buffer.from(JSON.stringify(lock, null, 2) + "\n") : fs.readFileSync(path.join(__dirname, name));
     files.push({ file: name, bytes: raw.length, sha256: sha256(raw), kind: "local-build-recipe" });
   }

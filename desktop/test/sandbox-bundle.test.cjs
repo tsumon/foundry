@@ -47,6 +47,19 @@ test("Windows bundle re-derives PE imports instead of trusting build receipt cla
   const modified = { ...proof, files: sourceInventory(runtime).map(e => ({ path: "runtime/" + e.path, bytes: e.size, sha256: e.sha256 })) };
   assert.throws(() => verifyBuiltWindowsRuntime(runtime, modified, lock), /Unresolved/);
 });
+test("Windows assembler rejects the known vulnerable zlib even with a matching runtime receipt", t => {
+  const root = fixture(t), runtime = path.join(root, "windows"); fs.mkdirSync(runtime);
+  const executable = pe(); executable.fill(0, 1024, 1040); executable.write("zlib1.dll\0", 1024);
+  const oldZlib = pe(), hash = raw => crypto.createHash("sha256").update(raw).digest("hex");
+  for (const [name, bytes] of [["qemu-system-x86_64.exe", executable], ["zlib1.dll", oldZlib], ["share/qemu/bios-256k.bin", Buffer.from("bios")], ["share/qemu/linuxboot_dma.bin", Buffer.from("boot")]]) {
+    fs.mkdirSync(path.dirname(path.join(runtime, name)), { recursive: true }); fs.writeFileSync(path.join(runtime, name), bytes);
+  }
+  const proof = { files: sourceInventory(runtime).map(e => ({ path: "runtime/" + e.path, bytes: e.size, sha256: e.sha256 })), imports: [{ file: "qemu-system-x86_64.exe", imports: ["zlib1.dll"] }, { file: "zlib1.dll", imports: ["kernel32.dll"] }] };
+  const lock = { windows: { allowed_runtime_dlls: ["zlib1.dll"], zlib: { rejected_runtime_sha256: hash(oldZlib) } } };
+  assert.throws(() => verifyBuiltWindowsRuntime(runtime, proof, lock), /vulnerable.*rejected/i);
+  lock.windows.zlib.rejected_runtime_sha256 = "0".repeat(64);
+  assert.throws(() => verifyBuiltWindowsRuntime(runtime, proof, lock), /provenance/i);
+});
 function redistributionFixture(t) {
   const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-redistribution-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

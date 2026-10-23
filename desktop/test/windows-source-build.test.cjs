@@ -37,7 +37,8 @@ test("source delivery includes verified bytes, installed notices and a source-ki
   fs.writeFileSync(path.join(root, "inputs", "source.tar"), source); fs.writeFileSync(path.join(root, "source", "COPYING"), notice);
   const lock = { assets: [{ file: "source.tar", bytes: source.length, sha256: sha(source), kind: "source", license: "GPL-2.0-or-later", provenance: "fixture", platforms: ["windows/amd64"], url: "https://repo.msys2.org/mingw/sources/source.tar" }], windows: { qemu_version: "11.1.2", source_archives: ["source.tar"], notices: [{ archive: "source.tar", member: "qemu.tar.xz", inner_member: "qemu-11.1.2/COPYING", path: "legal/licenses/qemu/COPYING", bytes: notice.length, sha256: sha(notice) }] } };
   const result = build.assembleLegal({ lock, inputsRoot: path.join(root, "inputs"), sourceRoot: path.join(root, "source"), outputRoot: path.join(root, "output") });
-  assert.equal(result.files.length, 5); assert.match(result.digest, /^[a-f0-9]{64}$/);
+  assert.equal(result.files.length, 7); assert.match(result.digest, /^[a-f0-9]{64}$/);
+  for (const name of ["windows-zlib.cjs", "zlib-regression.c"]) assert.ok(result.files.some(e => e.file === name), "Patched zlib recipe must accompany sources");
   assert.match(result.files.find(f => f.file === "windows-source-build.cjs").sha256, /^[a-f0-9]{64}$/);
   assert.deepEqual(fs.readFileSync(path.join(root, "output/source-kit/source.tar")), source);
   assert.deepEqual(fs.readFileSync(path.join(root, "output/legal/licenses/qemu/COPYING")), notice);

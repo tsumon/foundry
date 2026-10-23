@@ -74,7 +74,7 @@ function assembleLegal({ lock, inputsRoot, sourceRoot, outputRoot, tar = "tar" }
   for (const f of lock.windows.notices) {
     if (!/^legal\/licenses\/[a-zA-Z0-9._+/-]+$/.test(f.path) || f.path.split("/").includes("..") || !Number.isSafeInteger(f.bytes) || f.bytes < 1 || f.bytes > 4 * 1024 * 1024) throw Error("Unsafe license notice path");
     let raw;
-    if (f.inner_member) {
+    if (f.inner_member && f.inner_member.startsWith("qemu-" + lock.windows.qemu_version + "/")) {
       const prefix = "qemu-" + lock.windows.qemu_version + "/";
       if (!f.inner_member.startsWith(prefix) || f.inner_member.split("/").includes("..")) throw Error("Unsafe source notice path");
       const file = path.join(sourceRoot, f.inner_member.slice(prefix.length)); if (!fs.lstatSync(file).isFile()) throw Error("Regular source notice required"); raw = fs.readFileSync(file);
@@ -83,12 +83,18 @@ function assembleLegal({ lock, inputsRoot, sourceRoot, outputRoot, tar = "tar" }
       const archive = path.join(inputsRoot, f.archive); if (!fs.lstatSync(archive).isFile()) throw Error("Regular notice archive required"); verifyAsset(e, fs.readFileSync(archive));
       const listing = cp.execFileSync(tar, ["-tvf", archive, "--include", f.member], { encoding: "utf8", maxBuffer: 8192 }).trim().split("\n");
       if (listing.length !== 1 || !listing[0].startsWith("-")) throw Error("Regular license member required");
-      raw = cp.execFileSync(tar, ["-xOf", archive, "--include", f.member], { maxBuffer: f.bytes + 1 });
+      raw = cp.execFileSync(tar, ["-xOf", archive, "--include", f.member], { maxBuffer: f.inner_member ? 8 * 1024 * 1024 : f.bytes + 1 });
+      if (f.inner_member) {
+        if (f.archive !== lock.windows.zlib?.source_archive || f.inner_member !== "zlib-1.3.2/LICENSE" || digest(raw) !== lock.windows.zlib.source_sha256) throw Error("Unknown nested source notice");
+        const listing = cp.execFileSync(tar, ["-tvf", "-", "--include", f.inner_member], { input: raw, encoding: "utf8", maxBuffer: 8192 }).trim().split("\n");
+        if (listing.length !== 1 || !listing[0].startsWith("-")) throw Error("Regular nested license required");
+        raw = cp.execFileSync(tar, ["-xOf", "-", "--include", f.inner_member], { input: raw, maxBuffer: f.bytes + 1 });
+      }
     }
     if (raw.length !== f.bytes || digest(raw) !== f.sha256) throw Error("License notice integrity failure");
     const target = path.join(outputRoot, f.path); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, raw, { flag: "wx" });
   }
-  const recipes = [["windows-source-build.cjs", fs.readFileSync(__filename)], ...["windows-bundle.cjs", "assets.cjs"].map(n => [n, fs.readFileSync(path.join(__dirname, n))]), ["inputs.lock.json", Buffer.from(JSON.stringify(lock, null, 2) + "\n")]];
+  const recipes = [["windows-source-build.cjs", fs.readFileSync(__filename)], ...["windows-bundle.cjs", "assets.cjs", "windows-zlib.cjs", "zlib-regression.c"].map(n => [n, fs.readFileSync(path.join(__dirname, n))]), ["inputs.lock.json", Buffer.from(JSON.stringify(lock, null, 2) + "\n")]];
   for (const [name, raw] of recipes) { fs.writeFileSync(path.join(kitRoot, name), raw, { flag: "wx" }); files.push({ file: name, bytes: raw.length, sha256: digest(raw), kind: "local-build-recipe" }); }
   const result = { schema_version: 1, files, digest: digest(Buffer.from(JSON.stringify(files))), redistribution: lock.windows.redistribution || [] };
   const index = JSON.stringify(result, null, 2) + "\n";
@@ -116,6 +122,7 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   for (const e of archives) { const actual = run(pacman, ["-Q", e.package]).trim(); if (actual !== e.package + " " + e.version) throw Error("Installed toolchain version mismatch: " + e.package); }
   const toolchainAudit = run(pacman, ["-Qkk", ...archives.map(e => e.package)]);
   fs.writeFileSync(path.join(outputRoot, "toolchain-file-audit.txt"), toolchainAudit, { flag: "wx" });
+  const zlib = require("./windows-zlib.cjs").buildPatchedZlib({ lock, inputsRoot: inputs, outputRoot, msysRoot, run, tar });
   const sourceArchive = lock.assets.find(e => e.file === lock.windows.source_archive);
   verifyAsset(sourceArchive, fs.readFileSync(path.join(inputs, sourceArchive.file)));
   const sourceRaw = run(tar, ["-xOf", path.join(inputs, sourceArchive.file), "--include", lock.windows.source_member], outputRoot, { encoding: null, maxBuffer: 256 * 1024 * 1024 });
@@ -134,10 +141,12 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const runtime = path.join(outputRoot, "runtime"); fs.mkdirSync(runtime); const available = new Map();
   available.set("qemu-system-x86_64.exe", fs.readFileSync(path.join(buildRoot, "qemu-system-x86_64.exe")));
   for (const f of lock.windows.dependency_files) {
+    if (path.basename(f.path).toLowerCase() === "zlib1.dll") throw Error("Prebuilt zlib runtime is forbidden");
     const archive = lock.assets.find(e => e.file === f.archive); if (!archive) throw Error("Dependency archive is not pinned");
     const raw = run(tar, ["-xOf", path.join(inputs, f.archive), "--include", f.member], outputRoot, { encoding: null, maxBuffer: f.bytes + 1 });
     if (raw.length !== f.bytes || digest(raw) !== f.sha256) throw Error("Dependency member integrity failure"); available.set(path.basename(f.path).toLowerCase(), raw);
   }
+  require("./windows-zlib.cjs").addPatchedZlib(available, zlib, lock);
   const selected = new Map(), queue = ["qemu-system-x86_64.exe"];
   for (const name of queue) { if (selected.has(name)) continue; const raw = available.get(name); if (!raw) throw Error("Unresolved or forbidden minimal DLL: " + name); selected.set(name, raw); for (const dll of readPEImports(raw)) if (!isSystemImport(dll)) queue.push(dll); }
   const imports = validateClosure(selected); assertMinimalClosure(imports, lock);
@@ -145,7 +154,7 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const firmware = path.join(runtime, "share", "qemu"); fs.mkdirSync(firmware, { recursive: true });
   for (const name of ["bios-256k.bin", "linuxboot_dma.bin"]) { const raw = fs.readFileSync(path.join(sourceRoot, "pc-bios", name)); fs.writeFileSync(path.join(firmware, name), raw, { flag: "wx" }); files.push({ path: "runtime/share/qemu/" + name, bytes: raw.length, sha256: digest(raw) }); }
   const sourceKit = assembleLegal({ lock, inputsRoot: inputs, sourceRoot, outputRoot, tar });
-  const receipt = { schema_version: 1, kind: "source-built-minimal-qemu", version: lock.windows.qemu_version, source_sha256: lock.windows.source_sha256, source_kit: sourceKit, build_packages: archives, configure: plan.configure, devices, host, options, imports, files, native_acceptance: "not_performed" };
+  const receipt = { schema_version: 1, kind: "source-built-minimal-qemu", version: lock.windows.qemu_version, source_sha256: lock.windows.source_sha256, source_kit: sourceKit, build_packages: archives, configure: plan.configure, devices, host, options, imports, files, zlib: zlib.receipt, native_acceptance: "not_performed" };
   fs.writeFileSync(path.join(outputRoot, "windows-runtime-build.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx" });
   fs.writeFileSync(path.join(outputRoot, "legal", "windows-runtime-build.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx" });
   return receipt;
