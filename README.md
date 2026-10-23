@@ -35,7 +35,9 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 
 ## 安装桌面版
 
-从 [Desktop packages 的成功运行](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)下载对应平台的 artifact。核对其提交与 `SHA256SUMS`；保留随包提供的 runtime source 和 `sandbox-sources` 材料。**这里只使用 CI artifacts，不创建 GitHub Release；不要把旧版产物当成当前版本。**
+从 [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml) 中通过全部平台门禁的任务下载对应 artifact；一个平台通过不代表另一个平台通过。核对其提交与 `SHA256SUMS`；保留随包提供的 runtime source 和 `sandbox-sources` 材料。**这里只使用 CI artifacts，不创建 GitHub Release；不要把旧版产物当成当前版本。**
+
+**验收状态（2026-10-23）：** Mac `6c73fa3` 已完成本机安装、界面、重启和真实内置虚拟机失败→修复→复验，角色响应仍为本地协议测试数据。[对应 CI](https://github.com/tsumon/foundry/actions/runs/39934807578) 的 Mac 任务通过，但 Windows 真实 WHPX 门禁未通过，**暂不提供已验收 EXE**。该结论只覆盖指定提交，不代表后续构建自动通过。
 
 | 平台 | 安装包 | 需要知道 |
 | :--- | :--- | :--- |

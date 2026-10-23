@@ -183,6 +183,15 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 
 ## Completion gate
 
+Run 39938536363 stopped in the capability probe after its 15-second cold-start
+budget, without a capability result. This is not evidence of absent WHPX.
+Retain the fail-closed gate; add bounded ordered startup/compiled/queried markers
+and a typed timeout/nonzero/launch failure, never raw stderr. Give this read-only
+cold PowerShell/Add-Type diagnostic a 60-second total budget with no retry.
+Offline tests must reject mixed/private/out-of-order progress and demonstrate
+that partial success output cannot authorize execution. Native CI then resolves
+the actual stage and capability; no OS feature changes are authorized.
+
 Run 39934807578 now identifies a readiness failure after native Job admission:
 QEMU exited 1 and termination was confirmed. Before changing runtime behavior,
 add a one-shot read-only Windows Hypervisor Platform capability preflight using

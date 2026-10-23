@@ -35,7 +35,9 @@ Foundry is a software-delivery workbench for a one-person team. It reads a commi
 
 ## Install the desktop app
 
-Download the platform artifact from a [successful Desktop packages run](https://github.com/tsumon/foundry/actions/workflows/desktop.yml). Check its source revision and `SHA256SUMS`; retain both runtime sources and `sandbox-sources`. **Distribution uses CI artifacts, not a GitHub Release. Older artifacts do not represent the current version.**
+Download the artifact only from a platform job that passed all its gates in [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml); one platform's success does not certify another. Check its source revision and `SHA256SUMS`; retain both runtime sources and `sandbox-sources`. **Distribution uses CI artifacts, not a GitHub Release. Older artifacts do not represent the current version.**
+
+**Acceptance status (2026-10-23):** Mac revision `6c73fa3` passed local installation, UI, restart and a real bundled-VM failure→repair→recheck. Role responses were local protocol fixtures. Its [CI Mac job](https://github.com/tsumon/foundry/actions/runs/39934807578) passed, but the Windows native WHPX gate did not: **no accepted EXE is available yet**. This evidence covers that exact revision, not later builds automatically.
 
 | Platform | Installer | Know before installing |
 | :--- | :--- | :--- |

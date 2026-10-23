@@ -9,10 +9,17 @@ local-workflow Alpha, not a production-ready autonomous coding service.
 
 Use the **Desktop packages** workflow in
 [GitHub Actions](https://github.com/tsumon/foundry/actions/workflows/desktop.yml).
-Select a successful run for the source revision you intend to install. Download
+Select a platform job that passed every gate for the source revision you intend
+to install; a successful Mac job does not certify Windows. Download
 the matching platform artifact, its `SHA256SUMS` and the accompanying runtime
 source material, including `sandbox-sources`. GitHub may require sign-in to download workflow artifacts;
 these artifacts expire and are not a GitHub Release or an update channel.
+
+As of 2026-10-23, revision `6c73fa3` passed local Mac install/UI/restart and
+physical bundled-VM failure/repair/recheck with local model-protocol fixtures.
+Its Mac CI package job passed, while Windows native WHPX acceptance remains
+blocked. No accepted Windows EXE is currently provided. Later revisions need
+their own evidence; a package build alone does not establish native acceptance.
 
 | Target | Package | Trust status |
 | --- | --- | --- |

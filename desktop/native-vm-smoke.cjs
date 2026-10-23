@@ -387,6 +387,7 @@ function probeWindowsHypervisor(systemRoot, execute = execFileSync) {
     );
     const script = [
       "$ErrorActionPreference = 'Stop'",
+      "[Console]::Error.WriteLine('foundry-whpx:started')",
       "Add-Type -TypeDefinition @'",
       "using System;",
       "using System.Runtime.InteropServices;",
@@ -403,7 +404,10 @@ function probeWindowsHypervisor(systemRoot, execute = execFileSync) {
       " }",
       "}",
       "'@",
-      "[FoundryHypervisorProbe]::Read() | ConvertTo-Json -Compress",
+      "[Console]::Error.WriteLine('foundry-whpx:compiled')",
+      "$capability = [FoundryHypervisorProbe]::Read()",
+      "[Console]::Error.WriteLine('foundry-whpx:queried')",
+      "$capability | ConvertTo-Json -Compress",
     ].join("\n");
     const system32 = path.win32.join(systemRoot, "System32");
     output = execute(
@@ -416,7 +420,7 @@ function probeWindowsHypervisor(systemRoot, execute = execFileSync) {
       ],
       {
         encoding: "utf8",
-        timeout: 15000,
+        timeout: 60000,
         maxBuffer: 4096,
         windowsHide: true,
         env: {
@@ -429,8 +433,29 @@ function probeWindowsHypervisor(systemRoot, execute = execFileSync) {
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
-  } catch {
-    return { ...base, status: "probe_failed" };
+  } catch (error) {
+    let stage = "unknown";
+    const progress = Buffer.isBuffer(error.stderr)
+      ? error.stderr.toString("utf8")
+      : error.stderr;
+    if (typeof progress === "string" && Buffer.byteLength(progress) <= 256) {
+      const records = progress.trim().split(/\r?\n/);
+      const stages = ["started", "compiled", "queried"];
+      if (
+        records.length >= 1 &&
+        records.length <= stages.length &&
+        records.every((line, i) => line === "foundry-whpx:" + stages[i])
+      ) {
+        stage = stages[records.length - 1];
+      }
+    }
+    const failure =
+      error.code === "ETIMEDOUT"
+        ? "timeout"
+        : Number.isInteger(error.status) && error.status !== 0
+          ? "exit_nonzero"
+          : "launch_failed";
+    return { ...base, status: "probe_failed", failure, stage };
   }
   try {
     assert.ok(typeof output === "string" && Buffer.byteLength(output) <= 4096);

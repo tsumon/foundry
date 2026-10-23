@@ -2,9 +2,17 @@
 
 FOUNDRY is an experimental local-workflow Alpha. It provides source and native
 desktop packaging for macOS arm64 (Apple Silicon) and Windows x64. A successful
-**Desktop packages** run for the exact source commit is required before treating
-its artifact as accepted; build configuration alone is not a pass. See the
+**Desktop packages** platform job for the exact source commit and its native
+acceptance evidence are required before treating its artifact as accepted;
+build configuration alone is not a pass. See the
 [desktop guide](desktop-guide.md) for installation and actual capabilities.
+
+2026-10-23 acceptance snapshot: `6c73fa3` passed the Mac CI package/contracts job
+and local physical-Mac install, UI, restart and real bundled-VM failure/repair/
+recheck using local model-protocol fixtures. Windows built and installed its EXE
+but failed the mandatory WHPX readiness gate; native UI/restart/uninstall did not
+complete. No accepted Windows artifact is provided. Newer revisions must pass
+their own gates; real-account acceptance is still unauthorized.
 
 ## Implemented
 
