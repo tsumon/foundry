@@ -183,6 +183,17 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 
 ## Completion gate
 
+Run 39934807578 now identifies a readiness failure after native Job admission:
+QEMU exited 1 and termination was confirmed. Before changing runtime behavior,
+add a one-shot read-only Windows Hypervisor Platform capability preflight using
+the system DLL's WHvGetCapability(HypervisorPresent). Report only bounded
+status/numeric HRESULT facts; no feature installation, reboot, partition creation,
+account access or fallback. Run it before the expensive Windows build. Missing
+capability fails the job, never skips/adopts the native guest acceptance gate.
+Offline tests cover absent API/hypervisor, failed/truncated/malformed replies,
+timeout and no retries; native CI establishes this host's actual capability.
+Reference: [Microsoft WHvGetCapability](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvgetcapability).
+
 Native Windows run 39930444811 built and installed the EXE, but failed the
 mandatory VM gate. The acceptance wrapper discarded the validated failure
 stage from CI output; private receipts were not uploaded by the success-only

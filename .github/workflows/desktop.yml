@@ -157,6 +157,11 @@ jobs:
           if ((npm --version).Trim() -ne '10.9.8') { throw 'npm 10.9.8 required' }
           go version
           if ($LASTEXITCODE -ne 0) { throw 'Go unavailable' }
+      - name: Read-only WHPX host prerequisite (never enables features)
+        id: whpx-preflight
+        run: |
+          node desktop/native-vm-smoke.cjs --windows-hypervisor-preflight
+          if ($LASTEXITCODE -ne 0) { throw 'Native WHPX prerequisite unavailable; no fallback or package publication' }
       - name: Prepare long-form native temporary directory
         run: |
           $ErrorActionPreference = 'Stop'

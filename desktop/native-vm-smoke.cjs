@@ -371,9 +371,122 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
   }
   return diagnostic;
 }
-module.exports = { assertNativeVMReceipt, runNativeVMSmoke };
+// Build/acceptance diagnostic only. Query the system API; do not create a
+// partition, enable a feature, reboot, or substitute for the actual guest gate.
+function probeWindowsHypervisor(systemRoot, execute = execFileSync) {
+  const base = {
+    kind: "foundry-windows-hypervisor-preflight",
+    available: false,
+  };
+  let output;
+  try {
+    assert.ok(
+      typeof systemRoot === "string" &&
+        /^[A-Za-z]:\\/.test(systemRoot) &&
+        !/[\x00\r\n]/.test(systemRoot),
+    );
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      "Add-Type -TypeDefinition @'",
+      "using System;",
+      "using System.Runtime.InteropServices;",
+      "public static class FoundryHypervisorProbe {",
+      " [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]",
+      ' [DllImport("WinHvPlatform.dll", ExactSpelling=true)]',
+      " private static extern int WHvGetCapability(uint code, ref ulong value, uint size, out uint written);",
+      " public static ulong[] Read() {",
+      "  try { ulong value = 0; uint written; int hr = WHvGetCapability(0, ref value, 8, out written);",
+      "    return new ulong[] {1, unchecked((uint)hr), written, value}; }",
+      "  catch (DllNotFoundException) { return new ulong[] {0,0,0,0}; }",
+      "  catch (EntryPointNotFoundException) { return new ulong[] {0,0,0,0}; }",
+      "  catch (BadImageFormatException) { return new ulong[] {0,0,0,0}; }",
+      " }",
+      "}",
+      "'@",
+      "[FoundryHypervisorProbe]::Read() | ConvertTo-Json -Compress",
+    ].join("\n");
+    const system32 = path.win32.join(systemRoot, "System32");
+    output = execute(
+      path.win32.join(system32, "WindowsPowerShell", "v1.0", "powershell.exe"),
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(script, "utf16le").toString("base64"),
+      ],
+      {
+        encoding: "utf8",
+        timeout: 15000,
+        maxBuffer: 4096,
+        windowsHide: true,
+        env: {
+          SystemRoot: systemRoot,
+          WINDIR: systemRoot,
+          PATH: system32,
+          TEMP: process.env.TEMP,
+          TMP: process.env.TMP,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+  } catch {
+    return { ...base, status: "probe_failed" };
+  }
+  try {
+    assert.ok(typeof output === "string" && Buffer.byteLength(output) <= 4096);
+    const values = JSON.parse(output.replace(/^\uFEFF/, ""));
+    assert.ok(
+      Array.isArray(values) &&
+        values.length === 4 &&
+        values.every(Number.isSafeInteger),
+    );
+    const [api, hr, bytes, present] = values;
+    assert.ok(
+      [0, 1].includes(api) &&
+        hr >= 0 &&
+        hr <= 4294967295 &&
+        bytes >= 0 &&
+        bytes <= 8 &&
+        present >= 0,
+    );
+    if (api === 0) {
+      assert.deepEqual(values, [0, 0, 0, 0]);
+      return { ...base, status: "api_unavailable" };
+    }
+    if (hr !== 0) return { ...base, status: "query_failed", hresult: hr };
+    assert.ok(bytes === 4 && [0, 1].includes(present));
+    return {
+      ...base,
+      available: present === 1,
+      status: present === 1 ? "available" : "hypervisor_absent",
+    };
+  } catch {
+    return { ...base, status: "invalid_response" };
+  }
+}
+module.exports = {
+  assertNativeVMReceipt,
+  runNativeVMSmoke,
+  probeWindowsHypervisor,
+};
 if (require.main === module)
   (async () => {
+    if (
+      process.argv.length === 3 &&
+      process.argv[2] === "--windows-hypervisor-preflight"
+    ) {
+      const result =
+        process.platform === "win32" && process.arch === "x64"
+          ? probeWindowsHypervisor(process.env.SystemRoot)
+          : {
+              kind: "foundry-windows-hypervisor-preflight",
+              available: false,
+              status: "unsupported_host",
+            };
+      process.stdout.write(JSON.stringify(result) + "\n");
+      process.exitCode = result.available ? 0 : 1;
+      return;
+    }
     const resources = process.env.FOUNDRY_INSTALLED_RESOURCES;
     const { extractFile } = await import("@electron/asar");
     const { manifestSHA256: integrity } = JSON.parse(

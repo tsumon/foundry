@@ -7,6 +7,7 @@ const fs = require("node:fs"),
 const {
   assertNativeVMReceipt,
   runNativeVMSmoke,
+  probeWindowsHypervisor,
 } = require("../native-vm-smoke.cjs");
 const { sandboxFixture } = require("./sandbox-fixture.cjs");
 const { writeManifest } = require("../build-support.cjs");
@@ -80,6 +81,72 @@ function success() {
     },
   };
 }
+test("WHPX preflight queries once and admits only a successful native BOOL capability result", () => {
+  assert.equal(typeof probeWindowsHypervisor, "function");
+  const cases = [
+    ["[1,0,4,1]", "available", true],
+    ["[1,0,4,0]", "hypervisor_absent", false],
+    ["[0,0,0,0]", "api_unavailable", false],
+    ["[1,2147500037,0,0]", "query_failed", false],
+    ["[1,0,0,1]", "invalid_response", false],
+    ["[1,0,8,1]", "invalid_response", false],
+    ["[1,0,4,2]", "invalid_response", false],
+    ["[1,-1,4,1]", "invalid_response", false],
+    ['{"PRIVATE_SENTINEL":"secret"}', "invalid_response", false],
+    ["PRIVATE_SENTINEL", "invalid_response", false],
+    ["x".repeat(5000), "invalid_response", false],
+  ];
+  for (const [output, status, available] of cases) {
+    let calls = 0;
+    const result = probeWindowsHypervisor(
+      "C:\\Windows",
+      (binary, args, config) => {
+        calls++;
+        assert.equal(
+          binary,
+          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        );
+        assert.deepEqual(args.slice(0, 3), [
+          "-NoProfile",
+          "-NonInteractive",
+          "-EncodedCommand",
+        ]);
+        assert.equal(config.timeout, 15000);
+        assert.equal(config.maxBuffer, 4096);
+        return output;
+      },
+    );
+    assert.equal(calls, 1);
+    assert.equal(result.status, status);
+    assert.equal(result.available, available);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_SENTINEL|Windows/);
+    if (status === "query_failed") assert.equal(result.hresult, 2147500037);
+  }
+});
+test("WHPX capability transport failure never retries or exposes raw errors", () => {
+  assert.equal(typeof probeWindowsHypervisor, "function");
+  let calls = 0;
+  const result = probeWindowsHypervisor("C:\\Windows", () => {
+    calls++;
+    throw Object.assign(new Error("PRIVATE_SENTINEL"), {
+      stdout: "[1,0,4,1]",
+      stderr: "PRIVATE_SENTINEL",
+      code: "ETIMEDOUT",
+    });
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(result, {
+    kind: "foundry-windows-hypervisor-preflight",
+    available: false,
+    status: "probe_failed",
+  });
+  assert.equal(
+    probeWindowsHypervisor("relative", () => {
+      throw Error("must not run");
+    }).status,
+    "probe_failed",
+  );
+});
 test("installed native gate admits only complete real VM fail/repair receipt bound to installed bytes", () => {
   assert.doesNotThrow(() =>
     assertNativeVMReceipt(success(), "a".repeat(64), "win32"),
