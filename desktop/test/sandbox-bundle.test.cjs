@@ -1,6 +1,6 @@
 "use strict";
 const test = require("node:test"), assert = require("node:assert/strict"), fs = require("node:fs"), os = require("node:os"), path = require("node:path"), crypto = require("node:crypto"), cp = require("node:child_process");
-const { writeVMManifest, sourceInventory, verifyBuiltWindowsRuntime, extractKernelRecipe } = require("../sandbox/build.cjs");
+const { writeVMManifest, sourceInventory, verifyBuiltWindowsRuntime, verifyWindowsRedistribution, extractKernelRecipe } = require("../sandbox/build.cjs");
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-vm-bundle-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -46,6 +46,68 @@ test("Windows bundle re-derives PE imports instead of trusting build receipt cla
   const changed = pe(); changed.write("evilcore.dll\0", 1024); fs.writeFileSync(path.join(runtime, "qemu-system-x86_64.exe"), changed);
   const modified = { ...proof, files: sourceInventory(runtime).map(e => ({ path: "runtime/" + e.path, bytes: e.size, sha256: e.sha256 })) };
   assert.throws(() => verifyBuiltWindowsRuntime(runtime, modified, lock), /Unresolved/);
+});
+function redistributionFixture(t) {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-redistribution-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = Buffer.from("exact complete source"), notice = Buffer.from("exact copyright and license");
+  const hash = b => crypto.createHash("sha256").update(b).digest("hex");
+  for (const dir of ["inputs", "source", "output"]) fs.mkdirSync(path.join(root, dir));
+  fs.writeFileSync(path.join(root, "inputs/source.tar"), source); fs.writeFileSync(path.join(root, "source/COPYING"), notice);
+  const lock = { assets: [{ file: "source.tar", bytes: source.length, sha256: hash(source), kind: "source", license: "GPL-2.0-or-later", provenance: "fixture", platforms: ["windows/amd64"], url: "https://repo.msys2.org/mingw/sources/source.tar" }], windows: { qemu_version: "11.1.2", source_archives: ["source.tar"], notices: [{ inner_member: "qemu-11.1.2/COPYING", path: "legal/licenses/qemu/COPYING", bytes: notice.length, sha256: hash(notice) }], redistribution: [] } };
+  const output = path.join(root, "output");
+  const sourceKit = require("../sandbox/windows-source-build.cjs").assembleLegal({ lock, inputsRoot: path.join(root, "inputs"), sourceRoot: path.join(root, "source"), outputRoot: output });
+  const proof = { schema_version: 1, kind: "source-built-minimal-qemu", source_kit: sourceKit };
+  function writeProof() {
+    for (const name of ["windows-runtime-build.json", "legal/windows-runtime-build.json"]) fs.writeFileSync(path.join(output, name), JSON.stringify(proof, null, 2) + "\n");
+  }
+  function rewriteClaim(name) {
+    const raw = fs.readFileSync(path.join(output, "source-kit", name)), entry = proof.source_kit.files.find(e => e.file === name);
+    entry.bytes = raw.length; entry.sha256 = hash(raw);
+    proof.source_kit.digest = hash(Buffer.from(JSON.stringify(proof.source_kit.files)));
+    for (const dir of ["source-kit", "legal"]) fs.writeFileSync(path.join(output, dir, "source-kit-index.json"), JSON.stringify(proof.source_kit, null, 2) + "\n");
+    writeProof();
+  }
+  writeProof(); return { output, lock, proof, writeProof, rewriteClaim };
+}
+test("Windows redistribution accepts the exact source builder output", t => {
+  assert.equal(typeof verifyWindowsRedistribution, "function", "Pinned redistribution validation is missing");
+  const f = redistributionFixture(t);
+  assert.equal(verifyWindowsRedistribution(f.output, f.proof, f.lock), true);
+});
+test("Windows redistribution rejects missing, tampered and unlisted source or legal files", async t => {
+  const mutations = {
+    "missing source": f => fs.unlinkSync(path.join(f.output, "source-kit/source.tar")),
+    "tampered source": f => fs.writeFileSync(path.join(f.output, "source-kit/source.tar"), "other source"),
+    "missing notice": f => fs.unlinkSync(path.join(f.output, "legal/licenses/qemu/COPYING")),
+    "tampered notice": f => fs.writeFileSync(path.join(f.output, "legal/licenses/qemu/COPYING"), "other notice"),
+    "missing index": f => fs.unlinkSync(path.join(f.output, "legal/source-kit-index.json")),
+    "extra source": f => fs.writeFileSync(path.join(f.output, "source-kit/extra"), "extra"),
+    "extra legal": f => fs.writeFileSync(path.join(f.output, "legal/extra"), "extra"),
+    "extra empty directory": f => fs.mkdirSync(path.join(f.output, "legal/extra")),
+    "symlink source": f => { fs.unlinkSync(path.join(f.output, "source-kit/source.tar")); fs.symlinkSync("../windows-runtime-build.json", path.join(f.output, "source-kit/source.tar")); },
+  };
+  for (const [name, mutate] of Object.entries(mutations)) await t.test(name, t => {
+    assert.equal(typeof verifyWindowsRedistribution, "function", "Pinned redistribution validation is missing");
+    const f = redistributionFixture(t); mutate(f);
+    assert.throws(() => verifyWindowsRedistribution(f.output, f.proof, f.lock), /redistribution|inventory|regular/i);
+  });
+});
+test("Windows redistribution rejects internally consistent lies and mismatched proof copies", async t => {
+  const mutations = {
+    "source bytes and all receipts replaced": f => { fs.writeFileSync(path.join(f.output, "source-kit/source.tar"), "substitute source"); f.rewriteClaim("source.tar"); },
+    "recipe bytes and all receipts replaced": f => { fs.writeFileSync(path.join(f.output, "source-kit/windows-source-build.cjs"), "substitute recipe"); f.rewriteClaim("windows-source-build.cjs"); },
+    "lock bytes and all receipts replaced": f => { fs.writeFileSync(path.join(f.output, "source-kit/inputs.lock.json"), "{}"); f.rewriteClaim("inputs.lock.json"); },
+    "lying digest": f => { f.proof.source_kit.digest = "0".repeat(64); f.writeProof(); },
+    "legal proof disagrees": f => fs.writeFileSync(path.join(f.output, "legal/windows-runtime-build.json"), "{}"),
+    "legal index disagrees": f => fs.writeFileSync(path.join(f.output, "legal/source-kit-index.json"), "{}"),
+    "duplicate source record": f => { f.proof.source_kit.files.push(f.proof.source_kit.files[0]); f.writeProof(); },
+  };
+  for (const [name, mutate] of Object.entries(mutations)) await t.test(name, t => {
+    assert.equal(typeof verifyWindowsRedistribution, "function", "Pinned redistribution validation is missing");
+    const f = redistributionFixture(t); mutate(f);
+    assert.throws(() => verifyWindowsRedistribution(f.output, f.proof, f.lock), /redistribution|inventory/i);
+  });
 });
 test("corresponding kernel recipe includes only regular linux-lts files from the pinned subtree", t => {
   assert.equal(typeof extractKernelRecipe, "function");

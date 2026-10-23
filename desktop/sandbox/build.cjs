@@ -51,6 +51,62 @@ function verifyBuiltWindowsRuntime(root, proof, lock) {
   if (canonical(imports) !== canonical(proof.imports)) throw Error("Runtime imports disagree with actual PE files");
   return imports;
 }
+function verifyWindowsRedistribution(root, proof, lock) {
+  if (!path.isAbsolute(root) || fs.realpathSync(root) !== root || !fs.lstatSync(root).isDirectory()) throw Error("Regular canonical redistribution root required");
+  if (!lock.windows.source_archives?.length || !lock.windows.notices?.length) throw Error("Pinned redistribution inventory required");
+  // Reconstruct expectations from this checkout and its lock, never from the
+  // supplied receipt: a modified source plus a newly hashed receipt is not proof.
+  const files = lock.windows.source_archives.map(name => {
+    const matches = lock.assets.filter(e => e.file === name);
+    if (matches.length !== 1 || matches[0].kind !== "source") throw Error("Pinned redistribution source required");
+    const e = matches[0]; require("./assets.cjs").validateAsset(e);
+    return { file: e.file, bytes: e.bytes, sha256: e.sha256, url: e.url, license: e.license };
+  });
+  for (const name of ["windows-source-build.cjs", "windows-bundle.cjs", "assets.cjs", "inputs.lock.json"]) {
+    const raw = name === "inputs.lock.json" ? Buffer.from(JSON.stringify(lock, null, 2) + "\n") : fs.readFileSync(path.join(__dirname, name));
+    files.push({ file: name, bytes: raw.length, sha256: sha256(raw), kind: "local-build-recipe" });
+  }
+  const index = { schema_version: 1, files, digest: sha256(Buffer.from(JSON.stringify(files))), redistribution: lock.windows.redistribution || [] };
+  if (!require("node:util").isDeepStrictEqual(proof.source_kit, index)) throw Error("Redistribution source-kit proof disagrees with pinned inventory");
+  const jsonBytes = value => Buffer.from(JSON.stringify(value, null, 2) + "\n");
+  const metadata = (name, raw) => ({ path: name, size: raw.length, sha256: sha256(raw) });
+  const proofBytes = jsonBytes(proof), indexBytes = jsonBytes(index);
+  const sourceFiles = [...files.map(e => ({ path: e.file, size: e.bytes, sha256: e.sha256 })), metadata("source-kit-index.json", indexBytes)];
+  const legalFiles = lock.windows.notices.map(e => {
+    if (!e.path.startsWith("legal/")) throw Error("Invalid redistribution notice path");
+    return { path: e.path.slice(6), size: e.bytes, sha256: e.sha256 };
+  });
+  legalFiles.push(metadata("source-kit-index.json", indexBytes), metadata("windows-runtime-build.json", proofBytes));
+  function verifyTree(directory, expected) {
+    const byPath = new Map(), directories = new Set();
+    for (const e of expected) {
+      if (!/^[a-zA-Z0-9._+~/-]+$/.test(e.path) || e.path.startsWith("/") || e.path.split("/").some(p => !p || p === "." || p === "..") || byPath.has(e.path) || !Number.isSafeInteger(e.size) || e.size < 1 || !/^[a-f0-9]{64}$/.test(e.sha256)) throw Error("Invalid redistribution inventory");
+      byPath.set(e.path, e);
+      for (let dir = path.posix.dirname(e.path); dir !== "."; dir = path.posix.dirname(dir)) directories.add(dir);
+    }
+    const actual = sourceInventory(directory);
+    if (actual.length !== byPath.size) throw Error("Redistribution inventory mismatch");
+    for (const e of actual) {
+      const wanted = byPath.get(e.path);
+      if (!wanted || e.size !== wanted.size || e.sha256 !== wanted.sha256) throw Error("Redistribution file integrity mismatch: " + e.path);
+    }
+    function checkDirectories(relative = "") {
+      for (const name of fs.readdirSync(path.join(directory, relative))) {
+        const next = relative ? relative + "/" + name : name;
+        if (fs.lstatSync(path.join(directory, next)).isDirectory()) {
+          if (!directories.has(next)) throw Error("Unexpected redistribution directory");
+          checkDirectories(next);
+        }
+      }
+    }
+    checkDirectories();
+  }
+  verifyTree(path.join(root, "source-kit"), sourceFiles);
+  verifyTree(path.join(root, "legal"), legalFiles);
+  const proofFile = path.join(root, "windows-runtime-build.json");
+  if (!fs.lstatSync(proofFile).isFile() || !fs.readFileSync(proofFile).equals(proofBytes)) throw Error("Redistribution runtime proof mismatch");
+  return true;
+}
 function extractKernelRecipe(archive, output, tar) {
   const prefix = "aports-e9951ece7106a5c898b0812cfa7b47d56379b361/main/linux-lts/";
   const run = args => cp.execFileSync(tar, args, { timeout: 30000, maxBuffer: 4 * 1024 * 1024 });
@@ -101,8 +157,8 @@ async function buildBundle({ output, local, windowsRuntime, go = process.env.FOU
     if (proof.kind !== "source-built-minimal-qemu" || proof.source_sha256 !== lock.windows.source_sha256) throw Error("Minimal source-build proof required");
     require("./windows-source-build.cjs").auditConfiguration({ options: proof.options, devices: proof.devices, host: proof.host });
     verifyBuiltWindowsRuntime(path.join(windowsRuntime, "runtime"), proof, lock);
+    verifyWindowsRedistribution(windowsRuntime, proof, lock);
     fs.cpSync(path.join(windowsRuntime, "runtime"), path.join(bundle, "runtime"), { recursive: true });
-    sourceInventory(path.join(windowsRuntime, "legal")); sourceInventory(path.join(windowsRuntime, "source-kit"));
     fs.cpSync(path.join(windowsRuntime, "legal"), path.join(legal, "qemu"), { recursive: true });
     fs.cpSync(path.join(windowsRuntime, "source-kit"), path.join(sourceKit, "qemu"), { recursive: true });
     fs.copyFileSync(path.join(windowsRuntime, "windows-runtime-build.json"), path.join(legal, "qemu-build.json"));
@@ -125,5 +181,5 @@ async function buildBundle({ output, local, windowsRuntime, go = process.env.FOU
   fs.writeFileSync(path.join(output, "sandbox-build.json"), JSON.stringify({ schema_version: 1, host, inputs: receipt.assets, kernel_sha256: sha256(kernel), manifest_sha256: sha256(fs.readFileSync(path.join(bundle, "manifest.json"))), native_acceptance: "not_performed" }, null, 2) + "\n", { flag: "wx" });
   return { bundle, sourceKit, manifest };
 }
-module.exports = { sourceInventory, writeVMManifest, verifyBuiltWindowsRuntime, extractKernelRecipe, buildBundle };
+module.exports = { sourceInventory, writeVMManifest, verifyBuiltWindowsRuntime, verifyWindowsRedistribution, extractKernelRecipe, buildBundle };
 if (require.main === module) buildBundle({ output: process.argv[2] || "", local: process.env.FOUNDRY_SANDBOX_INPUTS, windowsRuntime: process.env.FOUNDRY_WINDOWS_VM_RUNTIME }).then(r => console.log(JSON.stringify({ bundle: r.bundle, sourceKit: r.sourceKit, assets: r.manifest.assets.length }))).catch(e => { console.error(e.message); process.exitCode = 1; });
