@@ -1,0 +1,524 @@
+package vmruntime
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"foundry/internal/c4verify"
+	"foundry/internal/domain"
+	"foundry/internal/platformfs"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+type Request struct{ OperationID, MissionID, Owner, Name, CandidatePath, CandidateDigest string }
+type command struct {
+	Path      string
+	Args, Env []string
+	Dir       string
+}
+type nativeProcess interface {
+	Input() io.WriteCloser
+	Output() io.ReadCloser
+	Wait() error
+	Stop() error
+	Terminated() bool
+}
+type Runtime struct {
+	mu                       sync.Mutex
+	bundleRoot, instanceRoot string
+	manifest                 Manifest
+	identity                 domain.C4VMIdentity
+	production               bool
+	launch                   func(context.Context, command) (nativeProcess, error)
+	sessions                 map[string]*Session
+}
+type Session struct {
+	mu              sync.Mutex
+	runtime         *Runtime
+	id, dir         string
+	owner           Request
+	wire            WireRequest
+	started, closed bool
+	process         nativeProcess
+	cancel          context.CancelFunc
+	done            chan struct{}
+	result          c4verify.Result
+	valid           bool
+	err             error
+}
+
+// Load only reads and verifies installed files; it never probes hardware,
+// launches a process, creates an instance or loads receipts as live authority.
+func Load(bundleRoot, instanceRoot string) (*Runtime, error) {
+	m, id, e := loadManifest(bundleRoot)
+	if e != nil {
+		return nil, e
+	}
+	if e := canonicalDirectory(instanceRoot); e != nil {
+		return nil, e
+	}
+	rel, e := filepath.Rel(bundleRoot, instanceRoot)
+	if e != nil || rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..") {
+		return nil, errors.New("instance root must be outside immutable bundle")
+	}
+	return &Runtime{bundleRoot: bundleRoot, instanceRoot: instanceRoot, manifest: m, identity: id, production: true, launch: launchNative, sessions: map[string]*Session{}}, nil
+}
+func (r *Runtime) Identity() domain.C4VMIdentity {
+	if r == nil {
+		return domain.C4VMIdentity{}
+	}
+	return r.identity
+}
+func (r *Runtime) Trusted() bool {
+	return r != nil && r.production && r.launch != nil && r.identity.ManifestDigest != ""
+}
+func (r *Runtime) Lookup(id string) (*Session, bool) {
+	if r == nil {
+		return nil, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.sessions[id]
+	return s, ok
+}
+func randomID() (string, error) {
+	b := make([]byte, 32)
+	if _, e := rand.Read(b); e != nil {
+		return "", errors.New("VM randomness unavailable")
+	}
+	return hex.EncodeToString(b), nil
+}
+func (r *Runtime) Create(ctx context.Context, q Request) (*Session, error) {
+	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
+	if r == nil || r.launch == nil {
+		return nil, errors.New("VM runtime unavailable")
+	}
+	for _, s := range []string{q.OperationID, q.MissionID, q.Owner, q.Name} {
+		if s == "" || len(s) > 256 || strings.ContainsAny(s, "\x00\r\n") {
+			return nil, errors.New("invalid VM ownership")
+		}
+	}
+	files, e := snapshot(ctx, q.CandidatePath)
+	if e != nil {
+		return nil, e
+	}
+	d, e := SnapshotDigest(files)
+	if e != nil || d != q.CandidateDigest {
+		return nil, errors.New("candidate digest mismatch")
+	}
+	return r.create(ctx, q, "verify", files)
+}
+func (r *Runtime) create(ctx context.Context, q Request, action string, files []SnapshotFile) (*Session, error) {
+	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
+	id, e := randomID()
+	if e != nil {
+		return nil, e
+	}
+	nonce, e := randomID()
+	if e != nil {
+		return nil, e
+	}
+	secret, e := randomID()
+	if e != nil {
+		return nil, e
+	}
+	if e := canonicalDirectory(r.instanceRoot); e != nil {
+		return nil, e
+	}
+	dir := filepath.Join(r.instanceRoot, id)
+	if e := os.Mkdir(dir, 0700); e != nil {
+		return nil, errors.New("cannot create private VM instance")
+	}
+	if e := platformfs.PrivateDirectory(dir); e != nil {
+		return nil, errors.New("cannot secure VM instance")
+	}
+	s := &Session{runtime: r, id: id, dir: dir, owner: q, wire: WireRequest{SchemaVersion: 1, Action: action, Nonce: nonce, Secret: secret, GuestPlatform: r.identity.GuestPlatform, CandidateDigest: q.CandidateDigest, Files: files}, done: make(chan struct{})}
+	if e := s.receipt("allocated"); e != nil {
+		return nil, e
+	}
+	r.mu.Lock()
+	r.sessions[id] = s
+	r.mu.Unlock()
+	return s, nil
+}
+func (r *Runtime) Probe(ctx context.Context) error {
+	if r == nil || r.launch == nil {
+		return errors.New("VM runtime unavailable")
+	}
+	s, e := r.create(ctx, Request{OperationID: "probe", MissionID: "readiness", Owner: "runtime", Name: "probe"}, "probe", []SnapshotFile{})
+	if e != nil {
+		return e
+	}
+	e = s.Start(ctx)
+	if e == nil {
+		e = s.Wait(ctx)
+	}
+	cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if x := s.Close(cleanup); x != nil {
+		return x
+	}
+	return e
+}
+func (s *Session) ID() string {
+	if s == nil {
+		return ""
+	}
+	return s.id
+}
+func (s *Session) Matches(q Request) bool {
+	return s != nil && s.owner.OperationID == q.OperationID && s.owner.MissionID == q.MissionID && s.owner.Owner == q.Owner && s.owner.Name == q.Name && s.owner.CandidateDigest == q.CandidateDigest
+}
+func (s *Session) receipt(stage string) error {
+	b, e := json.Marshal(struct {
+		SchemaVersion                                                                   int `json:"schema_version"`
+		ID, OperationID, MissionID, Owner, Name, CandidateDigest, ManifestDigest, Stage string
+	}{1, s.id, s.owner.OperationID, s.owner.MissionID, s.owner.Owner, s.owner.Name, s.owner.CandidateDigest, s.runtime.identity.ManifestDigest, stage})
+	if e != nil {
+		return errors.New("cannot encode instance receipt")
+	}
+	p := filepath.Join(s.dir, stage+".json")
+	f, e := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if e != nil {
+		return errors.New("cannot persist instance receipt")
+	}
+	_, e = f.Write(b)
+	if e == nil {
+		e = f.Sync()
+	}
+	ce := f.Close()
+	if e != nil || ce != nil {
+		return errors.New("cannot persist instance receipt")
+	}
+	if e := platformfs.SyncPath(s.dir); e != nil {
+		return errors.New("cannot sync instance receipt")
+	}
+	return nil
+}
+func (s *Session) Start(ctx context.Context) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	s.mu.Lock()
+	if s.started || s.closed {
+		s.mu.Unlock()
+		return errors.New("VM instance already consumed")
+	}
+	s.started = true
+	life, cancel := context.WithTimeout(ctx, 180*time.Second)
+	s.cancel = cancel
+	s.mu.Unlock()
+	cmd, e := s.prepare(life)
+	if e != nil {
+		cancel()
+		s.finish(c4verify.Result{}, false, e)
+		return e
+	}
+	p, e := s.runtime.launch(life, cmd)
+	if e != nil {
+		cancel()
+		s.finish(c4verify.Result{}, false, errors.New("native VM start failed"))
+		return errors.New("native VM start failed")
+	}
+	s.mu.Lock()
+	s.process = p
+	s.mu.Unlock()
+	started := make(chan error, 1)
+	go func() {
+		select {
+		case <-life.Done():
+			p.Stop()
+		case <-s.done:
+		}
+	}()
+	go s.exchange(life, p, started)
+	select {
+	case e := <-started:
+		return e
+	case <-life.Done():
+		p.Stop()
+		return life.Err()
+	}
+}
+func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- error) {
+	var result c4verify.Result
+	valid := false
+	var final error
+	defer func() {
+		if final != nil {
+			p.Stop()
+		}
+		waitErr := p.Wait()
+		p.Input().Close()
+		p.Output().Close()
+		if final == nil && (waitErr != nil || !p.Terminated()) {
+			final = errors.New("native VM termination failed")
+			valid = false
+		}
+		if ctx.Err() != nil {
+			final = ctx.Err()
+			valid = false
+		}
+		if e := s.receipt("terminal"); e != nil {
+			final = e
+			valid = false
+		}
+		s.finish(result, valid, final)
+	}()
+	marker := make([]byte, len(ReadyMarker))
+	if _, e := io.ReadFull(p.Output(), marker); e != nil || string(marker) != ReadyMarker {
+		final = errors.New("trusted guest readiness missing")
+		started <- final
+		return
+	}
+	if e := WriteRequest(p.Input(), s.wire); e != nil {
+		final = errors.New("guest input transfer failed")
+		started <- final
+		return
+	}
+	if e := s.receipt("started"); e != nil {
+		final = e
+		started <- e
+		return
+	}
+	started <- nil
+	response, e := ReadResponse(p.Output(), s.wire)
+	if e != nil {
+		final = e
+		return
+	}
+	var extra [1]byte
+	n, e := p.Output().Read(extra[:])
+	if n != 0 || e != io.EOF {
+		final = errors.New("duplicate or trailing guest frame")
+		return
+	}
+	result = response.Result
+	valid = true
+}
+func (s *Session) finish(result c4verify.Result, valid bool, e error) {
+	s.mu.Lock()
+	s.result = result
+	s.valid = valid
+	s.err = e
+	if s.cancel != nil {
+		s.cancel()
+	}
+	close(s.done)
+	s.mu.Unlock()
+}
+func (s *Session) Wait(ctx context.Context) error {
+	s.mu.Lock()
+	started := s.started
+	s.mu.Unlock()
+	if !started {
+		return errors.New("VM not started")
+	}
+	select {
+	case <-s.done:
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.err
+	case <-ctx.Done():
+		s.mu.Lock()
+		cancel := s.cancel
+		s.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		return ctx.Err()
+	}
+}
+func (s *Session) Result() (c4verify.Result, bool) {
+	if s == nil {
+		return c4verify.Result{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	select {
+	case <-s.done:
+		return s.result, s.valid
+	default:
+		return c4verify.Result{}, false
+	}
+}
+func (s *Session) Running() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.started {
+		return false
+	}
+	select {
+	case <-s.done:
+		return false
+	default:
+		return true
+	}
+}
+func (s *Session) Close(ctx context.Context) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	started := s.started
+	cancel, p := s.cancel, s.process
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if p != nil {
+		if e := p.Stop(); e != nil {
+			return errors.New("owned VM stop unconfirmed")
+		}
+	}
+	if started {
+		select {
+		case <-s.done:
+		case <-ctx.Done():
+			return errors.New("owned VM termination unconfirmed")
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
+	if s.process != nil && !s.process.Terminated() {
+		return errors.New("owned VM termination unconfirmed")
+	}
+	if e := s.receipt("closed"); e != nil {
+		return e
+	}
+	s.closed = true
+	s.wire.Secret = ""
+	s.wire.Files = nil
+	return nil
+}
+
+func snapshot(ctx context.Context, dir string) ([]SnapshotFile, error) {
+	if e := canonicalDirectory(dir); e != nil {
+		return nil, e
+	}
+	root, e := os.OpenRoot(dir)
+	if e != nil {
+		return nil, errors.New("cannot open candidate")
+	}
+	defer root.Close()
+	files := []SnapshotFile{}
+	total, entries := 0, 0
+	e = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, e error) error {
+		if e != nil {
+			return e
+		}
+		if e := ctx.Err(); e != nil {
+			return e
+		}
+		entries++
+		if entries > 2000 {
+			return errors.New("candidate entry bound exceeded")
+		}
+		if p == "." {
+			return nil
+		}
+		if !safeRelative(p) || d.Type()&os.ModeSymlink != 0 {
+			return errors.New("unsafe candidate path")
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if len(files) >= 500 {
+			return errors.New("candidate file count exceeded")
+		}
+		f, e := openAsset(root, p)
+		if e != nil {
+			return e
+		}
+		defer f.Close()
+		info, e := f.Stat()
+		if e != nil {
+			return e
+		}
+		mode, e := platformfs.CanonicalMode(info.Mode())
+		if e != nil {
+			return e
+		}
+		b, e := io.ReadAll(io.LimitReader(f, int64(MaxSnapshotBytes-total)+1))
+		if e != nil {
+			return e
+		}
+		total += len(b)
+		if total > MaxSnapshotBytes {
+			return errors.New("candidate exceeds bound")
+		}
+		files = append(files, SnapshotFile{Path: p, Mode: uint32(mode.Perm()), Data: b})
+		return nil
+	})
+	if e != nil {
+		return nil, e
+	}
+	return files, nil
+}
+func (s *Session) prepare(ctx context.Context) (command, error) {
+	m, id, e := loadManifest(s.runtime.bundleRoot)
+	if e != nil || id != s.runtime.identity {
+		return command{}, errors.New("installed VM bundle changed")
+	}
+	root, e := os.OpenRoot(s.runtime.bundleRoot)
+	if e != nil {
+		return command{}, errors.New("cannot open VM bundle")
+	}
+	defer root.Close()
+	dest := filepath.Join(s.dir, "assets")
+	if e := os.Mkdir(dest, 0700); e != nil {
+		return command{}, errors.New("cannot stage immutable VM assets")
+	}
+	for _, a := range m.Assets {
+		if e := ctx.Err(); e != nil {
+			return command{}, e
+		}
+		// Legal/source inventories and the separately indexed verifier remain
+		// verified above, but are not runtime dependencies. Stage only boot
+		// files and the audited helper/QEMU dependency and firmware closure.
+		if a.Path != m.Kernel && a.Path != m.RootFS && !strings.HasPrefix(a.Path, "runtime/") {
+			continue
+		}
+		p := filepath.Join(dest, filepath.FromSlash(a.Path))
+		if e := os.MkdirAll(filepath.Dir(p), 0700); e != nil {
+			return command{}, errors.New("cannot stage VM asset")
+		}
+		f, e := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0400)
+		if e != nil {
+			return command{}, errors.New("cannot stage VM asset")
+		}
+		e = verifyAsset(root, a, f)
+		ce := f.Close()
+		if e != nil || ce != nil {
+			return command{}, errors.New("VM asset staging integrity failed")
+		}
+		if a.Path == m.Runtime {
+			if e := os.Chmod(p, 0500); e != nil {
+				return command{}, errors.New("cannot secure VM helper")
+			}
+		}
+	}
+	return nativeCommand(dest, m), nil
+}
