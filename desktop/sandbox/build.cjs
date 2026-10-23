@@ -156,7 +156,7 @@ async function buildBundle({ output, local, windowsRuntime, go = process.env.FOU
     if (!windowsRuntime || !path.isAbsolute(windowsRuntime)) throw Error("Explicit source-built Windows runtime required");
     const proof = JSON.parse(fs.readFileSync(path.join(windowsRuntime, "windows-runtime-build.json")));
     if (proof.kind !== "source-built-minimal-qemu" || proof.source_sha256 !== lock.windows.source_sha256) throw Error("Minimal source-build proof required");
-    require("./windows-source-build.cjs").auditConfiguration({ options: proof.options, devices: proof.devices, host: proof.host });
+    require("./windows-source-build.cjs").auditConfiguration({ options: proof.options, devices: proof.devices, host: proof.host, target: proof.target });
     verifyBuiltWindowsRuntime(path.join(windowsRuntime, "runtime"), proof, lock);
     verifyWindowsRedistribution(windowsRuntime, proof, lock);
     fs.cpSync(path.join(windowsRuntime, "runtime"), path.join(bundle, "runtime"), { recursive: true });

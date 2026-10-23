@@ -8,11 +8,19 @@ const digest = raw => crypto.createHash("sha256").update(raw).digest("hex");
 function minimalBuildPlan() {
   return { configure: ["--target-list=x86_64-softmmu", "--without-default-features", "--without-default-devices", "--with-devices-x86_64=foundry", "--disable-download", "--disable-tcg", "--enable-whpx", "--enable-stack-protector", "--disable-modules", "--disable-plugins", "--disable-gtk", "--disable-sdl", "--disable-vnc", "--disable-opengl", "--disable-curses", "--audio-drv-list=", "--disable-jack", "--disable-dsound", "--disable-spice", "--disable-slirp", "--disable-curl", "--disable-libssh", "--disable-libnfs", "--disable-virtfs", "--disable-libusb", "--disable-usb-redir", "--disable-smartcard", "--disable-gio", "--disable-pixman", "--disable-fdt", "--disable-guest-agent", "--disable-tools", "--disable-docs"], devices: "CONFIG_Q35=y\n", targets: ["qemu-system-x86_64.exe"] };
 }
-function auditConfiguration({ options, devices, host }) {
-  if (!Array.isArray(options) || typeof devices !== "string" || typeof host !== "string") throw Error("Generated configuration evidence required");
+function readGeneratedConfiguration(buildRoot) {
+  return {
+    options: JSON.parse(fs.readFileSync(path.join(buildRoot, "meson-info", "intro-buildoptions.json"), "utf8")),
+    devices: fs.readFileSync(path.join(buildRoot, "x86_64-softmmu-config-devices.mak"), "utf8"),
+    host: fs.readFileSync(path.join(buildRoot, "config-host.h"), "utf8"),
+    target: fs.readFileSync(path.join(buildRoot, "x86_64-softmmu-config-target.h"), "utf8"),
+  };
+}
+function auditConfiguration({ options, devices, host, target }) {
+  if (!Array.isArray(options) || typeof devices !== "string" || typeof host !== "string" || typeof target !== "string") throw Error("Generated configuration evidence required");
   const map = new Map(options.map(o => [o.name, o]));
-  if (map.get("whpx")?.value !== "enabled" || !/^#define CONFIG_WHPX 1$/m.test(host)) throw Error("WHPX must be compiled in");
-  if (map.get("tcg")?.value !== "disabled" || /^#define CONFIG_TCG\b/m.test(host)) throw Error("TCG feature must be absent");
+  if (map.get("whpx")?.value !== "enabled" || !/^#define CONFIG_WHPX 1$/m.test(target)) throw Error("WHPX must be compiled in the x86_64 target");
+  if (map.get("tcg")?.value !== "disabled" || [host, target].some(header => /^#define CONFIG_TCG\b/m.test(header))) throw Error("TCG feature must be absent");
   if (map.size !== options.length) throw Error("Duplicate generated feature option");
   const feature = o => o?.type === "combo" && Array.isArray(o.choices) && ["enabled", "disabled", "auto"].every(v => o.choices.includes(v));
   const automatic = map.get("auto_features");
@@ -163,8 +171,8 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const sourceRoot = extractQemuSource({ lock, sourceTar, outputRoot, run }), buildRoot = path.join(outputRoot, "build"), plan = minimalBuildPlan();
   fs.mkdirSync(buildRoot); fs.writeFileSync(path.join(sourceRoot, "configs", "devices", "x86_64-softmmu", "foundry.mak"), plan.devices, { flag: "wx" });
   runLoggedBuildStep({ run, program: bash, args: [path.join(sourceRoot, "configure").replaceAll("\\", "/"), ...plan.configure], cwd: buildRoot, outputRoot, step: "configure" });
-  const options = JSON.parse(fs.readFileSync(path.join(buildRoot, "meson-info", "intro-buildoptions.json"))), devices = fs.readFileSync(path.join(buildRoot, "x86_64-softmmu-config-devices.mak"), "utf8"), host = fs.readFileSync(path.join(buildRoot, "config-host.h"), "utf8");
-  auditConfiguration({ options, devices, host });
+  const { options, devices, host, target } = readGeneratedConfiguration(buildRoot);
+  auditConfiguration({ options, devices, host, target });
   runLoggedBuildStep({ run, program: path.join(msysRoot, "ucrt64", "bin", "ninja.exe"), args: ["-j2", ...plan.targets], cwd: buildRoot, outputRoot, step: "ninja" });
   const runtime = path.join(outputRoot, "runtime"); fs.mkdirSync(runtime); const available = new Map();
   available.set("qemu-system-x86_64.exe", fs.readFileSync(path.join(buildRoot, "qemu-system-x86_64.exe")));
@@ -182,7 +190,7 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const firmware = path.join(runtime, "share", "qemu"); fs.mkdirSync(firmware, { recursive: true });
   for (const name of ["bios-256k.bin", "linuxboot_dma.bin"]) { const raw = fs.readFileSync(path.join(sourceRoot, "pc-bios", name)); fs.writeFileSync(path.join(firmware, name), raw, { flag: "wx" }); files.push({ path: "runtime/share/qemu/" + name, bytes: raw.length, sha256: digest(raw) }); }
   const sourceKit = assembleLegal({ lock, inputsRoot: inputs, sourceRoot, outputRoot, tar });
-  const receipt = { schema_version: 1, kind: "source-built-minimal-qemu", version: lock.windows.qemu_version, source_sha256: lock.windows.source_sha256, source_kit: sourceKit, build_packages: archives, configure: plan.configure, devices, host, options, imports, files, zlib: zlib.receipt, native_acceptance: "not_performed" };
+  const receipt = { schema_version: 1, kind: "source-built-minimal-qemu", version: lock.windows.qemu_version, source_sha256: lock.windows.source_sha256, source_kit: sourceKit, build_packages: archives, configure: plan.configure, devices, host, target, options, imports, files, zlib: zlib.receipt, native_acceptance: "not_performed" };
   fs.writeFileSync(path.join(outputRoot, "windows-runtime-build.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx" });
   fs.writeFileSync(path.join(outputRoot, "legal", "windows-runtime-build.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx" });
   return receipt;
@@ -240,7 +248,7 @@ function extractQemuSource({ lock, sourceTar, outputRoot, run = (program, args) 
   }
   return sourceRoot;
 }
-module.exports = { minimalBuildPlan, auditConfiguration, assertMinimalClosure, assembleLegal, verifyBootstrapRoot, bootstrapWindowsBuildHost, buildMinimalWindowsRuntime, installBuildPackages, extractQemuSource, runLoggedBuildStep };
+module.exports = { minimalBuildPlan, readGeneratedConfiguration, auditConfiguration, assertMinimalClosure, assembleLegal, verifyBootstrapRoot, bootstrapWindowsBuildHost, buildMinimalWindowsRuntime, installBuildPackages, extractQemuSource, runLoggedBuildStep };
 if (require.main === module) {
   const lock = require("./inputs.lock.json"), cacheRoot = process.env.FOUNDRY_SANDBOX_INPUTS;
   const action = process.argv[2] === "--bootstrap" ? bootstrapWindowsBuildHost({ lock, outputRoot: process.argv[3] || "", cacheRoot }) : buildMinimalWindowsRuntime({ lock, outputRoot: process.argv[2] || "", msysRoot: process.argv[3] || "", cacheRoot, installPinnedBuildPackages: process.argv[4] === "--install-pinned-build-packages" });

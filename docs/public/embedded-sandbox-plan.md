@@ -183,6 +183,15 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 
 ## Completion gate
 
+Native Windows run 39925686067 completed configure, then exposed an incorrect
+generated-header selection: QEMU emits CONFIG_WHPX in the architecture-specific
+`x86_64-softmmu-config-target.h`, not `config-host.h` (pinned meson.build lines
+3320–3389). Record both exact headers in the build proof, require WHPX in the
+x86_64 target header, and reject TCG in either header. Revalidate that same proof
+during bundle assembly; do not substitute configure flags for generated facts.
+Add source-derived positive/negative regressions and an exact-file loading test
+before implementation. Native compile and installed WHPX acceptance remain gates.
+
 Windows generated-feature audit follow-up: QEMU 11.1.2 implements
 `--without-default-features` using Meson's `auto_features=disabled`, while
 Meson 1.12.1 introspection retains raw feature defaults (for example `attr=auto`).

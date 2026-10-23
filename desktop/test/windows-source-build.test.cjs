@@ -14,8 +14,28 @@ function generatedConfiguration() {
   const options = ["whpx", "tcg", "gtk", "jack", "slirp", "virtfs", "libusb", "modules"].map(name => ({ name, type: "combo", choices: ["enabled", "disabled", "auto"], section: "user", value: name === "whpx" ? "enabled" : "disabled" }));
   options.push({ name: "auto_features", type: "combo", choices: ["enabled", "disabled", "auto"], section: "core", value: "disabled" });
   options.push({ name: "default_devices", value: false }, { name: "plugins", value: false }, { name: "audio_drv_list", value: [] });
-  return { options, devices: "CONFIG_Q35=y\nCONFIG_AHCI_ICH9=y\nCONFIG_SERIAL_ISA=y\nCONFIG_FW_CFG_DMA=y\n", host: "#define CONFIG_WHPX 1\n" };
+  return { options, devices: "CONFIG_Q35=y\nCONFIG_AHCI_ICH9=y\nCONFIG_SERIAL_ISA=y\nCONFIG_FW_CFG_DMA=y\n", host: "#define CONFIG_WIN32 1\n", target: "#define CONFIG_WHPX 1\n#define TARGET_ARCH X86_64\n#define TARGET_I386 1\n" };
 }
+test("generated WHPX proof comes from the exact x86_64 target header, never the global header", t => {
+  const input = generatedConfiguration();
+  assert.equal(build.auditConfiguration(input), true);
+  assert.equal(build.auditConfiguration({ ...input, host: input.host.replaceAll("\n", "\r\n"), target: input.target.replaceAll("\n", "\r\n") }), true);
+  for (const target of [undefined, "", "#define CONFIG_WHPX 0\n"]) {
+    assert.throws(() => build.auditConfiguration({ ...input, host: input.host + "#define CONFIG_WHPX 1\n", target }), /evidence|WHPX/i);
+  }
+  for (const field of ["host", "target"]) {
+    assert.throws(() => build.auditConfiguration({ ...input, [field]: input[field] + "#define CONFIG_TCG 1\n" }), /TCG/i);
+  }
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-config-proof-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "meson-info"));
+  const files = { "meson-info/intro-buildoptions.json": JSON.stringify(input.options), "x86_64-softmmu-config-devices.mak": input.devices, "config-host.h": input.host, "x86_64-softmmu-config-target.h": input.target };
+  for (const [file, raw] of Object.entries(files)) fs.writeFileSync(path.join(root, file), raw);
+  const evidence = build.readGeneratedConfiguration(root);
+  assert.deepEqual(evidence, input); assert.equal(build.auditConfiguration(evidence), true);
+  fs.unlinkSync(path.join(root, "x86_64-softmmu-config-target.h"));
+  fs.writeFileSync(path.join(root, "aarch64-softmmu-config-target.h"), input.target);
+  assert.throws(() => build.readGeneratedConfiguration(root), /ENOENT/);
+});
 test("audits generated feature values and devices, not just requested configure flags", () => {
   assert.equal(typeof build.auditConfiguration, "function", "Generated configuration validation is missing");
   const input = generatedConfiguration(), { options } = input;
