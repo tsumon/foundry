@@ -1,6 +1,12 @@
 import { decisionKind, type DecisionKind } from "./deliveryStatus";
 import type { Mission, Review } from "./types";
-import { c4OperationLabel, c4Supported, hasC4 } from "./c4";
+import {
+  c4BackendLabel,
+  c4OperationLabel,
+  c4Supported,
+  hasC4,
+  isModelBackedC4,
+} from "./c4";
 import {
   verificationOutcome,
   verificationSourceLabel,
@@ -193,9 +199,10 @@ export function decisionMaterial(mission: Mission): DecisionMaterial {
         { label: "基线材料", value: baseline?.material_digest ?? "未记录" },
         {
           label: "来源",
-          value:
-            mission.spec.c4?.control_version === 1 &&
-            mission.spec.c4.mode === "docker"
+          value: isModelBackedC4(mission)
+            ? `${c4BackendLabel(mission.spec.c4?.mode)} 声明 · 结果以绑定事实为准；模型来源以冻结路由和模型调用回执为准`
+            : mission.spec.c4?.control_version === 1 &&
+                mission.spec.c4.mode === "docker"
               ? "受控 Docker 声明 · 结果以绑定事实为准；模型推理为本地模拟"
               : c4Supported(mission)
                 ? "synthetic_stub · 本任务未执行真实 Docker"

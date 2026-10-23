@@ -1,5 +1,17 @@
 import type { GenerationRef, Mission } from "./types";
 
+export interface C4VMIdentity {
+  schema_version: number;
+  manifest_digest: string;
+  host_platform: string;
+  guest_platform: string;
+  runtime_digest: string;
+  kernel_digest: string;
+  rootfs_digest: string;
+  verifier_digest: string;
+  protocol: string;
+  policy_version: string;
+}
 export interface C4Profile {
   schema_version: number;
   control_version?: number;
@@ -10,6 +22,7 @@ export interface C4Profile {
   docker_path: string;
   endpoint: string;
   verifier: string;
+  embedded_vm?: C4VMIdentity;
 }
 export interface C4Fact {
   revision: number;
@@ -114,9 +127,32 @@ export type C4Action =
       material_digest: string;
     };
 
-export const c4ControlSource = (m: Mission) =>
-  m.spec.c4?.mode === "docker" ? "docker_c4_control" : "synthetic_c4_control";
+export const c4ControlSource = (m: Mission) => {
+  switch (m.spec.c4?.mode) {
+    case "docker":
+      return "docker_c4_control";
+    case "embedded_vm":
+      return "embedded_vm_c4_control";
+    case "synthetic":
+      return "synthetic_c4_control";
+    default:
+      return null;
+  }
+};
+export const c4BackendLabel = (mode?: string) => {
+  switch (mode) {
+    case "docker":
+      return "受控 Docker";
+    case "embedded_vm":
+      return "内置 VM";
+    case "synthetic":
+      return "本地模拟";
+    default:
+      return "未知后端";
+  }
+};
 export const c4ControlBound = (m: Mission, c: C4Control) =>
+  c4Supported(m) &&
   c.schema_version === 1 &&
   c.mission_id === m.id &&
   c.base_commit === m.base_commit &&
@@ -159,7 +195,7 @@ export const isModelBackedC4 = (m: Mission) =>
   m.spec.c4?.schema_version === 1 &&
   m.spec.c4.control_version === 1 &&
   m.spec.c4.id === "c4_go_model_v1" &&
-  m.spec.c4.mode === "docker";
+  (m.spec.c4.mode === "docker" || m.spec.c4.mode === "embedded_vm");
 export const isTerminalModelBackedDelivery = (m: Mission) =>
   isModelBackedC4(m) && m.delivery !== null;
 const c4Opaque = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
@@ -221,9 +257,42 @@ function c4LifecycleOrdered(o: C4Operation): boolean {
   return true;
 }
 
-export const c4Supported = (m: Mission) => {
-  const p = m.spec.c4;
+export function c4VMIdentityValid(value: unknown): value is C4VMIdentity {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as C4VMIdentity;
+  return (
+    v.schema_version === 1 &&
+    v.protocol === "foundry-vm-v1" &&
+    v.policy_version === "go-vm-v1" &&
+    ((v.host_platform === "darwin/arm64" &&
+      v.guest_platform === "linux/arm64") ||
+      (v.host_platform === "windows/amd64" &&
+        v.guest_platform === "linux/amd64")) &&
+    [
+      v.manifest_digest,
+      v.runtime_digest,
+      v.kernel_digest,
+      v.rootfs_digest,
+      v.verifier_digest,
+    ].every((digest) => typeof digest === "string" && c4SHA.test(digest))
+  );
+}
+export const c4Supported = (m: Mission) => c4ProfileSupported(m.spec.c4);
+export const c4ProfileSupported = (p?: C4Profile) => {
   if (!p) return false;
+  if (p.mode === "embedded_vm")
+    return (
+      p.schema_version === 1 &&
+      p.control_version === 1 &&
+      p.id === "c4_go_model_v1" &&
+      p.image_id === "" &&
+      p.docker_path === "" &&
+      p.endpoint === "" &&
+      p.verifier === "/opt/foundry/verify-go-v1" &&
+      c4VMIdentityValid(p.embedded_vm) &&
+      p.platform === p.embedded_vm.guest_platform
+    );
+  if (p.embedded_vm !== undefined) return false;
   const socketPath = p.endpoint?.startsWith("unix://")
     ? p.endpoint.slice("unix://".length)
     : "";
@@ -283,6 +352,9 @@ function c4MissionOperationBindings(m: Mission, o: C4Operation): boolean {
   return (
     c4Supported(m) &&
     c4OperationBindings(o) &&
+    (m.spec.c4?.mode !== "embedded_vm" ||
+      o.container_id === undefined ||
+      (typeof o.container_id === "string" && c4SHA.test(o.container_id))) &&
     o.mission_id === m.id &&
     o.epoch <= m.epoch &&
     o.base_commit === m.base_commit &&
@@ -401,9 +473,11 @@ export function c4OperationLabel(m: Mission, o: C4Operation): string {
   if (o.kind === "candidate" && !c4CandidateApprovalBound(m, o))
     return "审批绑定缺失或不匹配 · 不能确认通过";
   if (c4Passed(o))
-    return m.spec.c4?.mode === "docker"
-      ? "Docker 验证通过 · 已记录隔离执行"
-      : "模拟验证通过 · 非真实执行";
+    return m.spec.c4?.mode === "embedded_vm"
+      ? "内置 VM 验证通过 · 已记录隔离执行"
+      : m.spec.c4?.mode === "docker"
+        ? "Docker 验证通过 · 已记录隔离执行"
+        : "模拟验证通过 · 非真实执行";
   if (o.result)
     return `${o.result.class} · ${c4CleanupState(o) === "confirmed" ? "清理已确认，结果不变" : "清理未确认，不能继续"}`;
   if (o.state === "prepared" && !o.approval) return "待批准基线材料 · 未执行";

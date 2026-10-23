@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
 import { activeStates, type Mission } from "../types";
+import { C4VMIdentityFacts } from "./C4VMIdentityFacts";
 import {
   c4CleanupState,
+  c4BackendLabel,
   c4ControlBound,
   c4ControlActivationMatches,
   c4ControlSource,
@@ -147,7 +149,8 @@ export function C4Controls({
     !status.control.expired &&
     Date.parse(status.control.expires_at ?? "") > at &&
     status.control.source_kind === source &&
-    status.real_execution === (source === "docker_c4_control") &&
+    status.real_execution ===
+      (source === "docker_c4_control" || source === "embedded_vm_c4_control") &&
     c4Supported(m)
   );
   const available = configured && c4ReadinessFresh(m, at, status?.control);
@@ -299,13 +302,13 @@ export function C4Controls({
       <h3>
         {source === "synthetic_c4_control"
           ? "模拟就绪检查 · 非真实 Docker"
-          : "C4 就绪检查 · 受控 Docker 配置"}
+          : `C4 就绪检查 · ${c4BackendLabel(m.spec.c4?.mode)} 配置`}
       </h3>
       <p className="warning-copy">
         {source === "synthetic_c4_control"
           ? "本任务仅本地模拟，未执行真实 Docker；模拟不能证明 Docker、Go、镜像或隔离就绪。"
           : isModelBackedC4(m)
-            ? "配置可用不代表就绪或执行成功；模型调用仍需独立上下文授权，Docker 执行仍需基线与执行审批。"
+            ? `配置可用不代表就绪或执行成功；模型调用仍需独立上下文授权，${c4BackendLabel(m.spec.c4?.mode)} 执行仍需基线与执行审批。`
             : "配置可用不代表就绪或执行成功；模型推理仍为本地模拟。"}
       </p>
       <p>
@@ -316,6 +319,9 @@ export function C4Controls({
         {m.spec.c4?.id} · {m.spec.c4?.platform} · Go 1.27.3 ·{" "}
         <code>{m.spec.c4?.image_id}</code> · <code>{m.spec.c4?.verifier}</code>
       </p>
+      {m.spec.c4?.mode === "embedded_vm" && (
+        <C4VMIdentityFacts identity={m.spec.c4.embedded_vm} />
+      )}
       <p className="note">
         准备、批准、执行分别点击；就绪不是基线或候选通过，不授权上下文、计划、候选执行或交付。不会自动探测、重试或清理。
       </p>

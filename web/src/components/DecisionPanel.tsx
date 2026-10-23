@@ -123,7 +123,7 @@ export function DecisionPanel({
           {c4Blocked && (
             <p className="warning-copy">
               {modelBacked
-                ? "C4 尚无可继续的完整 Docker 基线与清理事实，或当前就绪未确认。模型路由配置不改变此门禁；上下文、执行与交付仍需各自批准。"
+                ? `C4 尚无可继续的完整 ${mission.spec.c4?.mode === "embedded_vm" ? "内置 VM" : "Docker"} 基线与清理事实，或当前就绪未确认。模型路由配置不改变此门禁；上下文、执行与交付仍需各自批准。`
                 : "C4 尚无可继续的完整基线与清理事实，或模拟能力未确认。上下文、执行与交付仍需各自批准；请先检查 C4 记录。"}
             </p>
           )}
@@ -319,7 +319,7 @@ export function DecisionPanel({
             <>
               <div className="note">
                 {modelBacked
-                  ? "批准后，Worker 按当前计划在独立候选副本工作；Worker 模型输出以调用回执为准，测试通过只以 C4 Docker 操作记录为准。批准计划不跳过候选验证、QA、Auditor 或交付审批。"
+                  ? `批准后，Worker 按当前计划在独立候选副本工作；Worker 模型输出以调用回执为准，测试通过只以 C4 ${mission.spec.c4?.mode === "embedded_vm" ? "内置 VM" : "Docker"} 操作记录为准。批准计划不跳过候选验证、QA、Auditor 或交付审批。`
                   : "批准后，Worker 将按当前计划在独立候选副本执行，不会修改原仓库。验证来源以控制器记录为准；模拟检查不执行命令，来源未记录不代表已执行。"}
               </div>
               <button

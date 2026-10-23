@@ -371,7 +371,8 @@ export default function App() {
                 </li>
               </ol>
               <div className="note">
-                验证在受限 Docker 容器内运行。不会自动安装依赖、推送或部署。
+                新编码任务默认使用内置 VM，可显式选择
+                Docker。验证受独立审批控制；不会自动安装依赖、回退后端、推送或部署。
               </div>
             </aside>
           </div>

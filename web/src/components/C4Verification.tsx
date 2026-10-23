@@ -1,9 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
 import { C4Controls, C4ControlFacts } from "./C4Controls";
+import { C4VMIdentityFacts } from "./C4VMIdentityFacts";
 import { activeStates, type Mission } from "../types";
 import {
   c4CleanupState,
+  c4BackendLabel,
   c4OperationLabel,
   c4Supported,
   hasC4,
@@ -16,19 +18,22 @@ import {
 function C4ProfileFacts({ mission }: { mission: Mission }) {
   const p = mission.spec.c4;
   const docker = p?.control_version === 1 && p.mode === "docker";
+  const vm = p?.mode === "embedded_vm";
   const modelBacked = isModelBackedC4(mission);
   return (
     <>
       <p className="warning-copy">
         {modelBacked
-          ? "账户模型与受控 Docker 声明；当前可用性需分别核对调用授权、就绪和审批。历史配置不等于当前权限或成功。"
+          ? `账户模型与${c4BackendLabel(p?.mode)}声明；当前可用性需分别核对调用授权、就绪和审批。历史配置不等于当前权限或成功。`
           : docker
             ? "受控 Docker 声明；当前可用性需核对控制状态。历史事实不等于当前就绪，模型推理仍为本地模拟。"
-            : "本任务仅本地模拟，未执行真实 Docker。模拟通过不证明 Docker、Go、镜像、隔离或资源就绪。"}
+            : p?.mode === "synthetic"
+              ? "本任务仅本地模拟，未执行真实 Docker。模拟通过不证明 Docker、Go、镜像、隔离或资源就绪。"
+              : "配置不支持；来源未确认，不能推断成功。"}
       </p>
       <p className="muted small">
         {modelBacked
-          ? "账户模型输出来源：冻结角色路由与模型调用回执；测试来源：C4 Docker 操作与清理记录。两者都不从配置推断成功。"
+          ? `账户模型输出来源：冻结角色路由与模型调用回执；测试来源：C4 ${vm ? "内置 VM" : "Docker"} 操作与清理记录。两者都不从配置推断成功。本地模型协议夹具不代表真实账户调用。`
           : docker
             ? "验证来源按已记录的 Docker 就绪与操作绑定判断，不从模式声明推断成功。"
             : c4Supported(mission)
@@ -42,7 +47,7 @@ function C4ProfileFacts({ mission }: { mission: Mission }) {
           {p?.id ?? "未记录"} / {p?.schema_version ?? "未记录"} /{" "}
           {p?.mode ?? "未记录"}
         </dd>
-        <dt>镜像 / 平台</dt>
+        <dt>{vm ? "客体平台" : "镜像 / 平台"}</dt>
         <dd>
           <code>{p?.image_id ?? "未记录"}</code> · {p?.platform ?? "未记录"}
         </dd>
@@ -50,17 +55,21 @@ function C4ProfileFacts({ mission }: { mission: Mission }) {
         <dd>
           <code>{p?.verifier ?? "未记录"}</code>
         </dd>
-        <dt>Docker / endpoint 声明</dt>
-        <dd>
-          <code>{p?.docker_path ?? "未记录"}</code> ·{" "}
-          <code>{p?.endpoint ?? "未记录"}</code>
-        </dd>
+        {!vm && (
+          <>
+            <dt>Docker / endpoint 声明</dt>
+            <dd>
+              <code>{p?.docker_path ?? "未记录"}</code> ·{" "}
+              <code>{p?.endpoint ?? "未记录"}</code>
+            </dd>
+          </>
+        )}
         {c4Supported(mission) && (
           <>
             <dt>固定资源权限</dt>
             <dd>
-              1 CPU · 1 GiB · 128 pids · 120 秒 · 合并日志 64 KiB · UID/GID
-              65534
+              {vm && "VM：1 vCPU · 2 GiB · 总时限 180 秒；测试："}1 CPU · 1 GiB
+              · 128 pids · 120 秒 · 合并日志 64 KiB · UID/GID 65534
             </dd>
             <dt>可写 scratch 权限</dt>
             <dd>
@@ -69,10 +78,13 @@ function C4ProfileFacts({ mission }: { mission: Mission }) {
             </dd>
             <dt>只读与隔离声明</dt>
             <dd>
-              根与候选只读；无网络、端口、拉取或
-              capabilities；no-new-privileges；禁用 healthcheck / logging
+              {vm
+                ? "根与候选只读；无网卡、主机共享、USB、剪贴板或继承凭据；no-new-privileges"
+                : "根与候选只读；无网络、端口、拉取或 capabilities；no-new-privileges；禁用 healthcheck / logging"}
             </dd>
-            <dt>{docker ? "固定 Go 合约声明" : "固定 Go 合约（未执行）"}</dt>
+            <dt>
+              {docker || vm ? "固定 Go 合约声明" : "固定 Go 合约（未执行）"}
+            </dt>
             <dd>
               Go 1.27.3 · <code>go test -json -count=1 -timeout=90s ./...</code>{" "}
               ·
@@ -82,6 +94,7 @@ function C4ProfileFacts({ mission }: { mission: Mission }) {
           </>
         )}
       </dl>
+      {vm && <C4VMIdentityFacts identity={p?.embedded_vm} />}
     </>
   );
 }
@@ -384,7 +397,11 @@ function OperationFacts({
             </>
           )}
         </dd>
-        <dt>容器声明 / 精确 ID</dt>
+        <dt>
+          {mission.spec.c4?.mode === "embedded_vm"
+            ? "VM 实例声明 / 精确 ID"
+            : "容器声明 / 精确 ID"}
+        </dt>
         <dd>
           <code>{o.container_name}</code> /{" "}
           <code>{o.container_id ?? "未记录"}</code>
@@ -406,7 +423,8 @@ function OperationFacts({
           </Fragment>
         ))}
         <dt>
-          {mission.spec.c4?.mode === "docker"
+          {mission.spec.c4?.mode === "docker" ||
+          mission.spec.c4?.mode === "embedded_vm"
             ? "结果 / 退出码 / 测试数"
             : "结果 / 退出码 / 模拟测试数"}
         </dt>

@@ -1,5 +1,5 @@
 import { request } from "./api";
-import type { C4Profile } from "./c4";
+import { c4ProfileSupported, type C4Profile } from "./c4";
 import type { CreateRequest, Mission } from "./types";
 
 export type CodingTaskApproval =
@@ -10,6 +10,13 @@ export interface CodingTaskCapability {
   available: boolean;
   reason: string;
   profile: C4Profile;
+  default_backend?: "embedded_vm" | "docker";
+  backends?: Array<{
+    mode: "embedded_vm" | "docker";
+    available: boolean;
+    profile: C4Profile;
+    prerequisite: string;
+  }>;
   limits: { max_calls: number; max_repairs: number };
   provider_families: string[];
   approval_required: CodingTaskApproval[];
@@ -27,6 +34,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function capabilityProfile(value: unknown, available: boolean): boolean {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== 1 ||
+    value.control_version !== 1 ||
+    value.id !== "c4_go_model_v1" ||
+    value.verifier !== "/opt/foundry/verify-go-v1"
+  )
+    return false;
+  if (value.mode === "embedded_vm") {
+    if (
+      value.image_id !== "" ||
+      value.docker_path !== "" ||
+      value.endpoint !== ""
+    )
+      return false;
+    if (!available && value.embedded_vm === undefined && value.platform === "")
+      return true;
+    return c4ProfileSupported(value as unknown as C4Profile);
+  }
+  return (
+    value.mode === "docker" &&
+    value.embedded_vm === undefined &&
+    value.platform === "linux/arm64" &&
+    typeof value.docker_path === "string" &&
+    typeof value.endpoint === "string" &&
+    typeof value.image_id === "string"
+  );
+}
+
 export function parseCodingTaskCapability(
   value: unknown,
 ): CodingTaskCapability | null {
@@ -39,15 +76,7 @@ export function parseCodingTaskCapability(
     typeof value.enabled !== "boolean" ||
     typeof value.available !== "boolean" ||
     typeof value.reason !== "string" ||
-    profile.schema_version !== 1 ||
-    profile.control_version !== 1 ||
-    profile.id !== "c4_go_model_v1" ||
-    profile.mode !== "docker" ||
-    profile.platform !== "linux/arm64" ||
-    profile.verifier !== "/opt/foundry/verify-go-v1" ||
-    typeof profile.docker_path !== "string" ||
-    typeof profile.endpoint !== "string" ||
-    typeof profile.image_id !== "string" ||
+    !capabilityProfile(profile, value.available === true) ||
     !Number.isSafeInteger(limits.max_calls) ||
     (limits.max_calls as number) < 1 ||
     !Number.isSafeInteger(limits.max_repairs) ||
@@ -59,6 +88,38 @@ export function parseCodingTaskCapability(
     !approvals.every((item) => required.includes(item))
   )
     return null;
+  if (
+    value.default_backend !== undefined ||
+    value.backends !== undefined ||
+    profile.mode === "embedded_vm"
+  ) {
+    if (
+      value.default_backend !== "embedded_vm" ||
+      !Array.isArray(value.backends) ||
+      value.backends.length !== 2 ||
+      !value.backends.every(
+        (backend) =>
+          isRecord(backend) &&
+          ["embedded_vm", "docker"].includes(backend.mode as string) &&
+          typeof backend.available === "boolean" &&
+          typeof backend.prerequisite === "string" &&
+          capabilityProfile(backend.profile, backend.available) &&
+          isRecord(backend.profile) &&
+          backend.profile.mode === backend.mode,
+      ) ||
+      new Set(value.backends.map((b) => b.mode)).size !== 2
+    )
+      return null;
+    const primary = value.backends.find(
+      (b) => b.mode === value.default_backend,
+    );
+    if (
+      !primary ||
+      primary.available !== value.available ||
+      JSON.stringify(primary.profile) !== JSON.stringify(profile)
+    )
+      return null;
+  }
   return value as unknown as CodingTaskCapability;
 }
 

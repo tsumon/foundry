@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage } from "../api";
 import { codingTaskApi, type CodingTaskCapability } from "../codingTaskApi";
-import type { C4Profile } from "../c4";
+import { c4BackendLabel, c4ProfileSupported, type C4Profile } from "../c4";
+import { C4VMIdentityFacts } from "./C4VMIdentityFacts";
 
 export interface CodingTaskSelection {
   capability: CodingTaskCapability;
@@ -41,12 +42,14 @@ export function CodingTaskSetup({
     null,
   );
   const [imageID, setImageID] = useState("");
+  const [backend, setBackend] = useState("embedded_vm");
   const [dockerPath, setDockerPath] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestEpoch = useRef(0);
   const mounted = useRef(true);
+  const explicitBackend = useRef<string | null>(null);
 
   const read = useCallback(async () => {
     const epoch = ++requestEpoch.current;
@@ -56,10 +59,17 @@ export function CodingTaskSetup({
     try {
       const next = await codingTaskApi.capability();
       if (!mounted.current || requestEpoch.current !== epoch) return;
+      const mode =
+        explicitBackend.current ?? next.default_backend ?? next.profile.mode;
+      const frozen =
+        next.backends?.find((item) => item.mode === mode)?.profile ??
+        (next.profile.mode === mode ? next.profile : null);
+      if (!frozen) throw new Error("已选后端不可用；不会自动更换后端");
       setCapability(next);
-      setImageID(next.profile.image_id);
-      setDockerPath(next.profile.docker_path);
-      setEndpoint(next.profile.endpoint);
+      setBackend(mode);
+      setImageID(frozen.image_id);
+      setDockerPath(frozen.docker_path);
+      setEndpoint(frozen.endpoint);
     } catch (cause) {
       if (!mounted.current || requestEpoch.current !== epoch) return;
       setCapability(null);
@@ -78,34 +88,36 @@ export function CodingTaskSetup({
     };
   }, [read]);
 
+  const selectedBackend = capability?.backends?.find(
+    (item) => item.mode === backend,
+  );
+  const selectedProfile = selectedBackend?.profile ?? capability?.profile;
+  const available =
+    capability?.enabled === true &&
+    (selectedBackend?.available ?? capability?.available) === true;
+
   useEffect(() => {
-    if (
-      loading ||
-      !requested ||
-      !capability?.enabled ||
-      !capability.available
-    ) {
+    if (loading || !requested || !capability?.enabled || !available) {
       if (value) onChange(null);
       return;
     }
     const profile = {
-      ...capability.profile,
-      image_id: imageID.trim(),
-      docker_path: dockerPath.trim(),
-      endpoint: endpoint.trim(),
+      ...selectedProfile!,
+      ...(backend === "docker"
+        ? {
+            image_id: imageID.trim(),
+            docker_path: dockerPath.trim(),
+            endpoint: endpoint.trim(),
+          }
+        : {}),
     };
-    if (
-      !immutableImage.test(profile.image_id) ||
-      !validRuntime(profile.docker_path, profile.endpoint)
-    ) {
+    if (!c4ProfileSupported(profile)) {
       if (value) onChange(null);
       return;
     }
     if (
       value?.capability === capability &&
-      value.profile.image_id === profile.image_id &&
-      value.profile.docker_path === profile.docker_path &&
-      value.profile.endpoint === profile.endpoint
+      JSON.stringify(value.profile) === JSON.stringify(profile)
     )
       return;
     onChange({ capability, profile });
@@ -118,16 +130,16 @@ export function CodingTaskSetup({
     onChange,
     requested,
     value,
+    available,
+    selectedProfile,
+    backend,
   ]);
-
-  const available =
-    capability?.enabled === true && capability.available === true;
   return (
     <section className="controlled-create" aria-label="账户模型编码设置">
-      <h3>账户模型编码 · 受控 Docker</h3>
+      <h3>账户模型编码 · {c4BackendLabel(backend)}</h3>
       <p className="field-help">
         这是现有任务创建的一种显式配置，不是新的导航或授权捷径。读取配置不会联系模型、读取凭据或启动
-        Docker。
+        Docker 或 VM。
       </p>
       {loading && (
         <p role="status">
@@ -146,12 +158,51 @@ export function CodingTaskSetup({
       )}
       {!loading && capability && !available && (
         <p className="warning-copy">
-          账户模型编码不可用：{capability.reason || "运行时未启用"}
+          账户模型编码不可用：
+          {!capability.default_backend || backend === capability.default_backend
+            ? capability.reason || "运行时未启用"
+            : "所选后端不可用"}
           。配置记录不是授权或成功证据。
         </p>
       )}
       {capability && (
         <>
+          {capability.backends && (
+            <>
+              <label htmlFor="coding-backend">测试沙箱后端</label>
+              <select
+                id="coding-backend"
+                value={backend}
+                disabled={disabled || loading}
+                onChange={(event) => {
+                  const mode = event.target.value;
+                  explicitBackend.current = mode;
+                  const selected = capability.backends?.find(
+                    (item) => item.mode === mode,
+                  );
+                  onChange(null);
+                  setBackend(mode);
+                  setImageID(selected?.profile.image_id ?? "");
+                  setDockerPath(selected?.profile.docker_path ?? "");
+                  setEndpoint(selected?.profile.endpoint ?? "");
+                }}
+              >
+                {capability.backends.map((item) => (
+                  <option key={item.mode} value={item.mode}>
+                    {c4BackendLabel(item.mode)}
+                    {item.mode === "embedded_vm" ? "（默认）" : "（显式选择）"}
+                  </option>
+                ))}
+              </select>
+              <p className="field-help">
+                {selectedBackend?.prerequisite}
+                。切换后端改变审批材料；不会安装系统功能、自动回退或授权执行。
+              </p>
+            </>
+          )}
+          {backend === "embedded_vm" && (
+            <C4VMIdentityFacts identity={selectedProfile?.embedded_vm} />
+          )}
           <dl className="metadata">
             <dt>运行时 / 提供商</dt>
             <dd>
@@ -160,8 +211,7 @@ export function CodingTaskSetup({
             </dd>
             <dt>固定配置</dt>
             <dd>
-              <code>{capability.profile.id}</code> ·{" "}
-              {capability.profile.platform}
+              <code>{selectedProfile?.id}</code> · {selectedProfile?.platform}
             </dd>
             <dt>固定验证命令</dt>
             <dd>
@@ -193,9 +243,12 @@ export function CodingTaskSetup({
             if (!next) onChange(null);
           }}
         />
-        启用账户模型与受控 Docker（仅创建配置，不批准或执行）
+        {backend === "embedded_vm" && capability
+          ? "启用账户模型与内置 VM"
+          : "启用账户模型与受控 Docker"}
+        （仅创建配置，不批准或执行）
       </label>
-      {requested && capability && (
+      {requested && capability && backend === "docker" && (
         <div className="form-columns">
           <div>
             <label htmlFor="coding-image-id">不可变本地镜像 ID</label>
