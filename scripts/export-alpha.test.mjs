@@ -91,6 +91,9 @@ test('copies only listed files and does not leak omitted files', async () => {
   await withFixture(async ({ source, manifest, destination }) => {
     await put(source, 'included.txt', 'public bytes\n');
     await put(source, 'private-note.txt', 'not for release\n');
+    for (const privatePath of ['.git/config', '.superpowers/sdd/report.md', 'docs/superpowers/plan.md', 'evidence/receipt.json']) {
+      await put(source, privatePath, 'private evidence must remain omitted\n');
+    }
     await writeFile(manifest, 'included.txt\n');
 
     const result = exportAlpha(source, manifest, destination);
@@ -141,17 +144,19 @@ test('preserves source execution permissions', async () => {
   });
 });
 
-test('rejects reserved directories before creating the target', async () => {
-  await withFixture(async ({ source, manifest, destination }) => {
-    await put(source, '.git/config', 'private repository metadata\n');
-    await writeFile(manifest, '.git/config\n');
+test('rejects reserved directories before creating the target', async (t) => {
+  for (const privatePath of ['.git/config', '.superpowers/sdd/report.md', '.foundry/state.json']) {
+    await t.test(privatePath, async () => withFixture(async ({ source, manifest, destination }) => {
+      await put(source, privatePath, 'private repository metadata\n');
+      await writeFile(manifest, `${privatePath}\n`);
 
-    const result = exportAlpha(source, manifest, destination);
+      const result = exportAlpha(source, manifest, destination);
 
-    assert.notEqual(result.status, 0);
-    assert.doesNotMatch(result.stderr, /private repository metadata/);
-    await pathDoesNotExist(destination);
-  });
+      assert.notEqual(result.status, 0);
+      assert.doesNotMatch(result.stderr, /private repository metadata/);
+      await pathDoesNotExist(destination);
+    }));
+  }
 });
 
 test('rejects a destination inside the source tree without mutating the source', async () => {
@@ -218,9 +223,52 @@ test('the real alpha manifest exports exactly its listed regular files', async (
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).fileCount, paths.length);
     assert.deepEqual(await listRegularFiles(destination), paths);
-    // Export must retain the C3 admission dependencies used by C4, not merely
-    // agree with an incomplete manifest. This works in an export with no .git.
+    // Export must retain the current VM/installer and C3/C4 dependencies, not
+    // merely agree with an incomplete manifest. No Git metadata is needed.
     for (const dependency of [
+      'internal/vmguest/guest.go',
+      'internal/vmguest/linux.go',
+      'internal/vmguest/scratch.go',
+      'internal/vmruntime/runtime.go',
+      'internal/vmruntime/process_windows.go',
+      'internal/vmruntime/process_darwin.go',
+      'internal/vmacceptance/controller.go',
+      'internal/vmacceptance/summary.go',
+      'cmd/foundry-vm-guest/main.go',
+      'cmd/foundry-vm-acceptance/main.go',
+      'cmd/foundry/coding_runtime.go',
+      'internal/domain/c4_vm.go',
+      'internal/engine/coding_runtime.go',
+      'internal/engine/wait.go',
+      'internal/httpapi/coding_tasks.go',
+      'internal/sandbox/c4_vm.go',
+      'internal/sandbox/c4_lifecycle.go',
+      'internal/model/secrets_credential_manager.go',
+      'internal/model/secrets_windows.go',
+      'desktop/native-vm-smoke.cjs',
+      'desktop/coding-mode.cjs',
+      'desktop/sandbox/build.cjs',
+      'desktop/sandbox/build-guest.cjs',
+      'desktop/sandbox/assets.cjs',
+      'desktop/sandbox/inputs.lock.json',
+      'desktop/sandbox/kernel.cjs',
+      'desktop/sandbox/macos/main.swift',
+      'desktop/sandbox/macos/entitlements.plist',
+      'desktop/sandbox/windows-bundle.cjs',
+      'desktop/sandbox/windows-source-build.cjs',
+      'desktop/sandbox/windows-zlib.cjs',
+      'desktop/sandbox/zlib-regression.c',
+      'desktop/test/windows-zlib.test.cjs',
+      'desktop/test/native-vm-smoke.test.cjs',
+      'web/src/codingTaskApi.ts',
+      'web/src/components/CodingTaskSetup.tsx',
+      'web/src/components/C4VMIdentityFacts.tsx',
+      'web/src/embeddedVM.test.tsx',
+      'web/src/test/c4VMStatusContract.json',
+      'docs/public/embedded-sandbox.md',
+      'docs/public/embedded-sandbox-plan.md',
+      'docs/public/live-coding.md',
+      'docs/public/live-coding-plan.md',
       'internal/domain/repository_import.go',
       'internal/workspace/tree_walk.go',
       'internal/engine/repository_import_inspection.go',
@@ -240,6 +288,12 @@ test('the real alpha manifest exports exactly its listed regular files', async (
     ]) {
       assert.equal((await stat(join(destination, dependency))).isFile(), true, `${dependency} required in clean export`);
     }
+    // Include all reviewed first-party VM source/tests, not just their entry
+    // points. This compares actual source/output trees without broadening the
+    // exporter: production still copies only explicit allowlisted paths.
+    for (const directory of ['internal/vmguest', 'internal/vmruntime', 'internal/vmacceptance', 'cmd/foundry-vm-guest', 'cmd/foundry-vm-acceptance', 'desktop/sandbox']) {
+      assert.deepEqual(await listRegularFiles(destination, directory), await listRegularFiles(repositoryRoot, directory), `${directory} must be complete`);
+    }
     for (const path of paths) {
       const sourceBytes = await readFile(join(repositoryRoot, ...path.split('/')));
       const destinationBytes = await readFile(join(destination, ...path.split('/')));
@@ -249,6 +303,7 @@ test('the real alpha manifest exports exactly its listed regular files', async (
     await pathDoesNotExist(join(destination, 'AGENTS.md'));
     await pathDoesNotExist(join(destination, 'docs', 'superpowers'));
     await pathDoesNotExist(join(destination, '.superpowers'));
+    await pathDoesNotExist(join(destination, 'evidence'));
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
