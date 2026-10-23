@@ -258,21 +258,6 @@ function Coding-SectionAnchorsVisible([object]$Element) {
   )
 }
 
-function Has-DescendantText([object]$Root, [string]$Fragment) {
-  $items = $Root.FindAll(
-    [System.Windows.Automation.TreeScope]::Descendants,
-    [System.Windows.Automation.Condition]::TrueCondition
-  )
-  if ($items.Count -gt 256) { throw 'Dialog UI tree exceeds bound' }
-  foreach ($element in $items) {
-    $current = $element.Current
-    if ($current.ControlType -eq [System.Windows.Automation.ControlType]::Text -and $current.Name.Contains($Fragment)) {
-      return $true
-    }
-  }
-  return $false
-}
-
 function Invoke-Exact(
   [object]$Element,
   [ValidateSet('coding-mode-menu-item','persistent-mode-menu-item','create-mission-button')]
@@ -513,12 +498,7 @@ $codingSectionVisible = $false
 if ($Action -eq 'coding') {
   $dialog = Wait-OwnedExact ([System.Windows.Automation.ControlType]::Window) 'Open Controlled Coding Workbench?' 5
   $button = Wait-CodingTaskDialogAction $dialog $OwnerProcess 5
-  $fixedExplanation =
-    (Has-DescendantText $dialog 'Open live coding configuration?') -and
-    (Has-DescendantText $dialog 'This enables configuration only.') -and
-    (Has-DescendantText $dialog 'no model calls') -and
-    (Has-DescendantText $dialog 'no Docker commands') -and
-    (Has-DescendantText $dialog 'separate approvals')
+  $fixedExplanation = Test-CodingTaskDialogExplanation $dialog $OwnerProcess
   if (-not $fixedExplanation) { throw 'Native coding explanation mismatch' }
   Invoke-CodingTaskDialogAction $dialog $button $OwnerProcess
   $confirmation = $true

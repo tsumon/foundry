@@ -301,6 +301,59 @@ function Write-CodingTaskDialogDiagnostic([object]$Dialog, [int]$OwnerProcess) {
   [Console]::Error.WriteLine('Owned dialog candidates: ' + $summary)
 }
 
+function Get-CodingExplanationFragments {
+  return @(
+    'Open live coding configuration?'
+    'This opens configuration only.'
+    'starts no VM'
+    'no model calls'
+    'no Docker commands'
+    'require their own approvals'
+  )
+}
+
+function Test-CodingExplanationText([string[]]$Names) {
+  if ($null -eq $Names -or $Names.Count -gt 256) { return $false }
+  foreach ($name in $Names) {
+    if ($null -eq $name -or $name.Length -gt 4096) { return $false }
+  }
+  foreach ($fragment in (Get-CodingExplanationFragments)) {
+    $found = $false
+    foreach ($name in $Names) {
+      if ($name.Contains($fragment)) { $found = $true; break }
+    }
+    if (-not $found) { return $false }
+  }
+  return $true
+}
+
+function Get-CodingTaskDialogExplanationText([object]$Dialog, [int]$OwnerProcess) {
+  if ($null -eq $Dialog -or $Dialog.Current.ProcessId -ne $OwnerProcess -or
+      $Dialog.Current.Name -cne 'Open Controlled Coding Workbench?' -or
+      -not $Dialog.Current.IsEnabled -or $Dialog.Current.IsOffscreen) { return @() }
+  $items = $Dialog.FindAll(
+    [System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.Condition]::TrueCondition
+  )
+  if ($items.Count -gt 256) { throw 'Coding explanation tree exceeds bound' }
+  $names = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($element in $items) {
+    $current = $element.Current
+    if ($current.ProcessId -eq $OwnerProcess -and
+        $current.ControlType -eq [System.Windows.Automation.ControlType]::Text -and
+        -not $current.IsOffscreen) {
+      if ($current.Name.Length -gt 4096) { throw 'Coding explanation text exceeds bound' }
+      $names.Add([string]$current.Name) | Out-Null
+    }
+  }
+  return $names.ToArray()
+}
+
+function Test-CodingTaskDialogExplanation([object]$Dialog, [int]$OwnerProcess) {
+  $names = @(Get-CodingTaskDialogExplanationText $Dialog $OwnerProcess)
+  return (Test-CodingExplanationText $names)
+}
+
 function Wait-CodingTaskDialogAction(
   [object]$Dialog,
   [int]$OwnerProcess,
@@ -325,6 +378,9 @@ function Invoke-CodingTaskDialogAction(
 ) {
   if ($null -eq $Dialog -or $null -eq $Action) {
     throw 'coding-confirmation-button: required native TaskDialog action unavailable'
+  }
+  if (-not (Test-CodingTaskDialogExplanation $Dialog $OwnerProcess)) {
+    throw 'Native coding explanation mismatch'
   }
   $fresh = Find-CodingTaskDialogAction $Dialog $OwnerProcess
   if ($null -eq $fresh -or -not [System.Windows.Automation.Automation]::Compare($Action, $fresh)) {

@@ -106,6 +106,16 @@ try {
   $OwnerProcess = $process.Id
   $dialog = Wait-FixtureDialog $OwnerProcess 10
   $action = Wait-CodingTaskDialogAction $dialog $OwnerProcess 5
+  Assert-True (Test-CodingTaskDialogExplanation $dialog $OwnerProcess) 'Actual native confirmation does not satisfy explanation policy'
+  Assert-True (-not (Test-CodingTaskDialogExplanation $dialog ($OwnerProcess + 1))) 'Foreign dialog explanation was accepted'
+  $explanationNames = @(Get-CodingTaskDialogExplanationText $dialog $OwnerProcess)
+  foreach ($fragment in @('Open live coding configuration?', 'This opens configuration only.', 'starts no VM', 'no Docker commands', 'no model calls', 'require their own approvals')) {
+    $mutatedNames = @($explanationNames | ForEach-Object { $_.Replace($fragment, '[removed]') })
+    Assert-True (-not (Test-CodingExplanationText $mutatedNames)) ('Missing safety explanation was accepted: ' + $fragment)
+  }
+  Assert-True (-not (Test-CodingExplanationText @())) 'Empty explanation was accepted'
+  Assert-True (-not (Test-CodingExplanationText @('x' * 4097))) 'Oversized explanation was accepted'
+  Assert-True (-not (Test-CodingExplanationText (@('text') * 257))) 'Oversized explanation tree was accepted'
   $facts = [FoundryTaskDialogNative]::CaptureFacts(
     (Get-AutomationNativeHandle $dialog),
     (Get-AutomationNativeHandle $action),

@@ -392,3 +392,21 @@ and ship the recipe, probe and upstream source/license sidecars. Test rejection
 of drift, links, repeat application, missing native facts and failed reads before
 building. Then run unchanged installed WHPX baseline/failure/repair, native UI,
 restart and uninstall gates. No TCG, host repository execution or real accounts.
+
+### Installed Windows explanation contract — 2026-10-23
+
+Run 39970118634 confirms the Unicode diagnosis: the same pinned UCRT probe lost
+argv and could not read the Chinese/emoji file at code page 1252; with the process
+manifest, code page 65001 preserved argv/access/read and the actual QEMU manifest.
+The installed WHPX guest gate and backend contracts then passed. Acceptance next
+stopped at the coding confirmation: the driver still expected “This enables
+configuration only” and “separate approvals”, while the unchanged application
+shows “This opens configuration only” and “require their own approvals”.
+
+Keep application UI and consent unchanged. Share the fixed explanation predicate
+between installed acceptance and the existing native Electron TaskDialog fixture,
+checking the correct configuration-only, no-VM, no-Docker, no-model and independent
+approval statements in the exact owned dialog before clicking. Add a regression
+against actual createCodingMenuItem output and native missing-fragment/wrong-owner
+negative cases so this fails before the expensive runtime build. Do not remove the
+explanation gate or substitute button presence. Repeat all existing release gates.

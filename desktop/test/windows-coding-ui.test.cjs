@@ -6,6 +6,19 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { codingWorkbenchReadiness } = require("../windows-ui-ready.cjs");
 const { modeActionReceipt } = require("../windows-ui-mode.cjs");
+const { createCodingMenuItem } = require("../coding-mode.cjs");
+
+test("the actual coding confirmation satisfies the native Windows explanation policy", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../windows-taskdialog-action.ps1"), "utf8");
+  const block = source.match(/function Get-CodingExplanationFragments \{([\s\S]*?)\n\}/);
+  assert.ok(block, "Native explanation policy is missing");
+  const fragments = [...block[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+  assert.ok(fragments.length >= 5);
+  let shown, launches = 0;
+  await createCodingMenuItem({ showMessageBox: async options => { shown = options; return { response: 1 }; } }, () => launches++).click();
+  assert.equal(launches, 0);
+  for (const fragment of fragments) assert.ok([shown.message, shown.detail].some(text => text.includes(fragment)), "Native acceptance rejects actual confirmation: " + fragment);
+});
 
 function renderedVMConfigurableWorkbench() {
   const node = (parent, type, name, enabled = true) => ({
