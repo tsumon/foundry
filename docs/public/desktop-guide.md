@@ -15,11 +15,13 @@ the matching platform artifact, its `SHA256SUMS` and the accompanying runtime
 source material, including `sandbox-sources`. GitHub may require sign-in to download workflow artifacts;
 these artifacts expire and are not a GitHub Release or an update channel.
 
-As of 2026-10-23, revision `6c73fa3` passed local Mac install/UI/restart and
-physical bundled-VM failure/repair/recheck with local model-protocol fixtures.
-Its Mac CI package job passed, while Windows native WHPX acceptance remains
-blocked. No accepted Windows EXE is currently provided. Later revisions need
-their own evidence; a package build alone does not establish native acceptance.
+The [verified-build table](../../README.en.md#verified-builds--2026-10-24)
+links the accepted Mac `46e1247` and Windows `0c87188` artifacts. Mac evidence
+includes local install/UI/restart and a physical bundled-VM failure/repair/recheck.
+Windows native CI includes Unicode-path install, cross-drive user data, actual
+WHPX failure/repair/recheck, UI automation/screenshots, restart and uninstall with
+evidence retained. Model responses remain local protocol fixtures, not real-account
+calls. Later builds need their own evidence; compilation alone is not acceptance.
 
 | Target | Package | Trust status |
 | --- | --- | --- |

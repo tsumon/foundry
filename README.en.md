@@ -37,12 +37,16 @@ Foundry is a software-delivery workbench for a one-person team. It reads a commi
 
 Download the artifact only from a platform job that passed all its gates in [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml); one platform's success does not certify another. Check its source revision and `SHA256SUMS`; retain both runtime sources and `sandbox-sources`. **Distribution uses CI artifacts, not a GitHub Release. Older artifacts do not represent the current version.**
 
-**Acceptance status (2026-10-23):** Mac revision `46e1247` passed local installation, UI, restart and a real bundled-VM failure→repair→recheck. Role responses were local protocol fixtures. Its [complete Verify workflow](https://github.com/tsumon/foundry/actions/runs/39964561514) and [desktop CI Mac job](https://github.com/tsumon/foundry/actions/runs/39964561670/job/120451245819) passed. The Windows installer built, but its real WHPX startup gate did not pass: **no accepted EXE is available yet**. This evidence covers that exact revision, not later builds automatically.
+### Verified builds · 2026-10-24
 
-| Platform | Installer | Know before installing |
+| Platform / revision | Download | Acceptance actually performed |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | `Foundry-0.1.0-alpha.3-arm64.dmg` | Bundled Apple Virtualization sandbox; ad-hoc signed, not notarized |
-| Windows x64 | `Foundry-0.1.0-alpha.3-x64.exe` | Bundled QEMU/WHPX; requires hardware virtualization and Windows Hypervisor Platform already enabled; per-user, unsigned |
+| Apple Silicon Mac · `46e1247` | [DMG + checksums + runtime sources](https://github.com/tsumon/foundry/actions/runs/39964561670/artifacts/12506990609) | Physical-Mac installation, native UI, restart; real Apple Virtualization failure → repair → recheck |
+| Windows x64 · `0c87188` | [EXE + checksums + reports and screenshots](https://github.com/tsumon/foundry/actions/runs/39983328865/artifacts/12515976175) | Unicode-path installation, cross-drive user data, real WHPX loop; native UI automation, restart, uninstall with evidence retained |
+
+Check [Mac Verify](https://github.com/tsumon/foundry/actions/runs/39964561514), [Windows Verify](https://github.com/tsumon/foundry/actions/runs/39983328874), and [native Windows installation acceptance](https://github.com/tsumon/foundry/actions/runs/39983328865/job/120516374476). Evidence is bound to the revisions above—**it does not automatically certify later builds**. Both platforms execute tests in real VMs; role responses are local protocol fixtures. No real model accounts were called.
+
+The Mac package has an ad-hoc integrity signature, not Developer ID signing or notarization. Windows uses an unsigned per-user installer. Hardware virtualization and Windows Hypervisor Platform must already be enabled; Foundry does not install or enable those system features.
 
 The app bundles its frontend, controller, Linux guest and Go toolchain. No separate Go, Node.js, npm, MSYS2 or Docker installation is needed. Repository operations still require supported local Git. Missing virtualization blocks execution: no automatic OS feature enablement, reboot, host execution, software emulation or Docker fallback. GitHub artifacts may require sign-in and expire; this is not a permanent download channel. Do not disable OS security protections to bypass unsigned-app warnings. See the [desktop guide](docs/public/desktop-guide.md) for prerequisites, storage and uninstall behavior.
 

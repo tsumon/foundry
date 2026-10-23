@@ -7,12 +7,16 @@ acceptance evidence are required before treating its artifact as accepted;
 build configuration alone is not a pass. See the
 [desktop guide](desktop-guide.md) for installation and actual capabilities.
 
-2026-10-23 acceptance snapshot: `46e1247` passed the full Verify workflow and Mac CI package/contracts job
-and local physical-Mac install, UI, restart and real bundled-VM failure/repair/
-recheck using local model-protocol fixtures. Windows built and installed its EXE
-but failed the mandatory WHPX readiness gate; native UI/restart/uninstall did not
-complete. No accepted Windows artifact is provided. Newer revisions must pass
-their own gates; real-account acceptance is still unauthorized.
+2026-10-24 acceptance snapshot: Mac `46e1247` passed local physical-Mac install,
+native UI, restart and real bundled-VM failure/repair/recheck. Windows `0c87188`
+passed the complete native package job: Unicode-path install, cross-drive data,
+real WHPX failure/repair/recheck, native UI automation, restart and uninstall with
+persistent evidence retained. Download the exact artifacts and inspect workflow
+links in the [verified-build table](../../README.en.md#verified-builds--2026-10-24).
+Mac GUI evidence is local; Windows GUI evidence is native automation and captured
+painted windows, not a claim of manual interactive testing. Roles use local
+model-protocol fixtures on both platforms. Newer revisions require their own
+gates; real-account end-to-end acceptance remains unauthorized.
 
 ## Implemented
 

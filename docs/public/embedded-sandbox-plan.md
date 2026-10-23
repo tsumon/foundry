@@ -173,7 +173,7 @@ if r.Class != "passed" || r.Tests != 1 { t.Fatalf("unexpected verified result: %
 - [ ] Push reviewed clean source and run native Windows EXE install/boot/test/cleanup acceptance using WHPX on a capable Windows runner. Do not skip, downgrade to TCG or call synthetic tests native evidence when unavailable. Inspect complete Verify and Desktop workflows for the exact commit.
 - [ ] Update bilingual README to evidence-backed capabilities, unsigned-package status and explicit prerequisites. Publish no Release. Deliver local DMG/EXE artifacts and actual acceptance results, or a specific blocked native requirement with no false completion claim.
 
-Reconciliation: UI/desktop implementation and red/green coverage are recorded in `dc922fe`, `9de294a`, `66de7e9`, `31417de` and `e143f32`. Source/legal revalidation (`5cc9ee8`), fixed-source zlib (`92b2cb1`) and complete explicit export (`aebfd99`) passed scoped review. Pins and bounded vulnerability assessment are implemented; native Windows compilation/tests must still establish the patched runtime and actual dependency closure before distribution, so the combined pin/security and two-platform packaging steps remain open. Local suites/scans and independent reviews are recorded, but final-change verification and exact-commit remote gates are still outstanding. The Mac checkbox records the first installed package and the explicitly bounded upgrade observation above; it does not certify a later rebuilt artifact. README prerequisites are already updated; final results, artifact hashes and platform-specific blockers still need reconciliation.
+Historical reconciliation (through `aebfd99`; superseded by the exact-revision native outcome below): UI/desktop implementation and red/green coverage are recorded in `dc922fe`, `9de294a`, `66de7e9`, `31417de` and `e143f32`. Source/legal revalidation (`5cc9ee8`), fixed-source zlib (`92b2cb1`) and complete explicit export (`aebfd99`) passed scoped review. Pins and bounded vulnerability assessment were implemented; native Windows compilation/tests still needed to establish the patched runtime and actual dependency closure before distribution. Local suites/scans and independent reviews were recorded, but final-change verification and exact-commit remote gates were outstanding. The Mac checkbox records the first installed package and the explicitly bounded upgrade observation above; it does not certify a later rebuilt artifact. The 2026-10-24 outcome and README verified-build table identify the subsequently accepted platform artifacts, without transferring their evidence to newer builds.
 
 Example installed resource test:
 ```js
@@ -446,3 +446,11 @@ there. Preserve all canonical-path, reparse, manifest and private-DACL checks.
 The installed UI gate remains the final test of whether this fixes the observed
 failure. Add only bounded boolean install/data-drive diagnostics.
 Reference: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+
+Native outcome (2026-10-24): run 39983328865 for `0c87188` completed all desktop
+jobs successfully. The new regression recorded `cross_volume=true`, and the
+installed UI recorded `same_drive=false`. The unchanged UI readiness gate,
+real WHPX loop, restart and uninstall all passed. Publish the exact accepted
+artifact/receipt links, retain the distinction between local model fixtures and
+real VM execution, and run the same CI on documentation closeout. No real account,
+host execution fallback, system-feature enablement or approval expansion occurred.

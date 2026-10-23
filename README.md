@@ -35,14 +35,18 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 
 ## 安装桌面版
 
-从 [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml) 中通过全部平台门禁的任务下载对应 artifact；一个平台通过不代表另一个平台通过。核对其提交与 `SHA256SUMS`；保留随包提供的 runtime source 和 `sandbox-sources` 材料。**这里只使用 CI artifacts，不创建 GitHub Release；不要把旧版产物当成当前版本。**
+从 [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml) 中对应平台通过全部门禁的任务下载 artifact；一个平台通过不代表另一个平台通过。核对其提交与 `SHA256SUMS`；保留随包提供的 runtime source 和 `sandbox-sources` 材料。**这里只使用 CI artifacts，不创建 GitHub Release；不要把旧版产物当成当前版本。**
 
-**验收状态（2026-10-23）：** Mac `46e1247` 已完成本机安装、界面、重启和真实内置虚拟机失败→修复→复验，角色响应仍为本地协议测试数据。[完整 Verify](https://github.com/tsumon/foundry/actions/runs/39964561514) 和[桌面 CI 的 Mac 任务](https://github.com/tsumon/foundry/actions/runs/39964561670/job/120451245819)通过；Windows 安装包已构建，但真实 WHPX 启动门禁未通过，**暂不提供已验收 EXE**。该结论只覆盖指定提交，不代表后续构建自动通过。
+### 已验收构建 · 2026-10-24
 
-| 平台 | 安装包 | 需要知道 |
+| 平台 / 提交 | 下载包 | 实际通过的验收 |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | `Foundry-0.1.0-alpha.3-arm64.dmg` | 内置 Apple Virtualization 沙盒；ad-hoc 签名，未公证 |
-| Windows x64 | `Foundry-0.1.0-alpha.3-x64.exe` | 内置 QEMU/WHPX 沙盒；需硬件虚拟化与已启用的 Windows Hypervisor Platform；当前用户安装，未签名 |
+| Apple Silicon Mac · `46e1247` | [DMG + 校验值 + 运行时源码](https://github.com/tsumon/foundry/actions/runs/39964561670/artifacts/12506990609) | 本机安装、原生界面、重启；真实 Apple Virtualization 测试失败 → 修复 → 复验 |
+| Windows x64 · `0c87188` | [EXE + 校验值 + 测试报告与截图](https://github.com/tsumon/foundry/actions/runs/39983328865/artifacts/12515976175) | 中文路径安装、跨盘数据目录、真实 WHPX 闭环；原生 UI 自动验收、重启、卸载后证据保留 |
+
+核对 [Mac Verify](https://github.com/tsumon/foundry/actions/runs/39964561514)、[Windows Verify](https://github.com/tsumon/foundry/actions/runs/39983328874) 和[Windows 原生安装验收](https://github.com/tsumon/foundry/actions/runs/39983328865/job/120516374476)。以上证据只覆盖表中提交，**不是后续构建自动通过的保证**。两个平台均由真实虚拟机执行测试；角色响应为本地协议测试数据，未调用真实模型账号。
+
+Mac 包使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Windows 是未签名的当前用户安装包。Windows 需要硬件虚拟化和已启用的 Windows Hypervisor Platform，不会自动安装或启用这些系统功能。
 
 应用内置前端、控制器、Linux 客户系统和 Go 工具链，不需要另装 Go、Node.js、npm、MSYS2 或 Docker。仓库功能仍需要受支持的本机 Git。虚拟化不可用时明确阻断，不启用系统功能、不自动重启，不降级到主机、软件模拟或 Docker。GitHub artifact 可能要求登录且会过期；不是永久下载地址。不要关闭系统安全保护来绕过未签名提示。平台限制、数据位置与卸载说明见[桌面使用指南](docs/public/desktop-guide.md)。
 
