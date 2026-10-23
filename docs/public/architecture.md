@@ -54,7 +54,7 @@ If a stored model snapshot is invalid or has an unsupported version, startup ent
 
 ## Network capability is selective, not globally disabled
 
-Production account routes marked `live` are gated before secret access or network dispatch with `live_provider_access_pending_confirmation`. The production router has no option that enables those live routes and has no automatic paid fallback.
+Production account routes marked `live` are blocked by default. The separately enabled [model-driven coding workbench](live-coding.md) admits only a durable claimed task invocation, exact frozen selection and sealed input under current context/execution authority. The router checks admission before credential access and again before dispatch, consuming a single dispatch. It does not open catalog/probe access or enable automatic paid fallback. Normal desktop launch does not install this admission capability.
 
 Legacy accountless profiles are a separate compatibility path. They can make model-directory and inference requests to their configured provider when an approved workflow reaches that model operation. Remote endpoints require HTTPS and credentials; literal-loopback HTTP is allowed for local providers. Therefore the application must not be described as entirely offline.
 
@@ -66,7 +66,7 @@ The read-only model-account acceptance inspection is also not a network permissi
 
 Task-scoped model, repository-read, and MCP calls reserve identity and budget before dispatch. A call that was durably reserved but not dispatched can recover as interrupted-before-dispatch. Once dispatch may have begun, an incomplete or crashed call recovers as outcome unknown. Failure and unknown outcomes remain consumed; the controller does not automatically retry, replay, reconnect, substitute a provider, refund the budget, or claim remote rollback.
 
-Recovery performs local reconciliation and, where previously approved execution may have left a container, owner-scoped Docker cleanup. It does not initiate a model request, MCP request, new sandbox run, image resolution, Git operation, or delivery. A user must explicitly continue from a verified resumable checkpoint.
+Recovery performs local reconciliation. The legacy runner can perform owner-scoped cleanup; controlled C4/coding tasks instead require separate explicit cleanup authority and an exact-owned container ID. Recovery does not initiate a model request, MCP request, new sandbox run, image resolution, Git operation, or delivery. A user must explicitly continue from a verified resumable checkpoint.
 
 ## C4-A/B synthetic verification boundary
 
@@ -100,7 +100,12 @@ controller owns approvals, immutable generations, two repair rounds, failure
 archives, independent review bindings and patch delivery. Existing-source imports
 consume committed HEAD only, preserve dirty working files, and reject descriptor
 drift without running Git status/diff or filters. This generalization applies only
-to `synthetic`, control-version-0 tasks; real controlled goals remain Double-only.
+to `synthetic`, control-version-0 tasks. The old controlled fixture remains
+Double-only. A distinct `c4_go_model_v1` capability admits bounded committed Go
+projects with account-backed model proposals, without preset descriptor solutions
+or a fallback to the legacy runner. Its separate readiness/baseline and task
+approvals compose the same immutable generations, tests and repair/review loop.
+Local HTTP-plus-driver integration tests are not real-provider/Docker acceptance.
 
 ## Output boundary
 

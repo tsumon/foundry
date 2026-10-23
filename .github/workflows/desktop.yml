@@ -87,7 +87,7 @@ jobs:
           mountpoint="$RUNNER_TEMP/foundry-mount"
           install="$RUNNER_TEMP/Foundry Installed"
           mkdir "$mountpoint" "$install"
-          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$output/Foundry-0.1.0-alpha.1-arm64.dmg"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$output/Foundry-0.1.0-alpha.2-arm64.dmg"
           trap 'hdiutil detach "$mountpoint"' EXIT
           ditto "$mountpoint/Foundry.app" "$install/Foundry.app"
           codesign --verify --deep --strict "$install/Foundry.app"
@@ -100,7 +100,7 @@ jobs:
           name: foundry-macos-arm64
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/foundry-macos-output/Foundry-0.1.0-alpha.1-arm64.dmg
+            ${{ runner.temp }}/foundry-macos-output/Foundry-0.1.0-alpha.2-arm64.dmg
             ${{ runner.temp }}/foundry-macos-output/SHA256SUMS
             ${{ runner.temp }}/foundry-macos-output/build-inputs.json
             ${{ runner.temp }}/foundry-macos-output/native-smoke.json
@@ -166,6 +166,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Go dependencies failed' }
       - name: Native CGO commands and Windows boundary/integration gates
         run: ./desktop/windows-test.ps1
+      - name: Isolated Windows Credential Manager diagnostic lifecycle
+        run: |
+          $env:FOUNDRY_WINDOWS_CREDENTIAL_MANAGER_NATIVE_CI = '1'
+          try {
+            go test -count=1 -run '^TestWindowsCredentialManagerNativeCIProbe$' ./internal/model
+            if ($LASTEXITCODE -ne 0) { throw 'Native Credential Manager diagnostic failed' }
+          } finally {
+            Remove-Item Env:FOUNDRY_WINDOWS_CREDENTIAL_MANAGER_NATIVE_CI -ErrorAction SilentlyContinue
+          }
       - name: Audit Windows-specific reachable Go dependencies
         run: |
           $ErrorActionPreference = 'Stop'
@@ -196,11 +205,13 @@ jobs:
           name: foundry-windows-x64
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/foundry-windows-output/Foundry-0.1.0-alpha.1-x64.exe
+            ${{ runner.temp }}/foundry-windows-output/Foundry-0.1.0-alpha.2-x64.exe
             ${{ runner.temp }}/foundry-windows-output/SHA256SUMS
             ${{ runner.temp }}/foundry-windows-output/build-inputs.json
             ${{ runner.temp }}/foundry-windows-output/native-smoke.json
             ${{ runner.temp }}/foundry-windows-output/windows-ui.png
+            ${{ runner.temp }}/foundry-windows-output/windows-ui-coding.png
+            ${{ runner.temp }}/foundry-windows-output/windows-ui-return.png
             ${{ runner.temp }}/foundry-windows-output/windows-ui-restart.png
             ${{ runner.temp }}/foundry-windows-output/nsis-provenance.json
             ${{ runner.temp }}/foundry-windows-output/nsis-installer-compiler.log

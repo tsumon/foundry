@@ -14,9 +14,9 @@ The implementation details are summarized in [architecture](architecture.md).
 
 ## Credentials and accounts
 
-Production credentials are designed for macOS Keychain and must never be stored in SQLite, browser storage, logs, reports, or committed fixtures. This alpha has not been tested or certified with real provider accounts. Do not enter real API keys, approve real subscription access, or rely on account, entitlement, billing, balance, or reset-time displays for production decisions.
+Production credentials use Foundry-scoped macOS Keychain or Windows Credential Manager and must never be stored in SQLite, browser storage, logs, reports, or committed fixtures. Local integration tests use fake stores, not real accounts. A real-provider task requires separate operator authorization; do not rely on account, entitlement, billing, balance, or reset-time displays as verified production facts.
 
-New account routes marked `live` are blocked before secret access/network dispatch in the production router. That is not a global offline guarantee: legacy accountless profiles retain their existing ability to contact configured HTTPS providers, and explicit MCP catalog discovery can contact a selected endpoint. Use only synthetic or intentionally isolated local endpoints during alpha evaluation.
+Account routes marked `live` remain blocked in normal mode. The separately enabled [coding workbench](live-coding.md) accepts only an engine-claimed invocation bound to the current mission, epoch, role, frozen selection and sealed input. It checks authority before credential access and again before one dispatch. This does not enable catalog probes or general router access. Startup/read-only views do not read, refresh or clean native credentials. The application is not globally offline: legacy accountless profiles retain their existing network capability, and explicit MCP catalog discovery can contact a selected endpoint. Development/evaluation tests use owned loopback fixtures.
 
 There is no automatic paid fallback, provider substitution, or retry of an uncertain provider outcome.
 
@@ -51,6 +51,14 @@ read-only access rather than probing Docker or resuming it. No environment or
 HTTP enable override is provided; strict startup configuration and separate
 readiness/baseline/execution approvals remain required for real controlled use.
 
+The separate `c4_go_model_v1` coding profile composes real model transport with
+these same Docker controls. It is not the old fixture capability with its
+restrictions removed. A native startup opt-in permits configuration; an HTTP
+request cannot enable this mode in the normal workbench. Inspected source,
+immutable local image, protected inputs and per-task approvals still bind every
+operation. Windows real Docker remains unavailable rather than using a weaker
+executable/socket trust check.
+
 The [repository-task launcher](repository-task-orchestration.md) is an isolated
 synthetic-only entrypoint. Protected descriptor text supplies proposals, never
 permissions or executable commands. Assertions are frozen at import; candidate
@@ -66,14 +74,15 @@ These restrictions reduce risk; they are not a proof that Docker, the image, the
 
 ## Failure and unknown outcomes
 
-FOUNDRY distinguishes known failure from an outcome that became uncertain after dispatch. Unknown model/MCP outcomes are not replayed automatically and their reserved budget is not refunded. Restart recovery performs local reconciliation and owner-scoped cleanup only; it does not contact providers, repeat MCP calls, start verification, resolve an image, or deliver artifacts.
+FOUNDRY distinguishes known failure from an outcome that became uncertain after dispatch. Unknown model/MCP outcomes are not replayed automatically and their reserved budget is not refunded. Controlled C4/coding recovery performs local reconciliation without automatic Docker cleanup; cleanup needs its own current authority and exact-owned ID. The legacy path can perform owner-scoped cleanup. Neither recovery initiates provider/MCP calls, new verification, image resolution or delivery.
 
 Do not manually edit the SQLite database, controller workspace, sealed evidence, or exported artifact metadata to bypass a blocked state. Preserve the data directory for diagnosis and create a new task when frozen inputs legitimately change.
 
 ## Alpha operating rules
 
 - Use a new disposable data directory.
-- Use synthetic profiles and local fixtures only.
+- Use synthetic profiles and local fixtures for development acceptance; authorize
+  real credentials, source disclosure and effects separately for real tasks.
 - Use a disposable Git repository with no secrets.
 - Do not reuse a personal provider configuration or existing workbench state.
 - Do not expose the loopback service through a proxy or port forward.

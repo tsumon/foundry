@@ -154,6 +154,14 @@ export function c4ReadinessFresh(
 }
 
 export const hasC4 = (m: Mission) => !!m.spec.c4 || !!m.c4_operations?.length;
+export const isModelBackedC4 = (m: Mission) =>
+  c4Supported(m) &&
+  m.spec.c4?.schema_version === 1 &&
+  m.spec.c4.control_version === 1 &&
+  m.spec.c4.id === "c4_go_model_v1" &&
+  m.spec.c4.mode === "docker";
+export const isTerminalModelBackedDelivery = (m: Mission) =>
+  isModelBackedC4(m) && m.delivery !== null;
 const c4Opaque = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const c4SHA = /^[a-f0-9]{64}$/;
 const c4Commit = /^([a-f0-9]{40}|[a-f0-9]{64})$/;
@@ -221,7 +229,7 @@ export const c4Supported = (m: Mission) => {
     : "";
   return (
     p.schema_version === 1 &&
-    p.id === "c4_go_v1" &&
+    (p.id === "c4_go_v1" || p.id === "c4_go_model_v1") &&
     ((p.mode === "synthetic" &&
       (p.control_version === undefined ||
         p.control_version === 0 ||

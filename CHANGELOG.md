@@ -4,6 +4,22 @@ All notable public-facing changes will be recorded here.
 
 ## Unreleased
 
+### Desktop Alpha 0.1.0-alpha.2
+
+- Add an opt-in controlled coding workbench that connects account-backed OpenAI
+  role calls, committed Go repository imports, isolated candidate edits, controlled
+  Docker testing, bounded failure repair, independent review and patch delivery.
+- Require exact durable invocation/approval bindings before native credential
+  access and each one-shot provider dispatch. Normal startup, catalog and login
+  gates remain closed; no automatic refresh, retry or paid fallback.
+- Preserve old simulations and protected tests. Add full-loop local HTTP/driver
+  regression tests and distinct model/test provenance in the existing UI.
+- Add Foundry-scoped Windows Credential Manager storage and isolated persistent
+  coding data. Windows real Docker remains unavailable; oversized native secret
+  blobs fail closed. This is not a real-account acceptance claim.
+- Update Mac/Windows installers, native-mode tests and bilingual usage guides;
+  exact-commit CI acceptance is required before distributing artifacts.
+
 ### Added
 
 - Native desktop Alpha packaging: Apple Silicon DMG and Windows x64 per-user

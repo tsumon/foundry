@@ -25,7 +25,7 @@ Plans · Isolated candidates · Repairs · Evidence · Approvals · Local patche
 Foundry is a software-delivery workbench for a one-person team. It reads a committed Git snapshot and keeps plans, candidate changes, failures, rechecks and delivery in one inspectable workflow. Your source repository stays read-only. The output is a **patch and Markdown report**, not an unreviewed automatic push.
 
 > [!IMPORTANT]
-> **This is a working local-workflow Alpha, not a cloud-connected autonomous coding product.** The desktop demonstration uses scripted agents and exact-content checks labeled `synthetic_stub`, not real models or Docker. Real-account and subscription integration remains paused; installing the app does not enable it.
+> **This is an approval-bound coding Alpha, not an unattended autonomous developer.** The controlled coding entry connects OpenAI models, isolated candidates and Docker verification in one task. It remains opt-in: installation or opening the entry grants no call permission. Development acceptance uses local protocol fixtures; **real-account end-to-end acceptance is not claimed**. The original simulation remains explicitly labeled `synthetic_stub`.
 
 ## Inspect the outcome before you deliver
 
@@ -39,12 +39,24 @@ Download the platform artifact from a [successful Desktop packages run](https://
 
 | Platform | Installer | Know before installing |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | `Foundry-0.1.0-alpha.1-arm64.dmg` | Copy to Applications; ad-hoc signed, not notarized |
-| Windows x64 | `Foundry-0.1.0-alpha.1-x64.exe` | Per-user installation; unsigned, no administrator access required |
+| Apple Silicon Mac | `Foundry-0.1.0-alpha.2-arm64.dmg` | Copy to Applications; ad-hoc signed, not notarized |
+| Windows x64 | `Foundry-0.1.0-alpha.2-x64.exe` | Per-user, unsigned; real Docker coding remains unavailable |
 
 The app bundles its frontend and local controller. Running it does not require Go, Node.js, npm or a compiler. Repository operations require a supported local Git installation. GitHub may require sign-in for artifact downloads, and artifacts expire; this is not a permanent download channel. Do not disable OS security protections to bypass unsigned-app warnings. See the [desktop guide](docs/public/desktop-guide.md) for platform limits, Git prerequisites, data storage and uninstall behavior.
 
-## Walk through the local loop in five minutes
+## From a request to a reviewable patch
+
+On Mac, choose **Controlled Coding Workbench** in the native menu. It has its own persistent data, separate from the ordinary workbench and demonstrations:
+
+1. Explicitly select an OpenAI account, route and role models. API-key and subscription routes are distinct, never fallbacks for each other. Subscription use requires an existing valid authorization.
+2. Create a task with a goal, committed Go repository, editable/protected file scope and an already-present immutable local image ID. Creation neither contacts a model nor runs Docker.
+3. Separately approve and execute Docker readiness and baseline verification. After a passing baseline, approve context sharing for Researcher and Planner to produce the plan.
+4. Review or revise the plan, then approve execution. Workers propose isolated changes. A confirmed test failure can trigger at most two Debugger repairs, each followed by verification.
+5. QA and Auditor review the current candidate and test evidence. Independently approve delivery to export the patch/report.
+
+**The current scope is bounded Go projects, not arbitrary stacks.** There is no dependency installation, image pull, host script, source-checkout write or protected-test edit. Credential expiry, quota exhaustion, ambiguous transport and unconfirmed cleanup stop the task: no retry, refresh or paid-API substitution. Call-count and timeout limits are not monetary caps. See the [coding design](docs/public/live-coding.md) and [desktop guide](docs/public/desktop-guide.md) for configuration and limits.
+
+## Try the workflow without an account
 
 Choose **Foundry → New Isolated Local Repository Simulation**, then open a task labeled `SYNTHETIC`:
 
@@ -63,12 +75,12 @@ Have a disposable repository? **Open Committed Descriptor Repository…** accept
 | Capability | Actual boundary |
 | :--- | :--- |
 | Project and asset workbench | Projects, delivery targets, environments, shared-resource ledger and task associations |
-| Local repository workflow | Committed snapshots, isolated candidates, protected files, editable plans, failure history, repair and export |
+| Model-driven repository tasks | Opt-in Mac coding entry; frozen OpenAI account/model selection, committed Go inputs, isolated candidates, repairs and export |
 | Demonstration agents / verification | Scripted local responses and content assertions; **not** real model reasoning or compiler tests |
 | Approvals and recovery | Controller-bound revisions/digests; restart never replays unknown outcomes or widens permission |
 | MCP / Skills / hooks | Management, discovery and static descriptions; source CLI has an independently approved local MCP fixture. Desktop simulation enables no external tool execution |
-| Docker | Controlled source adapter and historical bounded acceptance; **desktop entry closed**, not rerun for this milestone |
-| Real models / subscriptions | **Paused**. No login, refresh, automatic retry or paid-API fallback |
+| Docker | Mac coding entry reuses separate readiness, baseline, candidate verification and exact-owned cleanup; Windows real execution stays closed |
+| Real models / subscriptions | Production protocol wired; real-account acceptance requires separate authorization. Tasks never implicitly log in, query catalogs, refresh, retry or switch to paid APIs |
 | Automatic apply / Git writes / deployment / migrations | **Not provided**; exported patches are handled outside the product |
 
 Roles assign responsibilities, not permissions. Model reviews are not test evidence, and a synthetic pass does not verify a real project. See [Alpha status](docs/public/alpha-status.md) for the full support boundary.
@@ -94,7 +106,7 @@ See [Contributing](CONTRIBUTING.md) and the [desktop design](docs/public/desktop
 | Using Foundry | Engineering & safety |
 | :--- | :--- |
 | [Install, demonstrate, troubleshoot](docs/public/desktop-guide.md) | [Architecture and approval boundaries](docs/public/architecture.md) |
-| [Repository-task descriptor](docs/public/repository-task-orchestration.md) | [Safety model](docs/public/safety.md) |
+| [Model-driven coding and authority](docs/public/live-coding.md) | [Safety model](docs/public/safety.md) |
 | [Capabilities and acceptance scope](docs/public/alpha-status.md) | [Third-party notices and runtime source](THIRD_PARTY_NOTICES.md) |
 | [Changelog](CHANGELOG.md) | [Model-gate design, not live-access certification](docs/public/model-acceptance.md) |
 

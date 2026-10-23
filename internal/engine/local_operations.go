@@ -316,7 +316,11 @@ func (e *Engine) verifyDeliveryWith(m domain.Mission, readOperation func(string)
 		}
 	}
 	p := op.Result.Export
-	if p.ReportInput != op.ExportReport || (op.ExportReport != marshalReport(m) && !historicalReportMatches(m, op.ExportReport)) {
+	report, err := e.deliveryReport(m)
+	if err != nil {
+		return err
+	}
+	if p.ReportInput != op.ExportReport || (op.ExportReport != report && !historicalReportMatches(m, op.ExportReport)) {
 		return errors.New("delivery evidence/report binding changed")
 	}
 	if m.Delivery.PatchPath != p.PatchPath || m.Delivery.ReportPath != p.ReportPath || m.Delivery.PatchSHA256 != p.PatchSHA256 || m.Delivery.ReportSHA256 != p.ReportSHA256 {
@@ -326,12 +330,19 @@ func (e *Engine) verifyDeliveryWith(m domain.Mission, readOperation func(string)
 }
 
 func (e *Engine) exportIntent(m domain.Mission) (domain.LocalOperation, error) {
-	return e.exportIntentForReport(m, marshalReport(m))
+	report, err := e.deliveryReport(m)
+	if err != nil {
+		return domain.LocalOperation{}, err
+	}
+	return e.exportIntentForReport(m, report)
 }
 
 // Only exact known historical formats qualify, still bound to the same mission
 // evidence and the existing prepared/committed artifact hashes. Never rewrite.
 func historicalReportMatches(m domain.Mission, report string) bool {
+	if isModelC4(m) {
+		return false
+	}
 	return (isC4(m) && report == reportWithSources(m, true)) ||
 		(legacyVerificationMaterial(m) && report == reportWithSources(m, false))
 }

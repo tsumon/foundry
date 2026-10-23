@@ -208,6 +208,60 @@ test("real pipe lifetime starts once, never exposes capability, and exits on EOF
   assert.equal(child.process.exitCode, 0);
 });
 
+test("coding workbench uses exact closed argv, environment, and retained data directory", async (t) => {
+  const root = fixture(
+    t,
+    `const fs=require('node:fs');fs.writeFileSync(require('node:path').join(process.cwd(),'observed.json'),JSON.stringify({argv:process.argv.slice(2),env:process.env,dataDir:process.env.FOUNDRY_DATA_DIR}));process.stdin.once('data',()=>console.log(JSON.stringify({protocol:1,url:'http://127.0.0.1:12345',pid:process.pid,dataDir:process.env.FOUNDRY_DATA_DIR})));process.stdin.on('end',()=>process.exit(0));`,
+  );
+  const dataRoot = path.join(root, "state");
+  process.env.FOUNDRY_TEST_INJECTED = "must-not-cross-boundary";
+  let child;
+  try {
+    child = await startBackend({
+      resources: root,
+      dataRoot,
+      mode: "coding",
+      args: ["--arbitrary-argument"],
+      environment: { FOUNDRY_TEST_INJECTED: "injected" },
+    });
+    const observed = JSON.parse(
+      fs.readFileSync(path.join(dataRoot, "observed.json")),
+    );
+    assert.deepEqual(observed.argv, ["--desktop", "--coding-workbench"]);
+    assert.equal(observed.dataDir, path.join(dataRoot, "coding"));
+    assert.equal(child.ready.dataDir, path.join(dataRoot, "coding"));
+    assert.equal(observed.env.FOUNDRY_TEST_INJECTED, undefined);
+    assert.equal(observed.env.FOUNDRY_DOCKER.includes("disabled"), true);
+  } finally {
+    delete process.env.FOUNDRY_TEST_INJECTED;
+    if (child) await child.stop();
+  }
+});
+
+test("normal launch stays closed and coding mode cannot consume repository arguments", async (t) => {
+  const root = fixture(
+    t,
+    `const fs=require('node:fs');fs.writeFileSync(require('node:path').join(process.cwd(),'normal.json'),JSON.stringify(process.argv.slice(2)));process.stdin.once('data',()=>console.log(JSON.stringify({protocol:1,url:'http://127.0.0.1:12345',pid:process.pid,dataDir:process.env.FOUNDRY_DATA_DIR})));process.stdin.on('end',()=>process.exit(0));`,
+  );
+  const dataRoot = path.join(root, "state");
+  const child = await startBackend({ resources: root, dataRoot });
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(dataRoot, "normal.json"))),
+    ["--desktop"],
+  );
+  assert.equal(child.ready.dataDir, path.join(dataRoot, "workbench"));
+  await child.stop();
+  await assert.rejects(
+    startBackend({
+      resources: root,
+      dataRoot,
+      mode: "coding",
+      repository: path.join(root, "repo"),
+    }),
+    /repository/i,
+  );
+});
+
 test("timeout, exit, malformed and oversized readiness stop without retry", async (t) => {
   for (const body of [
     "setInterval(()=>{},1000);",

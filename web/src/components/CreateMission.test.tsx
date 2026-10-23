@@ -44,6 +44,263 @@ const fillRequired = () => {
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
 };
 
+const codingCapability = {
+  enabled: true,
+  available: true,
+  reason: "",
+  profile: {
+    schema_version: 1,
+    control_version: 1,
+    id: "c4_go_model_v1",
+    mode: "docker",
+    platform: "linux/arm64",
+    verifier: "/opt/foundry/verify-go-v1",
+    docker_path: "/opt/docker/bin/docker",
+    endpoint: "unix:///opt/docker/run/docker.sock",
+    image_id: "",
+  },
+  limits: { max_calls: 16, max_repairs: 2 },
+  provider_families: ["openai"],
+  approval_required: [
+    "readiness",
+    "baseline",
+    "context",
+    "execute",
+    "delivery",
+  ],
+};
+
+it("creates a model-backed task through the dedicated route without approving or executing anything", async () => {
+  const created = {
+    ...mission,
+    id: "model-backed",
+    state: "draft",
+    spec: {
+      ...mission.spec,
+      c4: {
+        ...codingCapability.profile,
+        image_id: `sha256:${"c".repeat(64)}`,
+      },
+    },
+  };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [profile],
+        settings: { default_profile_id: "p1", role_bindings: {} },
+      });
+    if (path === "/api/health") return response({ capabilities: {} });
+    if (path === "/api/capabilities") return response(emptyCapabilities);
+    if (path === "/api/role-model-policy")
+      return response({ state: { policy: { roles: {} } } });
+    if (path === "/api/coding-tasks" && !init?.method)
+      return response(codingCapability);
+    if (path === "/api/coding-tasks" && init?.method === "POST")
+      return response({ mission: created });
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const onCreated = vi.fn();
+  render(<CreateMission onCancel={() => {}} onCreated={onCreated} />);
+
+  await screen.findByText(/c4_go_model_v1/);
+  fillRequired();
+  fireEvent.click(screen.getByLabelText(/启用账户模型与受控 Docker/));
+  fireEvent.change(screen.getByLabelText("不可变本地镜像 ID"), {
+    target: { value: `sha256:${"c".repeat(64)}` },
+  });
+  await waitFor(() =>
+    expect(screen.getByLabelText("启用可恢复候选（新任务）")).toBeDisabled(),
+  );
+  expect(screen.getByLabelText("启用受控 Researcher 本地读取")).toBeDisabled();
+  expect(
+    screen.getByLabelText("启用任务内本地 MCP 调研（测试服务）"),
+  ).toBeDisabled();
+  await inspectOrdinary();
+  fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
+
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith(created));
+  const posts = fetcher.mock.calls.filter(
+    ([path, init]) => path === "/api/coding-tasks" && init?.method === "POST",
+  );
+  expect(posts).toHaveLength(1);
+  expect(fetcher.mock.calls.some(([path]) => path === "/api/missions")).toBe(
+    false,
+  );
+  expect(JSON.parse(String(posts[0][1]?.body))).toMatchObject({
+    import_version: 1,
+    coding_version: 1,
+    workspace_mode: "generations_v1",
+    repo_path: "/tmp/manual-source",
+    spec: {
+      protected: [],
+      max_calls: 16,
+      c4: {
+        schema_version: 1,
+        control_version: 1,
+        id: "c4_go_model_v1",
+        mode: "docker",
+        image_id: `sha256:${"c".repeat(64)}`,
+        docker_path: "/opt/docker/bin/docker",
+        endpoint: "unix:///opt/docker/run/docker.sock",
+        verifier: "/opt/foundry/verify-go-v1",
+      },
+    },
+  });
+  expect(fetcher.mock.calls).toHaveLength(6);
+});
+
+it("never falls back to ordinary creation while model-backed coding is explicitly requested but invalid", async () => {
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [profile],
+        settings: { default_profile_id: "p1", role_bindings: {} },
+      });
+    if (path === "/api/health") return response({ capabilities: {} });
+    if (path === "/api/capabilities") return response(emptyCapabilities);
+    if (path === "/api/role-model-policy")
+      return response({ state: { policy: { roles: {} } } });
+    if (path === "/api/coding-tasks" && !init?.method)
+      return response(codingCapability);
+    if (path === "/api/missions" || init?.method === "POST")
+      return response({ mission });
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const onCreated = vi.fn();
+  render(<CreateMission onCancel={() => {}} onCreated={onCreated} />);
+
+  await screen.findByText(/c4_go_model_v1/);
+  fillRequired();
+  fireEvent.click(screen.getByLabelText(/启用账户模型与受控 Docker/));
+  fireEvent.change(screen.getByLabelText("不可变本地镜像 ID"), {
+    target: { value: "sha256:not-a-digest" },
+  });
+  await inspectOrdinary();
+  fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    /账户模型编码已明确启用.*配置无效/,
+  );
+  expect(
+    fetcher.mock.calls.filter(([path]) => path === "/api/missions"),
+  ).toHaveLength(0);
+  expect(
+    fetcher.mock.calls.filter(
+      ([path, init]) => path === "/api/coding-tasks" && init?.method === "POST",
+    ),
+  ).toHaveLength(0);
+  expect(screen.getByLabelText(/启用账户模型与受控 Docker/)).toBeChecked();
+
+  fireEvent.click(screen.getByLabelText(/启用账户模型与受控 Docker/));
+  fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith(mission));
+  expect(
+    fetcher.mock.calls.filter(([path]) => path === "/api/missions"),
+  ).toHaveLength(1);
+});
+
+it("preserves explicit model-backed intent after metadata refresh fails and blocks all creation", async () => {
+  let codingReads = 0;
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [profile],
+        settings: { default_profile_id: "p1", role_bindings: {} },
+      });
+    if (path === "/api/health") return response({ capabilities: {} });
+    if (path === "/api/capabilities") return response(emptyCapabilities);
+    if (path === "/api/role-model-policy")
+      return response({ state: { policy: { roles: {} } } });
+    if (path === "/api/coding-tasks" && !init?.method)
+      return ++codingReads === 1
+        ? response(codingCapability)
+        : response({ error: { message: "capability expired" } }, 503);
+    if (path === "/api/missions" || init?.method === "POST")
+      return response({ mission });
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<CreateMission onCancel={() => {}} onCreated={vi.fn()} />);
+
+  await screen.findByText(/c4_go_model_v1/);
+  fillRequired();
+  fireEvent.click(screen.getByLabelText(/启用账户模型与受控 Docker/));
+  fireEvent.change(screen.getByLabelText("不可变本地镜像 ID"), {
+    target: { value: `sha256:${"d".repeat(64)}` },
+  });
+  await inspectOrdinary();
+  fireEvent.click(screen.getByRole("button", { name: "刷新编码能力" }));
+  await screen.findByText(/capability expired/);
+  expect(screen.getByLabelText(/启用账户模型与受控 Docker/)).toBeChecked();
+
+  fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    /账户模型编码已明确启用.*配置无效/,
+  );
+  expect(
+    fetcher.mock.calls.filter(
+      ([path, init]) => path === "/api/missions" || init?.method === "POST",
+    ),
+  ).toHaveLength(0);
+});
+
+it("invalidates model-backed creation for the full duration of a metadata refresh", async () => {
+  let codingReads = 0;
+  let resolveRefresh!: (value: Response) => void;
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [profile],
+        settings: { default_profile_id: "p1", role_bindings: {} },
+      });
+    if (path === "/api/health") return response({ capabilities: {} });
+    if (path === "/api/capabilities") return response(emptyCapabilities);
+    if (path === "/api/role-model-policy")
+      return response({ state: { policy: { roles: {} } } });
+    if (path === "/api/coding-tasks" && !init?.method) {
+      codingReads += 1;
+      if (codingReads === 1) return response(codingCapability);
+      return new Promise<Response>((resolve) => {
+        resolveRefresh = resolve;
+      });
+    }
+    if (path === "/api/missions" || init?.method === "POST")
+      return response({ mission });
+    throw new Error(`unexpected ${path}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<CreateMission onCancel={() => {}} onCreated={vi.fn()} />);
+
+  await screen.findByText(/c4_go_model_v1/);
+  fillRequired();
+  fireEvent.click(screen.getByLabelText(/启用账户模型与受控 Docker/));
+  fireEvent.change(screen.getByLabelText("不可变本地镜像 ID"), {
+    target: { value: `sha256:${"e".repeat(64)}` },
+  });
+  await inspectOrdinary();
+
+  fireEvent.click(screen.getByRole("button", { name: "刷新编码能力" }));
+  await screen.findByText(/正在读取编码能力元数据/);
+  fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    /账户模型编码已明确启用.*配置无效/,
+  );
+  expect(screen.getByLabelText(/启用账户模型与受控 Docker/)).toBeChecked();
+  expect(
+    fetcher.mock.calls.filter(
+      ([path, init]) => path === "/api/missions" || init?.method === "POST",
+    ),
+  ).toHaveLength(0);
+
+  resolveRefresh(response(codingCapability));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "刷新编码能力" })).toBeEnabled(),
+  );
+});
+
 it("previews actual role overrides and current credential then accepts only the canonical created mission", async () => {
   const bound = {
     ...profile,
@@ -521,7 +778,7 @@ it("creates an explicit bounded spec from newline fields without starting model 
       max_calls: 16,
     },
   });
-  expect(fetcher).toHaveBeenCalledTimes(5);
+  expect(fetcher).toHaveBeenCalledTimes(6);
   expect(
     fetcher.mock.calls.filter(([path]) => path === "/api/role-model-policy"),
   ).toHaveLength(1);
@@ -562,7 +819,7 @@ it("defaults new ordinary missions to immutable generations and explains the bou
   ).toBeVisible();
   await inspectOrdinary();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
-  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(5));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(6));
   expect(
     fetcher.mock.calls.filter(([path]) => path === "/api/role-model-policy"),
   ).toHaveLength(1);

@@ -72,18 +72,125 @@ function workbenchReadiness(snapshot, expected) {
   };
 }
 
-module.exports = { workbenchReadiness };
+function codingWorkbenchReadiness(snapshot, expected) {
+  const missing = {
+    ready: false,
+    document: false,
+    status: false,
+    setup: false,
+    unavailable: false,
+    closed: false,
+  };
+  if (
+    !snapshot ||
+    snapshot.window !== expected.window ||
+    snapshot.processId !== expected.processId ||
+    !Array.isArray(snapshot.nodes) ||
+    snapshot.nodes.length > 2048
+  )
+    return missing;
+  const nodes = snapshot.nodes;
+  for (const [i, n] of nodes.entries()) {
+    if (
+      !n ||
+      !Number.isInteger(n.parent) ||
+      (i === 0 ? n.parent !== -1 : n.parent < 0 || n.parent >= i) ||
+      typeof n.type !== "string" ||
+      n.type.length > 32 ||
+      typeof n.name !== "string" ||
+      n.name.length > 512 ||
+      typeof n.visible !== "boolean" ||
+      typeof n.enabled !== "boolean"
+    )
+      return missing;
+  }
+  if (
+    nodes[0]?.type !== "Window" ||
+    nodes[0]?.name !== "Foundry — Controlled Coding Workbench"
+  )
+    return missing;
+  const beneath = (index, parent) => {
+    let depth = 0;
+    for (let i = index; i >= 0; i = nodes[i].parent) {
+      if (++depth > 32 || !nodes[i].visible) return false;
+      if (i === parent) return true;
+    }
+    return false;
+  };
+  const find = (parent, predicate) =>
+    nodes.findIndex((node, index) => predicate(node) && beneath(index, parent));
+  const document = find(0, (node) => node.type === "Document" && node.enabled);
+  if (document < 0) return missing;
+  const status = find(
+    document,
+    (node) => node.type === "Group" && node.name === "工作台状态" && node.enabled,
+  );
+  const statusReady =
+    status >= 0 &&
+    find(status, (node) => node.type === "Text" && node.name === "已收到") >=
+      0 &&
+    find(
+      status,
+      (node) => node.type === "Text" && node.name === "事件流已连接",
+    ) >= 0;
+  const setup = find(
+    document,
+    (node) =>
+      node.type === "Group" && node.name === "账户模型编码设置" && node.enabled,
+  );
+  if (setup < 0)
+    return { ...missing, document: true, status: statusReady };
+  const unavailable =
+    find(
+      setup,
+      (node) =>
+        node.type === "Text" &&
+        node.name.includes(
+          "账户模型编码不可用：windows_docker_trust_unavailable",
+        ),
+    ) >= 0 &&
+    find(
+      setup,
+      (node) => node.type === "Text" && node.name.includes("不可用 · openai"),
+    ) >= 0;
+  const closed =
+    find(
+      setup,
+      (node) =>
+        node.type === "CheckBox" &&
+        node.name ===
+          "启用账户模型与受控 Docker（仅创建配置，不批准或执行）" &&
+        !node.enabled,
+    ) >= 0;
+  const refresh =
+    find(
+      setup,
+      (node) =>
+        node.type === "Button" && node.name === "刷新编码能力" && !node.enabled,
+    ) >= 0;
+  return {
+    ready: statusReady && unavailable && closed && refresh,
+    document: true,
+    status: statusReady,
+    setup: true,
+    unavailable,
+    closed,
+  };
+}
+
+module.exports = { workbenchReadiness, codingWorkbenchReadiness };
 
 // Test driver only: inspect one installed window, without a debug port,
 // renderer injection, activation switches or application security changes.
 if (require.main === module) {
   const { execFileSync } = require("node:child_process");
   const path = require("node:path");
-  const [window, pid] = process.argv.slice(2);
+  const [window, pid, mode = "persistent"] = process.argv.slice(2);
   if (
     process.platform !== "win32" ||
     !/^[1-9][0-9]{0,18}$/.test(window || "") ||
-    !/^[1-9][0-9]{0,9}$/.test(pid || "")
+    !/^[1-9][0-9]{0,9}$/.test(pid || "") ||
+    !["persistent", "coding-unavailable"].includes(mode)
   )
     process.exit(2);
   let receipt;
@@ -113,10 +220,12 @@ if (require.main === module) {
         windowsHide: true,
       },
     );
-    receipt = workbenchReadiness(JSON.parse(output.replace(/^\uFEFF/, "")), {
-      window,
-      processId: Number(pid),
-    });
+    const snapshot = JSON.parse(output.replace(/^\uFEFF/, ""));
+    const expected = { window, processId: Number(pid) };
+    receipt =
+      mode === "coding-unavailable"
+        ? codingWorkbenchReadiness(snapshot, expected)
+        : workbenchReadiness(snapshot, expected);
   } catch {
     // UIA can report an element disappearing during initial layout. Retry is
     // owned by the outer finite readiness deadline; never expose raw UI text.

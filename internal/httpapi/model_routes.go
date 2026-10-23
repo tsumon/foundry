@@ -40,6 +40,14 @@ type modelRuntimeView struct {
 
 func (s *server) modelRuntimeView() modelRuntimeView {
 	view := modelRuntimeView{Adapters: append([]modelAdapterView(nil), modelAdapterViews...)}
+	// Display of a configured task transport only. Every actual send still needs
+	// its independently claimed, sealed, current engine invocation.
+	if s.codingWorkbench && !s.recoveryReadOnly && s.engine.CodingWorkbenchAvailable() {
+		view.LiveInference = true
+		for i := range view.Adapters {
+			view.Adapters[i].LiveEnabled = view.Adapters[i].Provider == "openai"
+		}
+	}
 	if s.modelRouter != nil {
 		view.SimulationInference = s.modelRouter.SimulationEnabled()
 	}

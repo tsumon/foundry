@@ -213,6 +213,7 @@ async function main() {
   fs.mkdirSync(appSource);
   const appFiles = [
     "main.cjs",
+    "coding-mode.cjs",
     "runtime.cjs",
     "security.cjs",
     "downloads.cjs",

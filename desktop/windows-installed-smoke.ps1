@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'Native Windows required' }
 $node = (Get-Command node.exe).Source
-$installer = Join-Path $Output 'Foundry-0.1.0-alpha.1-x64.exe'
+$installer = Join-Path $Output 'Foundry-0.1.0-alpha.2-x64.exe'
 $testRoot = Join-Path $env:RUNNER_TEMP ('Foundry 验收 ' + [Guid]::NewGuid().ToString('N'))
 $installed = Join-Path $testRoot '用户安装 Foundry'
 New-Item -ItemType Directory -Path $testRoot | Out-Null
@@ -28,6 +28,8 @@ try {
   if ($runtime.result -ne 'PASS') { throw 'Missing installed smoke result' }
   $evidenceDB = Join-Path $runtime.simulationEvidence 'foundry.db'
   $evidenceHash = (Get-FileHash $evidenceDB -Algorithm SHA256).Hash
+  $runtimeCodingDB = Join-Path $runtime.codingEvidence 'foundry.db'
+  $runtimeCodingHash = (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash
   $actualData = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Foundry'
   if (Test-Path $actualData) { throw 'Native UI acceptance requires a fresh user profile' }
   Add-Type -AssemblyName System.Drawing
@@ -45,15 +47,15 @@ public static class FoundryWindow {
  [DllImport("dwmapi.dll")] public static extern int DwmFlush();
 }
 '@
-  function Wait-Window($Process, [string]$Filename) {
+  function Wait-Window($Process, [string]$Title, [string]$Mode, [string]$Filename) {
     $deadline = [DateTime]::UtcNow.AddSeconds(40)
     $last = @{ ready=$false }
     $paint = @{ clientPaint=$false }
     while ([DateTime]::UtcNow -lt $deadline) {
       $Process.Refresh()
       if ($Process.HasExited) { throw 'Native app exited before visible UI' }
-      if ($Process.MainWindowHandle -ne [IntPtr]::Zero -and $Process.MainWindowTitle -like '*Persistent Workbench*' -and $Process.Responding) {
-        $raw = & $node (Join-Path $PSScriptRoot 'windows-ui-ready.cjs') $Process.MainWindowHandle.ToInt64().ToString() $Process.Id.ToString()
+      if ($Process.MainWindowHandle -ne [IntPtr]::Zero -and $Process.MainWindowTitle -ceq $Title -and $Process.Responding) {
+        $raw = & $node (Join-Path $PSScriptRoot 'windows-ui-ready.cjs') $Process.MainWindowHandle.ToInt64().ToString() $Process.Id.ToString() $Mode
         if ($LASTEXITCODE -ne 0) { throw 'Native UI inspection driver failed' }
         $last = ($raw -join "`n") | ConvertFrom-Json
         if ($last.ready) {
@@ -95,16 +97,30 @@ public static class FoundryWindow {
   }
   $ui = Start-Process -FilePath $app -PassThru
   try {
-    $firstReady = Wait-Window $ui 'windows-ui.png'
+    $firstReady = Wait-Window $ui 'Foundry — Persistent Workbench' 'persistent' 'windows-ui.png'
     [FoundryWindow]::SetForegroundWindow($ui.MainWindowHandle) | Out-Null
     $second = Start-Process -FilePath $app -PassThru
     if (-not $second.WaitForExit(15000)) { throw 'Second native instance did not yield ownership' }
-    $firstReady = Wait-Window $ui 'windows-ui.png'
+    $firstReady = Wait-Window $ui 'Foundry — Persistent Workbench' 'persistent' 'windows-ui.png'
+    $codingActionRaw = & $node (Join-Path $PSScriptRoot 'windows-ui-mode.cjs') $ui.MainWindowHandle.ToInt64().ToString() $ui.Id.ToString() 'coding'
+    if ($LASTEXITCODE -ne 0) { throw 'Native coding menu action failed' }
+    $codingAction = ($codingActionRaw -join "`n") | ConvertFrom-Json
+    if (-not $codingAction.ok -or $codingAction.action -ne 'coding') { throw 'Native coding menu receipt invalid' }
+    $codingReady = Wait-Window $ui 'Foundry — Controlled Coding Workbench' 'coding-unavailable' 'windows-ui-coding.png'
+    $codingDB = Join-Path $actualData 'coding\foundry.db'
+    if (-not (Test-Path $codingDB)) { throw 'Native coding database missing' }
+    $persistentActionRaw = & $node (Join-Path $PSScriptRoot 'windows-ui-mode.cjs') $ui.MainWindowHandle.ToInt64().ToString() $ui.Id.ToString() 'persistent'
+    if ($LASTEXITCODE -ne 0) { throw 'Native persistent menu action failed' }
+    $persistentAction = ($persistentActionRaw -join "`n") | ConvertFrom-Json
+    if (-not $persistentAction.ok -or $persistentAction.action -ne 'persistent') { throw 'Native persistent menu receipt invalid' }
+    $switchedReady = Wait-Window $ui 'Foundry — Persistent Workbench' 'persistent' 'windows-ui-return.png'
+    $codingHash = (Get-FileHash $codingDB -Algorithm SHA256).Hash
     if (-not $ui.CloseMainWindow() -or -not $ui.WaitForExit(15000)) { throw 'Native clean quit failed' }
     $profileDB = Join-Path $actualData 'workbench\foundry.db'
     if (-not (Test-Path $profileDB)) { throw 'LocalAppData persistent database missing' }
     $ui = Start-Process -FilePath $app -PassThru
-    $restartReady = Wait-Window $ui 'windows-ui-restart.png'
+    $restartReady = Wait-Window $ui 'Foundry — Persistent Workbench' 'persistent' 'windows-ui-restart.png'
+    if (-not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash) { throw 'Native restart changed retained coding data' }
     if (-not $ui.CloseMainWindow() -or -not $ui.WaitForExit(15000)) { throw 'Native restart quit failed' }
   } finally {
     if ($ui -and -not $ui.HasExited) { $ui.Kill(); $ui.WaitForExit(); throw 'UI acceptance required forced cleanup; gate failed' }
@@ -116,6 +132,6 @@ public static class FoundryWindow {
   $deadline = [DateTime]::UtcNow.AddSeconds(30)
   while ((Test-Path $app) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
   if (Test-Path $app) { throw 'Uninstall left installed executable' }
-  if (-not (Test-Path $profileDB) -or (Get-FileHash $evidenceDB -Algorithm SHA256).Hash -ne $evidenceHash) { throw 'Uninstall changed persistent evidence' }
-  @{ result='PASS'; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; nativeUI='OS UI Automation workbench controls and received data, plus painted client screenshot; no manual interactive acceptance claimed'; firstUI=$firstReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS'; uninstall='PASS; data and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
+  if (-not (Test-Path $profileDB) -or -not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash -or -not (Test-Path $runtimeCodingDB) -or (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash -ne $runtimeCodingHash -or (Get-FileHash $evidenceDB -Algorithm SHA256).Hash -ne $evidenceHash) { throw 'Uninstall changed persistent evidence' }
+  @{ result='PASS'; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; nativeUI='OS UI Automation opened the fixed native coding menu and confirmation, observed the rendered Windows-unavailable coding boundary, returned to persistent mode, and captured painted clients; no manual interactive acceptance claimed'; firstUI=$firstReady; codingAction=$codingAction; codingUI=$codingReady; persistentAction=$persistentAction; switchedUI=$switchedReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS; defaulted to persistent mode and retained coding data'; uninstall='PASS; persistent, coding, and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
 } finally { $env:PATH=$oldPath }

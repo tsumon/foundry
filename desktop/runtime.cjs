@@ -184,7 +184,7 @@ async function startBackend({
   integrity,
 }) {
   verifyResources(resources, integrity);
-  if (!["normal", "simulation"].includes(mode))
+  if (!["normal", "simulation", "coding"].includes(mode))
     throw Error("Unknown desktop mode");
   if (repository && (mode !== "simulation" || !path.isAbsolute(repository)))
     throw Error("Invalid repository selection");
@@ -205,26 +205,34 @@ async function startBackend({
   } else privateDirectory(dataRoot);
   const dataDir = path.join(
     dataRoot,
-    mode === "normal" ? "workbench" : "simulations",
+    mode === "normal"
+      ? "workbench"
+      : mode === "coding"
+        ? "coding"
+        : "simulations",
   );
   if (process.platform !== "win32") privateDirectory(dataDir);
   const webDir = path.join(resources, "web");
-  const args =
-    mode === "normal"
-      ? ["--desktop"]
-      : [
-          "--desktop",
-          "--repository-tasks-fixture",
-          "--web-dir",
-          webDir,
-          ...(repository ? ["--repository-task-path", repository] : []),
-        ];
+  let args;
+  if (mode === "normal") args = ["--desktop"];
+  else if (mode === "coding")
+    args = ["--desktop", "--coding-workbench"];
+  else
+    args = [
+      "--desktop",
+      "--repository-tasks-fixture",
+      "--web-dir",
+      webDir,
+      ...(repository ? ["--repository-task-path", repository] : []),
+    ];
   const capability = crypto.randomBytes(32).toString("hex");
   const child = spawn(
     path.join(
       resources,
       "bin",
-      executableName(mode === "normal" ? "foundry" : "foundry-acceptance"),
+      executableName(
+        mode === "simulation" ? "foundry-acceptance" : "foundry",
+      ),
     ),
     args,
     {

@@ -4,9 +4,9 @@ Status: desktop Alpha implementation. Installer acceptance is gated on the nativ
 
 ## Outcome and boundary
 
-Package the existing React workbench and Go controller as a local desktop application, first for macOS Apple Silicon, then Windows x64. Installation must not require Node.js, npm, Go, or a C compiler. This does not turn simulated agents into cloud models or enable subscriptions, Docker, scripts, Git writes, deployment, or database migrations.
+Package the existing React workbench and Go controller as a local desktop application, first for macOS Apple Silicon, then Windows x64. Installation must not require Node.js, npm, Go, or a C compiler. Installing the package grants no provider, Docker, script, Git-write, deployment or migration authority. The later [controlled coding mode](live-coding.md) is a separate explicit entry; it never relabels simulated history as real execution.
 
-The workbench keeps its existing layout and independent approvals. The desktop application provides a persistent empty workbench and an explicitly labeled, isolated local simulation entry for the repository-task workflow. Simulation evidence remains `synthetic_stub`; it is never presented as a compiler or Docker result. Source repositories remain read-only and disposable simulation evidence is retained.
+The workbench keeps its existing layout and independent approvals. The desktop application provides an ordinary persistent workbench, a separately retained controlled coding workbench, and an explicitly labeled isolated local simulation entry. Simulation evidence remains `synthetic_stub`; it is never presented as a compiler or Docker result. Source repositories remain read-only and simulation evidence is retained.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ Use a sandboxed Electron window with the unchanged built SPA, and a bundled nati
 
 macOS keeps its existing filesystem, committed-Git, and recovery protections. Packaging is ad-hoc signed for local integrity, not Developer ID signed or Apple-notarized. Windows uses a per-user installer without administrator elevation. No signing identity is invented, no Keychain credentials are enumerated, and OS trust protections are not disabled.
 
-Windows needs native implementations of controller lock ownership, reparse-point-safe file admission, exclusive directory publication, private storage and durable publication ordering. Do not replace these with permission-check removal, check-then-overwrite, arbitrary PATH executables, or plaintext secret storage. Real credential activation and real Docker stay unsupported/default-closed on Windows in this milestone.
+Windows uses native implementations of controller lock ownership, reparse-point-safe file admission, exclusive directory publication, private storage and durable publication ordering. Do not replace these with permission-check removal, check-then-overwrite, arbitrary PATH executables, or plaintext secret storage. Credential Manager has separate Foundry account/diagnostic namespaces and a strict 2,560-byte blob limit. Real Docker remains unsupported on Windows; enabling configuration cannot bypass that limit.
 
 Git execution uses an explicit trusted installation, with configuration, hooks, prompting, filters, protocol access and lazy fetch constrained as before. Package prerequisites and missing-Git diagnostics must be explicit. Windows path admission must reject aliases, alternate data streams, reserved names, junction escapes and case collisions. Unix executable-mode semantics may not be silently discarded: reject unsupported imported modes until they can be represented and verified faithfully.
 
@@ -67,6 +67,14 @@ control and received-data/connected-event-stream state. First launch and restart
 must both pass. Foreground-window client-area paint and retained screenshots are
 additional checks, never substitutes for semantic readiness. A blank window fails
 the gate; no renderer debug port, activation switch or relaxed approval is added.
+
+The coding-mode extension also exercises the actual packaged native menu and its
+configuration-only confirmation. Windows must visibly retain its unavailable real
+Docker boundary. Tests switch back to the ordinary workbench, restart and
+uninstall while checking retained coding data. Only a separately opted-in CI
+diagnostic test touches its fresh synthetic Credential Manager probe; it never
+enumerates account entries or accesses a real account. These checks do not certify
+power-loss recovery or real provider use.
 
 The shared race suite has a finite 1,200-second **per-package** budget. The
 600-second normal-suite budget, uncached full test selection, race detector,

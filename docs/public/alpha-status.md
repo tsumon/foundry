@@ -8,12 +8,22 @@ its artifact as accepted; build configuration alone is not a pass. See the
 
 ## Implemented
 
+- [Model-driven coding workbench](live-coding.md): a native opt-in composes OpenAI
+  account-backed role calls, committed Go imports, immutable candidates, controlled
+  Docker verification, at most two confirmed-failure repairs and final review/
+  delivery. Each model send needs an exact durable claimed invocation under the
+  current independent approval. It uses no descriptor-supplied solution. Tests
+  exercise the production protocol with owned loopback services and a synthetic
+  Docker boundary; real-account end-to-end acceptance remains pending authorization.
+  Mac supports the controlled runtime; Windows real Docker remains unavailable.
+
 - Native desktop packaging of the unchanged workbench and Go controller: a Mac
   DMG and Windows per-user EXE. Runtime Go/Node/compiler installation is not
   required. The native menu distinguishes persistent empty data from disposable,
   retained **local simulation** runs. Patch/report exports use bounded native
-  save dialogs; installation never grants pending approvals or enables real
-  accounts, Docker, scripts or Git writes. The Mac artifact has an ad-hoc
+  save dialogs; installation never grants pending approvals or real effects.
+  A separate coding menu enables configuration, not account/Docker execution.
+  The Mac artifact has an ad-hoc
   integrity signature only; the Windows installer is unsigned. Neither is a
   production-signed, notarized or auto-updating release.
 
@@ -50,7 +60,7 @@ The [independent single-inference gate](openai-inference-gate.md) adds a mutuall
 - Multi-worker scheduling or autonomous background execution.
 - Generic external MCP `tools/call`, MCP stdio/OAuth, Skill/script execution, hook scripts/webhooks, or Git hooks.
 - Automatic provider fallback, paid fallback, retry/replay of unknown remote outcomes, or automatic Docker image pulls.
-- A browser-triggered native Keychain test or ordinary-startup real-login, live catalog or live-inference action. Only separately confirmed operator activation can prepare the corresponding independent approval workflow; the connection mode's native check is never triggered by a web request. Task inference through live account routes stays closed.
+- A browser-triggered native Keychain test or ordinary-startup real-login, live catalog or live-inference action. Only separately confirmed operator activation can prepare the corresponding independent approval workflow; the connection mode's native check is never triggered by a web request. Coding task inference has a separate claimed-invocation capability; it does not open login, catalog or single-inference operator gates.
 - A production code-signing/notarization service, automatic updater, package
   manager formula, or GitHub Release. Installers are versioned CI artifacts with
   finite retention, not a permanent release channel.
@@ -64,14 +74,18 @@ deliberately narrower: committed regular `100644` files only, no executable-bit
 entries, symlinks, junctions, aliases or alternate data streams. Windows storage
 uses protected per-user DACLs and native held locks, not POSIX chmod emulation.
 
-The source CLI's native credential backend is macOS Keychain with cgo. Desktop
-launches on both platforms disable that backend and real-account operator
-activation. Windows real Keychain and real Docker are unsupported and fail
-closed. Compilation alone does not establish native acceptance.
+Native credential backends are macOS Keychain with cgo and Windows Credential
+Manager. Normal desktop/simulation modes keep credential access disabled; coding
+mode uses native storage only for explicit operations. Windows rejects blobs
+over its native 2,560-byte limit rather than silently truncating or using plaintext;
+larger subscription bundles are therefore unsupported. Windows real Docker stays
+closed. Compilation alone does not establish native or real-provider acceptance.
 
 The expected validation toolchain is Go 1.27.3, Node.js 22.23.2, and npm 10.9.8. The trusted system `/usr/bin/git` must pass `/usr/bin/git --no-lazy-fetch --version`; a newer Git elsewhere on `PATH` does not substitute for it. CI targets the public-repository arm64 `macos-26` image and retains that feature check. The initial public snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) completed both macOS verification and security checks in [public workflow run 39188374585](https://github.com/tsumon/foundry/actions/runs/39188374585). That evidence is commit-scoped; it does not cover later commits or any skipped Docker, Keychain, real-provider, or independent-machine check. Docker-dependent behavior requires a running local daemon and a preloaded trusted image. A skipped Docker smoke test is unverified, not passed.
 
-Legacy accountless model profiles preserve their network capability. New account routes marked `live` are blocked in the production router, but the product as a whole is not globally offline. See [safety](safety.md).
+Legacy accountless model profiles preserve their network capability. Live account
+routes stay blocked outside the exact controlled-coding invocation capability;
+the product is not globally offline. See [safety](safety.md).
 
 ## Not yet verified or claimed
 

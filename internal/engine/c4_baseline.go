@@ -128,7 +128,7 @@ func (e *Engine) runC4Explicit(ctx context.Context, id string, revision int64, o
 		e.mu.Unlock()
 	}()
 	if cleanup {
-		_, err = sandbox.CleanupC4(runCtx, *m.Spec.C4, o, e.c4Trust(), exactID, e.options.C4.driver, e.c4Persist(id))
+		_, err = sandbox.CleanupC4(runCtx, *m.Spec.C4, o, e.c4Trust(m), exactID, e.options.C4.driver, e.c4Persist(id))
 	} else {
 		base, pathErr := e.c4Path(filepath.Join(e.dir(id), "base"))
 		if pathErr != nil {

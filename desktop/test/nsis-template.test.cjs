@@ -183,7 +183,7 @@ test("pinned builder emits only per-user one-click branches, without mode page o
       info: { cancellationToken: { cancelled: false } },
       appInfo: { sanitizedProductName: "Foundry" },
       getResource: async () => null,
-      expandMacro: () => "Foundry 0.1.0-alpha.1",
+      expandMacro: () => "Foundry 0.1.0-alpha.2",
     },
   };
   await NsisTarget.prototype.configureDefines.call(

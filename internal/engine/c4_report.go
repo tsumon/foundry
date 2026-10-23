@@ -2,10 +2,40 @@ package engine
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 
 	"foundry/internal/domain"
 )
+
+// Only the new profile adds call provenance. Historical report bytes and seals
+// remain unchanged. Main chat is excluded so later explanation cannot rewrite
+// the exported coding result; every included envelope is integrity checked.
+func (e *Engine) deliveryReport(m domain.Mission) (string, error) {
+	report := marshalReport(m)
+	if !isModelC4(m) {
+		return report, nil
+	}
+	all, err := e.verifiedInvocations(m.ID)
+	if err != nil {
+		return "", err
+	}
+	calls := []domain.Invocation{}
+	for _, v := range all {
+		if v.Epoch == m.Epoch && v.Kind == "model" && v.Role != domain.Main {
+			calls = append(calls, v)
+		}
+	}
+	raw, err := json.MarshalIndent(struct {
+		Snapshot *domain.MissionModelSnapshot `json:"model_snapshot"`
+		Controls []domain.C4Control           `json:"docker_controls"`
+		Calls    []domain.Invocation          `json:"model_invocations"`
+	}{m.ModelSnapshot, m.C4Controls, calls}, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return report + "\n## Model-backed coding · independent provenance\n\nSimulation routes are owned local integration observations, not real-provider acceptance. Each model receipt, Docker readiness, baseline, candidate test and cleanup is a distinct fact. Token usage is not remaining quota or a monetary hard cap.\n\n```json\n" + string(raw) + "\n```\n", nil
+}
 
 // Rendering only: no execution, readiness refresh, mutation or new authority.
 func writeC4ReportSources(out *bytes.Buffer, m domain.Mission) {

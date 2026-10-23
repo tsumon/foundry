@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { c4AdvanceAllowed, c4CandidatePassed, hasC4 } from "../c4";
+import {
+  c4AdvanceAllowed,
+  c4CandidatePassed,
+  hasC4,
+  isModelBackedC4,
+} from "../c4";
 import {
   activeStates,
   isControlledMCPReadMission,
@@ -70,6 +75,7 @@ export function DecisionPanel({
   const evidence = mission.evidence?.at(-1);
   const c4Blocked =
     hasC4(mission) && (!c4Available || !c4AdvanceAllowed(mission));
+  const modelBacked = isModelBackedC4(mission);
   const deliverable =
     mission.state === "awaiting_delivery" &&
     (!hasC4(mission) ||
@@ -116,9 +122,9 @@ export function DecisionPanel({
           {c4Decision}
           {c4Blocked && (
             <p className="warning-copy">
-              C4
-              尚无可继续的完整基线与清理事实，或模拟能力未确认。上下文、执行与交付仍需各自批准；请先检查
-              C4 记录。
+              {modelBacked
+                ? "C4 尚无可继续的完整 Docker 基线与清理事实，或当前就绪未确认。模型路由配置不改变此门禁；上下文、执行与交付仍需各自批准。"
+                : "C4 尚无可继续的完整基线与清理事实，或模拟能力未确认。上下文、执行与交付仍需各自批准；请先检查 C4 记录。"}
             </p>
           )}
           {unsupportedWorkspaceMode && (
@@ -155,7 +161,9 @@ export function DecisionPanel({
           {planning && (
             <>
               <div className="note warning-note">
-                {hasC4(mission) ? (
+                {modelBacked ? (
+                  "上下文批准会绑定冻结的账户、模型、消费类别与调用预算，并允许后端按角色发起受控模型调用。它不批准 readiness、baseline、执行或交付，也不保证远程额度与结果。"
+                ) : hasC4(mission) ? (
                   "C4 上下文仅交给专用本地模拟模型；下方端点是合成声明，不联系远程服务。上下文同意仍独立于基线、计划与交付批准。"
                 ) : (
                   <>
@@ -293,7 +301,9 @@ export function DecisionPanel({
                   planAccountBlocked ||
                   c4Blocked
                 }
-                onClick={() => onAction("plan", controlled ? true : undefined)}
+                onClick={() =>
+                  onAction("plan", controlled || modelBacked ? true : undefined)
+                }
               >
                 {mcpControlled
                   ? "授权上下文并开始受控调研"
@@ -308,8 +318,9 @@ export function DecisionPanel({
           {approval && (
             <>
               <div className="note">
-                批准后，Worker 将按当前计划在独立候选副本执行，不会修改原仓库。
-                验证来源以控制器记录为准；模拟检查不执行命令，来源未记录不代表已执行。
+                {modelBacked
+                  ? "批准后，Worker 按当前计划在独立候选副本工作；Worker 模型输出以调用回执为准，测试通过只以 C4 Docker 操作记录为准。批准计划不跳过候选验证、QA、Auditor 或交付审批。"
+                  : "批准后，Worker 将按当前计划在独立候选副本执行，不会修改原仓库。验证来源以控制器记录为准；模拟检查不执行命令，来源未记录不代表已执行。"}
               </div>
               <button
                 className="primary full"
@@ -326,11 +337,12 @@ export function DecisionPanel({
               >
                 批准并执行计划
               </button>
-              {mission.spec.c4?.control_version === 1 && !c4ExecutionAvailable && (
-                <p className="warning-copy">
-                  新的执行需要未过期的激活与匹配就绪结果；历史证据不会自动授权再次执行。
-                </p>
-              )}
+              {mission.spec.c4?.control_version === 1 &&
+                !c4ExecutionAvailable && (
+                  <p className="warning-copy">
+                    新的执行需要未过期的激活与匹配就绪结果；历史证据不会自动授权再次执行。
+                  </p>
+                )}
               {unresolved && (
                 <p className="warning-copy">
                   未解决的失败阻止执行审批；请在计划修订中明确处理。

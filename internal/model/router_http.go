@@ -6,10 +6,29 @@ import (
 	"encoding/json"
 	"mime"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"foundry/internal/domain"
 )
+
+type codingRequestKey struct{}
+
+func (r *Router) checkCodingSend(ctx context.Context, s domain.RoleModelSelection, method, endpoint string, encoded []byte) error {
+	if r.codingAdmission == nil {
+		return nil
+	}
+	q, ok := ctx.Value(codingRequestKey{}).(Request)
+	if !ok || q.Selection == nil || !reflect.DeepEqual(*q.Selection, s) || method != http.MethodPost || ctx.Err() != nil {
+		return providerFailure("request_rejected", "not_sent")
+	}
+	wantEndpoint, payload := routedPayload(q, s.Route.Adapter)
+	want, err := json.Marshal(payload)
+	if err != nil || endpoint != wantEndpoint || !bytes.Equal(want, encoded) || r.codingAdmission(ctx, q) != nil {
+		return providerFailure("request_rejected", "not_sent")
+	}
+	return nil
+}
 
 func routedPayload(r Request, adapter string) (string, any) {
 	switch adapter {
@@ -50,6 +69,9 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 	if r.resolver == nil {
 		return nil, 0, providerFailure("auth_invalid", "not_sent")
 	}
+	if err := r.checkCodingSend(ctx, s, method, endpoint, encoded); err != nil {
+		return nil, 0, err
+	}
 	lease, err := r.resolver.ResolveModelCredential(ctx, s)
 	if err != nil {
 		return nil, 0, sanitizedResolverError(err)
@@ -70,6 +92,9 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 	}
 	if s.Route.Adapter == "openai_siwc_responses" && method == http.MethodPost {
 		req.Header.Set("Accept", "text/event-stream")
+	}
+	if err := r.checkCodingSend(ctx, s, method, endpoint, encoded); err != nil {
+		return nil, lease.Generation, err
 	}
 	response, err := r.http.Do(req)
 	if err != nil {

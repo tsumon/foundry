@@ -7,6 +7,7 @@ import {
   c4OperationLabel,
   c4Supported,
   hasC4,
+  isModelBackedC4,
   type C4Action,
   type C4Operation,
   type C4Status,
@@ -15,19 +16,24 @@ import {
 function C4ProfileFacts({ mission }: { mission: Mission }) {
   const p = mission.spec.c4;
   const docker = p?.control_version === 1 && p.mode === "docker";
+  const modelBacked = isModelBackedC4(mission);
   return (
     <>
       <p className="warning-copy">
-        {docker
-          ? "受控 Docker 声明；当前可用性需核对控制状态。历史事实不等于当前就绪，模型推理仍为本地模拟。"
-          : "本任务仅本地模拟，未执行真实 Docker。模拟通过不证明 Docker、Go、镜像、隔离或资源就绪。"}
+        {modelBacked
+          ? "账户模型与受控 Docker 声明；当前可用性需分别核对调用授权、就绪和审批。历史配置不等于当前权限或成功。"
+          : docker
+            ? "受控 Docker 声明；当前可用性需核对控制状态。历史事实不等于当前就绪，模型推理仍为本地模拟。"
+            : "本任务仅本地模拟，未执行真实 Docker。模拟通过不证明 Docker、Go、镜像、隔离或资源就绪。"}
       </p>
       <p className="muted small">
-        {docker
-          ? "验证来源按已记录的 Docker 就绪与操作绑定判断，不从模式声明推断成功。"
-          : c4Supported(mission)
-            ? "模型判断与验证来源均为本地模拟；source_kind=synthetic_stub。"
-            : "配置不支持；来源未确认，不能推断成功。"}
+        {modelBacked
+          ? "账户模型输出来源：冻结角色路由与模型调用回执；测试来源：C4 Docker 操作与清理记录。两者都不从配置推断成功。"
+          : docker
+            ? "验证来源按已记录的 Docker 就绪与操作绑定判断，不从模式声明推断成功。"
+            : c4Supported(mission)
+              ? "模型判断与验证来源均为本地模拟；source_kind=synthetic_stub。"
+              : "配置不支持；来源未确认，不能推断成功。"}
         以下为冻结声明，不是主机探测结果。
       </p>
       <dl className="metadata">

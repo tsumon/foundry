@@ -20,6 +20,8 @@ import type { RolePolicyState } from "../rolePolicyTypes";
 import { ImportHistory, RepositoryImport } from "./RepositoryImport";
 import type { RepositoryInspection } from "../repositoryImportTypes";
 import type { GitRepository } from "../capabilityTypes";
+import { codingTaskApi } from "../codingTaskApi";
+import { CodingTaskSetup, type CodingTaskSelection } from "./CodingTaskSetup";
 const lines = (text: string) =>
   text
     .split(/\r?\n/)
@@ -72,6 +74,9 @@ export function CreateMission({
   const [recoverable, setRecoverable] = useState(true);
   const [controlled, setControlled] = useState(false);
   const [mcpControlled, setMCPControlled] = useState(false);
+  const [codingRequested, setCodingRequested] = useState(false);
+  const [codingSelection, setCodingSelection] =
+    useState<CodingTaskSelection | null>(null);
   const controlledMode = controlled || mcpControlled;
   const importing = recoverable && !controlledMode;
   const [importAttempt, setImportAttempt] = useState(0);
@@ -323,6 +328,21 @@ export function CreateMission({
       );
       return;
     }
+    if (codingRequested && !codingSelection) {
+      setError(
+        "账户模型编码已明确启用，但当前能力元数据或运行配置无效；不会回退到普通任务。请修复配置、刷新能力，或明确取消账户模型编码。",
+      );
+      return;
+    }
+    if (
+      codingSelection &&
+      (budget < 1 || budget > codingSelection.capability.limits.max_calls)
+    ) {
+      setError(
+        `模型调用上限必须在 1–${codingSelection.capability.limits.max_calls} 之间；不会提交或自动调整。`,
+      );
+      return;
+    }
     const requestRepo = controlledMode
       ? selectedSource!.observation.root
       : (selectedInspection?.root ?? repo.trim());
@@ -334,7 +354,7 @@ export function CreateMission({
     setBusy(true);
     setError("");
     try {
-      const { mission } = await api.create({
+      const createRequest = {
         title: title.trim(),
         goal: goal.trim(),
         repo_path: requestRepo,
@@ -352,10 +372,11 @@ export function CreateMission({
           protected: lines(protectedPaths),
           acceptance: lines(commands),
           image: image.trim(),
-          image_id: "",
+          image_id: codingSelection?.profile.image_id ?? "",
           profile_id: profileID,
           research: controlledMode ? true : research,
           max_calls: budget,
+          ...(codingSelection ? { c4: codingSelection.profile } : {}),
         },
         ...(mcpControlled
           ? {
@@ -395,7 +416,10 @@ export function CreateMission({
             : recoverable
               ? { workspace_mode: "generations_v1" as const, coding_version: 1 }
               : {}),
-      });
+      };
+      const { mission } = codingRequested
+        ? await codingTaskApi.create(createRequest)
+        : await api.create(createRequest);
       onCreated(mission);
     } catch (e) {
       setError(errorMessage(e));
@@ -572,7 +596,7 @@ export function CreateMission({
                 id="mission-budget"
                 type="number"
                 min={1}
-                max={16}
+                max={codingSelection?.capability.limits.max_calls ?? 16}
                 value={budget}
                 onChange={(e) => setBudget(Number(e.target.value))}
                 required
@@ -597,7 +621,8 @@ export function CreateMission({
                 healthLoading ||
                 !!healthError ||
                 !controlledAvailable ||
-                mcpControlled
+                mcpControlled ||
+                codingRequested
               }
               onChange={(e) => {
                 setControlled(e.target.checked);
@@ -634,7 +659,8 @@ export function CreateMission({
                 !!healthError ||
                 !!localMCPError ||
                 !taskLocalMCPEnabled ||
-                !localMCP?.eligible
+                !localMCP?.eligible ||
+                codingRequested
               }
               onChange={(e) => {
                 setMCPControlled(e.target.checked);
@@ -677,7 +703,7 @@ export function CreateMission({
             <input
               type="checkbox"
               checked={!controlledMode && recoverable}
-              disabled={controlledMode}
+              disabled={controlledMode || codingRequested}
               onChange={(e) => {
                 setRecoverable(e.target.checked);
                 if (e.target.checked) setControlled(false);
@@ -691,6 +717,15 @@ export function CreateMission({
             {controlledMode &&
               " 普通任务的可恢复候选选择与受控模式互斥，当前显示关闭；切回普通模式时恢复草稿选择。"}
           </p>
+          <CodingTaskSetup
+            disabled={
+              busy || loading || readOnly || controlledMode || !recoverable
+            }
+            requested={codingRequested}
+            onRequestedChange={setCodingRequested}
+            value={codingSelection}
+            onChange={setCodingSelection}
+          />
           {controlledMode && (
             <section className="controlled-create" aria-label="受控读取绑定">
               <h3>
@@ -915,6 +950,7 @@ export function CreateMission({
             )}
           {!loading && (
             <ModelSnapshot
+              codingModePreview={codingRequested}
               preview={Object.fromEntries(
                 roles.flatMap((role) => {
                   const profile = profiles.find(

@@ -211,9 +211,9 @@ func (e *Engine) c4PersistLocked(id string) sandbox.C4Persist {
 		return committed, err
 	}
 }
-func (e *Engine) c4Trust() sandbox.C4Trust {
+func (e *Engine) c4Trust(m domain.Mission) sandbox.C4Trust {
 	if c := e.options.C4Controlled; c != nil {
-		return sandbox.C4Trust{DockerPath: c.config.Profile.DockerPath, Endpoint: c.config.Profile.Endpoint, ManagedRoot: filepath.Join(e.c4Root, "missions")}
+		return sandbox.C4Trust{DockerPath: e.c4Activation(m).Profile.DockerPath, Endpoint: e.c4Activation(m).Profile.Endpoint, ManagedRoot: filepath.Join(e.c4Root, "missions")}
 	}
 	return sandbox.C4Trust{DockerPath: e.options.C4.dockerPath, Endpoint: e.options.C4.endpoint, ManagedRoot: filepath.Join(e.c4Root, "missions")}
 }
@@ -221,11 +221,11 @@ func (e *Engine) c4Trust() sandbox.C4Trust {
 func (e *Engine) executeC4(ctx context.Context, m domain.Mission, o domain.C4Operation, path string) (domain.C4Operation, error) {
 	if c := e.options.C4Controlled; c != nil {
 		if c.source == "docker_c4_control" {
-			return sandbox.ExecuteC4Docker(ctx, *m.Spec.C4, o, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust()}, path, e.c4Persist(m.ID))
+			return sandbox.ExecuteC4Docker(ctx, *m.Spec.C4, o, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust(m)}, path, e.c4Persist(m.ID))
 		}
-		return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(), path, c.driver, e.c4Persist(m.ID))
+		return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(m), path, c.driver, e.c4Persist(m.ID))
 	}
-	return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(), path, e.options.C4.driver, e.c4Persist(m.ID))
+	return sandbox.ExecuteC4(ctx, *m.Spec.C4, o, e.c4Trust(m), path, e.options.C4.driver, e.c4Persist(m.ID))
 }
 func (e *Engine) c4Path(path string) (string, error) {
 	rel, err := filepath.Rel(e.options.DataDir, path)

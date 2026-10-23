@@ -19,6 +19,7 @@ import (
 
 // C4Activation is trusted startup authority, never a request payload or consent.
 type C4Activation struct {
+	RuntimeID     string           `json:"runtime_id,omitempty"`
 	SchemaVersion int              `json:"schema_version"`
 	Enabled       bool             `json:"enabled"`
 	Profile       domain.C4Profile `json:"profile"`
@@ -45,17 +46,18 @@ func (c C4Activation) Digest() string {
 }
 
 type C4ControlledCapability struct {
-	config    C4Activation
-	source    string
-	models    model.Gateway
-	driver    *sandbox.C4SyntheticDriver
-	readiness func(context.Context) (sandbox.C4ReadinessResult, error)
+	modelBacked bool
+	config      C4Activation
+	source      string
+	models      model.Gateway
+	driver      *sandbox.C4SyntheticDriver
+	readiness   func(context.Context) (sandbox.C4ReadinessResult, error)
 }
 
 // Production accepts only the accountless frozen local fixture, never a router.
 // Construction copies declarations and does not inspect executable/socket paths.
 func NewC4DockerCapability(c C4Activation, g *c4fixture.Gateway) (*C4ControlledCapability, error) {
-	if ValidateC4Activation(c, time.Now()) != nil || c.Profile.Mode != "docker" || g == nil {
+	if ValidateC4Activation(c, time.Now()) != nil || c.Profile.ID != "c4_go_v1" || c.Profile.Mode != "docker" || g == nil {
 		return nil, ErrC4Unavailable
 	}
 	return &C4ControlledCapability{config: c, source: "docker_c4_control", models: g, readiness: func(ctx context.Context) (sandbox.C4ReadinessResult, error) {
@@ -65,7 +67,7 @@ func NewC4DockerCapability(c C4Activation, g *c4fixture.Gateway) (*C4ControlledC
 
 // The synthetic seam cannot claim Docker provenance or construct real transport.
 func NewC4ControlledSyntheticCapability(c C4Activation, d *sandbox.C4SyntheticDriver, g model.Gateway, ready func(context.Context) (sandbox.C4ReadinessResult, error)) (*C4ControlledCapability, error) {
-	if ValidateC4Activation(c, time.Now()) != nil || c.Profile.Mode != "synthetic" || d == nil || g == nil || ready == nil {
+	if ValidateC4Activation(c, time.Now()) != nil || c.Profile.ID != "c4_go_v1" || c.Profile.Mode != "synthetic" || d == nil || g == nil || ready == nil {
 		return nil, ErrC4Unavailable
 	}
 	return &C4ControlledCapability{config: c, source: "synthetic_c4_control", models: g, driver: d, readiness: ready}, nil
@@ -95,11 +97,15 @@ func (e *Engine) C4ControlledStatus(m domain.Mission) C4ControlledStatus {
 		return C4ControlledStatus{}
 	}
 	deadline, _ := time.Parse(time.RFC3339Nano, c.config.ExpiresAt)
-	return C4ControlledStatus{ActivationDigest: c.config.Digest(), Available: e.c4ControlledGate(m, true) == nil, StructurallyAvailable: e.c4ControlledGate(m, false) == nil, SourceKind: c.source, ExpiresAt: c.config.ExpiresAt, Expired: !e.c4Time().Before(deadline)}
+	return C4ControlledStatus{ActivationDigest: e.c4Activation(m).Digest(), Available: e.c4ControlledGate(m, true) == nil, StructurallyAvailable: e.c4ControlledGate(m, false) == nil, SourceKind: c.source, ExpiresAt: c.config.ExpiresAt, Expired: !e.c4Time().Before(deadline)}
 }
 func (e *Engine) c4ControlledGate(m domain.Mission, fresh bool) error {
 	c := e.options.C4Controlled
-	if c == nil || e.options.C4 != nil || e.c4Root == "" || c.models == nil || c4Structure(m) != nil || m.Spec.C4 == nil || m.Spec.C4.ControlVersion != 1 || m.Spec.C4.ProfileDigest() != c.config.Profile.ProfileDigest() || m.RepositoryImport == nil || m.RepositoryImport.Root != c.config.SourceRoot || m.RepoPath != c.config.SourceRoot || m.BaseCommit != c.config.BaseCommit || m.RepositoryImport.BaseDigest != c.config.BaseDigest {
+	if c == nil {
+		return ErrC4Unavailable
+	}
+	config := e.c4Activation(m)
+	if c.modelBacked != isModelC4(m) || e.options.C4 != nil || e.c4Root == "" || c.models == nil || c4Structure(m) != nil || m.Spec.C4 == nil || m.Spec.C4.ControlVersion != 1 || m.Spec.C4.ProfileDigest() != config.Profile.ProfileDigest() || m.RepositoryImport == nil || m.RepositoryImport.Root != config.SourceRoot || m.RepoPath != config.SourceRoot || m.BaseCommit != config.BaseCommit || m.RepositoryImport.BaseDigest != config.BaseDigest || c.modelBacked && ((c.source == "docker_c4_control") != (m.Spec.C4.Mode == "docker")) {
 		return ErrC4Unavailable
 	}
 	deadline, err := time.Parse(time.RFC3339Nano, c.config.ExpiresAt)

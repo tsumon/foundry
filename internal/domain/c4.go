@@ -194,7 +194,7 @@ func (p C4Profile) Validate() error {
 		return errors.New("unsupported C4 control version")
 	}
 	u, err := url.Parse(p.Endpoint)
-	if p.SchemaVersion != 1 || p.ID != "c4_go_v1" || (p.Mode != "synthetic" && p.Mode != "docker") || p.Platform != "linux/arm64" || p.Verifier != "/opt/foundry/verify-go-v1" || !strings.HasPrefix(p.ImageID, "sha256:") || !c4SHA.MatchString(strings.TrimPrefix(p.ImageID, "sha256:")) || !c4Absolute(p.DockerPath) || err != nil || u.Scheme != "unix" || u.Host != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || !c4Absolute(u.Path) || p.Endpoint != "unix://"+u.Path {
+	if p.SchemaVersion != 1 || (p.ID != "c4_go_v1" && (p.ID != "c4_go_model_v1" || p.ControlVersion != 1)) || (p.Mode != "synthetic" && p.Mode != "docker") || p.Platform != "linux/arm64" || p.Verifier != "/opt/foundry/verify-go-v1" || !strings.HasPrefix(p.ImageID, "sha256:") || !c4SHA.MatchString(strings.TrimPrefix(p.ImageID, "sha256:")) || !c4Absolute(p.DockerPath) || err != nil || u.Scheme != "unix" || u.Host != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || !c4Absolute(u.Path) || p.Endpoint != "unix://"+u.Path {
 		return errors.New("invalid or unsupported C4 profile")
 	}
 	return nil

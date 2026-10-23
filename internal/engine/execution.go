@@ -324,6 +324,13 @@ func (e *Engine) Chat(ctx context.Context, id string, revision int64, message st
 		e.mu.Unlock()
 		return m, err
 	}
+	// A paused or interrupted post-delivery Main call would advance the epoch
+	// and invalidate committed review/test evidence. Keep new coding deliveries
+	// terminal; their sealed report/patch remain readable without fresh calls.
+	if isModelC4(m) && m.Delivery != nil {
+		e.mu.Unlock()
+		return m, errors.New("delivered coding task is read-only; no new model call authorized")
+	}
 	if e.active != nil {
 		e.mu.Unlock()
 		return m, errors.New("chat disabled during active operation")

@@ -9,6 +9,8 @@ import {
   c4OperationLabel,
   c4ReadinessFresh,
   c4Supported,
+  isModelBackedC4,
+  isTerminalModelBackedDelivery,
   type C4Action,
   type C4Control,
   type C4Status,
@@ -155,6 +157,9 @@ export function C4Controls({
   const readinessPreparationReason = pendingBaseline
     ? "已有未执行基线，不能更换就绪材料；若授权已过期或失配，请新建任务"
     : "";
+  const terminalReason = isTerminalModelBackedDelivery(m)
+    ? "已交付；如需继续执行请新建任务，历史证据保持不变"
+    : "";
   useEffect(() => {
     callback.current?.(structural);
     return () => callback.current?.(false);
@@ -183,6 +188,17 @@ export function C4Controls({
   const stopped = (body: C4Action) => failed.includes(key(body));
   const act = async (body: C4Action) => {
     if (reason || lock.current || stopped(body)) return;
+    if (
+      terminalReason &&
+      [
+        "prepare_readiness",
+        "approve_control",
+        "execute_readiness",
+        "prepare_cleanup",
+        "execute_cleanup",
+      ].includes(body.action)
+    )
+      return;
     if (body.action === "prepare_readiness" && pendingBaseline) return;
     if (
       "control_id" in body &&
@@ -238,6 +254,7 @@ export function C4Controls({
       .at(-1);
   const controlButtons = (c: C4Control | undefined, cleanup = false) => {
     const why = controlReason(m, c, at, status?.control);
+    const actionReason = terminalReason || why;
     const body = {
       revision: m.revision,
       control_id: c?.id ?? "",
@@ -246,12 +263,14 @@ export function C4Controls({
     return (
       <>
         <p className="muted small">
-          {why || (c?.approval ? "已批准，尚未执行" : "已准备，尚未批准")}
+          {terminalReason
+            ? "历史材料保持只读"
+            : why || (c?.approval ? "已批准，尚未执行" : "已准备，尚未批准")}
         </p>
         {button(
           cleanup ? "批准清理材料" : "批准就绪材料",
           { action: "approve_control", ...body },
-          why ||
+          actionReason ||
             (c?.state !== "prepared" || !!c.approval ? "不能重复批准" : ""),
         )}
         {button(
@@ -260,7 +279,7 @@ export function C4Controls({
             action: cleanup ? "execute_cleanup" : "execute_readiness",
             ...body,
           },
-          why ||
+          actionReason ||
             (c?.state !== "approved" || !c.approval ? "必须先明确批准" : ""),
         )}
       </>
@@ -285,7 +304,9 @@ export function C4Controls({
       <p className="warning-copy">
         {source === "synthetic_c4_control"
           ? "本任务仅本地模拟，未执行真实 Docker；模拟不能证明 Docker、Go、镜像或隔离就绪。"
-          : "配置可用不代表就绪或执行成功；模型推理仍为本地模拟。"}
+          : isModelBackedC4(m)
+            ? "配置可用不代表就绪或执行成功；模型调用仍需独立上下文授权，Docker 执行仍需基线与执行审批。"
+            : "配置可用不代表就绪或执行成功；模型推理仍为本地模拟。"}
       </p>
       <p>
         配置来源：{status?.control?.source_kind ?? "未配置"} · 激活到期：
@@ -298,6 +319,7 @@ export function C4Controls({
       <p className="note">
         准备、批准、执行分别点击；就绪不是基线或候选通过，不授权上下文、计划、候选执行或交付。不会自动探测、重试或清理。
       </p>
+      {terminalReason && <p className="warning-copy">{terminalReason}</p>}
       {reason && <p className="warning-copy">{reason}</p>}
       {error && <p role="alert">{error}</p>}
       {readinessPreparationReason && (
@@ -306,7 +328,8 @@ export function C4Controls({
       {button(
         "准备就绪材料",
         { action: "prepare_readiness", revision: m.revision },
-        readinessPreparationReason ||
+        terminalReason ||
+          readinessPreparationReason ||
           (readiness && !controlReason(m, readiness, at, status?.control)
             ? "已有待决材料"
             : ""),
@@ -375,15 +398,16 @@ export function C4Controls({
                   material_digest: o.material_digest,
                   container_id: o.container_id,
                 },
-                latest("cleanup", o.id) &&
+                terminalReason ||
+                  (latest("cleanup", o.id) &&
                   !controlReason(
                     m,
                     latest("cleanup", o.id),
                     at,
                     status?.control,
                   )
-                  ? "已有待决清理材料"
-                  : "",
+                    ? "已有待决清理材料"
+                    : ""),
               )}
             {controlButtons(latest("cleanup", o.id), true)}
           </div>

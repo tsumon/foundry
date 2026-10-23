@@ -12,15 +12,18 @@ import {
 } from "../modelSnapshot";
 import { billingLabels } from "./ModelAccounts";
 import { RolePolicySnapshot } from "./RolePolicySnapshot";
+import { isModelBackedC4 } from "../c4";
 
 export function ModelSnapshot({
   mission,
   preview,
+  codingModePreview = false,
   compact = false,
   showPolicy = true,
 }: {
   mission?: Mission;
   preview?: Partial<Record<Role, RoleModelSelection>>;
+  codingModePreview?: boolean;
   compact?: boolean;
   showPolicy?: boolean;
 }) {
@@ -45,6 +48,7 @@ export function ModelSnapshot({
   const bound = mission
     ? isAccountWorkspaceMode(mission.workspace_mode)
     : roles.some((role) => !!preview?.[role]?.profile.account_id);
+  const modelBacked = !!mission && isModelBackedC4(mission);
   if (compact && mission) {
     const accountSelections = roles
       .map((role) => mission.model_snapshot?.roles[role])
@@ -91,7 +95,9 @@ export function ModelSnapshot({
           )}
           {bound && (
             <p className="muted small">
-              身份未验证，额度未知；真实账户调用未开放。
+              {modelBacked
+                ? "身份与额度须在每次调用前由后端复核；配置不等于当前调用授权。"
+                : "身份未验证，额度未知；真实账户调用未开放。"}
             </p>
           )}
           <details className="disclosure">
@@ -123,10 +129,13 @@ export function ModelSnapshot({
       </p>
       {bound && (
         <p className="note">
-          {preview
-            ? "拟冻结配置；真实账户调用尚未开放。"
-            : "已冻结配置；真实账户调用尚未开放。"}
-          身份未验证，额度未知；不会自动付费降级。
+          {modelBacked
+            ? "已冻结账户模型配置；配置不等于当前调用授权。上下文与执行审批保持独立，后端会在每次调用前复核路由、凭据或授权、预算与材料。"
+            : preview && codingModePreview
+              ? "拟冻结账户模型配置；配置不等于当前调用授权。账户模型调用采用单独门禁，readiness、baseline、context、execute 与 delivery 仍分别审批；创建时及每次调用前由后端复核。不会自动付费降级。"
+              : preview
+                ? "拟冻结配置；真实账户调用尚未开放。身份未验证，额度未知；不会自动付费降级。"
+                : "已冻结配置；真实账户调用尚未开放。身份未验证，额度未知；不会自动付费降级。"}
         </p>
       )}
       <div className="snapshot-roles">
@@ -193,7 +202,9 @@ export function ModelSnapshot({
                       <span>
                         {route.environment === "simulation"
                           ? "本地模拟"
-                          : "真实环境（门禁关闭）"}{" "}
+                          : modelBacked
+                            ? "真实环境（逐次门禁）"
+                            : "真实环境（门禁关闭）"}{" "}
                         · {route.spend_class} · 额外用量
                         {route.extra_usage === "off" ? "关闭" : "未知"}
                       </span>

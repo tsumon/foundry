@@ -176,6 +176,10 @@ func opaqueID() (string, error) {
 }
 
 func (s *server) profileRoute(w http.ResponseWriter, r *http.Request) {
+	if s.codingWorkbench {
+		writeError(w, 403, "coding_transport_requires_invocation", "model discovery is not enabled by coding task authority")
+		return
+	}
 	rest := strings.TrimPrefix(r.URL.Path, "/api/profiles/")
 	parts := strings.Split(rest, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] != "probe" {
@@ -292,6 +296,10 @@ func (s *server) validateSettings(settings domain.Settings) error {
 }
 
 func (s *server) discoverMagpie(w http.ResponseWriter, r *http.Request) {
+	if s.codingWorkbench {
+		writeError(w, 403, "coding_transport_requires_invocation", "model discovery is not enabled by coding task authority")
+		return
+	}
 	var request struct {
 		BaseURL string `json:"base_url"`
 	}

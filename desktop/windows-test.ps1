@@ -15,11 +15,12 @@ Checked 'go' @('test', '-run', '^$', './...')
 Checked 'go' @('test', '-count=1', './internal/platformfs', './internal/gitinspect', './internal/tools', './internal/workspace', './internal/evidence', './internal/repositorytask', './internal/desktophost', './internal/keychaincheck')
 Checked 'go' @('test', '-count=1', './internal/store', '-run', '^TestWindows')
 Checked 'go' @('test', '-count=1', './internal/sandbox', '-run', '^TestWindows')
+Checked 'go' @('test', '-count=1', './internal/model', '-run', '^Test(CredentialManager|WindowsSecret)')
 Checked 'go' @('test', '-count=1', './cmd/foundry', '-run', 'Test(Desktop|DataDirectoryLock|LockProcessCrash|Windows)')
 # Actual SQLite/controller source import, multi-file repair, export, explicit
 # approval-before-action, protected drift, and recovery without replay.
 Checked 'go' @('test', '-count=1', './cmd/foundry-acceptance', '-run', 'Test(RepositoryTask|DesktopRepository)')
-Checked 'node' @('--test', 'desktop/test/security.test.cjs', 'desktop/test/downloads.test.cjs', 'desktop/test/build.test.cjs', 'desktop/test/windows.test.cjs', 'desktop/test/native-notices.test.cjs', 'desktop/test/nsis-template.test.cjs')
+Checked 'node' @('--test', 'desktop/test/security.test.cjs', 'desktop/test/downloads.test.cjs', 'desktop/test/build.test.cjs', 'desktop/test/windows.test.cjs', 'desktop/test/native-notices.test.cjs', 'desktop/test/nsis-template.test.cjs', 'desktop/test/coding-mode.test.cjs', 'desktop/test/coding-smoke.test.cjs', 'desktop/test/installed-smoke-module.test.cjs', 'desktop/test/windows-coding-ui.test.cjs')
 # Real native Electron session/cookie/attachment events, in disposable profiles.
 $electron = Join-Path $PWD 'desktop/node_modules/electron/dist/electron.exe'
 $contract = Join-Path $PWD 'desktop/test/download-contract.cjs'

@@ -40,16 +40,16 @@ shape with an inspected repository and fixed C4 declaration; it neither approves
 nor calls a model or Docker. The implementation records the exact response
 contract for the UI before integration.
 
-- [ ] Add failing tests for model-backed C4 creation and approval-bound invocation;
+- [x] Add failing tests for model-backed C4 creation and approval-bound invocation;
   keep the old fixture gate rejecting real role selections.
-- [ ] Add a default-closed production router admission bound to a claimed model
+- [x] Add a default-closed production router admission bound to a claimed model
   invocation and exact sealed request. Deny live catalog/probe traffic through it.
-- [ ] Compose account-backed model calls with controlled readiness/baseline,
+- [x] Compose account-backed model calls with controlled readiness/baseline,
   generation editing, actual verifier dispatch, repair and delivery paths.
-- [ ] Exercise the whole engine with an owned HTTP model server and synthetic
+- [x] Exercise the whole engine with an owned HTTP model server and synthetic
   Docker boundary; assert per-role receipts, failed/passed generations, protected
   files, unchanged source and truthful provenance.
-- [ ] Cover denial, expiry, duplicate send, changed approvals, cancellation,
+- [x] Cover denial, expiry, duplicate send, changed approvals, cancellation,
   malformed output, quota, unknown results, failed cleanup and restart.
 
 Core red/green command:
@@ -66,10 +66,10 @@ Normal launch remains unchanged. Produces a native-menu opt-in, retained isolate
 coding data location, exact argument/environment allowlist and Foundry-scoped
 native credential adapter. No startup credential operations are permitted.
 
-- [ ] Add tests that normal launch stays closed and only the exact native coding
+- [x] Add tests that normal launch stays closed and only the exact native coding
   mode enables configuration; arbitrary CLI/environment injection remains denied.
-- [ ] Add the coding menu and runtime launch, retaining renderer/download isolation.
-- [ ] Add Windows native credential storage with exact namespace/probe isolation,
+- [x] Add the coding menu and runtime launch, retaining renderer/download isolation.
+- [x] Add Windows native credential storage with exact namespace/probe isolation,
   size/error bounds and fake-native tests; do not read real credentials.
 - [ ] Test Windows/Mac startup and shutdown, and preserve retained evidence on
   switch, crash, upgrade and uninstall.
@@ -89,23 +89,23 @@ Shows runtime availability, selected account/model/spend class, image and fixed
 policy, call-budget limitations and pending independent decisions. Never stores
 credentials in browser storage or starts provider/Docker effects on render.
 
-- [ ] Add failing UI tests for default-closed setup, stale/missing metadata and
+- [x] Add failing UI tests for default-closed setup, stale/missing metadata and
   distinct model/testing provenance.
-- [ ] Add model-backed task creation alongside the existing task form without
+- [x] Add model-backed task creation alongside the existing task form without
   changing navigation or removing simulation paths.
-- [ ] Update context/execution decisions so real routes are not described as local
+- [x] Update context/execution decisions so real routes are not described as local
   synthetic endpoints; show limits and preserve separate approval actions.
-- [ ] Verify errors and loading states never imply authorization or success.
-- [ ] Update bilingual README and desktop guide with actual implemented behavior
+- [x] Verify errors and loading states never imply authorization or success.
+- [x] Update bilingual README and desktop guide with actual implemented behavior
   and explicit pending real-account acceptance, supported projects/platforms.
 
 Commands: `npm test -- --run` and `npm run build` in `web/`.
 
 ### Task 4: Integrated review, installers and CI
 
-- [ ] Independent security/correctness review of the assembled diff, especially
+- [x] Independent security/correctness review of the assembled diff, especially
   task admission, legacy bypasses, recovery and credential dispatch boundaries.
-- [ ] Full Go tests, race tests, vet, frontend and desktop tests; secret/dependency
+- [x] Full Go tests, race tests, vet, frontend and desktop tests; secret/dependency
   scans and workflow checks without lowering their standards.
 - [ ] Build Mac installer; test the installed app in a fresh private data location
   with local inputs. Keep screenshots and detailed evidence outside the repository.

@@ -74,6 +74,9 @@ Keep a finite task call budget, bounded prompt/response sizes, per-call timeouts
 and the two-repair limit. Token usage is not remaining subscription quota. Do not
 claim a monetary hard cap or output-token enforcement where the selected protocol
 does not provide it. Show those limitations before context approval.
+In particular, the [OpenAI subscription preview](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
+requires streaming, non-stored requests and omits `max_output_tokens`; a client
+call/timeout limit must not be presented as provider-enforced output or cost control.
 
 Authentication expiry, allowance exhaustion, rate limits, transport ambiguity,
 invalid model output, changed authority or unconfirmed container cleanup stop the
@@ -81,6 +84,11 @@ task. Unknown outcomes retain the consumed call reservation. Restart records
 interruption and never replays a model call, refreshes a token, reruns tests or
 cleans containers automatically. Recovery preserves all prior evidence and needs
 fresh applicable authority; it never manufactures a pass.
+
+A committed model-backed delivery is terminal for new model chats, readiness or
+cleanup controls. Its frozen reports/patches remain readable; continuing work
+requires a new task. This prevents later control preparation or a changed epoch
+from invalidating the delivered review and provenance bindings.
 
 ## Supported project and platform limits
 

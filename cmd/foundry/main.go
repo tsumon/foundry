@@ -31,6 +31,7 @@ import (
 )
 
 type config struct {
+	codingWorkbench               bool
 	c4ControlConfig               string
 	localMCPTest                  bool
 	disableControlledReadCreation bool
@@ -49,6 +50,7 @@ type dataLock struct {
 }
 
 type productionModels struct {
+	codingMode    bool
 	accounts      *accounts.Service
 	router        *model.Router
 	siwc          *accounts.SIWCService
@@ -71,7 +73,7 @@ func newProductionModels(s *store.Store, legacy *model.Client, secrets model.Sec
 func (p productionModels) Recover(ctx context.Context) error {
 	// Catalog/inference startup is metadata-only, including abandoned credential
 	// cleanup exists. Such intents remain blockers, never native deletions.
-	if !p.catalogMode && !p.inferenceMode {
+	if !p.catalogMode && !p.inferenceMode && !p.codingMode {
 		if err := p.accounts.Recover(ctx); err != nil {
 			return errors.New("recover model accounts failed")
 		}
@@ -112,6 +114,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	flags := flag.NewFlagSet("foundry", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.BoolVar(&desktop, "desktop", false, "private desktop parent protocol")
+	flags.BoolVar(&cfg.codingWorkbench, "coding-workbench", false, "explicit controlled desktop coding workbench")
 	flags.StringVar(&cfg.c4ControlConfig, "c4-control-config", "", "explicit isolated C4 activation configuration file")
 	flags.BoolVar(&cfg.localMCPTest, "local-mcp-test", false, "enable the controller-owned synthetic local MCP reference service")
 	flags.StringVar(&cfg.openaiSubscriptionRoute, "openai-subscription-route", "", "explicitly enable one existing OpenAI subscription connection route")
@@ -131,7 +134,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 			return err
 		}
 		cfg.dockerPath = "/__foundry_desktop_docker_disabled__"
-		secrets = desktopSecrets{}
+		if !cfg.codingWorkbench {
+			secrets = desktopSecrets{}
+		}
 	}
 	var c4Activation *engine.C4Activation
 	if cfg.c4ControlConfig != "" {
@@ -168,7 +173,11 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	// MCP service can mutate history. Do not swallow other startup failures.
 	recoveryReadOnly := false
 	recoveryError := "invalid_mission_model_snapshot"
-	if err := engine.CheckRecoveryModelSnapshots(persistent); err != nil {
+	checkRecovery := engine.CheckRecoveryModelSnapshots
+	if cfg.codingWorkbench {
+		checkRecovery = engine.CheckCodingRecoveryModelSnapshots
+	}
+	if err := checkRecovery(persistent); err != nil {
 		if !errors.Is(err, domain.ErrInvalidModelSnapshot) && !errors.Is(err, engine.ErrC4Unavailable) {
 			return fmt.Errorf("check recovery structure: %w", err)
 		}
@@ -198,6 +207,31 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	}
 	client := model.NewClient(secrets)
 	models := newProductionModels(persistent, client, secrets)
+	var controller *engine.Engine
+	if cfg.codingWorkbench {
+		models.siwc.Close()
+		models.acceptance.Close()
+		models, controller, err = newCodingRuntime(persistent, cfg.dataDir, secrets)
+		if err != nil {
+			return err
+		}
+		if !controller.CodingWorkbenchAvailable() {
+			recoveryReadOnly = true
+			recoveryError = "coding_workbench_unavailable"
+		}
+		if !recoveryReadOnly {
+			if err = controller.CheckC4ControlledRecovery(); err != nil {
+				if !errors.Is(err, engine.ErrC4Unavailable) {
+					controller.Close()
+					models.siwc.Close()
+					models.acceptance.Close()
+					return err
+				}
+				recoveryReadOnly = true
+				recoveryError = "c4_unavailable"
+			}
+		}
+	}
 	defer models.siwc.Close()
 	if err := activateOpenAIConnection(cfg, persistent, &models, recoveryReadOnly, nativeOpenAIConnectionDeps()); err != nil {
 		return err
@@ -214,7 +248,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 			return err
 		}
 	}
-	controller := engine.New(persistent, models.router, engine.Options{DataDir: cfg.dataDir, DockerPath: cfg.dockerPath, DisableControlledReadCreation: cfg.disableControlledReadCreation, LocalMCPTest: descriptor})
+	if controller == nil {
+		controller = engine.New(persistent, models.router, engine.Options{DataDir: cfg.dataDir, DockerPath: cfg.dockerPath, DisableControlledReadCreation: cfg.disableControlledReadCreation, LocalMCPTest: descriptor})
+	}
 	defer controller.Close()
 	if !recoveryReadOnly {
 		if err := controller.Recover(context.Background()); err != nil {
@@ -222,7 +258,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 		}
 	}
 	observer := hooks.New(persistent)
-	if !recoveryReadOnly {
+	if !recoveryReadOnly && !cfg.codingWorkbench {
 		observer.Start()
 	}
 	defer observer.Close()
@@ -244,7 +280,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 			}
 		}()
 	}
-	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly, RecoveryError: recoveryError})
+	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{CodingWorkbench: cfg.codingWorkbench, Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly, RecoveryError: recoveryError})
 	if desktopSession != nil {
 		handler = desktophost.Protect(desktopSession.Capability, handler)
 	}

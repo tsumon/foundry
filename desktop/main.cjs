@@ -17,6 +17,7 @@ const {
   childEnvironment,
 } = require("./runtime.cjs");
 const { createDownloadGuard } = require("./downloads.cjs");
+const { createCodingMenuItem } = require("./coding-mode.cjs");
 const {
   allowNavigation,
   allowExternal,
@@ -137,7 +138,9 @@ if (!owner) {
       window.setTitle(
         mode === "normal"
           ? "Foundry — Persistent Workbench"
-          : "Foundry — SYNTHETIC Local Repository Simulation",
+          : mode === "coding"
+            ? "Foundry — Controlled Coding Workbench"
+            : "Foundry — SYNTHETIC Local Repository Simulation",
       );
       window.on("page-title-updated", (event) => event.preventDefault());
       window.webContents.on("will-navigate", (event, url) => {
@@ -158,7 +161,7 @@ if (!owner) {
         if (!current.isStopping() && !quitting) {
           dialog.showErrorBox(
             "Foundry controller stopped",
-            "The local controller stopped. Data and simulation evidence have been retained. Quit and reopen Foundry to try again.",
+            "The local controller stopped. Data and evidence have been retained. Quit and reopen Foundry to try again.",
           );
           app.quit();
         }
@@ -174,7 +177,7 @@ if (!owner) {
           (process.platform === "win32"
             ? "official Git for Windows is installed at Program Files\\Git\\cmd\\git.exe"
             : "/usr/bin/git is available") +
-          " for local repository simulation. Existing data and evidence are retained. There is no automatic retry.",
+          " for repository features. Existing data and evidence are retained. There is no automatic retry.",
       );
     } finally {
       changing = false;
@@ -189,6 +192,7 @@ if (!owner) {
             { role: "about" },
             { type: "separator" },
             { label: "Persistent Workbench", click: () => launch() },
+            createCodingMenuItem(dialog, launch),
             {
               label: "New Isolated Local Repository Simulation",
               click: () => launch("simulation"),

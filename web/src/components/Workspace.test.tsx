@@ -1222,6 +1222,78 @@ it("only links controller download routes once the mission is actually delivered
   ).toHaveAttribute("href", "/api/missions/m1/report");
   expect(document.body.textContent).not.toContain("/private/no-browser");
 });
+it("closes model-backed Main chat after delivery while retaining report downloads", async () => {
+  const delivered = {
+    ...mission,
+    state: "delivered",
+    spec: {
+      ...mission.spec,
+      c4: {
+        schema_version: 1,
+        control_version: 1,
+        id: "c4_go_model_v1",
+        mode: "docker",
+        image_id: `sha256:${"a".repeat(64)}`,
+        platform: "linux/arm64",
+        docker_path: "/opt/docker/bin/docker",
+        endpoint: "unix:///opt/docker/run/docker.sock",
+        verifier: "/opt/foundry/verify-go-v1",
+      },
+    },
+    c4_operations: [],
+    c4_controls: [],
+    delivery: {
+      candidate_digest: "sha",
+      created_at: "2026-10-23",
+      patch_path: "/private/no-browser/model.patch",
+      report_path: "/private/no-browser/model.md",
+    },
+  } satisfies Mission;
+  const fetcher = vi.fn(
+    async (input: string | URL | Request, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/c4"))
+        return response({
+          mission_id: delivered.id,
+          revision: delivered.revision,
+          profile: delivered.spec.c4,
+          operations: [],
+          controls: [],
+          read_only: false,
+          simulation: false,
+          real_execution: true,
+          control: {
+            available: true,
+            structurally_available: true,
+            source_kind: "docker_c4_control",
+            expires_at: "2026-10-23T01:00:00Z",
+            expired: false,
+          },
+        });
+      return reliabilityRead(url);
+    },
+  );
+  vi.stubGlobal("fetch", fetcher);
+
+  render(<MissionWorkspace mission={delivered} onUpdate={vi.fn()} />);
+
+  expect(screen.getByLabelText("向 Main 提问")).toBeDisabled();
+  expect(
+    screen.getAllByText("已交付；如需继续执行请新建任务，历史证据保持不变")
+      .length,
+  ).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole("tab", { name: "交付报告" }));
+  expect(screen.getByRole("link", { name: "下载 patch" })).toHaveAttribute(
+    "href",
+    "/api/missions/m1/patch",
+  );
+  expect(
+    screen.getByRole("link", { name: "下载 Markdown 报告" }),
+  ).toHaveAttribute("href", "/api/missions/m1/report");
+  expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(
+    false,
+  );
+});
 it("uses arrow keys to switch views without moving the lifecycle stage", () => {
   render(<MissionWorkspace mission={mission} onUpdate={() => {}} />);
   const tab = screen.getByRole("tab", { name: "计划链路" });

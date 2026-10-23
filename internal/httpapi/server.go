@@ -36,6 +36,7 @@ const (
 )
 
 type Options struct {
+	CodingWorkbench  bool
 	C4ControlledOnly bool
 	RecoveryError    string
 	Acceptance       *acceptance.Service
@@ -49,6 +50,7 @@ type Options struct {
 }
 
 type server struct {
+	codingWorkbench  bool
 	c4ControlledOnly bool
 	recoveryError    string
 	acceptance       *acceptance.Service
@@ -114,6 +116,7 @@ func New(s *store.Store, e *engine.Engine, client *model.Client, secrets model.S
 		capabilities = capability.New(s, secrets)
 	}
 	return &server{
+		codingWorkbench:  opts.CodingWorkbench,
 		c4ControlledOnly: opts.C4ControlledOnly,
 		recoveryError:    opts.RecoveryError,
 		acceptance:       gates,
@@ -307,8 +310,8 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 				"account_management":       !s.c4ControlledOnly, "credential_versions": !s.c4ControlledOnly, "model_snapshots": true,
 				"provider_login": false, "account_inference": false, "automatic_paid_fallback": false,
 				"planning": true, "execution": true, "docker_verification": !s.c4ControlledOnly || control.SourceKind == "docker_c4_control" && !control.Expired,
-				"local_patch_delivery": true, "model_directory_probe": !s.c4ControlledOnly,
-				"magpie_discovery": !s.c4ControlledOnly, "server_sent_events": true,
+				"local_patch_delivery": true, "model_directory_probe": !s.c4ControlledOnly && !s.codingWorkbench,
+				"magpie_discovery": !s.c4ControlledOnly && !s.codingWorkbench, "server_sent_events": true,
 				"catalog": true, "package_build": false, "deployment": false,
 				"database_migration": false,
 				"mcp_discovery":      !s.c4ControlledOnly, "tool_execution": false, "mcp_tool_call": false, "skill_execution": false, "git_write": false,
@@ -317,6 +320,8 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 				"observation_hooks": !s.c4ControlledOnly, "hook_scripts": false, "hook_webhooks": false, "git_hooks": false,
 			},
 		})
+	case r.URL.Path == "/api/coding-tasks":
+		s.codingTasks(w, r)
 	case r.URL.Path == "/api/model-accounts" || strings.HasPrefix(r.URL.Path, "/api/model-accounts/"):
 		s.modelAccountsRoute(w, r)
 	case r.URL.Path == "/api/model-routes" || strings.HasPrefix(r.URL.Path, "/api/model-routes/"):

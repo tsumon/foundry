@@ -15,6 +15,14 @@ func (desktopSecrets) Get(string) (string, error) { return "", model.ErrSecretSt
 func (desktopSecrets) Delete(string) error        { return model.ErrSecretStoreUnavailable }
 
 func desktopOptions(args []string) (bool, error) {
+	for _, arg := range args {
+		if strings.Contains(arg, "coding-workbench") {
+			if len(args) == 2 && args[0] == "--desktop" && args[1] == "--coding-workbench" {
+				return true, nil
+			}
+			return false, errors.New("coding workbench requires exactly --desktop --coding-workbench")
+		}
+	}
 	desktop := false
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "--desktop") || strings.HasPrefix(arg, "-desktop") {

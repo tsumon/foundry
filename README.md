@@ -25,7 +25,7 @@
 Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git 快照，把计划、候选修改、失败记录、复验和最终交付放在同一个可核对的流程里。原仓库保持只读，最后得到的是 **patch 与 Markdown 报告**，而不是一次未经审阅的自动推送。
 
 > [!IMPORTANT]
-> **这是可运行的本地流程 Alpha，不是已接通云模型的自主编程产品。** 桌面演示使用脚本化 Agent 和精确内容检查，明确标为 `synthetic_stub`；不运行真实模型或 Docker。真实账号和订阅接入仍暂停，安装应用不会开启它们。
+> **这是有审批边界的 Coding Alpha，不是无人值守的自主开发产品。** 新的受控编程入口把 OpenAI 模型、独立候选和 Docker 验证接到同一任务；默认仍关闭，安装和打开入口都不等于授权调用。开发验收使用本地协议模拟，**尚不宣称真实账号端到端验收通过**。原模拟入口继续明确标记为 `synthetic_stub`。
 
 ## 先看到结果，再决定是否交付
 
@@ -39,12 +39,24 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 
 | 平台 | 安装包 | 需要知道 |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | `Foundry-0.1.0-alpha.1-arm64.dmg` | 复制到 Applications；本地 ad-hoc 签名，未公证 |
-| Windows x64 | `Foundry-0.1.0-alpha.1-x64.exe` | 当前用户安装；未做代码签名，不要求管理员权限 |
+| Apple Silicon Mac | `Foundry-0.1.0-alpha.2-arm64.dmg` | 复制到 Applications；本地 ad-hoc 签名，未公证 |
+| Windows x64 | `Foundry-0.1.0-alpha.2-x64.exe` | 当前用户安装；未签名；真实 Docker 编程入口暂不可用 |
 
 应用内置前端和本地控制器，运行不需要另装 Go、Node.js、npm 或编译器。仓库功能需要受支持的本机 Git。GitHub 下载 artifact 可能要求登录，且产物会过期；不是永久下载地址。请不要关闭系统安全保护来绕过未签名提示。平台限制、Git 要求、数据位置与卸载说明见[桌面使用指南](docs/public/desktop-guide.md)。
 
-## 五分钟走完本地闭环
+## 从需求到可审阅补丁
+
+在 Mac 的原生菜单中选择 **Controlled Coding Workbench**，进入与普通工作台、演示数据隔离的持久编程空间：
+
+1. 明确选择 OpenAI 账户、路由和各角色模型。API Key 与订阅是不同路由，不会互相兜底；订阅需要已有且有效的授权。
+2. 创建任务时填写需求、已提交的 Go 仓库、可修改文件和受保护文件，选择已在本机存在的固定镜像 ID。此时不请求模型，也不运行 Docker。
+3. 分别审批并执行 Docker 就绪检查、基线测试；基线通过后，再审批发送上下文，由 Researcher 和 Planner 生成计划。
+4. 审阅或修订计划，单独批准执行。Worker 提出候选补丁；真实验证器发现明确的测试失败后，Debugger 最多修复两轮，再复验。
+5. QA、Auditor 审查当前候选和测试证据；交付仍需独立批准，最后导出 patch 与报告。
+
+**当前范围是受限的 Go 项目，不是任意技术栈。** 不安装依赖、不拉取镜像、不运行主机脚本，不改原仓库或受保护测试。凭据过期、额度不足、网络结果不明或容器清理未确认就停止；不会重试、刷新或改用收费 API。调用次数与超时上限不是费用硬上限。完整配置与限制见[受控编程设计](docs/public/live-coding.md)和[使用指南](docs/public/desktop-guide.md)。
+
+## 不用账号，也能体验流程
 
 打开应用菜单 **Foundry → New Isolated Local Repository Simulation**，选择一个标有 `SYNTHETIC` 的任务：
 
@@ -63,12 +75,12 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 | 能力 | 当前真实边界 |
 | :--- | :--- |
 | 项目与资产工作台 | 项目、交付目标、环境、共享资源台账与任务关联 |
-| 本地仓库任务 | 已提交快照、独立候选、受保护文件、计划修订、失败归档、修复与导出 |
+| 模型驱动仓库任务 | 单独启用的 Mac 编程入口；OpenAI 冻结账户/模型快照、已提交 Go 仓库、独立候选、修复与导出 |
 | 演示 Agent / 验证 | 本地脚本响应与内容断言；**不是**真实模型推理或编译器测试 |
 | 审批与恢复 | 控制器绑定 revision/digest；重启不自动重放未知结果或扩大授权 |
 | MCP / Skills / hooks | 管理、发现与静态说明；源码 CLI 有单独获批的本地 MCP fixture。桌面演示不启用外部工具执行 |
-| Docker | 源码已有受控适配器与历史小范围验收；**桌面入口关闭**，本轮未重跑 |
-| 真实模型 / 订阅 | **暂停**。不登录、不刷新、不自动重试、不切换收费 API |
+| Docker | Mac 受控编程入口复用独立就绪、基线、候选验证和精确归属清理；Windows 真实执行仍关闭 |
+| 真实模型 / 订阅 | 生产协议已接线；真实账户验收另行授权。任务不隐式登录、查目录、刷新、重试或切换收费 API |
 | 自动 apply / Git 写入 / 部署 / 数据库迁移 | **不提供**；导出的 patch 由你在产品外处理 |
 
 角色是职责，不是权限来源。模型审查不等于测试证据，模拟通过不等于真实项目已验证。完整范围见 [Alpha 状态](docs/public/alpha-status.md)。
@@ -94,7 +106,7 @@ go run ./cmd/foundry-acceptance --repository-tasks-fixture --web-dir web/dist
 | 使用 | 工程与安全 |
 | :--- | :--- |
 | [桌面安装、演示、排障](docs/public/desktop-guide.md) | [架构与批准边界](docs/public/architecture.md) |
-| [仓库任务描述符](docs/public/repository-task-orchestration.md) | [安全模型](docs/public/safety.md) |
+| [模型驱动编程与权限](docs/public/live-coding.md) | [安全模型](docs/public/safety.md) |
 | [能力与验收范围](docs/public/alpha-status.md) | [第三方声明与运行时源码](THIRD_PARTY_NOTICES.md) |
 | [变更记录](CHANGELOG.md) | [模型门禁设计（不代表真实接入）](docs/public/model-acceptance.md) |
 

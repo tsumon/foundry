@@ -39,7 +39,7 @@ func (e *Engine) c4CleanupTarget(m domain.Mission, c domain.C4Control) (domain.C
 		return o, "", err
 	}
 	// The original immutable path and exact ownership plan are checked before any transport.
-	if _, err = sandbox.BuildC4Plan(*m.Spec.C4, o, e.c4Trust(), path); err != nil {
+	if _, err = sandbox.BuildC4Plan(*m.Spec.C4, o, e.c4Trust(m), path); err != nil {
 		return o, "", err
 	}
 	return o, path, nil
@@ -59,9 +59,9 @@ func (e *Engine) ExecuteC4Cleanup(ctx context.Context, id string, revision int64
 	defer cancel()
 	cap := e.options.C4Controlled
 	if cap.source == "docker_c4_control" {
-		_, err = sandbox.CleanupC4Docker(bounded, *m.Spec.C4, o, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust()}, path, c.ContainerID, e.c4PersistLocked(id))
+		_, err = sandbox.CleanupC4Docker(bounded, *m.Spec.C4, o, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust(m)}, path, c.ContainerID, e.c4PersistLocked(id))
 	} else {
-		_, err = sandbox.CleanupC4(bounded, *m.Spec.C4, o, e.c4Trust(), c.ContainerID, cap.driver, e.c4PersistLocked(id))
+		_, err = sandbox.CleanupC4(bounded, *m.Spec.C4, o, e.c4Trust(m), c.ContainerID, cap.driver, e.c4PersistLocked(id))
 	}
 	current, getErr := e.s.GetMission(id)
 	if getErr != nil {

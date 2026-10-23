@@ -33,6 +33,7 @@ func (c *Client) PreflightAccountProfile(_ context.Context, profile domain.Profi
 }
 
 type Request struct {
+	InvocationID    string
 	SnapshotSchema  int
 	Selection       *domain.RoleModelSelection
 	Profile         domain.Profile

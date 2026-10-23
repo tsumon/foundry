@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -231,7 +233,7 @@ func (e *Engine) completeControlledModel(op *operation, v domain.Invocation, inp
 	if e.gateway == nil {
 		err = errors.New("gateway unavailable")
 	} else {
-		result, err = e.gateway.Complete(ctx, model.Request{SnapshotSchema: input.SnapshotSchema, Selection: input.Selection, Profile: input.Profile, Role: role, System: input.System, Prompt: input.Prompt, MaxOutputTokens: input.MaxOutputTokens})
+		result, err = e.gateway.Complete(ctx, model.Request{InvocationID: v.ID, SnapshotSchema: input.SnapshotSchema, Selection: input.Selection, Profile: input.Profile, Role: role, System: input.System, Prompt: input.Prompt, MaxOutputTokens: input.MaxOutputTokens})
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -305,6 +307,37 @@ func (e *Engine) controlledModelInput(m domain.Mission, role domain.Role, extra 
 		}
 	}
 	payload := map[string]any{"goal": m.Goal, "spec": m.Spec, "context": files, "manifest": m.ContextManifest, "skills": bound, "research": m.Research, "plan": m.Plan, "changes": m.Changes, "evidence": m.Evidence, "extra": extra}
+	if isModelC4(m) {
+		path, err := e.selectedCandidate(m)
+		if err != nil {
+			return controlledInput{}, err
+		}
+		manifest := append([]domain.FileMeta(nil), m.ContextManifest...)
+		for _, change := range m.Changes {
+			hash := sha256.Sum256([]byte(change.After))
+			meta := domain.FileMeta{Path: change.Path, Bytes: int64(len(change.After)), SHA256: hex.EncodeToString(hash[:])}
+			found := false
+			for i := range manifest {
+				if manifest[i].Path == change.Path {
+					manifest[i] = meta
+					found = true
+					break
+				}
+			}
+			if !found {
+				manifest = append(manifest, meta)
+			}
+		}
+		current, err := workspace.Context(path, manifest)
+		if err != nil {
+			return controlledInput{}, err
+		}
+		payload["baseline_context"] = files
+		payload["context"] = current
+		payload["current_context_manifest"] = manifest
+		payload["candidate_generation"] = m.CandidateGeneration
+		payload["candidate_digest"] = m.CandidateDigest
+	}
 	if m.ReplanContext != nil {
 		payload["replan_context"] = m.ReplanContext
 	}

@@ -6,7 +6,12 @@ import {
   type SetStateAction,
 } from "react";
 import { api, APIError, errorMessage } from "../api";
-import { hasC4, c4EventLabel, c4AdvanceAllowed } from "../c4";
+import {
+  hasC4,
+  c4EventLabel,
+  c4AdvanceAllowed,
+  isTerminalModelBackedDelivery,
+} from "../c4";
 import { C4Decision } from "./C4Verification";
 import {
   activeStates,
@@ -233,11 +238,13 @@ export function MissionWorkspace({
       !invalidModelSnapshot(mission));
   const unsupportedWorkspaceMode =
     !isSupportedMissionMode(mission) || invalidModelSnapshot(mission);
+  const terminalModelDelivery = isTerminalModelBackedDelivery(mission);
   const canChat =
     !demo &&
     authorized &&
     mission.state !== "draft" &&
     !activeStates.includes(mission.state) &&
+    !terminalModelDelivery &&
     !unsupportedWorkspaceMode &&
     !accountActionBlocked(mission, "chat") &&
     (!hasC4(mission) || (c4Available && c4AdvanceAllowed(mission))) &&
@@ -246,6 +253,7 @@ export function MissionWorkspace({
     if (
       demo ||
       unsupportedWorkspaceMode ||
+      (action === "chat" && terminalModelDelivery) ||
       accountActionBlocked(mission, action) ||
       (action === "approve" && hasC4(mission) && !c4ExecutionAvailable) ||
       (hasC4(mission) &&
@@ -619,6 +627,11 @@ export function MissionWorkspace({
               Main 的账户调用已禁用：
               {accountActionBlockReason(mission, "chat")}
               历史消息保持可读，不会切换其他模型。
+            </p>
+          )}
+          {!demo && terminalModelDelivery && (
+            <p className="warning-copy">
+              已交付；如需继续执行请新建任务，历史证据保持不变
             </p>
           )}
         </section>

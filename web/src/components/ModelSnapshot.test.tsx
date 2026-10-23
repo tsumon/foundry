@@ -6,6 +6,7 @@ import { mission, profile } from "../test/fixtures";
 import { roles, type Mission, type Role, type ModelAccount } from "../types";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { createPlanDraft, PlanRevisionEditor } from "./PlanRevisionEditor";
+import { accountActionBlockReason } from "../modelSnapshot";
 
 function readAppStyles() {
   const process = (
@@ -132,6 +133,39 @@ it("does not call SIWC preview metadata a missing API key before backend authori
   expect(region).toHaveTextContent("SIWC 授权将在创建时由后端复核");
   expect(region).not.toHaveTextContent("凭据版本：0");
   expect(region).not.toHaveTextContent("稳定授权 缺失");
+});
+
+it("describes an explicitly selected coding preview as separately gated instead of unavailable", () => {
+  render(
+    <ModelSnapshot
+      codingModePreview
+      preview={{
+        worker: {
+          profile: {
+            ...profile,
+            account_id: "a-preview",
+            account_revision: 1,
+          },
+          account: {
+            id: "a-preview",
+            revision: 1,
+            name: "Preview account",
+            provider: "openai",
+            billing_mode: "api_credits",
+            enabled: true,
+            identity_status: "unverified",
+            usage_status: "unknown",
+            inference_enabled: false,
+          },
+        },
+      }}
+    />,
+  );
+
+  const region = screen.getByRole("region", { name: "创建前角色预览" });
+  expect(region).toHaveTextContent(/账户模型调用.*单独门禁/);
+  expect(region).toHaveTextContent(/配置不等于当前调用授权/);
+  expect(region).not.toHaveTextContent(/真实账户调用尚未开放/);
 });
 
 it("shows historical seven-role version metadata in execution approval and blocks only account execution roles", () => {
@@ -339,6 +373,51 @@ it("uses server runtime metadata to enable only a ready schema2 simulation route
   );
   expect(screen.getByRole("button", { name: "批准并执行计划" })).toBeDisabled();
   expect(screen.getByText(/冻结路由指向真实环境/)).toBeVisible();
+});
+
+it("shows a model-backed live route as per-call gated while keeping ordinary live routes blocked", () => {
+  const ordinary = routed("live");
+  expect(accountActionBlockReason(ordinary, "approve")).toMatch(
+    /真实环境.*门禁保持关闭/,
+  );
+
+  const modelBacked = routed("live");
+  modelBacked.spec = {
+    ...modelBacked.spec,
+    c4: {
+      schema_version: 1,
+      control_version: 1,
+      id: "c4_go_model_v1",
+      mode: "docker",
+      image_id: `sha256:${"a".repeat(64)}`,
+      platform: "linux/arm64",
+      docker_path: "/opt/docker/bin/docker",
+      endpoint: "unix:///opt/docker/run/docker.sock",
+      verifier: "/opt/foundry/verify-go-v1",
+    },
+  };
+  modelBacked.model_runtime = {
+    ...modelBacked.model_runtime!,
+    live_inference: true,
+    simulation_inference: false,
+    adapters: [
+      {
+        id: "openai_api_responses",
+        provider: "openai",
+        auth_method: "api_key",
+        protocol: "responses",
+        spend_class: "explicit_api",
+        implemented: true,
+        live_enabled: true,
+      },
+    ],
+  };
+
+  expect(accountActionBlockReason(modelBacked, "approve")).toBe("");
+  render(<ModelSnapshot mission={modelBacked} />);
+  expect(screen.getByText(/真实环境（逐次门禁） · explicit_api/)).toBeVisible();
+  expect(screen.getByText(/配置不等于当前调用授权/)).toBeVisible();
+  expect(screen.queryByText(/真实账户调用尚未开放/)).not.toBeInTheDocument();
 });
 
 it("shows stable authorization identity without inventing token generation or current readiness", () => {

@@ -20,7 +20,13 @@ func (e *Engine) ExecuteC4Readiness(ctx context.Context, id string, revision int
 	}
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	ready, runErr := e.options.C4Controlled.readiness(bounded)
+	var ready sandbox.C4ReadinessResult
+	var runErr error
+	if e.options.C4Controlled.modelBacked && e.options.C4Controlled.source == "docker_c4_control" {
+		ready, runErr = sandbox.CheckC4DockerReadiness(bounded, *m.Spec.C4, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust(m)})
+	} else {
+		ready, runErr = e.options.C4Controlled.readiness(bounded)
+	}
 	r := domain.C4ControlResult{Status: "failed", FailureCode: "failed"}
 	deadline, _ := time.Parse(time.RFC3339Nano, c.ActivationExpiresAt)
 	if runErr == nil && ready.FailureCode == "" && bounded.Err() == nil && e.c4Time().Before(deadline) {
@@ -56,7 +62,7 @@ func (e *Engine) currentC4Readiness(m domain.Mission) (domain.C4Control, error) 
 			continue
 		}
 		// Latest attempted material supersedes previous authority; no fallback.
-		if c.Result == nil || c.Result.Status != "ready" || c.ActivationDigest != e.options.C4Controlled.config.Digest() || c.ActivationExpiresAt != e.options.C4Controlled.config.ExpiresAt || c.SourceKind != e.options.C4Controlled.source || c.BaseCommit != m.BaseCommit || c.BaseDigest != m.RepositoryImport.BaseDigest || c.ProfileDigest != m.Spec.C4.ProfileDigest() {
+		if c.Result == nil || c.Result.Status != "ready" || c.ActivationDigest != e.c4Activation(m).Digest() || c.ActivationExpiresAt != e.options.C4Controlled.config.ExpiresAt || c.SourceKind != e.options.C4Controlled.source || c.BaseCommit != m.BaseCommit || c.BaseDigest != m.RepositoryImport.BaseDigest || c.ProfileDigest != m.Spec.C4.ProfileDigest() {
 			return domain.C4Control{}, ErrC4Unavailable
 		}
 		until, err := time.Parse(time.RFC3339Nano, c.Result.ValidUntil)

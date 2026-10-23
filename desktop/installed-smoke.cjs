@@ -1,10 +1,15 @@
 "use strict";
 // Run against copied/installed resources, never a source-tree backend.
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { startBackend } = require("./runtime.cjs");
 const { installedFlow } = require("./installed-flow.cjs");
+const { assertCodingMetadata } = require("./coding-smoke.cjs");
+function hashFile(file) {
+  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+}
 async function authorized(child, route, options = {}) {
   const headers = {
     "X-Foundry-Desktop": child.capability,
@@ -71,7 +76,51 @@ async function main() {
       ).status,
       200,
     );
+    const disabledCodingResponse = await authorized(
+      child,
+      "/api/coding-tasks",
+      { headers: { Cookie: cookie } },
+    );
+    assert.equal(disabledCodingResponse.status, 200);
+    assertCodingMetadata(
+      await disabledCodingResponse.json(),
+      process.platform,
+      false,
+    );
     await child.stop();
+    child = await startBackend({
+      resources,
+      dataRoot,
+      mode: "coding",
+      integrity,
+    });
+    cookie = await session(child);
+    let codingResponse = await authorized(child, "/api/coding-tasks", {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(codingResponse.status, 200);
+    const codingMetadata = await codingResponse.json();
+    assertCodingMetadata(codingMetadata, process.platform);
+    const codingDB = path.join(child.ready.dataDir, "foundry.db");
+    await child.stop();
+    const codingHash = hashFile(codingDB);
+    child = await startBackend({
+      resources,
+      dataRoot,
+      mode: "coding",
+      integrity,
+    });
+    cookie = await session(child);
+    codingResponse = await authorized(child, "/api/coding-tasks", {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(codingResponse.status, 200);
+    assertCodingMetadata(await codingResponse.json(), process.platform);
+    await child.stop();
+    assert.equal(
+      hashFile(codingDB),
+      codingHash,
+    );
     child = await startBackend({
       resources,
       dataRoot,
@@ -122,6 +171,10 @@ async function main() {
     );
     await child.stop();
     assert.ok(fs.existsSync(path.join(retained, "foundry.db")));
+    assert.equal(
+      hashFile(codingDB),
+      codingHash,
+    );
     console.log(
       JSON.stringify(
         {
@@ -129,7 +182,9 @@ async function main() {
           resources,
           dataRoot,
           simulationEvidence: retained,
+          codingEvidence: path.dirname(codingDB),
           deliveryArtifacts,
+          codingMetadata,
           checks: [
             "real bundled SPA and Go",
             "all-route capability",
@@ -137,6 +192,8 @@ async function main() {
             "same-data lock rejects second controller",
             "EOF graceful exit",
             "persistent restart",
+            "normal startup keeps coding metadata closed",
+            "coding startup exposes retained metadata only; Windows execution unavailable",
             "isolated simulation baseline remains prepared without approval or execution facts",
             "evidence retained",
             "installed binaries: two separately approved baseline/plan/failure-repair/review/delivery flows",
@@ -151,7 +208,10 @@ async function main() {
     if (child) await child.stop();
   }
 }
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module)
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+
+module.exports = { hashFile };

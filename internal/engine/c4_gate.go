@@ -51,10 +51,14 @@ func c4Structure(m domain.Mission) error {
 	if !isC4(m) {
 		return nil
 	}
-	if domain.ValidateC4Mission(m) != nil || domain.ValidateMissionModelSnapshot(m) != nil || m.Spec.C4 == nil || (m.Spec.C4.Mode != "synthetic" && m.Spec.C4.ControlVersion != 1) || m.WorkspaceMode != "generations_v1" || m.CodingVersion != 1 || m.ImportVersion != 1 || m.RepositoryImport == nil || m.ToolMode != "" || m.TaskBindings != nil || m.MCPBindings != nil || m.ModelSnapshotInvalid || !reflect.DeepEqual(m.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) {
+	mode := m.WorkspaceMode
+	if isModelC4(m) {
+		mode, _, _ = domain.BaseWorkspaceMode(mode)
+	}
+	if domain.ValidateC4Mission(m) != nil || domain.ValidateMissionModelSnapshot(m) != nil || m.Spec.C4 == nil || (m.Spec.C4.Mode != "synthetic" && m.Spec.C4.ControlVersion != 1) || mode != "generations_v1" || m.CodingVersion != 1 || m.ImportVersion != 1 || m.RepositoryImport == nil || m.ToolMode != "" || m.TaskBindings != nil || m.MCPBindings != nil || m.ModelSnapshotInvalid || !reflect.DeepEqual(m.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) {
 		return ErrC4Unavailable
 	}
-	return c4Profiles(m.Profiles, m.ModelSnapshot)
+	return c4SelectedProfiles(m.Spec.C4, m.Profiles, m.ModelSnapshot)
 }
 func (e *Engine) c4Gate(m domain.Mission) error {
 	if e.options.C4Controlled != nil || m.Spec.C4 != nil && m.Spec.C4.ControlVersion == 1 {
@@ -75,6 +79,20 @@ func (e *Engine) c4Gate(m domain.Mission) error {
 	return nil
 }
 func (e *Engine) c4CreateGate(r CreateRequest) error {
+	if e.options.CodingWorkbench && !e.CodingWorkbenchEnabled() {
+		return ErrC4Unavailable
+	}
+	if e.CodingWorkbenchEnabled() {
+		c := e.options.C4Controlled
+		if !e.CodingWorkbenchAvailable() || r.Spec.C4 == nil || r.Spec.C4.ID != "c4_go_model_v1" || r.Spec.C4.Validate() != nil || ((c.source == "docker_c4_control") != (r.Spec.C4.Mode == "docker")) || r.ImportVersion != 1 || r.ImportSelection == nil || r.CodingVersion != 1 || r.WorkspaceMode != "generations_v1" || r.ToolMode != "" || r.MCPSelection != nil || r.CapabilitySelection != nil || !reflect.DeepEqual(r.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) || r.Spec.MaxCalls > 16 {
+			return ErrC4Unavailable
+		}
+		_, profiles, snapshot, _, err := e.s.ResolveMissionModelSelection(r.Spec.ProfileID)
+		if err != nil {
+			return err
+		}
+		return modelC4Profiles(profiles, snapshot)
+	}
 	if e.options.C4Controlled != nil || r.Spec.C4 != nil && r.Spec.C4.ControlVersion == 1 {
 		c := e.options.C4Controlled
 		if c == nil || e.options.C4 != nil || ValidateC4Activation(c.config, e.c4Time()) != nil || r.Spec.C4 == nil || r.Spec.C4.ProfileDigest() != c.config.Profile.ProfileDigest() || r.ImportVersion != 1 || r.ImportSelection == nil || r.CodingVersion != 1 || r.WorkspaceMode != "generations_v1" || r.ToolMode != "" || r.MCPSelection != nil || r.CapabilitySelection != nil || !reflect.DeepEqual(r.Spec.Acceptance, []string{"/opt/foundry/verify-go-v1"}) {

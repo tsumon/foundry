@@ -294,7 +294,7 @@ func (e *Engine) plan(ctx context.Context, id string, revision int64, consent bo
 	if err != nil {
 		return m, err
 	}
-	if m.ToolMode != "" && !consent {
+	if (m.ToolMode != "" || isModelC4(m)) && !consent {
 		return m, errors.New("explicit controlled read consent required")
 	}
 	if e.active != nil {

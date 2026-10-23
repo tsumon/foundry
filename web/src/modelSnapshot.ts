@@ -5,6 +5,7 @@ import {
   type MissionAction,
   type Role,
 } from "./types";
+import { isModelBackedC4 } from "./c4";
 
 export function invalidRolePolicySnapshot(mission: Mission): boolean {
   const policyStatus = mission.model_policy_snapshot_status;
@@ -139,11 +140,22 @@ export function accountActionBlockReason(
       return "schema1 账户任务不具备推理执行权。";
     const route = selection.route;
     if (!route) return "冻结路由缺失，不能将账户连接视为可运行。";
-    if (route.environment === "live")
-      return "冻结路由指向真实环境；本次真实推理门禁保持关闭。";
-    if (route.environment !== "simulation") return "冻结路由环境不受支持。";
-    if (!mission.model_runtime?.simulation_inference)
-      return "当前进程未提供可用的模拟推理能力。";
+    if (route.environment === "live") {
+      if (!isModelBackedC4(mission))
+        return "冻结路由指向真实环境；本次真实推理门禁保持关闭。";
+      if (!mission.model_runtime?.live_inference)
+        return "当前编码运行时未提供真实模型推理能力。";
+      if (mission.model_runtime.automatic_paid_fallback)
+        return "运行时报告自动付费降级，编码任务保持禁用。";
+      const adapter = mission.model_runtime.adapters.find(
+        (item) => item.id === route.adapter,
+      );
+      if (!adapter?.implemented || !adapter.live_enabled)
+        return "冻结模型适配器当前未获真实推理准入。";
+    } else if (route.environment === "simulation") {
+      if (!mission.model_runtime?.simulation_inference)
+        return "当前进程未提供可用的模拟推理能力。";
+    } else return "冻结路由环境不受支持。";
     if (route.extra_usage !== "off")
       return "额外用量未明确关闭，不能视为可运行。";
     if (route.adapter === "openai_siwc_responses") {

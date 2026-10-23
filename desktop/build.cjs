@@ -94,6 +94,7 @@ async function main() {
   fs.mkdirSync(appSource);
   for (const name of [
     "main.cjs",
+    "coding-mode.cjs",
     "runtime.cjs",
     "security.cjs",
     "downloads.cjs",
@@ -151,6 +152,7 @@ async function main() {
       directories: { output: path.join(output, "package") },
       files: [
         "main.cjs",
+        "coding-mode.cjs",
         "runtime.cjs",
         "security.cjs",
         "downloads.cjs",

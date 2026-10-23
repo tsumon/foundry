@@ -16,8 +16,8 @@ these artifacts expire and are not a GitHub Release or an update channel.
 
 | Target | Package | Trust status |
 | --- | --- | --- |
-| macOS Apple Silicon | `Foundry-0.1.0-alpha.1-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
-| Windows x64 | `Foundry-0.1.0-alpha.1-x64.exe` | Unsigned per-user installer; no verified publisher |
+| macOS Apple Silicon | `Foundry-0.1.0-alpha.2-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
+| Windows x64 | `Foundry-0.1.0-alpha.2-x64.exe` | Unsigned per-user installer; no verified publisher |
 
 Do not treat a checksum as publisher authentication. Do not disable Gatekeeper,
 SmartScreen, antivirus or other OS protections to install the Alpha. If your
@@ -36,12 +36,19 @@ installation path supplied with `/D`). Uninstalling the app must not remove task
 evidence. Keep a backup before a future upgrade; downgrading an existing data
 directory is not a supported recovery method.
 
-## First run: two deliberately different modes
+## First run: separate workspaces, separate authority
 
 **Persistent Workbench** opens an empty, persistent local workbench. It supports
 project, delivery-target, environment and shared-resource records, task history
 and the existing settings UI. It does not invent a configured model or silently
 turn on account access. Creating account metadata is not a successful connection.
+
+**Controlled Coding Workbench** is an explicit native-menu opt-in with its own
+retained data. Opening it enables configuration, not a provider call or Docker
+probe. On Mac it composes the account-backed model router with the controlled
+Go/Docker verifier. On Windows the entry displays the unavailable real-Docker
+boundary; native packaging and credential storage do not establish Docker trust.
+Normal launch and the simulation retain their original closed behavior.
 
 **New Isolated Local Repository Simulation**, in the Foundry menu, creates fresh
 disposable Git inputs and a separate retained database. This is the recommended
@@ -68,6 +75,56 @@ model or a real MCP service.
 Closing the app stops its own controller. It does not erase retained evidence,
 restart failed work, or grant any pending approval. Starting a new simulation
 creates a new run; it does not resume the previous simulation automatically.
+
+## Model-driven Go tasks (Mac, opt-in)
+
+The new coding mode does not require `foundry.task.json` or preset patches. It
+uses a committed repository snapshot, a goal and protected/scoped files. Supply
+an existing local immutable image ID matching the fixed Go 1.27.3 verifier
+contract. Foundry does not download/build images or install dependencies for you.
+The source repository and protected tests remain untouched.
+
+1. Open **Controlled Coding Workbench**. Configure an explicit OpenAI account and
+   route in the existing model settings, then choose role models. An API-key route
+   and an already authorized subscription route are never interchangeable.
+   Opening settings or creating metadata does not read a credential or log in.
+2. In task creation, inspect the repository and freeze its committed base, file
+   scope, model selections, call budget and immutable local verification profile.
+   Creation grants neither network nor execution permission.
+3. Prepare, approve and explicitly execute the separate Docker readiness check.
+   Prepare, approve and execute baseline verification. A passing baseline is
+   required; this mode does not ask a model to repair an already-failing baseline.
+4. Approve sending the bounded repository context to the selected role models.
+   Researcher and Planner produce the proposal; inspect or revise it before the
+   separate execution approval.
+5. Workers propose complete file edits in isolated generations. Confirmed test
+   failures can enter two bounded Debugger rounds; infrastructure failures,
+   uncertain execution or unconfirmed cleanup stop instead of prompting a repair.
+6. Inspect real/synthetic evidence labels and QA/Auditor records. Independently
+   approve delivery to export a patch/report. There is no automatic apply or Git
+   write.
+
+Native credentials use Foundry-scoped macOS Keychain or Windows Credential
+Manager. Only explicit account operations or approved claimed task calls may
+access them; opening/restarting the workbench does not enumerate, refresh or
+clean them. A subscription route must already have valid authorization; this
+entry does not perform a new subscription login or model-directory query.
+
+Windows Credential Manager rejects blobs above its native 2,560-byte ceiling;
+larger serialized subscription bundles are not supported. This is a hard error,
+not truncation or a fallback to plaintext storage.
+
+The current task defaults are a finite 16-call budget and at most two repairs.
+Usage is recorded, not a promise of available subscription quota. A transport
+timeout or response-size bound is not an output-token or spending hard cap.
+Expiry, allowance exhaustion and unknown outcomes stop without automatic retry,
+refresh or paid fallback. Real-account end-to-end acceptance remains separately
+authorized and is not implied by local integration tests or an installer.
+See [coding design](live-coding.md) for the exact authority and failure model.
+
+After delivery, that model-backed task is a read-only historical result: download
+its artifacts or inspect evidence, but start a new task for additional model chat
+or execution. New readiness/cleanup preparation cannot rewrite a delivered record.
 
 ## Bring a disposable repository
 
@@ -96,22 +153,26 @@ entries, symlinks, junctions, case aliases and alternate streams are rejected.
 - macOS controller data: `~/Library/Application Support/foundry-desktop/controller-data/`.
 - Windows controller data: the OS Local Application Data folder's `Foundry\`
   directory, normally `%LOCALAPPDATA%\Foundry\`.
-- `workbench` holds persistent state; `simulations` contains separate retained
+- `workbench` holds ordinary persistent state; `coding` holds the opt-in coding
+  workbench; `simulations` contains separate retained
   fixture runs. Use **Show Current Data / Evidence Folder** to open the active
   location. Windows also keeps its Electron profile in the private `electron`
   subdirectory.
 
 Removing/replacing the Mac app or running the Windows uninstaller does not erase
-these directories. No account credentials belong in these desktop fixtures.
+these directories. No account credentials belong in desktop simulation fixtures.
 Back up retained evidence explicitly; uninstall is not evidence cleanup.
 
 ## Boundaries that installation does not change
 
 - Context, plan execution, delivery and one-operation integration approvals remain
   separate. Role names and model text never grant permission.
-- Subscription/login/catalog/inference operator entrypoints are unavailable in
-  the desktop launch. No real Keychain values are read by the desktop mode.
-- No real Docker activation, host scripts, Git writes, deployment or migration.
+- Subscription/login/catalog/single-inference operator entrypoints are unavailable
+  in desktop launch. Coding-mode task inference has its own claimed-call authority;
+  it is not permission to query a catalog or begin OAuth.
+- Real Docker remains closed in normal/simulation mode and on Windows. Mac coding
+  mode still needs separate readiness, baseline and task execution approvals.
+- No host scripts, Git writes, deployment or migration.
 - No automatic model/provider retry, token refresh, paid fallback or updates.
 - The renderer has no Node.js or filesystem bridge. A random per-launch capability
   protects the local server, including its bootstrap and static content. Other

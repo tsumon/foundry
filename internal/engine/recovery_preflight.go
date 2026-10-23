@@ -7,6 +7,19 @@ import (
 	"foundry/internal/store"
 )
 
+func CheckCodingRecoveryModelSnapshots(s *store.Store) error {
+	missions, err := s.ListMissions()
+	if err != nil {
+		return err
+	}
+	for _, m := range missions {
+		if !isModelC4(m) || c4Structure(m) != nil || domain.ValidateCodingTrace(m) != nil {
+			return ErrC4Unavailable
+		}
+	}
+	return validateRecoveryModelSnapshots(missions)
+}
+
 // CheckRecoveryModelSnapshots is read-only and must precede every startup
 // component that can mutate durable state or invoke an external dependency.
 // A structural failure selects instance-wide diagnostic startup; it does not

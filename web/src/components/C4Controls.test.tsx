@@ -122,7 +122,9 @@ it("requires three explicit readiness actions; readiness cannot approve or execu
     return { mission: m };
   });
   render(<Harness start={m} />);
-  expect(screen.getByText(/本任务仅本地模拟，未执行真实 Docker/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/本任务仅本地模拟，未执行真实 Docker/),
+  ).toBeInTheDocument();
   expect(screen.getByText(/模拟就绪检查 · 非真实 Docker/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "执行就绪检查" })).toBeDisabled();
   await waitFor(() =>
@@ -500,6 +502,124 @@ it("does not mislabel configured Docker history as synthetic or closed", () => {
   ).toContain("受控 Docker 声明");
   m.c4_controls = [{ ...receipt, source_kind: "synthetic_c4_control" }];
   expect(c4BaselinePassed(m)).toBe(false);
+});
+
+it("does not label the model-backed Docker control path as simulated inference", async () => {
+  const m = initial();
+  m.spec.c4 = {
+    ...m.spec.c4!,
+    id: "c4_go_model_v1",
+    mode: "docker",
+    docker_path: "/opt/docker/bin/docker",
+    endpoint: "unix:///opt/docker/run/docker.sock",
+  };
+  vi.spyOn(api, "c4").mockResolvedValue({
+    ...status(m),
+    profile: m.spec.c4,
+    real_execution: true,
+    control: {
+      ...status(m).control!,
+      source_kind: "docker_c4_control",
+    },
+  });
+
+  render(<C4Decision mission={m} busy={false} onUpdate={vi.fn()} />);
+  await screen.findByText(/C4 就绪检查 · 受控 Docker 配置/);
+  expect(screen.queryByText(/模型推理仍为本地模拟/)).not.toBeInTheDocument();
+  expect(screen.getByText(/模型调用仍需独立上下文授权/)).toBeVisible();
+});
+
+it("closes model-backed readiness and cleanup controls after committed delivery while retaining facts", async () => {
+  const m = initial();
+  m.state = "delivered";
+  m.delivery = {
+    candidate_digest: "delivered-candidate",
+    created_at: "2026-10-23T00:00:00Z",
+    patch_path: "/private/delivery.patch",
+    report_path: "/private/report.md",
+  };
+  m.spec.c4 = {
+    ...m.spec.c4!,
+    id: "c4_go_model_v1",
+    mode: "docker",
+    docker_path: "/opt/docker/bin/docker",
+    endpoint: "unix:///opt/docker/run/docker.sock",
+  };
+  const dirty = {
+    ...c4Operation,
+    cleanup: [
+      {
+        ...c4Operation.cleanup![0],
+        state: "failed",
+      },
+    ],
+  };
+  const readiness = prepared(m, {
+    source_kind: "docker_c4_control",
+  });
+  const cleanup = prepared(m, {
+    id: "cleanup-1",
+    kind: "cleanup",
+    source_kind: "docker_c4_control",
+    operation_id: dirty.id,
+    operation_digest: dirty.material_digest,
+    container_id: dirty.container_id,
+  });
+  m.c4_operations = [dirty];
+  m.c4_controls = [readiness, cleanup];
+  vi.spyOn(api, "c4").mockResolvedValue({
+    ...status(m),
+    profile: m.spec.c4,
+    real_execution: true,
+    control: {
+      ...status(m).control!,
+      source_kind: "docker_c4_control",
+    },
+  });
+  const post = vi.spyOn(api, "c4Action");
+
+  render(<C4Decision mission={m} busy={false} onUpdate={vi.fn()} />);
+
+  expect(
+    await screen.findByText("已交付；如需继续执行请新建任务，历史证据保持不变"),
+  ).toBeVisible();
+  for (const name of [
+    "准备就绪材料",
+    "批准就绪材料",
+    "执行就绪检查",
+    `准备清理材料 · ${dirty.id}`,
+    "批准清理材料",
+    "执行精确清理",
+  ]) {
+    const action = screen.getByRole("button", { name });
+    expect(action).toBeDisabled();
+    fireEvent.click(action);
+  }
+  expect(post).not.toHaveBeenCalled();
+  expect(screen.getByText("清理材料 · prepared")).toBeVisible();
+  expect(screen.getByRole("button", { name: "刷新 C4 事实" })).toBeEnabled();
+});
+
+it("does not apply the post-delivery terminal guard to legacy C4 fixtures", async () => {
+  const m = initial();
+  m.state = "delivered";
+  m.delivery = {
+    candidate_digest: "legacy-candidate",
+    created_at: "2026-10-23T00:00:00Z",
+    patch_path: "/private/legacy.patch",
+    report_path: "/private/legacy.md",
+  };
+  m.c4_controls = [];
+  vi.spyOn(api, "c4").mockResolvedValue(status(m));
+
+  render(<C4Decision mission={m} busy={false} onUpdate={vi.fn()} />);
+
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "准备就绪材料" })).toBeEnabled(),
+  );
+  expect(
+    screen.queryByText("已交付；如需继续执行请新建任务，历史证据保持不变"),
+  ).not.toBeInTheDocument();
 });
 
 it.each(["prepared", "approved"])(

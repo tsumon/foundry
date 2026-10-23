@@ -20,9 +20,10 @@ import (
 )
 
 type Options struct {
-	C4Controlled *C4ControlledCapability
-	C4           *C4SyntheticCapability
-	LocalMCPTest *mcptest.Descriptor
+	CodingWorkbench bool
+	C4Controlled    *C4ControlledCapability
+	C4              *C4SyntheticCapability
+	LocalMCPTest    *mcptest.Descriptor
 	// Go-only experimental service; never configured by CLI, environment or HTTP.
 	EnableLocalMCP                bool
 	MCPSecrets                    model.Secrets
@@ -76,7 +77,7 @@ func New(s *store.Store, gateway model.Gateway, options Options) *Engine {
 	options.DataDir = abs
 	owner := sha256.Sum256([]byte(abs))
 	runner := options.Runner
-	if runner == nil && options.C4Controlled == nil {
+	if runner == nil && options.C4Controlled == nil && !options.CodingWorkbench {
 		runner = sandbox.New(options.DockerPath, hex.EncodeToString(owner[:12]))
 	}
 	c4Root, _ := filepath.EvalSymlinks(abs)
@@ -393,6 +394,9 @@ func (e *Engine) Close() error {
 func (e *Engine) Recover(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.options.CodingWorkbench && !e.CodingWorkbenchEnabled() {
+		return ErrC4Unavailable
+	}
 	if e.active != nil {
 		return errors.New("cannot recover active engine")
 	}

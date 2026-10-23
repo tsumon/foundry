@@ -65,6 +65,115 @@ function candidateMission(changes: Partial<Mission> = {}): Mission {
     ...changes,
   };
 }
+
+function modelBackedPlanningMission(): Mission {
+  const expires = new Date(Date.now() + 600_000).toISOString();
+  const activation = "f".repeat(64);
+  const readinessDigest = "9".repeat(64);
+  const profile = {
+    ...c4Profile,
+    control_version: 1,
+    id: "c4_go_model_v1",
+    mode: "docker",
+    docker_path: "/opt/docker/bin/docker",
+    endpoint: "unix:///opt/docker/run/docker.sock",
+  };
+  return {
+    ...c4Mission,
+    state: "draft",
+    plan: null,
+    spec: { ...c4Mission.spec, c4: profile },
+    c4_controls: [
+      {
+        schema_version: 1,
+        id: "readiness-live",
+        kind: "readiness",
+        mission_id: c4Mission.id,
+        epoch: c4Mission.epoch,
+        plan_revision: 0,
+        base_commit: c4Mission.base_commit,
+        base_digest: c4Mission.repository_import!.base_digest,
+        profile_digest: c4Operation.profile_digest,
+        activation_digest: activation,
+        activation_expires_at: expires,
+        source_kind: "docker_c4_control",
+        prepared_revision: 1,
+        prepared_at: c4Operation.prepared_at,
+        expires_at: expires,
+        material_digest: readinessDigest,
+        state: "completed",
+        approval: {
+          digest: readinessDigest,
+          revision: 2,
+          at: c4Operation.prepared_at,
+        },
+        dispatch: { revision: 3, at: c4Operation.prepared_at },
+        result: {
+          status: "ready",
+          revision: 4,
+          at: c4Operation.prepared_at,
+          valid_until: expires,
+          fingerprint: "8".repeat(64),
+        },
+      },
+    ],
+    c4_operations: [
+      {
+        ...c4Operation,
+        readiness_id: "readiness-live",
+        readiness_digest: readinessDigest,
+      },
+    ],
+  };
+}
+
+it("describes model and Docker receipts separately for model-backed history", () => {
+  render(<C4Verification mission={modelBackedPlanningMission()} />);
+
+  expect(screen.getByText(/账户模型输出来源.*模型调用回执/)).toBeVisible();
+  expect(screen.getByText(/测试来源.*C4 Docker 操作与清理记录/)).toBeVisible();
+  expect(screen.queryByText(/模型推理仍为本地模拟/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/模型判断与验证来源均为本地模拟/),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "C4 基线记录" })).toHaveTextContent(
+    "Docker 验证通过 · 已记录隔离执行",
+  );
+});
+
+it("uses explicit model context consent and does not describe live routes as synthetic", () => {
+  const action = vi.fn();
+  render(
+    <DecisionPanel
+      mission={modelBackedPlanningMission()}
+      busy={false}
+      c4Available
+      onAction={action}
+    />,
+  );
+
+  expect(
+    screen.getByText(/冻结的账户、模型、消费类别与调用预算/),
+  ).toBeVisible();
+  expect(screen.queryByText(/专用本地模拟模型/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: /我已检查目标/ }));
+  fireEvent.click(screen.getByRole("button", { name: "授权上下文并生成计划" }));
+  expect(action).toHaveBeenCalledExactlyOnceWith("plan", true);
+});
+
+it("keeps model output and Docker test evidence distinct at execution approval", () => {
+  const m = modelBackedPlanningMission();
+  m.state = "awaiting_approval";
+  m.plan = c4Mission.plan;
+  render(
+    <DecisionPanel mission={m} busy={false} c4Available onAction={vi.fn()} />,
+  );
+
+  expect(screen.getByText(/Worker 模型输出以调用回执为准/)).toBeVisible();
+  expect(screen.getByText(/测试通过只以 C4 Docker 操作记录为准/)).toBeVisible();
+  expect(screen.queryByText(/模拟检查不执行命令/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "批准并执行计划" })).toBeEnabled();
+});
 it("requires separate explicit approval and execution, displays immutable permissions, never acts on mount", async () => {
   vi.spyOn(api, "c4").mockResolvedValue(status());
   const approved = {
@@ -94,7 +203,9 @@ it("requires separate explicit approval and execution, displays immutable permis
   );
   expect(action).not.toHaveBeenCalled();
   expect(screen.getByText(/256 MiB.*exec/)).toBeInTheDocument();
-  expect(screen.getByText(/本任务仅本地模拟，未执行真实 Docker/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/本任务仅本地模拟，未执行真实 Docker/),
+  ).toBeInTheDocument();
   expect(screen.queryByText(/C4-C 未执行/)).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: /启用真实/ }),
