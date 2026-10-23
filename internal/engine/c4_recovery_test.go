@@ -5,13 +5,137 @@ import (
 	"database/sql"
 	"encoding/json"
 	"foundry/internal/domain"
+	"foundry/internal/model"
 	"foundry/internal/sandbox"
 	"foundry/internal/store"
+	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+// This is a durable-journal fixture, not evidence of VM readiness or execution.
+// No native helper, Docker command, provider or real account is used.
+func TestC4VMRecoveryUnknownWithoutReplayPreservesRetainedEvidence(t *testing.T) {
+	for _, stage := range []string{"dispatch", "started", "retained"} {
+		t.Run(stage, func(t *testing.T) {
+			vm, instances, _ := newInertVMRuntime(t)
+			e, s, request, d, lease := codingImport(t, "http://127.0.0.1:1/v1")
+			cap, err := NewCodingVMCapability(e.gateway.(*model.Router), vm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.options.C4Controlled = cap
+			profile, ok := e.CodingVMProfile()
+			if !ok {
+				t.Fatal("missing VM metadata")
+			}
+			request.Spec.C4 = &profile
+			ctx := context.Background()
+			m, err := e.Create(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err = e.PrepareC4Readiness(ctx, m.ID, m.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			control := m.C4Controls[0]
+			m, err = e.ApproveC4Control(ctx, m.ID, m.Revision, control.ID, control.MaterialDigest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, control, err = e.dispatchC4Control(ctx, m.ID, m.Revision, control.ID, control.MaterialDigest, "readiness")
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Seed the journal state which a restart may encounter. Deliberately
+			// do not call ExecuteC4Readiness or any execution/cleanup driver.
+			m, err = e.finishC4Control(m, control, domain.C4ControlResult{Status: "ready", Fingerprint: strings.Repeat("c", 64), ValidUntil: time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err = e.PrepareC4Baseline(ctx, m.ID, m.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			o := m.C4Operations[0]
+			m, err = e.ApproveC4Baseline(ctx, m.ID, m.Revision, o.ID, o.MaterialDigest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			o = m.C4Operations[0]
+			changes := []sandbox.C4Change{{Stage: "dispatch"}}
+			if stage != "dispatch" {
+				changes = append(changes, sandbox.C4Change{Stage: "created", ContainerID: strings.Repeat("b", 64)}, sandbox.C4Change{Stage: "started"})
+			}
+			if stage == "retained" {
+				changes = append(changes, sandbox.C4Change{Stage: "result", Result: &domain.C4Result{Class: "outcome_unknown", Output: "Synthetic C4 operation interrupted; no replay authorized."}})
+			}
+			for _, change := range changes {
+				o, err = e.c4Persist(m.ID)(ctx, o, change)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := s.GetMission(m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			forbidden := &c4Forbidden{}
+			freshCap, err := NewCodingVMCapability(e.gateway.(*model.Router), vm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			restarted := New(s, forbidden, Options{DataDir: e.options.DataDir, Runner: forbidden, C4Controlled: freshCap})
+			if err = restarted.Recover(ctx); err != nil {
+				t.Fatal(err)
+			}
+			after, err := s.GetMission(m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := after.C4Operations[0]
+			if got.Result == nil || got.Result.Class != "outcome_unknown" || got.CleanupState() == "confirmed" || got.Passed() || got.Result.ExitCode != nil || got.Result.Tests != 0 {
+				t.Fatalf("recovery manufactured execution/cleanup evidence: %+v", got)
+			}
+			if stage == "retained" {
+				if !reflect.DeepEqual(before, after) {
+					t.Fatal("recovery rewrote retained evidence")
+				}
+			} else {
+				if after.State != "blocked" || after.Epoch != before.Epoch+1 {
+					t.Fatal("restart retained authority")
+				}
+				if strings.Contains(strings.ToLower(got.Result.Output), "synthetic") || strings.Contains(strings.ToLower(got.Result.Output), "simulation") || !strings.Contains(got.Result.Output, "no replay authorized") {
+					t.Fatalf("mislabelled VM interruption: %q", got.Result.Output)
+				}
+				retained := got
+				retained.Result = nil
+				retained.State = o.State
+				if !reflect.DeepEqual(retained, o) || !reflect.DeepEqual(before.C4Controls, after.C4Controls) {
+					t.Fatal("historical facts rewritten")
+				}
+			}
+			if _, err = restarted.ExecuteC4Baseline(ctx, after.ID, after.Revision, o.ID, o.MaterialDigest); err == nil {
+				t.Fatal("replayed interrupted operation")
+			}
+			if err = restarted.Recover(ctx); err != nil {
+				t.Fatal(err)
+			}
+			again, err := s.GetMission(m.ID)
+			if err != nil || !reflect.DeepEqual(after, again) {
+				t.Fatal("repeated recovery changed evidence", err)
+			}
+			entries, err := os.ReadDir(instances)
+			if err != nil || len(entries) != 0 || forbidden.calls != 0 || lease.reads != 0 || d.creates != 0 || d.starts != 0 || d.inspects != 0 || d.removes != 0 {
+				t.Fatal("recovery/replay caused external effects", err)
+			}
+		})
+	}
+}
 
 func TestC4EmptySyntheticRuntimeNeverReconcilesLegacy(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))

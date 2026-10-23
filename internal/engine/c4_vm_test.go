@@ -59,7 +59,9 @@ func TestC4VMVerificationNamesExactBackend(t *testing.T) {
 	}
 }
 
-func TestCodingVMCapabilityFrozenMetadataAndExactIdentity(t *testing.T) {
+// Inert metadata only: no helper is executable and no VM is started.
+func newInertVMRuntime(t *testing.T) (*vmruntime.Runtime, string, domain.C4VMIdentity) {
+	t.Helper()
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
 		t.Skip("fixture manifest targets Apple Silicon")
 	}
@@ -93,6 +95,13 @@ func TestCodingVMCapabilityFrozenMetadataAndExactIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	manifestSum := sha256.Sum256(raw)
+	expected := domain.C4VMIdentity{SchemaVersion: 1, ManifestDigest: hex.EncodeToString(manifestSum[:]), HostPlatform: "darwin/arm64", GuestPlatform: "linux/arm64", RuntimeDigest: digest, KernelDigest: digest, RootFSDigest: digest, VerifierDigest: digest, Protocol: "foundry-vm-v1", PolicyVersion: "go-vm-v1"}
+	return vm, instances, expected
+}
+
+func TestCodingVMCapabilityFrozenMetadataAndExactIdentity(t *testing.T) {
+	vm, instances, expected := newInertVMRuntime(t)
 	router := model.NewRouter(nil, nil, model.RouterOptions{})
 	cap, err := NewCodingVMCapability(router, vm)
 	if err != nil {
@@ -103,8 +112,6 @@ func TestCodingVMCapabilityFrozenMetadataAndExactIdentity(t *testing.T) {
 	if !ok {
 		t.Fatal("no VM metadata")
 	}
-	manifestSum := sha256.Sum256(raw)
-	expected := domain.C4VMIdentity{SchemaVersion: 1, ManifestDigest: hex.EncodeToString(manifestSum[:]), HostPlatform: "darwin/arm64", GuestPlatform: "linux/arm64", RuntimeDigest: digest, KernelDigest: digest, RootFSDigest: digest, VerifierDigest: digest, Protocol: "foundry-vm-v1", PolicyVersion: "go-vm-v1"}
 	if p.Validate() != nil || *p.EmbeddedVM != expected || !cap.vmProfileMatches(p) {
 		t.Fatalf("wrong frozen identity: %+v", p)
 	}

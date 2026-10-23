@@ -24,7 +24,7 @@ func (e *Engine) recoverC4(m domain.Mission) error {
 		var err error
 		m, err = e.s.UpdateMission(m.ID, m.Revision, "c4.outcome_unknown", func(current *domain.Mission) error {
 			o := &current.C4Operations[index]
-			o.Result = &domain.C4Result{Class: "outcome_unknown", Output: "Synthetic C4 operation interrupted; no replay authorized.", Revision: current.Revision, At: now()}
+			o.Result = &domain.C4Result{Class: "outcome_unknown", Output: "C4 operation interrupted; no replay authorized.", Revision: current.Revision, At: now()}
 			o.State = "finished"
 			return nil
 		})

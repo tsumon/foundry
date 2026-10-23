@@ -80,15 +80,15 @@ func bootstrap() error {
 	if err := mount("cgroup2", "/sys/fs/cgroup", "cgroup2", unix.MS_NOSUID|unix.MS_NODEV|unix.MS_NOEXEC, ""); err != nil {
 		return err
 	}
-	for _, m := range []struct {
-		path, data string
-		flags      uintptr
-	}{
-		{"/workspace", "size=16m,mode=0755", unix.MS_NOEXEC},
-		{"/tmp", "size=64m,mode=1777", unix.MS_NOEXEC},
-		{"/foundry-build", "size=256m,mode=0755", 0},
-	} {
-		if err := mount("tmpfs", m.path, "tmpfs", unix.MS_NOSUID|unix.MS_NODEV|m.flags, m.data); err != nil {
+	if err := mount("tmpfs", "/workspace", "tmpfs", unix.MS_NOSUID|unix.MS_NODEV|unix.MS_NOEXEC, "size=16m,mode=0755"); err != nil {
+		return err
+	}
+	for _, m := range scratchMounts() {
+		flags := uintptr(unix.MS_NOSUID | unix.MS_NODEV)
+		if m.noexec {
+			flags |= unix.MS_NOEXEC
+		}
+		if err := mount("tmpfs", m.path, "tmpfs", flags, m.options); err != nil {
 			return err
 		}
 	}
@@ -263,16 +263,13 @@ func checkMounts() error {
 			return errors.New("mutable guest root or inputs")
 		}
 	}
-	for p, size := range map[string]uint64{"/tmp": 64 << 20, "/foundry-build": 256 << 20} {
+	return checkScratchMounts(func(p string) (scratchStat, error) {
 		var s unix.Statfs_t
 		if err := unix.Statfs(p, &s); err != nil {
-			return err
+			return scratchStat{}, err
 		}
-		if s.Type != unix.TMPFS_MAGIC || s.Blocks*uint64(s.Bsize) > size || s.Flags&unix.ST_NOSUID == 0 || s.Flags&unix.ST_NODEV == 0 || (p == "/tmp" && s.Flags&unix.ST_NOEXEC == 0) {
-			return errors.New("unsafe scratch mount")
-		}
-	}
-	return nil
+		return scratchStat{bytes: s.Blocks * uint64(s.Bsize), inodes: s.Files, tmpfs: s.Type == unix.TMPFS_MAGIC, nosuid: s.Flags&unix.ST_NOSUID != 0, nodev: s.Flags&unix.ST_NODEV != 0, noexec: s.Flags&unix.ST_NOEXEC != 0}, nil
+	})
 }
 
 func restrictedCommand(path string, args, env []string, cgroupFD int) *exec.Cmd {
