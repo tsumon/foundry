@@ -82,6 +82,182 @@ function requestDecision(origin, capability, target, headers) {
   return { cancel: false, requestHeaders: clean };
 }
 
+function strictJSON(raw) {
+  const value = JSON.parse(raw);
+  const stack = [];
+  for (const token of raw.match(
+    /"(?:\\.|[^"\\])*"|[{}\[\],:]|[^\s{}\[\],:]+/g,
+  ) || []) {
+    const top = stack.at(-1);
+    if (token === "{") stack.push({ keys: new Set(), key: true });
+    else if (token === "[") stack.push({});
+    else if (token === "}" || token === "]") stack.pop();
+    else if (token === "," && top?.keys) top.key = true;
+    else if (top?.key && token.startsWith('"')) {
+      const key = JSON.parse(token);
+      if (top.keys.has(key)) throw Error("Duplicate manifest key");
+      top.keys.add(key);
+      top.key = false;
+    }
+  }
+  return value;
+}
+function exactKeys(value, keys) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === keys.length &&
+    keys.every((key) => Object.hasOwn(value, key))
+  );
+}
+function resourceDigest(file) {
+  const handle = fs.openSync(file, "r"),
+    hash = crypto.createHash("sha256"),
+    buffer = Buffer.alloc(65536);
+  try {
+    let count;
+    while ((count = fs.readSync(handle, buffer, 0, buffer.length, null)) > 0)
+      hash.update(buffer.subarray(0, count));
+  } finally {
+    fs.closeSync(handle);
+  }
+  return hash.digest("hex");
+}
+function verifySandboxBundle(
+  root,
+  host = process.platform === "win32"
+    ? "windows/amd64"
+    : `${process.platform}/${process.arch}`,
+) {
+  if (
+    typeof root !== "string" ||
+    !path.isAbsolute(root) ||
+    path.resolve(root) !== root ||
+    path.parse(root).root === root
+  )
+    throw Error(
+      "FOUNDRY_SANDBOX_BUNDLE must be an absolute non-root directory",
+    );
+  requireDirectoryChain(root);
+  const manifestFile = path.join(root, "manifest.json"),
+    info = fs.lstatSync(manifestFile);
+  if (!info.isFile() || info.nlink !== 1 || info.size > 1024 * 1024)
+    throw Error("Sandbox manifest must be bounded regular non-link file");
+  const raw = fs.readFileSync(manifestFile, "utf8"),
+    manifest = strictJSON(raw);
+  const guest =
+    host === "darwin/arm64"
+      ? "linux/arm64"
+      : host === "windows/amd64"
+        ? "linux/amd64"
+        : "";
+  const runtime =
+    host === "darwin/arm64"
+      ? "runtime/foundry-vm-helper"
+      : "runtime/qemu-system-x86_64.exe";
+  if (
+    !guest ||
+    !exactKeys(manifest, [
+      "schema_version",
+      "host_platform",
+      "guest_platform",
+      "protocol",
+      "policy_version",
+      "runtime",
+      "kernel",
+      "rootfs",
+      "verifier",
+      "assets",
+    ]) ||
+    manifest.schema_version !== 1 ||
+    manifest.host_platform !== host ||
+    manifest.guest_platform !== guest ||
+    manifest.protocol !== "foundry-vm-v1" ||
+    manifest.policy_version !== "go-vm-v1" ||
+    manifest.runtime !== runtime ||
+    manifest.kernel !== "kernel" ||
+    manifest.rootfs !== "initramfs.cpio.gz" ||
+    manifest.verifier !== "foundry-vm-guest" ||
+    !Array.isArray(manifest.assets) ||
+    manifest.assets.length < 6 ||
+    manifest.assets.length > 4096
+  )
+    throw Error("Invalid sandbox platform or manifest contract");
+  const names = new Set(),
+    folded = new Set();
+  let total = 0;
+  for (const asset of manifest.assets) {
+    if (
+      !exactKeys(asset, ["path", "sha256", "size"]) ||
+      typeof asset.path !== "string" ||
+      asset.path.length > 240 ||
+      /[^\x20-\x7e]|[\\:]/.test(asset.path) ||
+      asset.path
+        .split("/")
+        .some(
+          (part) =>
+            !part ||
+            part === "." ||
+            part === ".." ||
+            /[. ]$|^(?:\.git|\.hg|\.svn)$|^\.env|credential|secret|token/i.test(
+              part,
+            ) ||
+            /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(part),
+        ) ||
+      asset.path.toLowerCase() === "manifest.json" ||
+      folded.has(asset.path.toLowerCase()) ||
+      typeof asset.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(asset.sha256) ||
+      !Number.isSafeInteger(asset.size) ||
+      asset.size < 0 ||
+      asset.size > 2 * 1024 ** 3
+    )
+      throw Error("Invalid sandbox asset inventory");
+    names.add(asset.path);
+    folded.add(asset.path.toLowerCase());
+    total += asset.size;
+    if (total > 4 * 1024 ** 3)
+      throw Error("Sandbox inventory exceeds size bound");
+    const file = path.join(root, asset.path);
+    requireDirectoryChain(path.dirname(file));
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.nlink !== 1)
+      throw Error("Sandbox asset must be regular without links");
+    if (stat.size !== asset.size || resourceDigest(file) !== asset.sha256)
+      throw Error("Sandbox asset integrity failure");
+  }
+  for (const required of [
+    runtime,
+    "kernel",
+    "initramfs.cpio.gz",
+    "foundry-vm-guest",
+    "legal/NOTICE.md",
+    "legal/GPL-2.0.txt",
+  ])
+    if (
+      !names.has(required) ||
+      manifest.assets.find((a) => a.path === required).size === 0
+    )
+      throw Error("Missing required sandbox asset or legal notice");
+  let count = 0;
+  function inspect(directory = "") {
+    for (const entry of fs.readdirSync(path.join(root, directory), {
+      withFileTypes: true,
+    })) {
+      if (++count > 8192) throw Error("Sandbox entry bound exceeded");
+      const name = directory ? directory + "/" + entry.name : entry.name;
+      if (entry.isDirectory()) inspect(name);
+      else if (!entry.isFile())
+        throw Error("Sandbox symlink or special entry rejected");
+      else if (name !== "manifest.json" && !names.has(name))
+        throw Error("Unlisted sandbox asset rejected");
+    }
+  }
+  inspect();
+  return manifest;
+}
+
 function verifyResources(root, expectedManifestHash) {
   requireDirectoryChain(root);
   if (!fs.lstatSync(path.join(root, "resources-manifest.json")).isFile())
@@ -93,11 +269,20 @@ function verifyResources(root, expectedManifestHash) {
       expectedManifestHash
   )
     throw Error("Installed manifest integrity check failed");
-  const manifest = JSON.parse(raw);
+  const manifest = strictJSON(raw.toString("utf8"));
+  if (
+    !exactKeys(manifest, ["schema", "files"]) ||
+    manifest.schema !== 1 ||
+    !manifest.files ||
+    typeof manifest.files !== "object" ||
+    Array.isArray(manifest.files)
+  )
+    throw Error("Invalid resource manifest");
   for (const name of [
     "bin/" + executableName("foundry"),
     "bin/" + executableName("foundry-acceptance"),
     "web/index.html",
+    "sandbox/manifest.json",
   ])
     if (!manifest.files?.[name]) throw Error("Missing installed resources");
   for (const [name, hash] of Object.entries(manifest.files)) {
@@ -105,20 +290,14 @@ function verifyResources(root, expectedManifestHash) {
       path.isAbsolute(name) ||
       /[\\:]/.test(name) ||
       name.split("/").some((part) => !part || part === "." || part === "..") ||
-      !["bin", "web", "legal"].includes(name.split("/")[0]) ||
+      !["bin", "web", "legal", "sandbox"].includes(name.split("/")[0]) ||
       !/^[a-f0-9]{64}$/.test(hash)
     )
       throw Error("Invalid resource manifest");
     const file = path.join(root, name);
     requireDirectoryChain(path.dirname(file));
     const stat = fs.lstatSync(file);
-    if (
-      !stat.isFile() ||
-      crypto
-        .createHash("sha256")
-        .update(fs.readFileSync(file))
-        .digest("hex") !== hash
-    )
+    if (!stat.isFile() || resourceDigest(file) !== hash)
       throw Error("Installed resource integrity check failed");
   }
   function inspect(directory) {
@@ -132,12 +311,13 @@ function verifyResources(root, expectedManifestHash) {
         throw Error("Unlisted installed resource rejected");
     }
   }
-  for (const directory of ["bin", "web", "legal"]) {
+  for (const directory of ["bin", "web", "legal", "sandbox"]) {
     if (fs.existsSync(path.join(root, directory))) {
       requireDirectoryChain(path.join(root, directory));
       inspect(directory);
     }
   }
+  verifySandboxBundle(path.join(root, "sandbox"));
 }
 
 function requireDirectoryChain(directory) {
@@ -215,8 +395,7 @@ async function startBackend({
   const webDir = path.join(resources, "web");
   let args;
   if (mode === "normal") args = ["--desktop"];
-  else if (mode === "coding")
-    args = ["--desktop", "--coding-workbench"];
+  else if (mode === "coding") args = ["--desktop", "--coding-workbench"];
   else
     args = [
       "--desktop",
@@ -226,18 +405,20 @@ async function startBackend({
       ...(repository ? ["--repository-task-path", repository] : []),
     ];
   const capability = crypto.randomBytes(32).toString("hex");
+  const env = childEnvironment(process.env, dataDir, webDir);
+  // Only a successfully verified installed resource root can supply this path.
+  // Ambient FOUNDRY_VM_BUNDLE is never forwarded; metadata loading is not consent.
+  env.FOUNDRY_VM_BUNDLE = path.join(resources, "sandbox");
   const child = spawn(
     path.join(
       resources,
       "bin",
-      executableName(
-        mode === "simulation" ? "foundry-acceptance" : "foundry",
-      ),
+      executableName(mode === "simulation" ? "foundry-acceptance" : "foundry"),
     ),
     args,
     {
       cwd: dataRoot,
-      env: childEnvironment(process.env, dataDir, webDir),
+      env,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     },
@@ -337,5 +518,7 @@ module.exports = {
   childEnvironment,
   requestDecision,
   verifyResources,
+  verifySandboxBundle,
+  resourceDigest,
   startBackend,
 };

@@ -5,13 +5,98 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { sandboxFixture } = require("./sandbox-fixture.cjs");
+const { writeManifest } = require("../build-support.cjs");
 const {
   parseReadiness,
   childEnvironment,
   requestDecision,
   startBackend,
   verifyResources,
+  verifySandboxBundle,
 } = require("../runtime.cjs");
+
+test("sandbox inventory validates exact manifest, legal files, hashes, sizes and platform without executing", (t) => {
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "foundry-bundle-check-")),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const manifest = sandboxFixture(root, "darwin/arm64");
+  assert.equal(
+    verifySandboxBundle(root, "darwin/arm64").host_platform,
+    "darwin/arm64",
+  );
+  assert.throws(
+    () => verifySandboxBundle(root, "windows/amd64"),
+    /platform|contract/i,
+  );
+  for (const mutation of [
+    (m) => m.assets[0].size++,
+    (m) => (m.assets[0].sha256 = "0".repeat(64)),
+    (m) => m.assets.push({ ...m.assets[0] }),
+    (m) => (m.assets[0].path = "../outside"),
+    (m) => (m.assets[0].extra = true),
+    (m) => (m.extra = true),
+    (m) => (m.protocol = "future"),
+    (m) => (m.assets = m.assets.filter((a) => a.path !== "legal/GPL-2.0.txt")),
+  ]) {
+    const changed = structuredClone(manifest);
+    mutation(changed);
+    fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(changed));
+    assert.throws(() => verifySandboxBundle(root, "darwin/arm64"));
+  }
+  fs.writeFileSync(
+    path.join(root, "manifest.json"),
+    JSON.stringify(manifest).replace(
+      '"schema_version":1',
+      '"schema_version":1,"schema_version":1',
+    ),
+  );
+  assert.throws(() => verifySandboxBundle(root, "darwin/arm64"), /duplicate/i);
+  fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(manifest));
+  fs.writeFileSync(path.join(root, "runtime", "extra"), "unlisted executable");
+  assert.throws(() => verifySandboxBundle(root, "darwin/arm64"), /unlisted/i);
+  fs.unlinkSync(path.join(root, "runtime", "extra"));
+  fs.renameSync(path.join(root, "kernel"), path.join(root, "kernel-original"));
+  fs.symlinkSync(path.join(root, "kernel-original"), path.join(root, "kernel"));
+  assert.throws(
+    () => verifySandboxBundle(root, "darwin/arm64"),
+    /link|regular/i,
+  );
+});
+
+test("sandbox paths reject sensitive metadata and Windows aliases even when hashes match", (t) => {
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "foundry-bundle-paths-")),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const manifest = sandboxFixture(root, "darwin/arm64");
+  for (const name of [
+    "legal/.env.production",
+    "legal/credentials.txt",
+    "legal/secret.txt",
+    "legal/token.txt",
+    "legal/.git/config",
+    "legal/alias.",
+  ]) {
+    const file = path.join(root, name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "fixture");
+    const changed = structuredClone(manifest);
+    changed.assets.push({
+      path: name,
+      size: 7,
+      sha256: crypto.createHash("sha256").update("fixture").digest("hex"),
+    });
+    fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(changed));
+    assert.throws(
+      () => verifySandboxBundle(root, "darwin/arm64"),
+      /inventory/i,
+      name,
+    );
+    fs.unlinkSync(file);
+  }
+});
 
 // Wrong host / unexpected identity must never become the trusted origin.
 test("readiness admits only the exact child loopback origin and identity", () => {
@@ -48,6 +133,7 @@ test("child environment cannot inherit operator settings or credentials", () => 
       FOUNDRY_DOCKER: "/evil",
       NODE_OPTIONS: "--inspect",
       PATH: "/evil",
+      FOUNDRY_VM_BUNDLE: "/evil-bundle",
     },
     "/data",
     "/resources/web",
@@ -58,6 +144,7 @@ test("child environment cannot inherit operator settings or credentials", () => 
     assert.equal(env[key], undefined);
   assert.equal(env.PATH, "/usr/bin:/bin:/usr/sbin:/sbin");
   assert.notEqual(env.FOUNDRY_DOCKER, "/evil");
+  assert.equal(env.FOUNDRY_VM_BUNDLE, undefined);
 });
 
 test("capability attaches only to same-origin traffic; cross-origin is cancelled", () => {
@@ -93,20 +180,8 @@ function fixture(t, body) {
       "#!" + process.execPath + "\n" + body,
       { mode: 0o755 },
     );
-  const files = {};
-  for (const name of [
-    "bin/foundry",
-    "bin/foundry-acceptance",
-    "web/index.html",
-  ])
-    files[name] = crypto
-      .createHash("sha256")
-      .update(fs.readFileSync(path.join(root, name)))
-      .digest("hex");
-  fs.writeFileSync(
-    path.join(root, "resources-manifest.json"),
-    JSON.stringify({ files }),
-  );
+  sandboxFixture(path.join(root, "sandbox"));
+  writeManifest(root);
   return root;
 }
 
@@ -215,6 +290,8 @@ test("coding workbench uses exact closed argv, environment, and retained data di
   );
   const dataRoot = path.join(root, "state");
   process.env.FOUNDRY_TEST_INJECTED = "must-not-cross-boundary";
+  const previousBundle = process.env.FOUNDRY_VM_BUNDLE;
+  process.env.FOUNDRY_VM_BUNDLE = "/ambient/untrusted-bundle";
   let child;
   try {
     child = await startBackend({
@@ -232,8 +309,11 @@ test("coding workbench uses exact closed argv, environment, and retained data di
     assert.equal(child.ready.dataDir, path.join(dataRoot, "coding"));
     assert.equal(observed.env.FOUNDRY_TEST_INJECTED, undefined);
     assert.equal(observed.env.FOUNDRY_DOCKER.includes("disabled"), true);
+    assert.equal(observed.env.FOUNDRY_VM_BUNDLE, path.join(root, "sandbox"));
   } finally {
     delete process.env.FOUNDRY_TEST_INJECTED;
+    if (previousBundle === undefined) delete process.env.FOUNDRY_VM_BUNDLE;
+    else process.env.FOUNDRY_VM_BUNDLE = previousBundle;
     if (child) await child.stop();
   }
 });

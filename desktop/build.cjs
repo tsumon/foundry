@@ -4,7 +4,14 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
-const { validateOutput, writeManifest } = require("./build-support.cjs");
+const {
+  validateOutput,
+  writeManifest,
+  copySandboxBundle,
+  verifyMacSandboxSignature,
+  macSigningTargets,
+} = require("./build-support.cjs");
+const { verifySandboxBundle } = require("./runtime.cjs");
 const source = path.dirname(__dirname);
 function run(command, args, cwd = source, extra = {}) {
   return execFileSync(command, args, {
@@ -18,6 +25,9 @@ async function main() {
     throw Error("This build requires native macOS Apple Silicon");
   process.umask(0o022);
   const output = validateOutput(process.env.FOUNDRY_DESKTOP_OUTPUT, source);
+  const sandboxBundle = process.env.FOUNDRY_SANDBOX_BUNDLE;
+  verifySandboxBundle(sandboxBundle, "darwin/arm64");
+  verifyMacSandboxSignature(sandboxBundle);
   const go = process.env.FOUNDRY_GO || "go";
   const goVersion = execFileSync(go, ["version"], { encoding: "utf8" }).trim();
   if (!goVersion.startsWith("go version go1.27.3 "))
@@ -41,6 +51,11 @@ async function main() {
   const inputs = path.join(output, "inputs");
   fs.mkdirSync(path.join(inputs, "bin"), { recursive: true });
   fs.mkdirSync(path.join(inputs, "legal"), { recursive: true });
+  copySandboxBundle(
+    sandboxBundle,
+    path.join(inputs, "sandbox"),
+    "darwin/arm64",
+  );
   run(npm, ["run", "build"], path.join(source, "web"));
   for (const name of ["foundry", "foundry-acceptance"]) {
     run(
@@ -180,19 +195,7 @@ async function main() {
   });
   const app = path.join(output, "package/mac-arm64/Foundry.app");
   // Sign nested native libraries/bundles inside-out without consulting Keychain.
-  const signs = [];
-  function collect(dir) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const file = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        collect(file);
-        if (/\.(app|framework)$/.test(entry.name)) signs.push(file);
-      } else if (entry.isFile() && /\.(dylib|so)$/.test(entry.name))
-        signs.push(file);
-    }
-  }
-  collect(app);
-  for (const file of [...signs, app])
+  for (const file of macSigningTargets(app))
     run("/usr/bin/codesign", [
       "--force",
       "--sign",
@@ -201,6 +204,7 @@ async function main() {
       file,
     ]);
   run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
+  verifyMacSandboxSignature(path.join(app, "Contents/Resources/sandbox"));
   require("./runtime.cjs").verifyResources(
     path.join(app, "Contents/Resources"),
   );

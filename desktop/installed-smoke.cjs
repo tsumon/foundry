@@ -8,7 +8,10 @@ const { startBackend } = require("./runtime.cjs");
 const { installedFlow } = require("./installed-flow.cjs");
 const { assertCodingMetadata } = require("./coding-smoke.cjs");
 function hashFile(file) {
-  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+  return crypto
+    .createHash("sha256")
+    .update(fs.readFileSync(file))
+    .digest("hex");
 }
 async function authorized(child, route, options = {}) {
   const headers = {
@@ -101,6 +104,10 @@ async function main() {
     assert.equal(codingResponse.status, 200);
     const codingMetadata = await codingResponse.json();
     assertCodingMetadata(codingMetadata, process.platform);
+    assert.equal(
+      codingMetadata.profile.embedded_vm.manifest_digest,
+      hashFile(path.join(resources, "sandbox/manifest.json")),
+    );
     const codingDB = path.join(child.ready.dataDir, "foundry.db");
     await child.stop();
     const codingHash = hashFile(codingDB);
@@ -117,10 +124,7 @@ async function main() {
     assert.equal(codingResponse.status, 200);
     assertCodingMetadata(await codingResponse.json(), process.platform);
     await child.stop();
-    assert.equal(
-      hashFile(codingDB),
-      codingHash,
-    );
+    assert.equal(hashFile(codingDB), codingHash);
     child = await startBackend({
       resources,
       dataRoot,
@@ -171,10 +175,7 @@ async function main() {
     );
     await child.stop();
     assert.ok(fs.existsSync(path.join(retained, "foundry.db")));
-    assert.equal(
-      hashFile(codingDB),
-      codingHash,
-    );
+    assert.equal(hashFile(codingDB), codingHash);
     console.log(
       JSON.stringify(
         {
@@ -193,7 +194,7 @@ async function main() {
             "EOF graceful exit",
             "persistent restart",
             "normal startup keeps coding metadata closed",
-            "coding startup exposes retained metadata only; Windows execution unavailable",
+            "coding startup exposes installed VM identity metadata only; hardware readiness and execution remain separately approved",
             "isolated simulation baseline remains prepared without approval or execution facts",
             "evidence retained",
             "installed binaries: two separately approved baseline/plan/failure-repair/review/delivery flows",

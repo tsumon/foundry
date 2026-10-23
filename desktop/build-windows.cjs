@@ -4,7 +4,12 @@ const fs = require("node:fs"),
   path = require("node:path"),
   crypto = require("node:crypto");
 const { execFileSync, spawnSync } = require("node:child_process");
-const { validateOutput, writeManifest } = require("./build-support.cjs");
+const {
+  validateOutput,
+  writeManifest,
+  copySandboxBundle,
+} = require("./build-support.cjs");
+const { verifySandboxBundle } = require("./runtime.cjs");
 const {
   rejectToolsetOverrides,
   compilerArguments,
@@ -32,6 +37,8 @@ async function main() {
   if (process.platform !== "win32" || process.arch !== "x64")
     throw Error("Native Windows x64 required");
   const output = validateOutput(process.env.FOUNDRY_DESKTOP_OUTPUT, source);
+  const sandboxBundle = process.env.FOUNDRY_SANDBOX_BUNDLE;
+  verifySandboxBundle(sandboxBundle, "windows/amd64");
   const go = process.env.FOUNDRY_GO || "go";
   const goVersion = execFileSync(go, ["version"], { encoding: "utf8" }).trim();
   if (
@@ -111,6 +118,11 @@ async function main() {
       git(["status", "--porcelain", "--untracked-files=normal"]) !== "";
   for (const name of ["bin", "legal"])
     fs.mkdirSync(path.join(inputs, name), { recursive: true });
+  copySandboxBundle(
+    sandboxBundle,
+    path.join(inputs, "sandbox"),
+    "windows/amd64",
+  );
   run(process.execPath, [npmCLI, "run", "build"], path.join(source, "web"));
   const goBinaries = [];
   for (const name of ["foundry", "foundry-acceptance"]) {
