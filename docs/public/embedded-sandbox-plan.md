@@ -183,6 +183,17 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 
 ## Completion gate
 
+Native Windows run 39927465919 passed QEMU compilation and its actual minimal
+DLL/source checks, then stopped while extracting the pinned Linux recipe
+inventory. Its native tar text listings use CRLF; splitting only on LF retains
+a carriage return in member names and in the subtree directory entry. Accept
+LF or CRLF record delimiters for tar listings only. Preserve member bytes,
+the fixed subtree, required files, count/duplicate/name and regular-file checks.
+First reproduce the same failure using a real archive and CRLF listing output,
+then verify exact extracted bytes and malformed/duplicate/missing-file rejection.
+No archive retry, path relaxation, dropped source materials or runtime fallback
+is allowed. Native Windows packaging and installed WHPX gates must run again.
+
 Native Windows run 39925686067 completed configure, then exposed an incorrect
 generated-header selection: QEMU emits CONFIG_WHPX in the architecture-specific
 `x86_64-softmmu-config-target.h`, not `config-host.h` (pinned meson.build lines

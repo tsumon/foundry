@@ -134,3 +134,36 @@ test("corresponding kernel recipe includes only regular linux-lts files from the
   assert.equal(fs.readFileSync(path.join(output, "APKBUILD"), "utf8"), "APKBUILD");
   assert.throws(() => extractKernelRecipe(archive, output, "tar"), /exist/);
 });
+test("kernel recipe extraction accepts native Windows CRLF listings without altering member bytes", t => {
+  const root = fixture(t), prefix = "aports-e9951ece7106a5c898b0812cfa7b47d56379b361", input = path.join(root, "input");
+  const files = { APKBUILD: Buffer.from("pkgname=linux-lts\n"), "virt.aarch64.config": Buffer.from("CONFIG_ARM64=y\r\n"), "virt.x86_64.config": Buffer.from("CONFIG_X86_64=y\n") };
+  fs.mkdirSync(path.join(input, prefix, "main/linux-lts"), { recursive: true });
+  for (const [name, raw] of Object.entries(files)) fs.writeFileSync(path.join(input, prefix, "main/linux-lts", name), raw);
+  const archive = path.join(root, "recipe.tar.gz"); cp.execFileSync("tar", ["-czf", archive, "-C", input, prefix]);
+  const exec = cp.execFileSync.bind(cp);
+  t.mock.method(cp, "execFileSync", (program, args, options) => {
+    const raw = exec(program, args, options);
+    return ["-tf", "-tvf"].includes(args[0]) ? Buffer.from(raw.toString().replace(/\r?\n/g, "\r\n")) : raw;
+  });
+  const output = path.join(root, "kernel-recipe"); extractKernelRecipe(archive, output, "tar");
+  assert.deepEqual(fs.readdirSync(output).sort(), Object.keys(files).sort());
+  for (const [name, raw] of Object.entries(files)) assert.deepEqual(fs.readFileSync(path.join(output, name)), raw);
+});
+test("CRLF kernel inventories still reject unsafe, duplicate or missing required members before writing", async t => {
+  const prefix = "aports-e9951ece7106a5c898b0812cfa7b47d56379b361/main/linux-lts/";
+  const required = ["APKBUILD", "virt.aarch64.config", "virt.x86_64.config"].map(n => prefix + n);
+  const invalid = [
+    [...required, prefix + "../escape"], [...required, prefix + "nested/file"],
+    [...required, prefix + "bad\rname"], [...required, prefix + "back\\slash"],
+    [...required, required[0]], required.slice(1), [...required, prefix + "bad name"],
+  ];
+  for (const [i, members] of invalid.entries()) await t.test(String(i), t => {
+    const root = fixture(t), output = path.join(root, "kernel-recipe");
+    t.mock.method(cp, "execFileSync", (_program, args) => {
+      assert.deepEqual(args, ["-tf", "pinned-archive"]);
+      return Buffer.from([prefix, ...members, ""].join("\r\n"));
+    });
+    assert.throws(() => extractKernelRecipe("pinned-archive", output, "tar"), /kernel (recipe inventory|build recipe)/);
+    assert.equal(fs.existsSync(output), false);
+  });
+});

@@ -111,12 +111,13 @@ function verifyWindowsRedistribution(root, proof, lock) {
 function extractKernelRecipe(archive, output, tar) {
   const prefix = "aports-e9951ece7106a5c898b0812cfa7b47d56379b361/main/linux-lts/";
   const run = args => cp.execFileSync(tar, args, { timeout: 30000, maxBuffer: 4 * 1024 * 1024 });
-  const names = run(["-tf", archive]).toString().trim().split("\n").filter(n => n.startsWith(prefix) && n !== prefix);
+  // Native Windows tar emits CRLF text records; member content remains binary.
+  const names = run(["-tf", archive]).toString().trim().split(/\r?\n/).filter(n => n.startsWith(prefix) && n !== prefix);
   if (!names.length || names.length > 128 || new Set(names).size !== names.length || names.some(n => !/^[a-zA-Z0-9][a-zA-Z0-9._+-]*$/.test(n.slice(prefix.length)))) throw Error("Invalid kernel recipe inventory");
   for (const name of ["APKBUILD", "virt.aarch64.config", "virt.x86_64.config"]) if (!names.includes(prefix + name)) throw Error("Missing kernel build recipe");
   fs.mkdirSync(output);
   for (const name of names) {
-    const listing = run(["-tvf", archive, name]).toString().trim().split("\n");
+    const listing = run(["-tvf", archive, name]).toString().trim().split(/\r?\n/);
     if (listing.length !== 1 || !listing[0].startsWith("-")) throw Error("Regular kernel recipe member required");
     const bytes = run(["-xOf", archive, name]);
     if (!bytes.length) throw Error("Empty kernel recipe member");
