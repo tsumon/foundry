@@ -7,7 +7,7 @@ acceptance evidence are required before treating its artifact as accepted;
 build configuration alone is not a pass. See the
 [desktop guide](desktop-guide.md) for installation and actual capabilities.
 
-2026-10-23 acceptance snapshot: `6c73fa3` passed the Mac CI package/contracts job
+2026-10-23 acceptance snapshot: `b33f3bb` passed the full Verify workflow and Mac CI package/contracts job
 and local physical-Mac install, UI, restart and real bundled-VM failure/repair/
 recheck using local model-protocol fixtures. Windows built and installed its EXE
 but failed the mandatory WHPX readiness gate; native UI/restart/uninstall did not

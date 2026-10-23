@@ -3,6 +3,7 @@ package vmruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -19,7 +20,15 @@ func TestQEMUDiagnosticsProjectOnlyFixedCategories(t *testing.T) {
 		{"qemu: unable to find CPU model 'PRIVATE_SENTINEL'", "cpu_model", "valid"},
 		{"qemu: failed to allocate memory PRIVATE_SENTINEL", "memory_allocation", "valid"},
 		{"qemu: invalid option 'PRIVATE_SENTINEL'", "option", "valid"},
-		{"PRIVATE_SENTINEL", "", "rejected"},
+		{"qemu: could not open kernel file 'PRIVATE_SENTINEL': No such file or directory", "kernel_load", "valid"},
+		{"qemu: error reading initrd PRIVATE_SENTINEL: Failed to open file", "initrd_load", "valid"},
+		{"qemu: failed to find romfile PRIVATE_SENTINEL", "rom_load", "valid"},
+		{"qemu: 'PRIVATE_SENTINEL' is not a valid device model name", "device_configuration", "valid"},
+		{"qemu: qemu aio context not ready PRIVATE_SENTINEL", "event_loop", "valid"},
+		{"qemu: Failed to CreateFileMapping PRIVATE_SENTINEL", "memory_mapping", "valid"},
+		{"qemu: failed to WSAEventSelect() PRIVATE_SENTINEL", "host_socket", "valid"},
+		{"qemu: Could not open 'PRIVATE_SENTINEL'", "resource_access", "valid"},
+		{"PRIVATE_SENTINEL", "", "unrecognized"},
 		{"", "", "absent"},
 		{strings.Repeat("PRIVATE_SENTINEL", 200), "", "overflow"},
 	}
@@ -83,13 +92,40 @@ func TestQEMUPipeDrainAndCancellationAreBounded(t *testing.T) {
 	capture := newQEMUCapture(r)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if d, status := capture.finish(ctx); d != nil || status != "rejected" {
+	if d, status := capture.finish(ctx); d != nil || status != "incomplete" {
 		t.Fatal("unclosed stderr treated as complete")
 	}
 	select {
 	case <-capture.done:
 	case <-time.After(time.Second):
 		t.Fatal("owned pipe did not close")
+	}
+}
+
+type qemuFailedReader struct{}
+
+func (qemuFailedReader) Read([]byte) (int, error) { return 0, errors.New("PRIVATE_SENTINEL") }
+func (qemuFailedReader) Close() error             { return nil }
+
+func TestQEMUCaptureDistinguishesTransportAndUnrecognizedFailures(t *testing.T) {
+	for _, tc := range []struct {
+		reader io.ReadCloser
+		want   string
+	}{
+		{qemuFailedReader{}, "read_failed"},
+		{io.NopCloser(strings.NewReader("PRIVATE_SENTINEL")), "unrecognized"},
+	} {
+		capture := newQEMUCapture(tc.reader)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		d, status := capture.finish(ctx)
+		cancel()
+		if d != nil || status != tc.want {
+			t.Fatalf("status=%s want=%s", status, tc.want)
+		}
+		f := safeNativeFacts(nativeFacts{DiagnosticStatus: status})
+		if f.DiagnosticStatus != tc.want || f.QEMU != nil {
+			t.Fatal("capture failure classification lost")
+		}
 	}
 }
 func TestQEMUCodesCannotAuthorizeSuccessOrRetainUnknownText(t *testing.T) {

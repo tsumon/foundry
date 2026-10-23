@@ -183,6 +183,18 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 
 ## Completion gate
 
+Run 39945298962 passed the native capability query, Windows boundary tests,
+source build and installer build. Installed readiness failed after Job admission
+with exit 1, confirmed termination and a rejected diagnostic. The current
+classifier omits upstream kernel/initrd/ROM and event-loop startup messages;
+it also conflates unrecognized output, pipe read failure and incomplete capture.
+Before changing runtime behavior, add fixed startup categories and distinct
+capture failure enums. Use pinned upstream message fixtures, ensure private
+suffixes never escape, and cover real native child capture in the Windows gate.
+No raw stderr, paths, relaxed evidence checks, extra handles, changed limits,
+software fallback or real provider calls. Repeat full local checks and native
+installation acceptance; the diagnostic change is not a runtime success claim.
+
 Run 39943888763 failed before the WHPX query: the bounded marker remained
 `started` while PowerShell Add-Type cold compilation exceeded 60 seconds. Do
 not infer missing virtualization or keep increasing the timeout. Replace that

@@ -100,7 +100,7 @@ func safeNativeFacts(f nativeFacts) nativeFacts {
 		f.NativeErrorCode = nil
 	}
 	switch f.DiagnosticStatus {
-	case "absent", "valid", "rejected", "overflow":
+	case "absent", "valid", "rejected", "overflow", "unrecognized", "read_failed", "incomplete":
 	default:
 		f.DiagnosticStatus = "rejected"
 	}

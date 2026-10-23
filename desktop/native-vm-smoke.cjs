@@ -322,9 +322,15 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
       ]);
       assert.equal(typeof native.termination_confirmed, "boolean");
       assert.ok(
-        ["absent", "valid", "rejected", "overflow"].includes(
-          native.diagnostic_status,
-        ),
+        [
+          "absent",
+          "valid",
+          "rejected",
+          "overflow",
+          "unrecognized",
+          "read_failed",
+          "incomplete",
+        ].includes(native.diagnostic_status),
       );
       const facts = {
         termination_confirmed: native.termination_confirmed,
@@ -383,6 +389,14 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
               "cpu_model",
               "memory_allocation",
               "option",
+              "kernel_load",
+              "initrd_load",
+              "rom_load",
+              "device_configuration",
+              "event_loop",
+              "memory_mapping",
+              "host_socket",
+              "resource_access",
             ].includes(code),
           ),
         );

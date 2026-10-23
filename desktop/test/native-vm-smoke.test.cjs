@@ -509,9 +509,45 @@ test("QEMU diagnostics expose only fixed failure categories after confirmed nonz
   }
 });
 test("invalid harness output cannot produce a failure diagnostic or retain a receipt", (t) => {
+  // This gate remains independent of newly classified startup failures.
   const { diagnostic, options } = failureFixture(t, ({ receipt }) => {
     receipt.raw_stderr = "PRIVATE_SENTINEL";
   });
   assert.equal(diagnostic, undefined);
   assert.equal(fs.existsSync(options.reportFile), false);
+});
+test("startup categories and capture failures remain diagnostic-only fixed enums", (t) => {
+  for (const code of [
+    "kernel_load",
+    "initrd_load",
+    "rom_load",
+    "device_configuration",
+    "event_loop",
+    "memory_mapping",
+    "host_socket",
+    "resource_access",
+  ]) {
+    const { diagnostic } = failureFixture(t, ({ instance, terminal }) => {
+      terminal.native.diagnostic_status = "valid";
+      terminal.native.qemu = { codes: [code] };
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        JSON.stringify(terminal),
+      );
+    });
+    assert.equal(diagnostic.terminal_status, "available");
+    assert.deepEqual(diagnostic.terminals[0].qemu, { codes: [code] });
+  }
+  for (const status of ["unrecognized", "read_failed", "incomplete"]) {
+    const { diagnostic } = failureFixture(t, ({ instance, terminal }) => {
+      terminal.native.diagnostic_status = status;
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        JSON.stringify(terminal),
+      );
+    });
+    assert.equal(diagnostic.terminal_status, "available");
+    assert.equal(diagnostic.terminals[0].diagnostic_status, status);
+    assert.equal(diagnostic.terminals[0].qemu, undefined);
+  }
 });
