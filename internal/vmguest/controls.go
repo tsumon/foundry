@@ -25,12 +25,24 @@ func configureCgroup(read func(string) ([]byte, error), write func(string, strin
 	if err := write("/sys/fs/cgroup/cgroup.subtree_control", "+memory +pids +cpu"); err != nil {
 		return err
 	}
-	if err := mkdir(cgroupPath); err != nil {
+	return createLimitedCgroup(cgroupPath, read, write, mkdir)
+}
+
+// A killed cgroup is never reused: some supported kernels retain a kill_seq
+// that spuriously SIGKILLs later CLONE_INTO_CGROUP children. Exclusive creation
+// also prevents accidentally adopting stale state. Every phase gets identical
+// limits verified before its first child is admitted.
+func createLimitedCgroup(group string, read func(string) ([]byte, error), write func(string, string) error, mkdir func(string) error) error {
+	if err := mkdir(group); err != nil {
 		return err
 	}
 	for name, value := range limits {
-		if err := write(filepath.Join(cgroupPath, name), value); err != nil {
+		if err := write(filepath.Join(group, name), value); err != nil {
 			return err
+		}
+		b, err := read(filepath.Join(group, name))
+		if err != nil || strings.TrimSpace(string(b)) != value {
+			return errors.New("cgroup limit not enforced")
 		}
 	}
 	return nil
@@ -43,4 +55,24 @@ func containsWord(s, w string) bool {
 		}
 	}
 	return false
+}
+
+func cleanupCgroup(group string, read func(string) ([]byte, error), write func(string, string) error, reap, pause func()) error {
+	if err := write(filepath.Join(group, "cgroup.kill"), "1"); err != nil {
+		return errors.New("cgroup cleanup failed")
+	}
+	for i := 0; i < 50; i++ {
+		reap()
+		b, err := read(filepath.Join(group, "cgroup.events"))
+		if err != nil {
+			return err
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			if line == "populated 0" {
+				return nil
+			}
+		}
+		pause()
+	}
+	return errors.New("cgroup cleanup unconfirmed")
 }

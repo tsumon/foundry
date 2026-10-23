@@ -12,6 +12,14 @@ import (
 
 const passingEvents = "{\"Action\":\"run\",\"Package\":\"example\",\"Test\":\"TestOK\"}\n{\"Action\":\"pass\",\"Package\":\"example\",\"Test\":\"TestOK\"}\n{\"Action\":\"pass\",\"Package\":\"example\"}\n"
 
+func TestToolchainFailureRetainsBoundedRedactedDiagnostics(t *testing.T) {
+	f := &processFixture{t: t, version: "toolchain unavailable secret=never-retain\n"}
+	r := Run(context.Background(), f)
+	if r.Class != "infrastructure_failed" || r.Tests != 0 || f.calls != 1 || !strings.Contains(r.Output, "toolchain_check_failed") || !strings.Contains(r.Output, "[REDACTED]") || strings.Contains(r.Output, "never-retain") {
+		t.Fatalf("diagnostic lost or promoted: %+v", r)
+	}
+}
+
 type processFixture struct {
 	t               *testing.T
 	output, version string

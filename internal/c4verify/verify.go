@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"foundry/internal/domain"
 	"io"
 	"regexp"
@@ -271,6 +272,11 @@ func RunForPlatform(ctx context.Context, p Process, platform string) Result {
 	exit, err := p.Run(ctx, request("version"), version, version)
 	v, truncated := version.Text()
 	if err != nil || exit != 0 || truncated || v != "go version go1.27.3 "+platform+"\n" {
+		diagnostic := NewOutput()
+		fmt.Fprintf(diagnostic, "toolchain_check_failed exit=%d process_error=%t\n", exit, err != nil)
+		io.WriteString(diagnostic, v)
+		r.Output, r.Truncated = diagnostic.Text()
+		r.Truncated = r.Truncated || truncated
 		return r
 	}
 	out, events := NewOutput(), newEvents()

@@ -234,7 +234,7 @@ func (m *linuxMachine) Prepare(r vmruntime.WireRequest) (vmruntime.SelfCheck, c4
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = io.Discard
-	err = runChild(ctx, cmd)
+	err = runChild(ctx, cmd, cgroupPath)
 	if err != nil || out.String() != "restricted-child-ok\n" {
 		cg.Close()
 		return checks, nil, errors.New("restricted child self-check failed")
@@ -283,7 +283,11 @@ func restrictedCommand(path string, args, env []string, cgroupFD int) *exec.Cmd 
 	return c
 }
 
-func runChild(ctx context.Context, cmd *exec.Cmd) error {
+func runChild(ctx context.Context, cmd *exec.Cmd, group string) error {
+	// Linux PDEATHSIG follows the creating OS thread, not just PID1's process.
+	// Keep that thread alive until the direct child and its cgroup are reaped.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -293,7 +297,7 @@ func runChild(ctx context.Context, cmd *exec.Cmd) error {
 	select {
 	case err = <-done:
 	case <-ctx.Done():
-		_ = writeControl(filepath.Join(cgroupPath, "cgroup.kill"), "1")
+		_ = writeControl(filepath.Join(group, "cgroup.kill"), "1")
 		_ = cmd.Process.Kill()
 		err = <-done
 		if err == nil {
@@ -302,10 +306,7 @@ func runChild(ctx context.Context, cmd *exec.Cmd) error {
 	}
 	// A test can leave descendants holding stdout open or running after its
 	// parent. Always kill the entire owned cgroup, never process names/PIDs.
-	if killErr := writeControl(filepath.Join(cgroupPath, "cgroup.kill"), "1"); killErr != nil {
-		return errors.New("cgroup cleanup failed")
-	}
-	for i := 0; i < 50; i++ {
+	if cleanupErr := cleanupCgroup(group, os.ReadFile, writeControl, func() {
 		// The direct child is already reaped by Cmd.Wait. Reap adopted
 		// descendants only now, avoiding a race with Go's process waiter.
 		for {
@@ -315,40 +316,58 @@ func runChild(ctx context.Context, cmd *exec.Cmd) error {
 				break
 			}
 		}
-		b, e := os.ReadFile(filepath.Join(cgroupPath, "cgroup.events"))
-		if e != nil {
-			return e
-		}
-		if strings.Contains(string(b), "populated 0") {
-			return err
-		}
-		time.Sleep(10 * time.Millisecond)
+	}, func() { time.Sleep(10 * time.Millisecond) }); cleanupErr != nil {
+		return cleanupErr
 	}
-	return errors.New("cgroup cleanup unconfirmed")
+	return err
 }
 
-type linuxProcess struct{ cgroup *os.File }
+type linuxProcess struct {
+	cgroup   *os.File
+	sequence int
+}
 
 func (p *linuxProcess) Run(ctx context.Context, r c4verify.Request, stdout, stderr io.Writer) (int, error) {
 	spec, err := childSpec(r)
 	if err != nil {
+		io.WriteString(stderr, "guest_command_contract_rejected\n")
 		return -1, err
 	}
+	// Previous phase has completed owned cleanup; its cgroup is deliberately
+	// left retired until VM shutdown, never used for a second clone.
+	if p.cgroup != nil {
+		if err := p.cgroup.Close(); err != nil {
+			return -1, err
+		}
+		p.cgroup = nil
+	}
+	p.sequence++
+	group := fmt.Sprintf("%s-%d", cgroupPath, p.sequence)
+	if err := createLimitedCgroup(group, os.ReadFile, writeControl, func(path string) error { return os.Mkdir(path, 0700) }); err != nil {
+		return -1, err
+	}
+	cg, err := os.Open(group)
+	if err != nil {
+		return -1, err
+	}
+	p.cgroup = cg
 	cmd := restrictedCommand(spec.Path, spec.Args, spec.Env, int(p.cgroup.Fd()))
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.WaitDelay = time.Second
-	err = runChild(ctx, cmd)
+	err = runChild(ctx, cmd, group)
 	// Cgroup OOM/resource exhaustion is infrastructure failure, never a valid
 	// completed test failure that could authorize a repair.
 	for file, key := range map[string]string{"memory.events": "oom_kill", "pids.events": "max"} {
-		b, e := os.ReadFile(filepath.Join(cgroupPath, file))
+		b, e := os.ReadFile(filepath.Join(group, file))
 		if e != nil {
+			fmt.Fprintf(stderr, "guest_resource_counter_unreadable %s\n", file)
 			return -1, e
 		}
 		for _, line := range strings.Split(string(b), "\n") {
 			f := strings.Fields(line)
 			if len(f) == 2 && f[0] == key && f[1] != "0" {
+				fmt.Fprintf(stderr, "guest_resource_limit_reached %s\n", key)
 				return -1, errors.New("guest resource limit reached")
 			}
 		}
@@ -358,7 +377,17 @@ func (p *linuxProcess) Run(ctx context.Context, r c4verify.Request, stdout, stde
 	}
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
+		if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			fmt.Fprintf(stderr, "guest_child_signal=%d\n", status.Signal())
+			return -1, errors.New("guest child terminated by signal")
+		}
 		return exit.ExitCode(), nil
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		fmt.Fprintf(stderr, "guest_process_start_or_cleanup_failed errno=%d\n", uintptr(errno))
+	} else {
+		io.WriteString(stderr, "guest_process_start_or_cleanup_failed\n")
 	}
 	return -1, err
 }
