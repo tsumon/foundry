@@ -30,6 +30,10 @@ The next native job passed the offline keyring/package setup and reached QEMU ex
 
 Windows native links additionally encode file/directory type, absent in POSIX tar. After extraction, reconcile directory-link types only against the already-validated directory member list, without following links or inspecting external targets. This acts only on links in the fresh private source tree, retains their target text, and stops on any filesystem error. No source file content or runtime sandbox permission is changed.
 
+### Complete offline Python build tooling — 2026-10-23
+
+Native Windows tests and full QEMU extraction now pass. Configure correctly remains offline and fails because its required Python tooling group lacks setuptools, wheel and pip. Add their exact official MSYS2 package bytes/digests plus pip's distlib dependency to the existing local build transaction; retain the already-pinned Python/packaging inputs. Verify official package metadata and dependency closure, add a transaction regression, then rerun native configure/build/install gates. These are build-only tools, not installed-app runtime dependencies. Do not enable PyPI access, disable QEMU tooling checks, alter signature verification, or relax the shipped DLL allowlist.
+
 - Built-in `embedded_vm` is the default for new tasks; Docker remains explicitly optional.
 - No host execution, TCG, automatic backend/accelerator fallback, real credentials/provider calls, automatic retries or paid API switching.
 - Existing UI/navigation and independent readiness/baseline/context/execute/delivery approvals remain.

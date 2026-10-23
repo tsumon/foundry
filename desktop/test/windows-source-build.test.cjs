@@ -91,6 +91,19 @@ test("keyring command failure stops before installing packages and does not retr
     assert.equal(calls, failedAt);
   }
 });
+test("the local package transaction supplies QEMU offline Python tooling and pip's distlib dependency", t => {
+  const fixture = keyringFixture(t), lock = require("../sandbox/inputs.lock.json");
+  const archives = lock.windows.build_packages.map(name => lock.assets.find(e => e.package === name));
+  let installed;
+  build.installBuildPackages({ ...fixture, archives, inputs: fixture.msysRoot, run: (program, args) => {
+    if (path.basename(program) === "pacman.exe") installed = args.slice(2).map(p => path.basename(p));
+    return "";
+  } });
+  for (const name of ["setuptools", "wheel", "pip", "distlib", "packaging"]) {
+    const prefix = "mingw-w64-ucrt-x86_64-python-" + name + "-";
+    assert.equal(installed.filter(file => file.startsWith(prefix)).length, 1, "Missing local offline Python tooling: " + name);
+  }
+});
 function sourceFixture(t, entries) {
   const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-qemu-source-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const { Header } = require("tar"), chunks = [];

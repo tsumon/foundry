@@ -146,6 +146,66 @@
       "version": "3.14.8-1"
     },
     {
+      "file": "mingw-w64-ucrt-x86_64-python-setuptools-84.0.0-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-setuptools-84.0.0-1-any.pkg.tar.zst",
+      "bytes": 1374413,
+      "sha256": "5d99e4fb50aacc02cf833d127aef22e14f1f9532d806a5d413d5562d977992cb",
+      "kind": "dependency",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "MIT",
+      "provenance": "Official MSYS2 package page SHA256 and package metadata verified 2026-10-23; build-only Python tooling",
+      "package": "mingw-w64-ucrt-x86_64-python-setuptools",
+      "base": "mingw-w64-python-setuptools",
+      "version": "84.0.0-1"
+    },
+    {
+      "file": "mingw-w64-ucrt-x86_64-python-wheel-0.48.0-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-wheel-0.48.0-1-any.pkg.tar.zst",
+      "bytes": 113252,
+      "sha256": "a0889c8aee65120a33799ad52e26c04188fe51ebb6f353dfccdd241b66afa031",
+      "kind": "dependency",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "MIT",
+      "provenance": "Official MSYS2 package page SHA256 and package metadata verified 2026-10-23; build-only Python tooling",
+      "package": "mingw-w64-ucrt-x86_64-python-wheel",
+      "base": "mingw-w64-python-wheel",
+      "version": "0.48.0-1"
+    },
+    {
+      "file": "mingw-w64-ucrt-x86_64-python-pip-26.2.2-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-pip-26.2.2-1-any.pkg.tar.zst",
+      "bytes": 2567333,
+      "sha256": "c1c541680fb9f64d3737cb1b201d96753bc20f472cce2ba6b1ea54a56ea994bf",
+      "kind": "dependency",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "MIT",
+      "provenance": "Official MSYS2 package page SHA256 and package metadata verified 2026-10-23; build-only Python tooling",
+      "package": "mingw-w64-ucrt-x86_64-python-pip",
+      "base": "mingw-w64-python-pip",
+      "version": "26.2.2-1"
+    },
+    {
+      "file": "mingw-w64-ucrt-x86_64-python-distlib-0.4.3-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-distlib-0.4.3-1-any.pkg.tar.zst",
+      "bytes": 433318,
+      "sha256": "7d400c7a1f72d33f3f65d81b538971a644373cf61a1a9b0662abbf5cf363239d",
+      "kind": "dependency",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "PSF-2.0",
+      "provenance": "Official MSYS2 package page SHA256 and package metadata verified 2026-10-23; build-only Python tooling",
+      "package": "mingw-w64-ucrt-x86_64-python-distlib",
+      "base": "mingw-w64-python-distlib",
+      "version": "0.4.3-1"
+    },
+    {
       "file": "mingw-w64-ucrt-x86_64-meson-1.12.1-1-any.pkg.tar.zst",
       "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-meson-1.12.1-1-any.pkg.tar.zst",
       "bytes": 2541868,
@@ -1381,6 +1441,10 @@
       "mingw-w64-ucrt-x86_64-gcc",
       "mingw-w64-ucrt-x86_64-binutils",
       "mingw-w64-ucrt-x86_64-python",
+      "mingw-w64-ucrt-x86_64-python-setuptools",
+      "mingw-w64-ucrt-x86_64-python-wheel",
+      "mingw-w64-ucrt-x86_64-python-pip",
+      "mingw-w64-ucrt-x86_64-python-distlib",
       "mingw-w64-ucrt-x86_64-meson",
       "mingw-w64-ucrt-x86_64-ninja",
       "mingw-w64-ucrt-x86_64-pkgconf",
