@@ -231,3 +231,149 @@ test("nonzero native guest result remains failed and retains only its bounded st
   );
   assert.equal(fs.existsSync(options.reportFile), false);
 });
+
+function failureFixture(t, mutation = () => {}) {
+  const options = installedFixture(t),
+    receipt = success();
+  receipt.passed = false;
+  receipt.stage = "readiness";
+  receipt.failure_code = "readiness_failed";
+  receipt.manifest_digest = resourceDigest(
+    path.join(options.resources, "sandbox/manifest.json"),
+  );
+  const id = "e".repeat(64);
+  const instance = path.join(options.dataDir, "instances", id);
+  const terminal = {
+    schema_version: 1,
+    ID: id,
+    ManifestDigest: receipt.manifest_digest,
+    Stage: "terminal",
+    native: {
+      termination_confirmed: true,
+      exit_code: 1,
+      admission_stage: "running",
+      diagnostic_status: "absent",
+    },
+    Owner: "PRIVATE_SENTINEL",
+  };
+  let calls = 0,
+    diagnostic;
+  assert.throws(() =>
+    runNativeVMSmoke(
+      {
+        ...options,
+        onFailure: (value) => {
+          diagnostic = value;
+        },
+      },
+      () => {
+        calls++;
+        fs.mkdirSync(instance, { recursive: true });
+        fs.writeFileSync(
+          path.join(instance, "terminal.json"),
+          JSON.stringify(terminal),
+        );
+        mutation({ options, receipt, instance, terminal });
+        throw Object.assign(new Error("PRIVATE_SENTINEL raw error"), {
+          stdout: JSON.stringify(receipt),
+          stderr: "PRIVATE_SENTINEL raw stderr",
+        });
+      },
+    ),
+  );
+  assert.equal(calls, 1);
+  return { diagnostic, options };
+}
+test("failed native gate reports its stage and only exact-run typed terminal facts without changing failure", (t) => {
+  const { diagnostic, options } = failureFixture(t);
+  assert.deepEqual(diagnostic, {
+    kind: "foundry-native-vm-failure",
+    stage: "readiness",
+    failure_code: "readiness_failed",
+    terminal_status: "available",
+    terminals: [
+      {
+        termination_confirmed: true,
+        exit_code: 1,
+        admission_stage: "running",
+        diagnostic_status: "absent",
+      },
+    ],
+  });
+  assert.doesNotMatch(JSON.stringify(diagnostic), /PRIVATE_SENTINEL/);
+  assert.equal(JSON.parse(fs.readFileSync(options.reportFile)).passed, false);
+});
+test("native failure diagnostics do not follow linked instance receipts or retain invalid native fields", (t) => {
+  for (const mutate of [
+    ({ instance, terminal }) => {
+      terminal.ID = "f".repeat(64);
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        JSON.stringify(terminal),
+      );
+    },
+    ({ instance, terminal }) => {
+      terminal.ManifestDigest = "f".repeat(64);
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        JSON.stringify(terminal),
+      );
+    },
+    ({ instance, terminal }) => {
+      terminal.native.exit_code = -1;
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        JSON.stringify(terminal),
+      );
+    },
+    ({ instance, terminal }) => {
+      terminal.native.admission_stage = "PRIVATE_SENTINEL";
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        JSON.stringify(terminal),
+      );
+    },
+    ({ instance, terminal }) => {
+      terminal.native.raw_stderr = "PRIVATE_SENTINEL";
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        JSON.stringify(terminal),
+      );
+    },
+    ({ instance }) =>
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        "PRIVATE_SENTINEL".repeat(1000),
+      ),
+    ({ instance }) => {
+      fs.renameSync(
+        path.join(instance, "terminal.json"),
+        path.join(instance, "other.json"),
+      );
+      fs.symlinkSync(
+        path.join(instance, "other.json"),
+        path.join(instance, "terminal.json"),
+      );
+    },
+    ({ instance }) => {
+      const other = path.join(
+        path.dirname(path.dirname(instance)),
+        "outside-instance",
+      );
+      fs.renameSync(instance, other);
+      fs.symlinkSync(other, instance, "junction");
+    },
+  ]) {
+    const { diagnostic } = failureFixture(t, mutate);
+    assert.equal(diagnostic?.terminal_status, "rejected");
+    assert.deepEqual(diagnostic.terminals, []);
+    assert.doesNotMatch(JSON.stringify(diagnostic), /PRIVATE_SENTINEL/);
+  }
+});
+test("invalid harness output cannot produce a failure diagnostic or retain a receipt", (t) => {
+  const { diagnostic, options } = failureFixture(t, ({ receipt }) => {
+    receipt.raw_stderr = "PRIVATE_SENTINEL";
+  });
+  assert.equal(diagnostic, undefined);
+  assert.equal(fs.existsSync(options.reportFile), false);
+});

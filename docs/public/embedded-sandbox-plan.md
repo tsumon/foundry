@@ -183,6 +183,19 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 
 ## Completion gate
 
+Native Windows run 39930444811 built and installed the EXE, but failed the
+mandatory VM gate. The acceptance wrapper discarded the validated failure
+stage from CI output; private receipts were not uploaded by the success-only
+artifact gate. Add a failure-only, bounded diagnostic projection: acceptance
+stage/code plus exact-run instance terminal facts (fixed enums, booleans and
+numeric exit/admission codes). Read only regular, bounded files under the fresh
+acceptance root, reject links and mismatched instance/manifest identities, and
+never emit raw subprocess output, paths, ownership strings, secrets or tokens.
+First reproduce the missing CI diagnostic and hostile-file rejection offline.
+Keep nonzero exits and every native/installation/artifact gate unchanged. A
+diagnostic is not readiness or cleanup authority. Re-run native CI to locate
+the actual failing layer before changing execution behavior.
+
 Native Windows run 39927465919 passed QEMU compilation and its actual minimal
 DLL/source checks, then stopped while extracting the pinned Linux recipe
 inventory. Its native tar text listings use CRLF; splitting only on LF retains

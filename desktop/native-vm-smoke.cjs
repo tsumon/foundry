@@ -176,7 +176,7 @@ function boundedReceipt(raw) {
   return receipt;
 }
 function runNativeVMSmoke(
-  { resources, dataDir, integrity, reportFile },
+  { resources, dataDir, integrity, reportFile, onFailure },
   execute = execFileSync,
 ) {
   assert.match(integrity, hash);
@@ -224,12 +224,152 @@ function runNativeVMSmoke(
   }
   const receipt = boundedReceipt(output);
   fs.writeFileSync(reportFile, output, { flag: "wx", mode: 0o600 });
+  const manifestDigest = resourceDigest(path.join(bundle, "manifest.json"));
+  if ((executionFailed || !receipt.passed) && onFailure) {
+    onFailure(failureDiagnostic(receipt, dataDir, manifestDigest));
+  }
   assert.equal(executionFailed, false, "native harness returned nonzero");
-  assertNativeVMReceipt(
-    receipt,
-    resourceDigest(path.join(bundle, "manifest.json")),
-  );
+  assertNativeVMReceipt(receipt, manifestDigest);
   return receipt;
+}
+// Diagnostic-only projection. Never used for admission, evidence or cleanup.
+function failureDiagnostic(receipt, dataDir, manifestDigest) {
+  const stages = [
+    "admission",
+    "reserve",
+    "bundle",
+    "repository",
+    "setup",
+    "create",
+    "readiness",
+    "baseline",
+    "plan",
+    "execute",
+    "verify",
+    "deliver",
+    "complete",
+  ];
+  const stage = stages.includes(receipt.stage) ? receipt.stage : "unknown";
+  const diagnostic = {
+    kind: "foundry-native-vm-failure",
+    stage,
+    failure_code:
+      receipt.failure_code === stage + "_failed"
+        ? receipt.failure_code
+        : "other_failure",
+    terminal_status: "absent",
+    terminals: [],
+  };
+  try {
+    if (!fs.existsSync(dataDir)) return diagnostic;
+    const root = path.join(dataDir, "instances");
+    for (const dir of [dataDir, root]) {
+      const stat = fs.lstatSync(dir);
+      assert.ok(stat.isDirectory() && !stat.isSymbolicLink());
+    }
+    const entries = fs.readdirSync(root, { withFileTypes: true });
+    assert.ok(entries.length <= 4);
+    const terminals = [];
+    for (const entry of entries) {
+      assert.match(entry.name, hash);
+      assert.ok(entry.isDirectory() && !entry.isSymbolicLink());
+      const dir = path.join(root, entry.name);
+      assert.ok(!fs.lstatSync(dir).isSymbolicLink());
+      const file = path.join(dir, "terminal.json");
+      let stat;
+      try {
+        stat = fs.lstatSync(file);
+      } catch (e) {
+        if (e.code === "ENOENT") continue;
+        throw e;
+      }
+      assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size <= 8192);
+      const fd = fs.openSync(
+        file,
+        fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0),
+      );
+      let terminal;
+      try {
+        const opened = fs.fstatSync(fd);
+        assert.ok(
+          opened.isFile() && opened.ino === stat.ino && opened.dev === stat.dev,
+        );
+        const buffer = Buffer.alloc(8193);
+        const length = fs.readSync(fd, buffer, 0, buffer.length, 0);
+        assert.ok(length <= 8192);
+        terminal = JSON.parse(buffer.subarray(0, length).toString("utf8"));
+      } finally {
+        fs.closeSync(fd);
+      }
+      assert.equal(terminal.schema_version, 1);
+      assert.equal(terminal.ID, entry.name);
+      assert.equal(terminal.Stage, "terminal");
+      assert.equal(terminal.ManifestDigest, manifestDigest);
+      assert.equal(receipt.manifest_digest, manifestDigest);
+      const native = terminal.native;
+      const optional = [
+        "exit_code",
+        "signal",
+        "admission_stage",
+        "native_error_code",
+        "helper",
+      ];
+      keys(native, [
+        "termination_confirmed",
+        "diagnostic_status",
+        ...optional.filter((k) => Object.hasOwn(native, k)),
+      ]);
+      assert.equal(typeof native.termination_confirmed, "boolean");
+      assert.ok(
+        ["absent", "valid", "rejected", "overflow"].includes(
+          native.diagnostic_status,
+        ),
+      );
+      const facts = {
+        termination_confirmed: native.termination_confirmed,
+        diagnostic_status: native.diagnostic_status,
+      };
+      for (const key of ["exit_code", "native_error_code", "signal"]) {
+        if (!Object.hasOwn(native, key)) continue;
+        const n = native[key];
+        assert.ok(
+          Number.isInteger(n) &&
+            n >= (key === "signal" ? 1 : 0) &&
+            n <= (key === "signal" ? 127 : 4294967295),
+        );
+        facts[key] = n;
+      }
+      assert.ok(
+        !(Object.hasOwn(facts, "exit_code") && Object.hasOwn(facts, "signal")),
+      );
+      if (Object.hasOwn(native, "admission_stage")) {
+        assert.ok(
+          [
+            "helper_spawn",
+            "running",
+            "create_job",
+            "job_limits",
+            "stdio",
+            "handle_list",
+            "process_arguments",
+            "create_process",
+            "created_suspended",
+            "assign_job",
+            "context_admission",
+            "resume_thread",
+          ].includes(native.admission_stage),
+        );
+        facts.admission_stage = native.admission_stage;
+      }
+      terminals.push(facts);
+    }
+    diagnostic.terminals = terminals;
+    diagnostic.terminal_status = terminals.length ? "available" : "absent";
+  } catch {
+    diagnostic.terminal_status = "rejected";
+    diagnostic.terminals = [];
+  }
+  return diagnostic;
 }
 module.exports = { assertNativeVMReceipt, runNativeVMSmoke };
 if (require.main === module)
@@ -244,6 +384,8 @@ if (require.main === module)
       dataDir: process.env.FOUNDRY_VM_ACCEPTANCE_DATA,
       reportFile: process.env.FOUNDRY_VM_ACCEPTANCE_REPORT,
       integrity,
+      onFailure: (diagnostic) =>
+        process.stderr.write(JSON.stringify(diagnostic) + "\n"),
     });
     process.stdout.write(JSON.stringify(receipt) + "\n");
   })().catch(() => {
