@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"runtime"
-	"sync"
 	"unicode/utf16"
 	"unsafe"
 
@@ -18,40 +17,55 @@ import (
 // Both native handles remain owned until Wait observes termination. A PID is
 // never used for cleanup or recovery, and the job is not inherited by QEMU.
 type windowsProcess struct {
-	mu           sync.Mutex
-	process, job windows.Handle
-	in, out      *os.File
-	waited       bool
+	owner   *ownedProcess
+	in, out *os.File
 }
 
 func (p *windowsProcess) Input() io.WriteCloser { return p.in }
 func (p *windowsProcess) Output() io.ReadCloser { return p.out }
-func (p *windowsProcess) Terminated() bool      { p.mu.Lock(); defer p.mu.Unlock(); return p.waited }
+func (p *windowsProcess) Terminated() bool      { return p.owner.terminatedState() }
 func (p *windowsProcess) Stop() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.in.Close()
-	if p.waited {
-		return nil
-	}
-	return windows.TerminateJobObject(p.job, 1)
+	return p.owner.stop()
 }
 func (p *windowsProcess) Wait() error {
-	event, e := windows.WaitForSingleObject(p.process, windows.INFINITE)
-	if e != nil || event != windows.WAIT_OBJECT_0 {
-		return errors.New("native process termination unconfirmed")
+	return p.owner.waitForTermination(context.Background())
+}
+func (p *windowsProcess) observeTermination(ctx context.Context) error {
+	e := p.owner.waitForTermination(ctx)
+	if p.Terminated() {
+		return nil
 	}
-	var code uint32
-	e = windows.GetExitCodeProcess(p.process, &code)
-	p.mu.Lock()
-	p.waited = true
-	windows.CloseHandle(p.process)
-	windows.CloseHandle(p.job)
-	p.mu.Unlock()
-	if e != nil || code != 0 {
-		return errors.New("native process failed")
+	return e
+}
+func windowsOwnedCalls() ownedProcessCalls {
+	return ownedProcessCalls{
+		assign: func(job, process uintptr) error {
+			return windows.AssignProcessToJobObject(windows.Handle(job), windows.Handle(process))
+		},
+		resume:           func(thread uintptr) error { _, e := windows.ResumeThread(windows.Handle(thread)); return e },
+		terminateProcess: func(h uintptr) error { return windows.TerminateProcess(windows.Handle(h), 1) },
+		terminateJob:     func(h uintptr) error { return windows.TerminateJobObject(windows.Handle(h), 1) },
+		wait: func(h uintptr, millis uint32) (bool, error) {
+			event, e := windows.WaitForSingleObject(windows.Handle(h), millis)
+			if e != nil {
+				return false, e
+			}
+			if event == windows.WAIT_OBJECT_0 {
+				return true, nil
+			}
+			if event == uint32(windows.WAIT_TIMEOUT) {
+				return false, nil
+			}
+			return false, errors.New("unexpected native wait result")
+		},
+		exitCode: func(h uintptr) (uint32, error) {
+			var code uint32
+			e := windows.GetExitCodeProcess(windows.Handle(h), &code)
+			return code, e
+		},
+		close: func(h uintptr) error { return windows.CloseHandle(windows.Handle(h)) },
 	}
-	return nil
 }
 func launchNative(ctx context.Context, c command) (nativeProcess, error) {
 	if e := ctx.Err(); e != nil {
@@ -140,25 +154,13 @@ func launchNative(ctx context.Context, c command) (nativeProcess, error) {
 	defer windows.CloseHandle(pi.Thread)
 	runtime.KeepAlive(handles)
 	runtime.KeepAlive(env)
-	// Crucially, no untrusted guest instruction executes before this succeeds.
-	if e = windows.AssignProcessToJobObject(job, pi.Process); e != nil {
-		windows.TerminateProcess(pi.Process, 1)
-		windows.WaitForSingleObject(pi.Process, 5000)
-		windows.CloseHandle(pi.Process)
-		return nil, e
-	}
-	if e = ctx.Err(); e != nil {
-		windows.TerminateJobObject(job, 1)
-		windows.WaitForSingleObject(pi.Process, 5000)
-		windows.CloseHandle(pi.Process)
-		return nil, e
-	}
-	if _, e = windows.ResumeThread(pi.Thread); e != nil {
-		windows.TerminateJobObject(job, 1)
-		windows.WaitForSingleObject(pi.Process, 5000)
-		windows.CloseHandle(pi.Process)
-		return nil, e
-	}
+	// Transfer ownership immediately after CreateProcess, not after admission.
+	// Every post-create failure returns this exact owner to Session.Start.
 	owned = true
-	return &windowsProcess{process: pi.Process, job: job, in: parentIn, out: parentOut}, nil
+	p := &windowsProcess{owner: &ownedProcess{process: uintptr(pi.Process), job: uintptr(job), calls: windowsOwnedCalls()}, in: parentIn, out: parentOut}
+	// No guest instruction executes before successful Job assignment.
+	if e = p.owner.admit(ctx, uintptr(pi.Thread)); e != nil {
+		return p, e
+	}
+	return p, nil
 }

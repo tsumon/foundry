@@ -41,18 +41,18 @@ type Runtime struct {
 	sessions                 map[string]*Session
 }
 type Session struct {
-	mu              sync.Mutex
-	runtime         *Runtime
-	id, dir         string
-	owner           Request
-	wire            WireRequest
-	started, closed bool
-	process         nativeProcess
-	cancel          context.CancelFunc
-	done            chan struct{}
-	result          c4verify.Result
-	valid           bool
-	err             error
+	mu                       sync.Mutex
+	runtime                  *Runtime
+	id, dir                  string
+	owner                    Request
+	wire                     WireRequest
+	started, closing, closed bool
+	process                  nativeProcess
+	cancel                   context.CancelFunc
+	done                     chan struct{}
+	result                   c4verify.Result
+	valid                    bool
+	err                      error
 }
 
 // Load only reads and verifies installed files; it never probes hardware,
@@ -138,11 +138,8 @@ func (r *Runtime) create(ctx context.Context, q Request, action string, files []
 		return nil, e
 	}
 	dir := filepath.Join(r.instanceRoot, id)
-	if e := os.Mkdir(dir, 0700); e != nil {
+	if e := createPrivateDirectory(dir); e != nil {
 		return nil, errors.New("cannot create private VM instance")
-	}
-	if e := platformfs.PrivateDirectory(dir); e != nil {
-		return nil, errors.New("cannot secure VM instance")
 	}
 	s := &Session{runtime: r, id: id, dir: dir, owner: q, wire: WireRequest{SchemaVersion: 1, Action: action, Nonce: nonce, Secret: secret, GuestPlatform: r.identity.GuestPlatform, CandidateDigest: q.CandidateDigest, Files: files}, done: make(chan struct{})}
 	if e := s.receipt("allocated"); e != nil {
@@ -212,7 +209,7 @@ func (s *Session) Start(ctx context.Context) error {
 		return e
 	}
 	s.mu.Lock()
-	if s.started || s.closed {
+	if s.started || s.closing || s.closed {
 		s.mu.Unlock()
 		return errors.New("VM instance already consumed")
 	}
@@ -227,14 +224,21 @@ func (s *Session) Start(ctx context.Context) error {
 		return e
 	}
 	p, e := s.runtime.launch(life, cmd)
-	if e != nil {
-		cancel()
-		s.finish(c4verify.Result{}, false, errors.New("native VM start failed"))
-		return errors.New("native VM start failed")
-	}
+	// A failed launch may still own an already-created suspended native child.
+	// Publish that exact owner before processing the error; cleanup must never
+	// mistake failed admission for proof that no process exists.
 	s.mu.Lock()
 	s.process = p
 	s.mu.Unlock()
+	if e != nil || p == nil {
+		cancel()
+		if p == nil {
+			s.finish(c4verify.Result{}, false, errors.New("native VM start failed"))
+		} else {
+			go s.failedStart(p)
+		}
+		return errors.New("native VM start failed")
+	}
 	started := make(chan error, 1)
 	go func() {
 		select {
@@ -251,6 +255,20 @@ func (s *Session) Start(ctx context.Context) error {
 		p.Stop()
 		return life.Err()
 	}
+}
+func (s *Session) failedStart(p nativeProcess) {
+	p.Stop()
+	p.Wait()
+	p.Input().Close()
+	p.Output().Close()
+	err := errors.New("native VM start failed")
+	if !p.Terminated() {
+		err = errors.New("native VM failed-start termination unconfirmed")
+	}
+	if e := s.receipt("terminal"); e != nil {
+		err = e
+	}
+	s.finish(c4verify.Result{}, false, err)
 }
 func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- error) {
 	var result c4verify.Result
@@ -365,12 +383,14 @@ func (s *Session) Running() bool {
 	}
 	select {
 	case <-s.done:
-		return false
+		return s.process != nil && !s.process.Terminated()
 	default:
 		return true
 	}
 }
 func (s *Session) Close(ctx context.Context) error {
+	ctx, closeCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer closeCancel()
 	if e := ctx.Err(); e != nil {
 		return e
 	}
@@ -379,6 +399,9 @@ func (s *Session) Close(ctx context.Context) error {
 		s.mu.Unlock()
 		return nil
 	}
+	// Reserve the consumed state while still holding the initial lock. Failed
+	// persistence may be retried, but no new Start can race this cleanup.
+	s.closing = true
 	started := s.started
 	cancel, p := s.cancel, s.process
 	s.mu.Unlock()
@@ -386,15 +409,26 @@ func (s *Session) Close(ctx context.Context) error {
 		cancel()
 	}
 	if p != nil {
-		if e := p.Stop(); e != nil {
-			return errors.New("owned VM stop unconfirmed")
-		}
+		// A termination request can fail after the child already exits. It is
+		// observation of the retained handle, never this return code, that
+		// establishes cleanup. Keep uncertainty until that observation below.
+		p.Stop()
 	}
 	if started {
 		select {
 		case <-s.done:
 		case <-ctx.Done():
 			return errors.New("owned VM termination unconfirmed")
+		}
+	}
+	s.mu.Lock()
+	p = s.process
+	s.mu.Unlock()
+	if p != nil && !p.Terminated() {
+		if observer, ok := p.(interface{ observeTermination(context.Context) error }); ok {
+			if e := observer.observeTermination(ctx); e != nil {
+				return errors.New("owned VM termination unconfirmed")
+			}
 		}
 	}
 	s.mu.Lock()
