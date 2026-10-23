@@ -194,6 +194,46 @@ test("native mode gate foregrounds the exact owned window without focusing a non
   );
 });
 
+test("native Foundry menu lookup uses the pinned popup-button role under the owned menu bar", () => {
+  const bytes = fs.readFileSync(path.join(__dirname, "../windows-ui-mode.ps1"));
+  const source = bytes.toString("utf8").replace(/^\uFEFF/, "");
+  assert.match(source, /function Wait-FoundryMenuButton/);
+  assert.match(source, /ControlType\]::MenuBar/);
+  assert.match(source, /ControlType\]::Button/);
+  assert.match(source, /\$current\.Name -ceq 'Foundry'/);
+  assert.match(source, /\$current\.IsEnabled/);
+  assert.match(source, /-not \$current\.IsOffscreen/);
+  assert.match(source, /\$foundry = Wait-FoundryMenuButton \$root 5/);
+  assert.doesNotMatch(
+    source,
+    /Wait-OwnedExact \(\[System\.Windows\.Automation\.ControlType\]::MenuItem\) 'Foundry'/,
+  );
+  assert.match(source, /if \(\$candidates\.Count -lt 32\)/);
+  assert.match(source, /if \(\$name\.Length -gt 80\)/);
+  assert.match(
+    source,
+    /ControlType\]::MenuItem[^}]+ControlType\]::MenuBar[^}]+ControlType\]::Menu/,
+  );
+  assert.match(source, /Owned menu candidates:/);
+  for (const field of [
+    "total",
+    "menuItems",
+    "menuBars",
+    "menus",
+    "menuBarButtons",
+    "fixedFoundryName",
+    "enabledFoundryButton",
+    "disabledFoundryButton",
+    "emitted",
+    "truncated",
+  ])
+    assert.match(source, new RegExp(`${field}=`));
+  assert.doesNotMatch(
+    source,
+    /SendKeys|keybd_event|mouse_event|ClickablePoint|FromPoint|executeJavaScript/,
+  );
+});
+
 test("native Windows gate runs the focused coding and fake credential suites", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../windows-test.ps1"),

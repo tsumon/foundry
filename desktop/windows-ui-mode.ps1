@@ -149,6 +149,123 @@ function Wait-OwnedExact([object]$Type, [string]$Name, [int]$Seconds) {
   throw 'Required owned UI element unavailable'
 }
 
+function Find-FoundryMenuButton([object]$Root) {
+  $items = $Root.FindAll(
+    [System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.Condition]::TrueCondition
+  )
+  if ($items.Count -gt 2048) { throw 'Window UI tree exceeds bound' }
+  $match = $null
+  foreach ($menuBar in $items) {
+    $bar = $menuBar.Current
+    if (
+      $bar.ProcessId -ne $OwnerProcess -or
+      $bar.ControlType -ne [System.Windows.Automation.ControlType]::MenuBar -or
+      -not $bar.IsEnabled -or
+      $bar.IsOffscreen
+    ) { continue }
+    $children = $menuBar.FindAll(
+      [System.Windows.Automation.TreeScope]::Descendants,
+      [System.Windows.Automation.Condition]::TrueCondition
+    )
+    if ($children.Count -gt 256) { throw 'Menu bar UI tree exceeds bound' }
+    foreach ($button in $children) {
+      $current = $button.Current
+      if (
+        $current.ProcessId -eq $OwnerProcess -and
+        $current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and
+        $current.Name -ceq 'Foundry' -and
+        $current.IsEnabled -and
+        -not $current.IsOffscreen
+      ) {
+        if ($null -ne $match) { throw 'Foundry menu button is ambiguous' }
+        $match = $button
+      }
+    }
+  }
+  return $match
+}
+
+function Wait-FoundryMenuButton([object]$Root, [int]$Seconds) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    $button = Find-FoundryMenuButton $Root
+    if ($null -ne $button) { return $button }
+    Start-Sleep -Milliseconds 100
+  }
+  Write-OwnedMenuDiagnostic
+  throw 'Required Foundry popup button unavailable'
+}
+
+function Write-OwnedMenuDiagnostic {
+  $candidates = New-Object 'System.Collections.Generic.List[string]'
+  $total = 0
+  $menuItems = 0
+  $menuBars = 0
+  $menus = 0
+  $menuBarButtons = 0
+  $fixedFoundryName = 0
+  $enabledFoundryButton = 0
+  $disabledFoundryButton = 0
+  $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+  foreach ($element in (Owned-Elements)) {
+    try {
+      $current = $element.Current
+      $isMenuBarButton = $false
+      if ($current.ControlType -eq [System.Windows.Automation.ControlType]::Button) {
+        $ancestor = $walker.GetParent($element)
+        for ($depth = 0; $null -ne $ancestor -and $depth -lt 8; $depth++) {
+          if ($ancestor.Current.ControlType -eq [System.Windows.Automation.ControlType]::MenuBar) {
+            $isMenuBarButton = $true
+            break
+          }
+          $ancestor = $walker.GetParent($ancestor)
+        }
+      }
+      if (-not $isMenuBarButton -and
+        $current.ControlType -ne [System.Windows.Automation.ControlType]::MenuItem -and
+        $current.ControlType -ne [System.Windows.Automation.ControlType]::MenuBar -and
+        $current.ControlType -ne [System.Windows.Automation.ControlType]::Menu
+      ) { continue }
+      $total++
+      if ($current.ControlType -eq [System.Windows.Automation.ControlType]::MenuItem) { $menuItems++ }
+      if ($current.ControlType -eq [System.Windows.Automation.ControlType]::MenuBar) { $menuBars++ }
+      if ($current.ControlType -eq [System.Windows.Automation.ControlType]::Menu) { $menus++ }
+      if ($isMenuBarButton) { $menuBarButtons++ }
+      $rawName = [string]$current.Name
+      if ($rawName -ceq 'Foundry') {
+        $fixedFoundryName++
+        if ($isMenuBarButton) {
+          if ($current.IsEnabled) { $enabledFoundryButton++ } else { $disabledFoundryButton++ }
+        }
+      }
+      if ($candidates.Count -lt 32) {
+        $name = $rawName
+        if ($name.Length -gt 80) { $name = $name.Substring(0, 80) }
+        $name = [Regex]::Replace($name, '[^\p{L}\p{Nd} ._():/+&…—-]', '?')
+        $state = if ($current.IsEnabled) { 'enabled' } else { 'disabled' }
+        $candidates.Add($current.ControlType.ProgrammaticName + ':' + $state + ':' + $name) | Out-Null
+      }
+    } catch [System.Windows.Automation.ElementNotAvailableException] {
+      continue
+    }
+  }
+  $summary = @{
+    total=$total
+    menuItems=$menuItems
+    menuBars=$menuBars
+    menus=$menus
+    menuBarButtons=$menuBarButtons
+    fixedFoundryName=$fixedFoundryName
+    enabledFoundryButton=$enabledFoundryButton
+    disabledFoundryButton=$disabledFoundryButton
+    emitted=$candidates.Count
+    truncated=($total -gt $candidates.Count)
+    candidates=$candidates.ToArray()
+  } | ConvertTo-Json -Depth 3 -Compress
+  [Console]::Error.WriteLine('Owned menu candidates: ' + $summary)
+}
+
 function Wait-Destination([string]$Title, [int]$Seconds) {
   $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
   while ([DateTime]::UtcNow -lt $deadline) {
@@ -167,7 +284,7 @@ $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$Windo
 if ($null -eq $root -or $root.Current.ProcessId -ne $OwnerProcess) { throw 'Window ownership mismatch' }
 $expectedSource = if ($Action -eq 'coding') { 'Foundry — Persistent Workbench' } else { 'Foundry — Controlled Coding Workbench' }
 if ($root.Current.Name -cne $expectedSource) { throw 'Unexpected native mode source' }
-$foundry = Find-DescendantExact $root ([System.Windows.Automation.ControlType]::MenuItem) 'Foundry'
+$foundry = Wait-FoundryMenuButton $root 5
 Expand-Exact $foundry
 $targetName = if ($Action -eq 'coding') { 'Controlled Coding Workbench' } else { 'Persistent Workbench' }
 $target = Wait-OwnedExact ([System.Windows.Automation.ControlType]::MenuItem) $targetName 5
