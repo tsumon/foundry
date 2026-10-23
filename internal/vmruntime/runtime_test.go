@@ -72,9 +72,20 @@ func testRuntime(t *testing.T) (*Runtime, Request) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	candidate, _ := filepath.EvalSymlinks(t.TempDir())
-	os.WriteFile(filepath.Join(candidate, "go.mod"), []byte("module example\n"), 0644)
-	os.WriteFile(filepath.Join(candidate, "x_test.go"), []byte("package example\n"), 0644)
+	candidate, e := filepath.EvalSymlinks(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	for name, content := range map[string]string{"go.mod": "module example\n", "x_test.go": "package example\n"} {
+		path := filepath.Join(candidate, name)
+		if e := os.WriteFile(path, []byte(content), 0644); e != nil {
+			t.Fatal(e)
+		}
+		// Snapshot admission uses exact modes, independent of the inherited umask.
+		if e := os.Chmod(path, 0644); e != nil {
+			t.Fatal(e)
+		}
+	}
 	d, e := workspace.Digest(candidate)
 	if e != nil {
 		t.Fatal(e)

@@ -55,6 +55,10 @@ func TestRecoveryMaterialRereadBoundsAndContainment(t *testing.T) {
 				if err := os.WriteFile(path, []byte("bounded"), 0755); err != nil {
 					t.Fatal(err)
 				}
+				// Exercise mode preservation regardless of the inherited umask.
+				if err := os.Chmod(path, 0755); err != nil {
+					t.Fatal(err)
+				}
 				if kind == "oversized" {
 					if err := os.Truncate(path, 10*1024*1024+1); err != nil {
 						t.Fatal(err)
