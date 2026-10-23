@@ -10,17 +10,54 @@ test("minimal configuration keeps Q35 and WHPX but excludes TCG, GUI, audio and 
   assert.ok(p.configure.includes("--disable-download")); assert.ok(p.configure.includes("--audio-drv-list="));
   assert.equal(p.devices, "CONFIG_Q35=y\n"); assert.deepEqual(p.targets, ["qemu-system-x86_64.exe"]);
 });
+function generatedConfiguration() {
+  const options = ["whpx", "tcg", "gtk", "jack", "slirp", "virtfs", "libusb", "modules"].map(name => ({ name, type: "combo", choices: ["enabled", "disabled", "auto"], section: "user", value: name === "whpx" ? "enabled" : "disabled" }));
+  options.push({ name: "auto_features", type: "combo", choices: ["enabled", "disabled", "auto"], section: "core", value: "disabled" });
+  options.push({ name: "default_devices", value: false }, { name: "plugins", value: false }, { name: "audio_drv_list", value: [] });
+  return { options, devices: "CONFIG_Q35=y\nCONFIG_AHCI_ICH9=y\nCONFIG_SERIAL_ISA=y\nCONFIG_FW_CFG_DMA=y\n", host: "#define CONFIG_WHPX 1\n" };
+}
 test("audits generated feature values and devices, not just requested configure flags", () => {
   assert.equal(typeof build.auditConfiguration, "function", "Generated configuration validation is missing");
-  const options = ["whpx", "tcg", "gtk", "jack", "slirp", "virtfs", "libusb", "modules"].map(name => ({ name, type: "combo", choices: ["enabled", "disabled", "auto"], section: "user", value: name === "whpx" ? "enabled" : "disabled" }));
-  options.push({ name: "default_devices", value: false }, { name: "plugins", value: false }, { name: "audio_drv_list", value: [] });
-  const input = { options, devices: "CONFIG_Q35=y\nCONFIG_AHCI_ICH9=y\nCONFIG_SERIAL_ISA=y\nCONFIG_FW_CFG_DMA=y\n", host: "#define CONFIG_WHPX 1\n" };
+  const input = generatedConfiguration(), { options } = input;
   assert.equal(build.auditConfiguration(input), true);
   for (const name of ["tcg", "gtk", "jack", "slirp"]) { const bad = structuredClone(input); bad.options.find(x => x.name === name).value = "enabled"; assert.throws(() => build.auditConfiguration(bad), /feature/i); }
   assert.throws(() => build.auditConfiguration({ ...input, devices: input.devices + "CONFIG_USB_XHCI=y\n" }), /device/i);
   assert.throws(() => build.auditConfiguration({ ...input, host: input.host + "#define CONFIG_TCG 1\n" }), /TCG/);
   assert.throws(() => build.auditConfiguration({ ...input, options: options.filter(o => o.name !== "whpx") }), /WHPX/);
   assert.throws(() => build.auditConfiguration({ ...input, options: options.filter(o => o.name !== "jack") }), /feature/i);
+});
+test("Meson raw auto features are disabled only by verified core auto_features=disabled", () => {
+  const input = generatedConfiguration();
+  // QEMU 11.1.2 attr is a feature defaulting to auto; Meson 1.12.1
+  // introspection retains opt.value, not the effective get_option value.
+  input.options.push({ name: "attr", type: "combo", choices: ["enabled", "disabled", "auto"], section: "user", value: "auto" });
+  assert.equal(build.auditConfiguration(input), true);
+  for (const value of ["auto", "enabled", "invalid", undefined]) {
+    const bad = structuredClone(input); bad.options.find(o => o.name === "auto_features").value = value;
+    assert.throws(() => build.auditConfiguration(bad), /auto_features/i);
+  }
+  for (const field of ["type", "choices", "section"]) {
+    const bad = structuredClone(input); delete bad.options.find(o => o.name === "auto_features")[field];
+    assert.throws(() => build.auditConfiguration(bad), /auto_features/i);
+  }
+  assert.throws(() => build.auditConfiguration({ ...input, options: input.options.filter(o => o.name !== "auto_features") }), /auto_features/i);
+  const duplicate = structuredClone(input); duplicate.options.push({ ...duplicate.options.find(o => o.name === "auto_features") });
+  assert.throws(() => build.auditConfiguration(duplicate), /duplicate/i);
+});
+test("effective auto handling does not permit explicit enabled, forbidden, or subproject features", () => {
+  for (const option of [
+    { name: "attr", section: "user", value: "enabled" },
+    { name: "attr", section: "user", value: "invalid" },
+    { name: "attr", section: "core", value: "auto" },
+    { name: "subproject:attr", section: "user", value: "auto" },
+  ]) {
+    const input = generatedConfiguration(); input.options.push({ type: "combo", choices: ["enabled", "disabled", "auto"], ...option });
+    assert.throws(() => build.auditConfiguration(input), /feature/i);
+  }
+  for (const name of ["tcg", "gtk", "jack", "slirp", "virtfs", "libusb", "modules"]) {
+    const input = generatedConfiguration(); input.options.find(o => o.name === name).value = "auto";
+    assert.throws(() => build.auditConfiguration(input), /feature/i);
+  }
 });
 test("minimal closure rejects a reachable UI/audio dependency even when all DLLs are present", () => {
   assert.equal(typeof build.assertMinimalClosure, "function", "Minimal closure policy is missing");
@@ -132,6 +169,7 @@ test("the local package transaction supplies QEMU offline Python tooling and pip
     const prefix = "mingw-w64-ucrt-x86_64-python-" + name + "-";
     assert.equal(installed.filter(file => file.startsWith(prefix)).length, 1, "Missing local offline Python tooling: " + name);
   }
+  assert.equal(installed.filter(file => file === "diffutils-3.12-1-x86_64.pkg.tar.zst").length, 1, "QAPI configure requires the pinned local diff tool");
 });
 function sourceFixture(t, entries) {
   const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-qemu-source-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));

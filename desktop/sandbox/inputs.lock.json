@@ -2,6 +2,21 @@
   "schema_version": 1,
   "assets": [
     {
+      "file": "diffutils-3.12-1-x86_64.pkg.tar.zst",
+      "url": "https://repo.msys2.org/msys/x86_64/diffutils-3.12-1-x86_64.pkg.tar.zst",
+      "bytes": 394515,
+      "sha256": "7902c8ce3d4dd69a0f5e98dc9d5c83c17b23314ba486169db57ef6e2835ce3b6",
+      "kind": "dependency",
+      "platforms": [
+        "windows/amd64"
+      ],
+      "license": "GPL-3.0-or-later",
+      "provenance": "Official MSYS2 diffutils package page digest and package metadata verified 2026-10-23; build-only, not included in installed application",
+      "package": "diffutils",
+      "base": "diffutils",
+      "version": "3.12-1"
+    },
+    {
       "file": "msys2-base-x86_64-20260927.tar.xz",
       "url": "https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-20260927.tar.xz",
       "bytes": 42860696,
@@ -1438,6 +1453,7 @@
     "source_member": "mingw-w64-qemu/qemu-11.1.2.tar.xz",
     "source_sha256": "731b5681e4bb18be313231579b8efd0296c5b015fa36dc533874b639ba838016",
     "build_packages": [
+      "diffutils",
       "mingw-w64-ucrt-x86_64-gcc",
       "mingw-w64-ucrt-x86_64-binutils",
       "mingw-w64-ucrt-x86_64-python",

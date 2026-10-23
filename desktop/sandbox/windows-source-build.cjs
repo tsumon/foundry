@@ -14,8 +14,16 @@ function auditConfiguration({ options, devices, host }) {
   if (map.get("whpx")?.value !== "enabled" || !/^#define CONFIG_WHPX 1$/m.test(host)) throw Error("WHPX must be compiled in");
   if (map.get("tcg")?.value !== "disabled" || /^#define CONFIG_TCG\b/m.test(host)) throw Error("TCG feature must be absent");
   if (map.size !== options.length) throw Error("Duplicate generated feature option");
+  const feature = o => o?.type === "combo" && Array.isArray(o.choices) && ["enabled", "disabled", "auto"].every(v => o.choices.includes(v));
+  const automatic = map.get("auto_features");
+  if (!feature(automatic) || automatic.section !== "core" || automatic.value !== "disabled") throw Error("Core auto_features must be explicitly disabled");
   for (const name of ["gtk", "jack", "slirp", "virtfs", "libusb", "modules"]) if (map.get(name)?.value !== "disabled") throw Error("Missing or enabled forbidden feature: " + name);
-  for (const o of options) if (o.type === "combo" && Array.isArray(o.choices) && ["enabled", "disabled", "auto"].every(v => o.choices.includes(v)) && !["whpx", "stack_protector"].includes(o.name) && o.value !== "disabled") throw Error("Unexpected enabled/automatic feature: " + o.name);
+  // Introspection retains raw defaults. Meson resolves root user feature auto
+  // through the verified global setting above; explicit forbidden gates remain.
+  for (const o of options) if (feature(o) && !["whpx", "stack_protector"].includes(o.name)) {
+    const effectivelyDisabled = o.value === "auto" && o.section === "user" && !o.name.includes(":");
+    if (o.value !== "disabled" && !effectivelyDisabled) throw Error("Unexpected enabled/automatic feature: " + o.name);
+  }
   for (const name of ["default_devices", "plugins"]) if (map.get(name)?.value !== false) throw Error("Unexpected default device/plugin feature");
   if (!Array.isArray(map.get("audio_drv_list")?.value) || map.get("audio_drv_list").value.length) throw Error("Audio feature must be empty");
   if (!/^CONFIG_Q35=y$/m.test(devices) || !/^CONFIG_SERIAL_ISA=y$/m.test(devices) || !/^CONFIG_FW_CFG_DMA=y$/m.test(devices)) throw Error("Required Q35 serial/firmware devices absent");

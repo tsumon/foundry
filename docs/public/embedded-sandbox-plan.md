@@ -38,6 +38,10 @@ Native Windows tests and full QEMU extraction now pass. Configure correctly rema
 
 The next native run passes Python tooling and reaches Meson setup, but its subprocess standard output is lost on failure. Preserve bounded stdout/stderr for configure and compilation, emit only a bounded control-character-stripped stdout tail to the CI log, and propagate the original failure without retry. Add success/failure/size-bound regressions before inspecting the next native result. Do not speculate about or weaken feature checks without concrete failure evidence.
 
+### Complete QAPI configuration prerequisites — 2026-10-23
+
+The retained native Meson output identifies a missing `diff` program in QEMU's QAPI schema test configuration. Add the exact official MSYS2 diffutils archive to the pinned local build transaction. Verify its digest/package metadata and dependency closure against the already-pinned bootstrap (libiconv, libintl and the bash-provided sh). Keep QAPI test configuration, all feature audits and the runtime DLL allowlist unchanged; diffutils is build-only and is not shipped in the application. Regression-test transaction inclusion, then repeat the native build/install gates.
+
 - Built-in `embedded_vm` is the default for new tasks; Docker remains explicitly optional.
 - No host execution, TCG, automatic backend/accelerator fallback, real credentials/provider calls, automatic retries or paid API switching.
 - Existing UI/navigation and independent readiness/baseline/context/execute/delivery approvals remain.
@@ -178,5 +182,18 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 ```
 
 ## Completion gate
+
+Windows generated-feature audit follow-up: QEMU 11.1.2 implements
+`--without-default-features` using Meson's `auto_features=disabled`, while
+Meson 1.12.1 introspection retains raw feature defaults (for example `attr=auto`).
+Add a regression for this source-derived case, then require the unique core
+`auto_features` option to be explicitly disabled before resolving root-project
+user feature `auto` as effectively disabled. Explicitly forbidden features
+must still be explicitly disabled; explicit enabled, unknown, and subproject
+auto features remain blocked. Keep compiled WHPX/TCG, device and DLL-closure
+checks unchanged. Re-run local regressions, independent review and native CI;
+this correction alone is not Windows installation acceptance.
+References: [Meson feature semantics](https://mesonbuild.com/Build-options.html#features)
+and [Meson 1.12.1 introspection](https://github.com/mesonbuild/meson/blob/1.12.1/mesonbuild/mintro.py).
 
 Completion requires reviewed source, passing safety checks and CI, two installed packages, authentic installed native guest failure/repair/pass/cleanup evidence for both host platforms, and truthful bilingual README. A missing host capability or real-account authorization is stated precisely; neither is hidden by mocked success. Real account acceptance remains outside this authorization and does not prevent accountless sandbox verification.
