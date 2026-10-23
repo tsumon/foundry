@@ -66,6 +66,9 @@ func openChain(p string, directory bool) (*File, error) {
 	return fail(errors.New("invalid path"))
 }
 func OpenRegular(p string) (*File, error) { return openChain(p, false) }
+
+// OpenDirectory retains the same no-reparse and pinned-ancestor guarantees.
+func OpenDirectory(p string) (*File, error) { return openChain(p, true) }
 func OpenLock(p string) (*File, error) {
 	if e := WindowsAbsolute(p); e != nil {
 		return nil, e

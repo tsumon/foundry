@@ -9,15 +9,33 @@ const { modeActionReceipt } = require("../windows-ui-mode.cjs");
 const { createCodingMenuItem } = require("../coding-mode.cjs");
 
 test("the actual coding confirmation satisfies the native Windows explanation policy", async () => {
-  const source = fs.readFileSync(path.join(__dirname, "../windows-taskdialog-action.ps1"), "utf8");
-  const block = source.match(/function Get-CodingExplanationFragments \{([\s\S]*?)\n\}/);
+  const source = fs.readFileSync(
+    path.join(__dirname, "../windows-taskdialog-action.ps1"),
+    "utf8",
+  );
+  const block = source.match(
+    /function Get-CodingExplanationFragments \{([\s\S]*?)\n\}/,
+  );
   assert.ok(block, "Native explanation policy is missing");
-  const fragments = [...block[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+  const fragments = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
   assert.ok(fragments.length >= 5);
-  let shown, launches = 0;
-  await createCodingMenuItem({ showMessageBox: async options => { shown = options; return { response: 1 }; } }, () => launches++).click();
+  let shown,
+    launches = 0;
+  await createCodingMenuItem(
+    {
+      showMessageBox: async (options) => {
+        shown = options;
+        return { response: 1 };
+      },
+    },
+    () => launches++,
+  ).click();
   assert.equal(launches, 0);
-  for (const fragment of fragments) assert.ok([shown.message, shown.detail].some(text => text.includes(fragment)), "Native acceptance rejects actual confirmation: " + fragment);
+  for (const fragment of fragments)
+    assert.ok(
+      [shown.message, shown.detail].some((text) => text.includes(fragment)),
+      "Native acceptance rejects actual confirmation: " + fragment,
+    );
 });
 
 function renderedVMConfigurableWorkbench() {
@@ -149,6 +167,94 @@ test("coding UI readiness reconstructs only exact ordered visible setup text fra
     mutate(snapshot);
     assert.equal(codingWorkbenchReadiness(snapshot, expected).ready, false);
   }
+});
+
+test("diagnostic text preserves tree order for nested UIA fragments", () => {
+  const snapshot = renderedVMConfigurableWorkbench();
+  snapshot.nodes[8] = { ...snapshot.nodes[8], type: "Group", name: "" };
+  snapshot.nodes.push({
+    parent: 5,
+    type: "Text",
+    name: " · openai",
+    visible: true,
+    enabled: true,
+  });
+  snapshot.nodes.push({
+    parent: 8,
+    type: "Text",
+    name: "可配置",
+    visible: true,
+    enabled: true,
+  });
+  const result = codingWorkbenchReadiness(snapshot, {
+    window: "5678",
+    processId: 42,
+  });
+  assert.equal(result.ready, true);
+  assert.equal(result.diagnostics.providerVisibleText, true);
+  assert.equal(result.diagnostics.providerAnyText, true);
+});
+
+test("coding readiness diagnoses hidden wrappers without accepting hidden controls", () => {
+  const snapshot = renderedVMConfigurableWorkbench();
+  snapshot.nodes.push({
+    parent: 5,
+    type: "Group",
+    name: "private-wrapper-name",
+    visible: false,
+    enabled: true,
+  });
+  snapshot.nodes.push({ ...snapshot.nodes[9], parent: 11 });
+  snapshot.nodes[9].name = "unrelated-private-checkbox";
+  snapshot.nodes[8].visible = false;
+  const result = codingWorkbenchReadiness(snapshot, {
+    window: "5678",
+    processId: 42,
+  });
+  assert.equal(result.ready, false);
+  assert.equal(result.providerConfigurable, false);
+  assert.equal(result.unchecked, false);
+  assert.ok(result.diagnostics, "Missing bounded diagnostic receipt");
+  assert.equal(result.diagnostics.providerAnyText, true);
+  assert.equal(result.diagnostics.providerVisibleText, false);
+  assert.deepEqual(result.diagnostics.checkbox, {
+    matches: 1,
+    exactName: true,
+    visible: true,
+    enabled: true,
+    state: "Off",
+    visiblePath: false,
+    ancestors: [
+      { type: "Group", visible: false, enabled: true },
+      { type: "Group", visible: true, enabled: true },
+    ],
+  });
+  assert.equal(JSON.stringify(result).includes("private-"), false);
+});
+
+test("coding diagnostics distinguish disabled, renamed and unchecked controls without leaking names", () => {
+  const expected = { window: "5678", processId: 42 };
+  const snapshot = renderedVMConfigurableWorkbench();
+  snapshot.nodes[9].enabled = false;
+  snapshot.nodes[9].toggleState = "sensitive-invalid-toggle";
+  snapshot.nodes[8].name = "不可用 · openai";
+  const result = codingWorkbenchReadiness(snapshot, expected);
+  assert.equal(result.ready, false);
+  assert.ok(result.diagnostics, "Missing bounded diagnostic receipt");
+  assert.equal(result.diagnostics.providerUnavailableText, true);
+  assert.equal(result.diagnostics.checkbox.enabled, false);
+  assert.equal(result.diagnostics.checkbox.state, "Unknown");
+  assert.equal(JSON.stringify(result).includes("sensitive"), false);
+  snapshot.nodes[9].name = "启用账户模型与内置 VM （仅创建配置，不批准或执行）";
+  const spaced = codingWorkbenchReadiness(snapshot, expected);
+  assert.equal(spaced.ready, false);
+  assert.equal(spaced.diagnostics.checkbox.matches, 1);
+  assert.equal(spaced.diagnostics.checkbox.exactName, false);
+  snapshot.processId = 43;
+  assert.equal(
+    codingWorkbenchReadiness(snapshot, expected).diagnostics,
+    undefined,
+  );
 });
 
 test("native mode driver receipts admit only fixed coding and persistent actions", () => {

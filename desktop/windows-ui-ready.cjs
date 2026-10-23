@@ -180,6 +180,74 @@ function codingWorkbenchReadiness(snapshot, expected) {
       (node) =>
         node.type === "Button" && node.name === "刷新编码能力" && node.enabled,
     ) >= 0;
+  // Diagnostics are not authorization/readiness. They may describe clipped
+  // controls but never turn them into visible, enabled or unchecked controls.
+  const withinSetup = (index) => {
+    for (let depth = 0; index >= 0 && depth < 32; depth += 1) {
+      if (index === setup) return true;
+      index = nodes[index].parent;
+    }
+    return false;
+  };
+  const allTextParts = [];
+  const diagnosticStack = [...children[setup]].reverse();
+  while (diagnosticStack.length > 0) {
+    const index = diagnosticStack.pop();
+    if (!withinSetup(index)) continue;
+    if (nodes[index].type === "Text") allTextParts.push(nodes[index].name);
+    for (let child = children[index].length - 1; child >= 0; child -= 1)
+      diagnosticStack.push(children[index][child]);
+  }
+  const allSetupText = normalizeWhitespace(allTextParts.join(""));
+  const optInName = "启用账户模型与内置 VM（仅创建配置，不批准或执行）";
+  const matches = nodes.flatMap((node, index) =>
+    node.type === "CheckBox" &&
+    withinSetup(index) &&
+    normalizeWhitespace(node.name) === normalizeWhitespace(optInName)
+      ? [index]
+      : [],
+  );
+  let checkbox = { matches: matches.length };
+  if (matches.length > 0) {
+    const index = matches[0];
+    const node = nodes[index];
+    const ancestors = [];
+    for (
+      let parent = node.parent;
+      parent >= 0 && ancestors.length < 32;
+      parent = nodes[parent].parent
+    ) {
+      const ancestor = nodes[parent];
+      ancestors.push({
+        type: [
+          "Group",
+          "Pane",
+          "Document",
+          "Window",
+          "Custom",
+          "Text",
+        ].includes(ancestor.type)
+          ? ancestor.type
+          : "Other",
+        visible: ancestor.visible,
+        enabled: ancestor.enabled,
+      });
+      if (parent === setup) break;
+    }
+    checkbox = {
+      matches: matches.length,
+      exactName: node.name === optInName,
+      visible: node.visible,
+      enabled: node.enabled,
+      state: ["Off", "On", "Indeterminate", "Unavailable"].includes(
+        node.toggleState,
+      )
+        ? node.toggleState
+        : "Unknown",
+      visiblePath: beneath(index, setup),
+      ancestors,
+    };
+  }
   return {
     ready:
       statusReady &&
@@ -194,6 +262,17 @@ function codingWorkbenchReadiness(snapshot, expected) {
     independentApprovals,
     providerConfigurable,
     unchecked,
+    diagnostics: {
+      providerAnyText: allSetupText.includes(
+        normalizeWhitespace("可配置 · openai"),
+      ),
+      providerVisibleText: providerConfigurable,
+      providerUnavailableText: allSetupText.includes(
+        normalizeWhitespace("不可用 · openai"),
+      ),
+      checkbox,
+      refresh,
+    },
   };
 }
 

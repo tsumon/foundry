@@ -410,3 +410,39 @@ approval statements in the exact owned dialog before clicking. Add a regression
 against actual createCodingMenuItem output and native missing-fragment/wrong-owner
 negative cases so this fails before the expensive runtime build. Do not remove the
 explanation gate or substitute button presence. Repeat all existing release gates.
+
+### Coding page visibility diagnosis — 2026-10-23
+
+Run 39975110803 passed the corrected native confirmation and reached the coding
+form after the installed WHPX/backend gates. The final UI receipt saw the document,
+connected status, setup section and independent-approval text, but not configurable
+provider text or an enabled unchecked opt-in. These booleans do not yet establish
+whether the cause is runtime metadata, viewport clipping, an ancestor rectangle,
+or the checkbox accessibility state. Do not infer a successful EXE or relax the gate.
+
+Add bounded, fixed-vocabulary diagnostics to the already validated owned snapshot:
+distinguish provider text present anywhere in the setup versus visible text;
+report exact/whitespace-only opt-in matching, visibility, enabled/toggle state and
+at most 32 ancestor types/visibility flags. No arbitrary names, paths, account
+values or raw UI snapshots leave the inspector. Diagnostics never grant readiness.
+Regression-test clipped ancestors, disabled/renamed controls, invalid toggle values,
+and foreign snapshots before repeating native acceptance. Use the resulting native
+evidence to choose a correction, retaining every existing success condition.
+
+Source tracing also identified a concrete installed-layout bug: the backend
+rejects every `filepath.Rel` error when separating mutable instances from the
+immutable bundle. On Windows, `Rel` fails for different drive letters; native
+backend fixtures use the install drive while the actual app uses the OS-provided
+LocalAppData folder. Add an effect-free native regression for this layout and
+retain equal/nested/missing/UNC/relative-path rejection. Native CI must witness
+distinct volumes; Mac cross-compilation does not count as Windows execution.
+
+Do not simply accept unequal drive letters: DOS aliases can name the same files.
+Resolve already validated Windows directories by pinned handle to normalized NT
+device paths (not GUID aliases: a volume can have multiple GUID names). Require
+a direct local-volume DOS mapping matching that physical path; reject SUBST,
+network/indirect mappings and identity errors. Compare equal/descendant paths
+there. Preserve all canonical-path, reparse, manifest and private-DACL checks.
+The installed UI gate remains the final test of whether this fixes the observed
+failure. Add only bounded boolean install/data-drive diagnostics.
+Reference: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew

@@ -39,6 +39,8 @@ try {
   $runtimeCodingDB = Join-Path $runtime.codingEvidence 'foundry.db'
   $runtimeCodingHash = (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash
   $actualData = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Foundry'
+  $sameVolume = [string]::Equals([IO.Path]::GetPathRoot($resources), [IO.Path]::GetPathRoot($actualData), [StringComparison]::OrdinalIgnoreCase)
+  [Console]::WriteLine('Native UI install/data placement: ' + (@{ same_drive=$sameVolume } | ConvertTo-Json -Compress))
   if (Test-Path $actualData) { throw 'Native UI acceptance requires a fresh user profile' }
   Add-Type -AssemblyName System.Drawing
   Add-Type @'
@@ -73,7 +75,7 @@ public static class FoundryWindow {
       }
       Start-Sleep -Milliseconds 200
     }
-    $diagnostic = 'Native workbench content/data/paint readiness deadline exceeded: ' + (@{ semantics=$last; paint=$paint } | ConvertTo-Json -Compress)
+    $diagnostic = 'Native workbench content/data/paint readiness deadline exceeded: ' + (@{ semantics=$last; paint=$paint } | ConvertTo-Json -Compress -Depth 10)
     [Console]::Error.WriteLine($diagnostic)
     throw 'Native workbench readiness deadline exceeded'
   }

@@ -65,9 +65,8 @@ func Load(bundleRoot, instanceRoot string) (*Runtime, error) {
 	if e := canonicalDirectory(instanceRoot); e != nil {
 		return nil, e
 	}
-	rel, e := filepath.Rel(bundleRoot, instanceRoot)
-	if e != nil || rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..") {
-		return nil, errors.New("instance root must be outside immutable bundle")
+	if e := validateInstanceLocation(bundleRoot, instanceRoot); e != nil {
+		return nil, e
 	}
 	return &Runtime{bundleRoot: bundleRoot, instanceRoot: instanceRoot, manifest: m, identity: id, production: true, launch: launchNative, sessions: map[string]*Session{}}, nil
 }

@@ -964,6 +964,8 @@ internal/vmruntime/windows_environment.go
 internal/vmruntime/windows_environment_test.go
 internal/vmruntime/manifest.go
 internal/vmruntime/manifest_test.go
+internal/vmruntime/location_windows_test.go
+internal/vmruntime/location_windows.go
 internal/vmruntime/ownership_test.go
 internal/vmruntime/private_unix.go
 internal/vmruntime/private_windows.go
