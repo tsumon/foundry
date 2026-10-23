@@ -255,16 +255,22 @@ func request(args ...string) Request {
 // Run never invokes a script, downloads dependencies, or trusts test output
 // strings as result metadata. The future linux/arm64 image must ship Go 1.27.3.
 func Run(ctx context.Context, p Process) Result {
+	return RunForPlatform(ctx, p, "linux/arm64")
+}
+
+// RunForPlatform admits only the two pinned Linux guest toolchains. Run keeps
+// the historical arm64 contract for existing Docker evidence.
+func RunForPlatform(ctx context.Context, p Process, platform string) Result {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	r := Result{Class: "infrastructure_failed", ExitCode: -1}
-	if p == nil || ctx.Err() != nil {
+	if p == nil || ctx.Err() != nil || (platform != "linux/arm64" && platform != "linux/amd64") {
 		return r
 	}
 	version := NewOutput()
 	exit, err := p.Run(ctx, request("version"), version, version)
 	v, truncated := version.Text()
-	if err != nil || exit != 0 || truncated || v != "go version go1.27.3 linux/arm64\n" {
+	if err != nil || exit != 0 || truncated || v != "go version go1.27.3 "+platform+"\n" {
 		return r
 	}
 	out, events := NewOutput(), newEvents()
