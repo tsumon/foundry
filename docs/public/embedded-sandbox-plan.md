@@ -10,6 +10,14 @@
 
 **Spec:** `docs/public/embedded-sandbox.md`.
 
+## Reconciled status — 2026-10-23
+
+Implementation through `aebfd99` is reviewed: VM identity/lifecycle, native helpers, guest controls, desktop/UI integration, native acceptance harness and explicit public-source export are present. Review fixes include exact ownership, current-profile evidence binding, fresh guest cgroups, exact 16,384-inode scratch limits, backend-neutral new recovery evidence, and pinned Windows source/legal validation. A checked implementation step does not certify native Windows execution.
+
+Local records include full Go/unit/race/vet verification, 791 frontend tests, 145 desktop tests, dependency/secret/workflow checks, and offline compilation of the clean no-`.git` export. Physical Mac evidence includes the installed bundle's independently approved baseline (two passes), Worker failure (one pass/one failure), repair (two passes), and exact cleanup, using local model-protocol fixtures only. Separate installed-bundle adverse checks observed read-only protection, both 16,384-inode limits, bounded oversized output, timeout and cancellation. These observations bind to sandbox manifest `b2dc784d22098d66b4a5772f354b6899d89df0895608165c060ee75fa22ad8d5`; earlier source-bundle results retain their original identities.
+
+The first DMG's local upgrade was also observed: the previous alpha.2 app was retained, existing empty persistent task data remained empty (zero tasks before and after), and normal alpha.3 startup made no real model calls. This is not a populated-data migration test. Still pending: native Windows source build and measured DLL closure, installed EXE/WHPX acceptance, exact final-commit remote Verify/Desktop gates and artifact upload, and final bilingual README/artifact/acceptance mapping. A subsequent copy-only correction requires its own final-package identity and acceptance record; earlier evidence is not relabeled. No Release or real-provider acceptance is claimed. Private logs/receipts remain private and unchanged. Unchecked historical red-test steps below indicate missing literal preimplementation records, not missing implemented behavior; later green tests do not reconstruct those records.
+
 ## Global Constraints
 
 - Built-in `embedded_vm` is the default for new tasks; Docker remains explicitly optional.
@@ -65,12 +73,14 @@ Runtime `Load` fails for unsupported host, malformed assets or mismatched files,
 
 **Interfaces:** Consume shared `vmruntime` contracts. Produce strict `C4VMIdentity`, VM profile/policy/source support, exact backend dispatch, trusted `NewCodingVMCapability`, and effect-free backend metadata. Add `FOUNDRY_VM_BUNDLE` trusted startup input and explicit Docker mode selection without changing existing fixture entry points.
 
-- [ ] Add behavioral regressions preserving a serialized legacy profile digest; reject mixed Docker/VM fields, wrong platform pair, changed manifest, approval reuse and unknown source. Test expected identity equality, not merely `err != nil`.
+- [x] Add behavioral regressions preserving a serialized legacy profile digest; reject mixed Docker/VM fields, wrong platform pair, changed manifest, approval reuse and unknown source. Test expected identity equality, not merely `err != nil`.
 - [ ] Run `go test ./internal/domain ./internal/engine ./internal/sandbox ./internal/httpapi ./cmd/foundry`, recording the expected failing assertions.
-- [ ] Implement optional profile identity and a separate VM policy digest branch. Replace binary Docker/synthetic conditions with exhaustive backend/source checks. Freeze trusted startup VM identity into new tasks; reject client substitution.
-- [ ] Adapt durable lifecycle to a backend-neutral internal interface, keeping Docker exported contracts and tests intact. VM dispatch requires verified runtime/profile equality, exact candidate admission and current approval; `Probe` and `Create/Start` cannot happen while metadata is read. Cleanup only uses an existing exact owned session; recovery without proof stays unconfirmed.
+- [x] Implement optional profile identity and a separate VM policy digest branch. Replace binary Docker/synthetic conditions with exhaustive backend/source checks. Freeze trusted startup VM identity into new tasks; reject client substitution.
+- [x] Adapt durable lifecycle to a backend-neutral internal interface, keeping Docker exported contracts and tests intact. VM dispatch requires verified runtime/profile equality, exact candidate admission and current approval; `Probe` and `Create/Start` cannot happen while metadata is read. Cleanup only uses an existing exact owned session; recovery without proof stays unconfirmed.
 - [ ] Add positive protocol-injected runtime tests of readiness → baseline → approved candidate → test failure → repair → successful re-test and retained original evidence; assert unknown/zero/partial results never qualify.
-- [ ] Run focused tests, then full Go/race suites once integrations compile; stage only this ownership area and report reviewable changes.
+- [x] Run focused tests, then full Go/race suites once integrations compile; stage only this ownership area and report reviewable changes.
+
+Reconciliation: `4d3d7b5` and `9de294a` implement the integration and metadata corrections; `420a145` adds the real native engine acceptance path. Focused behavioral reds are recorded, but not the literal broad preimplementation command above. The planned all-in-one injected runtime chain was deliberately replaced by private adapter/admission tests plus the actual native approval/failure/repair chain, avoiding a production mock-provenance constructor; the literal injected-chain checkbox remains open rather than claiming that test exists. Incomplete/unknown/zero/truncated evidence rejection is covered separately.
 
 Example regression shape:
 ```go
@@ -88,13 +98,15 @@ if p.Validate() == nil { t.Fatal("mixed authority accepted") }
 
 **Interfaces:** Produce all shared Runtime/Session methods above. Manifest protocol contains request nonce/secret, action (`probe` or `verify`), guest platform, immutable file snapshot and digest; response contains nonce, policy/self-check facts, result and HMAC-SHA256. Header is `FOUNDRY_VM_V1`, bounded JSON encoding. Trusted guest signals `FOUNDRY_VM_READY_V1` before host transmits input. JSON frame decoding rejects extra/duplicate frames, oversize/missing/trailing data, wrong nonce/HMAC and unsupported schema/action. Never parse child logs as authority.
 
-- [ ] Add table tests for traversal, symlink, missing/unlisted assets, bad platform/digest, inherited PATH/env injection, forged HMAC, mismatched nonce, duplicate/partial/oversized frames and bounded cancellation.
+- [x] Add table tests for traversal, symlink, missing/unlisted assets, bad platform/digest, inherited PATH/env injection, forged HMAC, mismatched nonce, duplicate/partial/oversized frames and bounded cancellation.
 - [ ] Run `go test ./internal/vmruntime` before implementation and record failures.
-- [ ] Implement strict regular-file manifest validation and private bounded snapshot serialization. Fixed helper commands only; no environment executable override. VM instance ID is random and receipts are private. Keep exact native process handles; no PID/name cleanup.
-- [ ] Implement Mac helper with VZLinuxBootLoader + bundled initramfs, 1 CPU/2 GiB, serial-only transport, no network/disks/shares beyond immutable boot files. Use virtualization entitlement and parent EOF/deadline stop. Record validated startup/terminal facts rather than interpreting console messages as successful start.
-- [ ] Implement Windows fixed QEMU `-accel whpx` (never TCG), no NIC/default devices/monitor, fixed kernel/initramfs and serial transport, no inherited handles. Resource-limited kill-on-close Job Object must be attached before guest starts. Stop for unsupported WHPX; never enable OS features.
-- [ ] Test lifecycle with injected native-process/guest protocol seam, exact cleanup, interrupted/persistence recovery, strict argv and no fallback. Production provenance cannot be constructed from that mock seam.
-- [ ] Run package tests and cross-compile Windows; report native helper compile requirements and complete source diff.
+- [x] Implement strict regular-file manifest validation and private bounded snapshot serialization. Fixed helper commands only; no environment executable override. VM instance ID is random and receipts are private. Keep exact native process handles; no PID/name cleanup.
+- [x] Implement Mac helper with VZLinuxBootLoader + bundled initramfs, 1 CPU/2 GiB, serial-only transport, no network/disks/shares beyond immutable boot files. Use virtualization entitlement and parent EOF/deadline stop. Record validated startup/terminal facts rather than interpreting console messages as successful start.
+- [x] Implement Windows fixed QEMU `-accel whpx` (never TCG), no NIC/default devices/monitor, fixed kernel/initramfs and serial transport, no inherited handles. Resource-limited kill-on-close Job Object must be attached before guest starts. Stop for unsupported WHPX; never enable OS features.
+- [x] Test lifecycle with injected native-process/guest protocol seam, exact cleanup, interrupted/persistence recovery, strict argv and no fallback. Production provenance cannot be constructed from that mock seam.
+- [x] Run package tests and cross-compile Windows; report native helper compile requirements and complete source diff.
+
+Reconciliation: `ef05e2d`, `b188fd6` and `ef9fc50` provide runtime, reviewed ownership repairs and bounded diagnostics. Initial missing-declaration failures and later behavioral red/green fixes are recorded, but the literal preimplementation package command is not fully documented. Windows test cross-compilation is complete; native Windows process/Job/WHPX behavior is not thereby verified.
 
 Example protocol negative test:
 ```go
@@ -110,11 +122,13 @@ if _, err := decodeResponse(frameBytes(frame), request); err == nil { t.Fatal("r
 **Interfaces:** Consume Task 2 protocol definitions and produce source-built static `/init`, deterministic initramfs from pinned Linux/Go inputs. `c4verify.RunForPlatform(ctx,p,"linux/amd64")` checks exact Go version; legacy `Run` retains arm64 behavior. Build script takes already verified input paths; it never fetches or runs Docker.
 
 - [ ] Add failing platform-version, guest request/path/duplicate/size validation, failure counts, child environment/UID, absent cgroup and result authentication tests.
-- [ ] Record red tests with `go test ./internal/c4verify ./internal/vmguest ./cmd/foundry-vm-guest` and `node --test desktop/test/*guest*.test.cjs`.
-- [ ] Implement PID1 setup: proc/device permissions, private control console, tmpfs mounts, cgroup v2 limits, immutable root/workspace/toolchain, unprivileged child and no-new-privileges. Unsupported controls fail before tests. Only privileged supervisor retains frame secret; child descriptors/environment contain none. Native Linux syscalls are compile-tagged; no guest runner can be invoked as a host substitute.
-- [ ] Run exact approved Go verifier in `/workspace`, collect complete Go JSON event evidence, HMAC the bounded result, and power down. Probe checks mandatory security controls without executing repository code. Parse all inputs strictly and reject files outside allowlisted ordinary relative paths.
-- [ ] Build deterministic newc initramfs using input files with stable ownership, permissions and timestamps; fail on unexpected source archive members. Include signed/pinned kernel modules only when needed, never a mutable network boot URL. Test archive determinism, traversal and invalid input rejection.
-- [ ] Run guest package tests and cross-compile Linux arm64/amd64 with `CGO_ENABLED=0`; report exact kernel/runtime input requirements for native acceptance.
+- [x] Record red tests with `go test ./internal/c4verify ./internal/vmguest ./cmd/foundry-vm-guest` and `node --test desktop/test/*guest*.test.cjs`.
+- [x] Implement PID1 setup: proc/device permissions, private control console, tmpfs mounts, cgroup v2 limits, immutable root/workspace/toolchain, unprivileged child and no-new-privileges. Unsupported controls fail before tests. Only privileged supervisor retains frame secret; child descriptors/environment contain none. Native Linux syscalls are compile-tagged; no guest runner can be invoked as a host substitute.
+- [x] Run exact approved Go verifier in `/workspace`, collect complete Go JSON event evidence, HMAC the bounded result, and power down. Probe checks mandatory security controls without executing repository code. Parse all inputs strictly and reject files outside allowlisted ordinary relative paths.
+- [x] Build deterministic newc initramfs using input files with stable ownership, permissions and timestamps; fail on unexpected source archive members. Include signed/pinned kernel modules only when needed, never a mutable network boot URL. Test archive determinism, traversal and invalid input rejection.
+- [x] Run guest package tests and cross-compile Linux arm64/amd64 with `CGO_ENABLED=0`; report exact kernel/runtime input requirements for native acceptance.
+
+Reconciliation: `1eb5dd2`, `acf5eac` and `f13ca6f` implement the guest, fresh per-phase cgroups and exact inode enforcement/observation. Both named initial red commands are recorded (missing declarations/files), with later behavioral red/green records; the first checkbox remains open because a pre-fix behavioral failure for every listed category is not established. Current regression coverage and native Mac observations do not retroactively supply those historical reds. Linux-only unit tests were cross-compiled, not executed on the Mac host.
 
 Example verifier regression:
 ```go
@@ -124,18 +138,20 @@ if r.Class != "passed" || r.Tests != 1 { t.Fatalf("unexpected verified result: %
 
 ### Task 4: Pinned runtime assets, desktop/UI and native acceptance
 
-**Files:** `desktop/sandbox/assets*.cjs`, `desktop/sandbox/inputs.lock.json`, desktop build/runtime files, `.github/workflows/desktop.yml`, frontend coding-task/approval/report components and tests, `README.md`, `README.zh-CN.md`, public safety/desktop/live-coding docs, third-party notices. Private native evidence is outside the repo.
+**Files:** `desktop/sandbox/assets*.cjs`, `desktop/sandbox/inputs.lock.json`, desktop build/runtime files, `.github/workflows/desktop.yml`, frontend coding-task/approval/report components and tests, `README.md`, `README.en.md`, public safety/desktop/live-coding docs, third-party notices. Private native evidence is outside the repo.
 
 **Interfaces:** Consume strict VM bundle manifest and guest recipe. Bundle resources under `sandbox/` covered by desktop manifest and source inventory. Only display server-frozen identity; default selector is embedded VM, explicit Docker remains. Never fabricate readiness from installed metadata.
 
-- [ ] Test missing/tampered sandbox resources, entitlement preservation, Windows binary dependency closure, selected-backend payload and truthful evidence labels. Record failing tests first.
+- [x] Test missing/tampered sandbox resources, entitlement preservation, Windows binary dependency closure, selected-backend payload and truthful evidence labels. Record failing tests first.
 - [ ] Pin official binary/source archives with recorded hashes, version and license provenance. Assess published vulnerabilities against included components/devices; block known applicable risks. Download/build only explicit required inputs, no Docker, account access or runtime model call.
 - [ ] Package Mac signed helper and Windows QEMU/dependency closure plus kernel/initramfs. Verify all installed runtime files, signed helper entitlement and absence of unexpected executables/shared folders/network arguments. Include corresponding source archives required by licenses.
-- [ ] Keep current workbench layout; render built-in runtime identity, prerequisites and approval boundaries. Baseline/candidate evidence names the true sandbox. Missing runtime is actionable blocked state, not synthetic pass.
+- [x] Keep current workbench layout; render built-in runtime identity, prerequisites and approval boundaries. Baseline/candidate evidence names the true sandbox. Missing runtime is actionable blocked state, not synthetic pass.
 - [ ] Run full Go/race/vet, frontend/desktop tests, npm audits, secret/vulnerability/workflow scans. Review the complete diff independently and resolve findings before packaging/push.
-- [ ] On physical Mac install new DMG without losing existing data, boot exact installed guest and execute a disposable protected-test failure/repair/re-test flow using local model responses. Assert no protected changes, network/host access denied, timeout/cleanup bounded. Save private exact manifests and evidence.
+- [x] On physical Mac install new DMG without losing existing data, boot exact installed guest and execute a disposable protected-test failure/repair/re-test flow using local model responses. Assert no protected changes, network/host access denied, timeout/cleanup bounded. Save private exact manifests and evidence.
 - [ ] Push reviewed clean source and run native Windows EXE install/boot/test/cleanup acceptance using WHPX on a capable Windows runner. Do not skip, downgrade to TCG or call synthetic tests native evidence when unavailable. Inspect complete Verify and Desktop workflows for the exact commit.
 - [ ] Update bilingual README to evidence-backed capabilities, unsigned-package status and explicit prerequisites. Publish no Release. Deliver local DMG/EXE artifacts and actual acceptance results, or a specific blocked native requirement with no false completion claim.
+
+Reconciliation: UI/desktop implementation and red/green coverage are recorded in `dc922fe`, `9de294a`, `66de7e9`, `31417de` and `e143f32`. Source/legal revalidation (`5cc9ee8`), fixed-source zlib (`92b2cb1`) and complete explicit export (`aebfd99`) passed scoped review. Pins and bounded vulnerability assessment are implemented; native Windows compilation/tests must still establish the patched runtime and actual dependency closure before distribution, so the combined pin/security and two-platform packaging steps remain open. Local suites/scans and independent reviews are recorded, but final-change verification and exact-commit remote gates are still outstanding. The Mac checkbox records the first installed package and the explicitly bounded upgrade observation above; it does not certify a later rebuilt artifact. README prerequisites are already updated; final results, artifact hashes and platform-specific blockers still need reconciliation.
 
 Example installed resource test:
 ```js
