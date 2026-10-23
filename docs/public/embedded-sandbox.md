@@ -1,0 +1,77 @@
+# Built-in sandbox design
+
+Status: implementation and native acceptance required; this document is not evidence of a completed VM run.
+
+Foundry defaults new coding tasks to an application-bundled, disposable Linux VM. Docker remains an explicitly selected alternative. The workbench, repository import, protected tests, candidate generations, model context approval, plan/execute approval, and final delivery approval remain unchanged. Existing Docker and synthetic tasks retain their original backend and evidence.
+
+## Supported execution boundary
+
+| Host | Built-in runtime | Guest | Requirement |
+| --- | --- | --- | --- |
+| macOS Apple Silicon | signed native helper using Virtualization.framework | Linux arm64 | hardware virtualization and the helper virtualization entitlement |
+| Windows x64 | bundled QEMU, WHPX accelerator only | Linux amd64 | Windows Hypervisor Platform and hardware virtualization already available |
+
+There is no host-shell runner, TCG fallback, automatic Docker fallback, automatic Windows feature installation, or automatic reboot. Missing assets, unavailable virtualization, a changed manifest, and unconfirmed cleanup block execution. A user may explicitly select Docker for a new task; doing so creates different approval material. The VM is a security boundary, not a claim of immunity to hypervisor or guest-kernel vulnerabilities.
+
+The first built-in runtime supports the same bounded, committed, standard-library Go repositories as the existing controlled coding workflow. It does not claim arbitrary language/package installation, browser testing, native macOS/Windows application tests, or a general-purpose terminal. Model transport remains separately authorized; using a local test model does not turn VM evidence into model-provider evidence.
+
+## Identity and compatibility
+
+New profiles use `mode: embedded_vm`, `id: c4_go_model_v1`, and an optional `embedded_vm` identity. Its fields are `schema_version`, `manifest_digest`, `host_platform`, `guest_platform`, `runtime_digest`, `kernel_digest`, `rootfs_digest`, `verifier_digest`, `protocol`, and `policy_version`. Digests are SHA-256 hex. Protocol is `foundry-vm-v1`; policy is `go-vm-v1`. Host/guest pairs are exactly `darwin/arm64` → `linux/arm64` and `windows/amd64` → `linux/amd64`.
+
+VM profiles have empty Docker path, endpoint and image ID; mixed profiles are rejected. The startup-owned, verified bundle supplies this identity, never a browser request or model response. Existing C4 v1 JSON, policy and digest computation remain byte-compatible when `embedded_vm` is absent. A distinct VM policy participates in new profile digests. Changing runtime, kernel, guest, verifier, backend or policy invalidates approval material; old tasks are never silently upgraded.
+
+`embedded_vm_c4_control` is distinct from `docker_c4_control` and `synthetic_c4_control`. The historical `container_id` and `container_name` JSON fields remain compatibility keys for an exact VM instance handle/name; UI/report labels describe the actual backend. A VM handle is a cryptographically random 64-hex identifier, never a PID or a guessed process name.
+
+## Bundle and supply chain
+
+The application resource manifest covers every helper, runtime executable/DLL, kernel, initramfs and legal/source inventory. The VM bundle has its own strict, bounded manifest with relative regular-file paths, SHA-256 digests and exact platform/protocol/policy. Symlinks, unlisted executable files, traversal, changed binaries and inherited executable search paths are rejected. Asset verification is not a readiness probe and does not launch a VM.
+
+macOS uses Apple's system framework rather than a separately installed daemon. Windows uses a pinned QEMU release and only its required audited binary dependency closure; it does not require MSYS2 on the user's machine. Only WHPX is admitted. Upstream explicitly excludes TCG from its supported virtualization security boundary, so software emulation cannot be used to make a native acceptance gate pass.
+
+Guest inputs are pinned Linux kernel and Go 1.27.3 archives, the source-built static Foundry guest supervisor/verifier, and a deterministic initramfs recipe. Acquisition uses official project/distribution sources, fixed hashes and bounded downloads. Builds do not fetch dependencies from inside guests. Third-party licenses and corresponding source materials accompany distributed GPL components. Known applicable security issues block distribution; source URLs alone do not substitute for required corresponding source delivery.
+
+## Guest and process restrictions
+
+The runtime has no network adapter, host filesystem share, USB, clipboard, Docker socket or inherited credentials. Repository input is a bounded ordinary-file snapshot transferred over a private serial protocol, not a writable host mount. Only approved candidate bytes enter the VM. The guest supervisor creates a root-owned read-only workspace; protected tests are checked before execution and candidate digest is bound to material.
+
+The VM has one vCPU and 2 GiB RAM. The test cgroup is bounded to 1 GiB memory, 128 processes and one CPU; swap is unavailable. Test execution is UID/GID 65534 with no new privileges. The guest uses read-only toolchain/workspace, a 64 MiB noexec temporary filesystem and 256 MiB build scratch. Host runtime lifetime is at most 180 seconds; test verification is at most 120 seconds, including `go test -json -count=1 -timeout=90s ./...`. Retained output is at most 64 KiB. Dependencies, toolchain switching, workspace/module overrides and network are disabled. No repository scripts or model-provided commands run.
+
+The privileged guest supervisor owns the serial channel and launches unprivileged Go children with explicit environment and file descriptors. Child stdout/stderr are data, not control frames. A per-operation secret and nonce authenticate the final bounded result frame; neither is exposed to the test environment, command line, files or inherited descriptors. This prevents a test's printed JSON from forging a host result; it does not attest a compromised guest kernel. `/proc` and device permissions prevent unprivileged tests reading supervisor state or writing the console. Startup verifies required mounts, cgroup limits and permissions; any missing control fails closed.
+
+Native helpers have fixed invocation contracts, no shell and no arbitrary command argument. Windows binds the exact child process to a kill-on-close, resource-limited Job Object. macOS supervises the owned VM directly and stops on parent-channel closure. VM monitor interfaces are not exposed to guests or network listeners. Cancellation/deadline terminates only the exact owned instance. Persistent private instance records retain receipts, not secrets or authorization codes.
+
+## Approval and lifecycle
+
+1. New-task metadata advertises default backend, installed bundle identity and prerequisites without executing anything.
+2. Repository import freezes baseline, writable files and protected tests.
+3. Independent readiness material binds runtime identity and policy. Approval permits one real guest boot/self-check and owned shutdown, not a repository test.
+4. Baseline material binds repository digest plus fresh readiness. Approval permits one baseline execution.
+5. Model context and plan approvals remain independent. Real provider calls remain disabled until separately authorized.
+6. Candidate approval binds the exact candidate generation, profile and readiness. One execution may supply authentic failure evidence to the bounded Debugger/repair/reverification workflow; it does not grant arbitrary commands or retries after infrastructure failure.
+7. QA/Auditor and delivery gates require a complete positive test count, current candidate binding and confirmed cleanup. A display card or model statement cannot establish a pass.
+
+Durable dispatch is committed before external effects. An ambiguous start, incomplete frame, timeout, OOM, expired authority, changed asset or persistence failure stops the workflow; no automatic retry, backend change or paid API switch follows. A test failure with a complete validated event stream is distinct from infrastructure failure and may enter the existing approved repair budget.
+
+## Recovery and evidence
+
+Each real operation records backend, bundle/profile digest, host/guest platform, exact instance ID, dispatch/start/result/cleanup facts and bounded redacted diagnostics. Evidence distinguishes `local model protocol fixture` from `real built-in VM tests`. Legacy Docker evidence remains untouched.
+
+Owned process handles and runtime-generated instance identity authorize normal termination. Recovery never kills by process name or reuses a bare PID, never deletes an image/cache/project, and never declares unknown ownership cleaned. Controller interruption preserves uncertain evidence and requires explicit recovery when exact ownership or termination cannot be established. Restarts cannot replay consumed approvals. Temporary instance receipts are retained until separately scoped evidence retention applies.
+
+## Acceptance and packaging
+
+Unit/protocol tests cover platform/profile tampering, missing assets, no host fallback, unapproved actions, malformed or forged guest frames, zero/partial test counts, output overflow, cancellation, failed cleanup and restart ambiguity. Local model fixtures exercise plan → patch → failing test → repair → re-test → audit/delivery without real credentials.
+
+Native acceptance must boot the bundled guest from the installed app, show a real protected-test failure, repair only the writable file, pass re-verification, and confirm owned shutdown. It also checks forbidden host/network access and limits. macOS acceptance runs on a capable physical Apple Silicon host. Windows acceptance requires actual WHPX guest boot on a capable Windows runner; successful compilation, mocked output or installed UI smoke alone is insufficient. Hosted runners may lack supported nested virtualization; that is a blocked native gate, not permission to use TCG or skip it.
+
+DMG and EXE retain existing UI/security controls and include runtime integrity and license materials. Install, launch, persistent data preservation, workbench UI and uninstall behavior are verified. Builds remain ad-hoc/unsigned unless signing identities are separately supplied. README capability claims are updated only to the evidence obtained; real account/model acceptance remains separately unauthorized.
+
+## Primary references
+
+- [Apple Virtualization](https://developer.apple.com/documentation/virtualization/running-linux-in-a-virtual-machine)
+- [Virtualization entitlement](https://developer.apple.com/documentation/virtualization/adding-the-virtualization-entitlement-to-your-project)
+- [QEMU security boundary](https://www.qemu.org/docs/master/system/security.html)
+- [WHPX requirements](https://www.qemu.org/docs/master/system/whpx.html)
+- [QEMU distribution](https://www.qemu.org/download/)
+- [GitHub hosted runner limitations](https://docs.github.com/en/actions/concepts/runners/github-hosted-runners)
