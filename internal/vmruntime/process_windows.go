@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
@@ -19,12 +20,24 @@ import (
 type windowsProcess struct {
 	owner   *ownedProcess
 	in, out *os.File
+	stderr  *qemuCapture
 }
 
-func (p *windowsProcess) Input() io.WriteCloser    { return p.in }
-func (p *windowsProcess) Output() io.ReadCloser    { return p.out }
-func (p *windowsProcess) Terminated() bool         { return p.owner.terminatedState() }
-func (p *windowsProcess) diagnostics() nativeFacts { return p.owner.facts() }
+func (p *windowsProcess) Input() io.WriteCloser { return p.in }
+func (p *windowsProcess) Output() io.ReadCloser { return p.out }
+func (p *windowsProcess) Terminated() bool      { return p.owner.terminatedState() }
+func (p *windowsProcess) diagnostics() nativeFacts {
+	f := p.owner.facts()
+	if f.TerminationConfirmed && p.stderr != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		d, status := p.stderr.finish(ctx)
+		if f.ExitCode != nil && *f.ExitCode != 0 {
+			f.QEMU, f.DiagnosticStatus = d, status
+		}
+	}
+	return safeNativeFacts(f)
+}
 func (p *windowsProcess) Stop() error {
 	p.in.Close()
 	return p.owner.stop()
@@ -113,21 +126,22 @@ func launchNative(ctx context.Context, c command) (process nativeProcess, err er
 		return nil, e
 	}
 	defer childOut.Close()
-	null, e := os.OpenFile("NUL", os.O_WRONLY, 0)
+	parentErr, childErr, e := os.Pipe()
 	if e != nil {
 		parentIn.Close()
 		parentOut.Close()
 		return nil, e
 	}
-	defer null.Close()
+	defer childErr.Close()
 	defer func() {
 		if !owned {
 			parentIn.Close()
 			parentOut.Close()
+			parentErr.Close()
 		}
 	}()
 	stage = "handle_list"
-	handles := []windows.Handle{windows.Handle(childIn.Fd()), windows.Handle(childOut.Fd()), windows.Handle(null.Fd())}
+	handles := []windows.Handle{windows.Handle(childIn.Fd()), windows.Handle(childOut.Fd()), windows.Handle(childErr.Fd())}
 	for _, h := range handles {
 		if e = windows.SetHandleInformation(h, windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT); e != nil {
 			return nil, e
@@ -173,7 +187,7 @@ func launchNative(ctx context.Context, c command) (process nativeProcess, err er
 	// Transfer ownership immediately after CreateProcess, not after admission.
 	// Every post-create failure returns this exact owner to Session.Start.
 	owned = true
-	p := &windowsProcess{owner: &ownedProcess{process: uintptr(pi.Process), job: uintptr(job), calls: windowsOwnedCalls()}, in: parentIn, out: parentOut}
+	p := &windowsProcess{owner: &ownedProcess{process: uintptr(pi.Process), job: uintptr(job), calls: windowsOwnedCalls()}, in: parentIn, out: parentOut, stderr: newQEMUCapture(parentErr)}
 	// No guest instruction executes before successful Job assignment.
 	if e = p.owner.admit(ctx, uintptr(pi.Thread)); e != nil {
 		return p, e

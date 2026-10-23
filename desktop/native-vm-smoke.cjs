@@ -313,6 +313,7 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
         "admission_stage",
         "native_error_code",
         "helper",
+        "qemu",
       ];
       keys(native, [
         "termination_confirmed",
@@ -360,6 +361,32 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
           ].includes(native.admission_stage),
         );
         facts.admission_stage = native.admission_stage;
+      }
+      if (Object.hasOwn(native, "qemu")) {
+        assert.equal(native.termination_confirmed, true);
+        assert.ok(native.exit_code > 0);
+        assert.equal(native.diagnostic_status, "valid");
+        keys(native.qemu, ["codes"]);
+        const codes = native.qemu.codes;
+        assert.ok(
+          Array.isArray(codes) && codes.length > 0 && codes.length <= 8,
+        );
+        assert.equal(new Set(codes).size, codes.length);
+        assert.ok(
+          codes.every((code) =>
+            [
+              "machine_property",
+              "whpx_partition",
+              "whpx_initialization",
+              "firmware",
+              "character_device",
+              "cpu_model",
+              "memory_allocation",
+              "option",
+            ].includes(code),
+          ),
+        );
+        facts.qemu = { codes: [...codes] };
       }
       terminals.push(facts);
     }

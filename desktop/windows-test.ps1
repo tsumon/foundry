@@ -15,6 +15,7 @@ Checked 'go' @('test', '-run', '^$', './...')
 Checked 'go' @('test', '-count=1', './internal/platformfs', './internal/gitinspect', './internal/tools', './internal/workspace', './internal/evidence', './internal/repositorytask', './internal/desktophost', './internal/keychaincheck')
 Checked 'go' @('test', '-count=1', './internal/store', '-run', '^TestWindows')
 Checked 'go' @('test', '-count=1', './internal/sandbox', '-run', '^TestWindows')
+Checked 'go' @('test', '-count=1', './internal/vmruntime', '-run', '^Test(Windows|QEMU)')
 Checked 'go' @('test', '-count=1', './internal/model', '-run', '^Test(CredentialManager|WindowsSecret)')
 Checked 'go' @('test', '-count=1', './cmd/foundry', '-run', 'Test(Desktop|DataDirectoryLock|LockProcessCrash|Windows)')
 # Actual SQLite/controller source import, multi-file repair, export, explicit

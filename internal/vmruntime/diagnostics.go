@@ -27,6 +27,7 @@ type nativeFacts struct {
 	NativeErrorCode      *int64            `json:"native_error_code,omitempty"`
 	DiagnosticStatus     string            `json:"diagnostic_status"`
 	Helper               *helperDiagnostic `json:"helper,omitempty"`
+	QEMU                 *qemuDiagnostic   `json:"qemu,omitempty"`
 }
 type diagnosticBuffer struct {
 	mu       sync.Mutex
@@ -107,6 +108,10 @@ func safeNativeFacts(f nativeFacts) nativeFacts {
 		f.Helper = nil
 		f.DiagnosticStatus = "rejected"
 	}
+	if f.QEMU != nil && (!f.TerminationConfirmed || f.ExitCode == nil || *f.ExitCode == 0 || f.DiagnosticStatus != "valid" || !validQEMUDiagnostic(*f.QEMU)) {
+		f.QEMU = nil
+		f.DiagnosticStatus = "rejected"
+	}
 	return f
 }
 func processDiagnostics(p nativeProcess) nativeFacts {
@@ -142,6 +147,9 @@ func withNativeFacts(e error, f nativeFacts) error {
 		}
 	}
 	if f.DiagnosticStatus != "absent" {
+		if f.QEMU != nil {
+			parts = append(parts, "qemu="+strings.Join(f.QEMU.Codes, ","))
+		}
 		parts = append(parts, "diagnostics="+f.DiagnosticStatus)
 	}
 	return fmt.Errorf("%w; %s", e, strings.Join(parts, " "))

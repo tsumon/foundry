@@ -392,6 +392,7 @@ test("failed native gate reports its stage and only exact-run typed terminal fac
   assert.equal(JSON.parse(fs.readFileSync(options.reportFile)).passed, false);
 });
 test("native failure diagnostics do not follow linked instance receipts or retain invalid native fields", (t) => {
+  // These facts cannot turn a failed authenticated guest gate into success.
   for (const mutate of [
     ({ instance, terminal }) => {
       terminal.ID = "f".repeat(64);
@@ -455,6 +456,45 @@ test("native failure diagnostics do not follow linked instance receipts or retai
     const { diagnostic } = failureFixture(t, mutate);
     assert.equal(diagnostic?.terminal_status, "rejected");
     assert.deepEqual(diagnostic.terminals, []);
+    assert.doesNotMatch(JSON.stringify(diagnostic), /PRIVATE_SENTINEL/);
+  }
+});
+test("QEMU diagnostics expose only fixed failure categories after confirmed nonzero termination", (t) => {
+  for (const invalid of [
+    false,
+    "unknown",
+    "extra",
+    "duplicate",
+    "success",
+    "unconfirmed",
+    "status",
+  ]) {
+    const { diagnostic } = failureFixture(t, ({ instance, terminal }) => {
+      terminal.native.diagnostic_status = "valid";
+      terminal.native.qemu = { codes: ["machine_property"] };
+      if (invalid === "unknown")
+        terminal.native.qemu.codes = ["PRIVATE_SENTINEL"];
+      if (invalid === "extra")
+        terminal.native.qemu.message = "PRIVATE_SENTINEL";
+      if (invalid === "duplicate")
+        terminal.native.qemu.codes.push("machine_property");
+      if (invalid === "success") terminal.native.exit_code = 0;
+      if (invalid === "unconfirmed")
+        terminal.native.termination_confirmed = false;
+      if (invalid === "status") terminal.native.diagnostic_status = "absent";
+      fs.writeFileSync(
+        path.join(instance, "terminal.json"),
+        JSON.stringify(terminal),
+      );
+    });
+    assert.equal(
+      diagnostic.terminal_status,
+      invalid ? "rejected" : "available",
+    );
+    if (!invalid)
+      assert.deepEqual(diagnostic.terminals[0].qemu, {
+        codes: ["machine_property"],
+      });
     assert.doesNotMatch(JSON.stringify(diagnostic), /PRIVATE_SENTINEL/);
   }
 });

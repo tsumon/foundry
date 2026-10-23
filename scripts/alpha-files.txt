@@ -946,7 +946,10 @@ internal/vmguest/scratch.go
 internal/vmguest/scratch_test.go
 internal/vmruntime/diagnostics.go
 internal/vmruntime/diagnostics_darwin_test.go
+internal/vmruntime/diagnostics_qemu.go
+internal/vmruntime/diagnostics_qemu_test.go
 internal/vmruntime/diagnostics_test.go
+internal/vmruntime/diagnostics_windows_test.go
 internal/vmruntime/manifest.go
 internal/vmruntime/manifest_test.go
 internal/vmruntime/ownership_test.go

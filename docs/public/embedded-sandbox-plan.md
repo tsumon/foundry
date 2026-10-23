@@ -183,6 +183,18 @@ assert.throws(() => verifyResources(bundle, expectedManifestHash), /integrity/);
 
 ## Completion gate
 
+Run 39939245820 confirms WHPX availability on its runner, but the installed
+QEMU process still exits1 during readiness after native Job admission; termination
+is confirmed. Windows currently discards stderr, so no runtime cause is inferred.
+Capture that independent channel in the existing bounded diagnostic buffer,
+drain it without blocking the guest serial channel, and discard raw bytes after
+projecting only fixed diagnostic categories. Do not log text, paths or arguments.
+Tie the categories to a confirmed nonzero process exit; they cannot establish
+readiness, results or cleanup. Keep suspended creation, exact handle ownership,
+Job limits, no host/TCG fallback and artifact gates unchanged. Regression covers
+overflow, private text, malformed metadata, pipe closure and native Windows
+child failure; run full local tests/review before the next native CI attempt.
+
 Run 39938536363 stopped in the capability probe after its 15-second cold-start
 budget, without a capability result. This is not evidence of absent WHPX.
 Retain the fail-closed gate; add bounded ordered startup/compiled/queried markers
