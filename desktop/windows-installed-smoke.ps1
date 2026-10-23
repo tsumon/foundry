@@ -106,6 +106,7 @@ public static class FoundryWindow {
     return $handle
   }
   $ui = Start-Process -FilePath $app -PassThru
+  $uiFailure = $null
   try {
     $firstReady = Wait-Window $ui 'Foundry — Persistent Workbench' 'persistent' 'windows-ui.png'
     [FoundryWindow]::SetForegroundWindow($ui.MainWindowHandle) | Out-Null
@@ -134,8 +135,14 @@ public static class FoundryWindow {
     $restartReady = Wait-Window $ui 'Foundry — Persistent Workbench' 'persistent' 'windows-ui-restart.png'
     if (-not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash) { throw 'Native restart changed retained coding data' }
     if (-not $ui.CloseMainWindow() -or -not $ui.WaitForExit(15000)) { throw 'Native restart quit failed' }
+  } catch {
+    $uiFailure = $_
+    throw
   } finally {
-    if ($ui -and -not $ui.HasExited) { $ui.Kill(); $ui.WaitForExit(); throw 'UI acceptance required forced cleanup; gate failed' }
+    if ($ui -and -not $ui.HasExited) {
+      try { $ui.Kill(); $ui.WaitForExit() } catch { if ($null -eq $uiFailure) { throw } }
+      if ($null -eq $uiFailure) { throw 'UI acceptance required forced cleanup; gate failed' }
+    }
   }
   $uninstaller = Join-Path $installed 'Uninstall Foundry.exe'
   if (-not (Test-Path $uninstaller)) { throw 'Per-user uninstaller missing' }

@@ -3,6 +3,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 const { codingWorkbenchReadiness } = require("../windows-ui-ready.cjs");
 const { modeActionReceipt } = require("../windows-ui-mode.cjs");
 
@@ -232,6 +233,71 @@ test("native Foundry menu lookup uses the pinned popup-button role under the own
     source,
     /SendKeys|keybd_event|mouse_event|ClickablePoint|FromPoint|executeJavaScript/,
   );
+});
+
+function runNativeModeDriver({ elapsedMs, action = "coding" }) {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../windows-ui-mode.cjs"),
+    "utf8",
+  );
+  let stdout = "";
+  const module = { exports: {} };
+  const requireForDriver = (specifier) => {
+    if (specifier === "node:child_process")
+      return {
+        execFileSync(_file, _args, options) {
+          if (elapsedMs > options.timeout) {
+            const error = new Error("simulated native driver timeout");
+            error.code = "ETIMEDOUT";
+            throw error;
+          }
+          return JSON.stringify({
+            action,
+            processId: 42,
+            window: "5678",
+            menu: true,
+            confirmation: action === "coding",
+            fixedExplanation: action === "coding",
+            destination: true,
+            createForm: action === "coding",
+            codingSection: action === "coding",
+          });
+        },
+      };
+    if (specifier === "node:path") return path.win32;
+    throw new Error(`unexpected module: ${specifier}`);
+  };
+  requireForDriver.main = module;
+  const processForDriver = {
+    argv: ["node", "windows-ui-mode.cjs", "1234", "42", action],
+    env: { SystemRoot: "C:\\Windows" },
+    platform: "win32",
+    stdout: { write(value) { stdout += value; } },
+    exitCode: 0,
+    exit(code) { throw new Error(`unexpected process.exit(${code})`); },
+  };
+  vm.runInNewContext(source, {
+    __dirname: "C:\\Foundry\\desktop",
+    module,
+    exports: module.exports,
+    require: requireForDriver,
+    process: processForDriver,
+    JSON,
+    Number,
+    Error,
+  });
+  return { output: JSON.parse(stdout), exitCode: processForDriver.exitCode };
+}
+
+test("native mode outer deadline admits the bounded coding path and rejects runaway work", () => {
+  assert.deepEqual(runNativeModeDriver({ elapsedMs: 110_000 }), {
+    output: { ok: true, action: "coding", window: "5678" },
+    exitCode: 0,
+  });
+  assert.deepEqual(runNativeModeDriver({ elapsedMs: 121_000 }), {
+    output: { ok: false, action: "coding", snapshotAvailable: false },
+    exitCode: 1,
+  });
 });
 
 test("native Windows gate runs the focused coding and fake credential suites", () => {

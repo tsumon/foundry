@@ -9,6 +9,184 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Native
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName Accessibility
+$accessibilityAssembly = [Accessibility.IAccessible].Assembly.Location
+Add-Type -ReferencedAssemblies @($accessibilityAssembly) -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using Accessibility;
+
+public static class FoundryMsaaMenu {
+  public const int MaxNodes = 2048;
+  public const int MaxDepth = 16;
+  private const uint OBJID_CLIENT = unchecked((uint)-4);
+  private const int CHILDID_SELF = 0;
+  private const int ROLE_SYSTEM_MENUBAR = 0x02;
+  private const int ROLE_SYSTEM_DOCUMENT = 0x0F;
+  private const int ROLE_SYSTEM_BUTTONMENU = 0x39;
+  private const int STATE_SYSTEM_UNAVAILABLE = 0x00000001;
+  private const int STATE_SYSTEM_INVISIBLE = 0x00008000;
+  private const int STATE_SYSTEM_OFFSCREEN = 0x00010000;
+  private static readonly Guid IID_IAccessible =
+      new Guid("618736E0-3C3D-11CF-810C-00AA00389B71");
+
+  [DllImport("oleacc.dll", ExactSpelling = true)]
+  private static extern int AccessibleObjectFromWindow(
+      IntPtr window, uint objectId, ref Guid interfaceId,
+      [MarshalAs(UnmanagedType.Interface)] out IAccessible accessible);
+
+  [DllImport("oleacc.dll", ExactSpelling = true)]
+  private static extern int AccessibleChildren(
+      IAccessible container, int childStart, int childCount,
+      [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] object[] children,
+      out int obtained);
+
+  [DllImport("user32.dll", ExactSpelling = true)]
+  private static extern uint GetWindowThreadProcessId(
+      IntPtr window, out uint processId);
+
+  private sealed class Candidate {
+    internal readonly IAccessible Owner;
+    internal readonly object ChildId;
+
+    internal Candidate(IAccessible owner, object childId) {
+      Owner = owner;
+      ChildId = childId;
+    }
+  }
+
+  private sealed class Search {
+    internal readonly double Left;
+    internal readonly double Top;
+    internal readonly double Width;
+    internal readonly double Height;
+    internal readonly List<Candidate> Matches = new List<Candidate>();
+    internal int Nodes;
+
+    internal Search(double left, double top, double width, double height) {
+      Left = left;
+      Top = top;
+      Width = width;
+      Height = height;
+    }
+  }
+
+  public static void Invoke(
+      IntPtr window, int expectedProcessId,
+      double left, double top, double width, double height) {
+    uint actualProcessId;
+    if (GetWindowThreadProcessId(window, out actualProcessId) == 0 ||
+        actualProcessId != (uint)expectedProcessId) {
+      throw new InvalidOperationException("MSAA window ownership mismatch");
+    }
+    if (!Finite(left) || !Finite(top) || !Finite(width) || !Finite(height) ||
+        width <= 0 || height <= 0) {
+      throw new InvalidOperationException("MSAA target bounds invalid");
+    }
+
+    IAccessible root;
+    Guid interfaceId = IID_IAccessible;
+    int result = AccessibleObjectFromWindow(
+        window, OBJID_CLIENT, ref interfaceId, out root);
+    if (result < 0 || root == null) {
+      throw new InvalidOperationException("MSAA client root unavailable");
+    }
+
+    Search search = new Search(left, top, width, height);
+    Walk(root, 0, -1, search);
+    if (search.Matches.Count != 1) {
+      throw new InvalidOperationException("MSAA Foundry menu target unavailable or ambiguous");
+    }
+    try {
+      search.Matches[0].Owner.accDoDefaultAction(search.Matches[0].ChildId);
+    } catch {
+      throw new InvalidOperationException("MSAA Foundry menu action failed");
+    }
+  }
+
+  private static void Walk(
+      IAccessible accessible, int depth, int parentRole, Search search) {
+    int role = Inspect(accessible, CHILDID_SELF, parentRole, search);
+    // The application menu is a native Views sibling of the renderer document.
+    // Do not traverse arbitrary web content while resolving that native menu.
+    if (role == ROLE_SYSTEM_DOCUMENT) return;
+    int childCount;
+    try {
+      childCount = accessible.accChildCount;
+    } catch {
+      return;
+    }
+    if (childCount < 0 || childCount > MaxNodes) {
+      throw new InvalidOperationException("MSAA menu tree exceeds bound");
+    }
+    if (childCount == 0) return;
+    if (depth >= MaxDepth) {
+      throw new InvalidOperationException("MSAA menu tree exceeds depth bound");
+    }
+
+    object[] children = new object[childCount];
+    int obtained;
+    int result = AccessibleChildren(
+        accessible, 0, childCount, children, out obtained);
+    if (result < 0 || obtained < 0 || obtained > childCount) {
+      throw new InvalidOperationException("MSAA menu children unavailable");
+    }
+    for (int index = 0; index < obtained; index++) {
+      IAccessible child = children[index] as IAccessible;
+      if (child != null) {
+        Walk(child, depth + 1, role, search);
+      } else if (children[index] is int) {
+        Inspect(accessible, children[index], role, search);
+      }
+    }
+  }
+
+  private static int Inspect(
+      IAccessible owner, object childId, int parentRole, Search search) {
+    search.Nodes++;
+    if (search.Nodes > MaxNodes) {
+      throw new InvalidOperationException("MSAA menu tree exceeds bound");
+    }
+    try {
+      int role = Convert.ToInt32(owner.get_accRole(childId));
+      if (parentRole != ROLE_SYSTEM_MENUBAR ||
+          role != ROLE_SYSTEM_BUTTONMENU ||
+          !String.Equals(owner.get_accName(childId), "Foundry",
+                         StringComparison.Ordinal)) {
+        return role;
+      }
+      int state = Convert.ToInt32(owner.get_accState(childId));
+      int blocked = STATE_SYSTEM_UNAVAILABLE |
+                    STATE_SYSTEM_INVISIBLE |
+                    STATE_SYSTEM_OFFSCREEN;
+      if ((state & blocked) != 0) return role;
+      string defaultAction = owner.get_accDefaultAction(childId);
+      if (String.IsNullOrWhiteSpace(defaultAction)) return role;
+      int actualLeft, actualTop, actualWidth, actualHeight;
+      owner.accLocation(out actualLeft, out actualTop,
+                        out actualWidth, out actualHeight, childId);
+      if (Same(actualLeft, search.Left) &&
+          Same(actualTop, search.Top) &&
+          Same(actualWidth, search.Width) &&
+          Same(actualHeight, search.Height)) {
+        search.Matches.Add(new Candidate(owner, childId));
+      }
+      return role;
+    } catch {
+      return -1;
+    }
+  }
+
+  private static bool Same(int actual, double expected) {
+    return Math.Abs(actual - expected) < 0.5;
+  }
+
+  private static bool Finite(double value) {
+    return !Double.IsNaN(value) && !Double.IsInfinity(value);
+  }
+}
+'@
 
 function Owned-Elements {
   $condition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
@@ -98,16 +276,6 @@ function Invoke-Exact([object]$Element) {
   ([System.Windows.Automation.InvokePattern]$pattern).Invoke()
 }
 
-function Expand-Exact([object]$Element) {
-  if ($null -eq $Element) { throw 'Required menu unavailable' }
-  $pattern = $null
-  if ($Element.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {
-    ([System.Windows.Automation.ExpandCollapsePattern]$pattern).Expand()
-    return
-  }
-  Invoke-Exact $Element
-}
-
 function Scroll-IntoViewExact([object]$Element) {
   if ($null -eq $Element) { throw 'Required coding section unavailable' }
   if (Coding-SectionAnchorsVisible $Element) { return }
@@ -165,7 +333,7 @@ function Find-FoundryMenuButton([object]$Root) {
       $bar.IsOffscreen
     ) { continue }
     $children = $menuBar.FindAll(
-      [System.Windows.Automation.TreeScope]::Descendants,
+      [System.Windows.Automation.TreeScope]::Children,
       [System.Windows.Automation.Condition]::TrueCondition
     )
     if ($children.Count -gt 256) { throw 'Menu bar UI tree exceeds bound' }
@@ -195,6 +363,30 @@ function Wait-FoundryMenuButton([object]$Root, [int]$Seconds) {
   }
   Write-OwnedMenuDiagnostic
   throw 'Required Foundry popup button unavailable'
+}
+
+function Invoke-FoundryMenuExact([object]$Root, [object]$Element) {
+  $fresh = Find-FoundryMenuButton $Root
+  if ($null -eq $fresh -or -not [System.Windows.Automation.Automation]::Compare($Element, $fresh)) {
+    throw 'Foundry menu identity changed before action'
+  }
+  $current = $fresh.Current
+  if (
+    $current.ProcessId -ne $OwnerProcess -or
+    $current.ControlType -ne [System.Windows.Automation.ControlType]::Button -or
+    $current.Name -cne 'Foundry' -or
+    -not $current.IsEnabled -or
+    $current.IsOffscreen
+  ) { throw 'Foundry menu state changed before action' }
+  $bounds = $current.BoundingRectangle
+  [FoundryMsaaMenu]::Invoke(
+    [IntPtr]$WindowHandle,
+    $OwnerProcess,
+    $bounds.Left,
+    $bounds.Top,
+    $bounds.Width,
+    $bounds.Height
+  )
 }
 
 function Write-OwnedMenuDiagnostic {
@@ -285,7 +477,7 @@ if ($null -eq $root -or $root.Current.ProcessId -ne $OwnerProcess) { throw 'Wind
 $expectedSource = if ($Action -eq 'coding') { 'Foundry — Persistent Workbench' } else { 'Foundry — Controlled Coding Workbench' }
 if ($root.Current.Name -cne $expectedSource) { throw 'Unexpected native mode source' }
 $foundry = Wait-FoundryMenuButton $root 5
-Expand-Exact $foundry
+Invoke-FoundryMenuExact $root $foundry
 $targetName = if ($Action -eq 'coding') { 'Controlled Coding Workbench' } else { 'Persistent Workbench' }
 $target = Wait-OwnedExact ([System.Windows.Automation.ControlType]::MenuItem) $targetName 5
 Invoke-Exact $target

@@ -60,7 +60,7 @@ if (require.main === module) {
       ],
       {
         encoding: "utf8",
-        timeout: 45000,
+        timeout: 120000,
         maxBuffer: 64 * 1024,
         windowsHide: true,
       },
