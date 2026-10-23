@@ -7,6 +7,30 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFileSync, spawnSync } = require("node:child_process");
 
+function removeCryptoImport(source) {
+  const mutated = source.replace(
+    /^const crypto = require\("node:crypto"\);\r?\n/m,
+    "",
+  );
+  assert.notEqual(mutated, source, "crypto import mutation must change source");
+  return mutated;
+}
+
+test("crypto import mutation is exact across LF and CRLF source", () => {
+  for (const newline of ["\n", "\r\n"]) {
+    const source = [
+      '"use strict";',
+      'const crypto = require("node:crypto");',
+      'const fs = require("node:fs");',
+      "",
+    ].join(newline);
+    assert.equal(
+      removeCryptoImport(source),
+      ['"use strict";', 'const fs = require("node:fs");', ""].join(newline),
+    );
+  }
+});
+
 test("installed smoke hashing executes in its real CommonJS module scope", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "foundry-smoke-module-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -35,8 +59,7 @@ test("installed smoke hashing executes in its real CommonJS module scope", (t) =
 
   const source = fs.readFileSync(modulePath, "utf8");
   assert.match(source, /const crypto = require\("node:crypto"\);/);
-  const withoutImport = source
-    .replace('const crypto = require("node:crypto");\n', "")
+  const withoutImport = removeCryptoImport(source)
     .replace(
       'require("./runtime.cjs")',
       `require(${JSON.stringify(path.join(__dirname, "../runtime.cjs"))})`,

@@ -107,7 +107,7 @@ Commands: `npm test -- --run` and `npm run build` in `web/`.
   task admission, legacy bypasses, recovery and credential dispatch boundaries.
 - [x] Full Go tests, race tests, vet, frontend and desktop tests; secret/dependency
   scans and workflow checks without lowering their standards.
-- [ ] Build Mac installer; test the installed app in a fresh private data location
+- [x] Build Mac installer; test the installed app in a fresh private data location
   with local inputs. Keep screenshots and detailed evidence outside the repository.
 - [ ] Commit only reviewed source/public documents, push to `tsumon/foundry`, and
   inspect both Verify and Desktop packages workflows for that exact commit.
