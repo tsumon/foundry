@@ -9,7 +9,7 @@ function createCodingMenuItem(dialog, launch) {
         title: "Open Controlled Coding Workbench?",
         message: "Open live coding configuration?",
         detail:
-          "This enables configuration only. It makes no model calls and runs no Docker commands. Import, model use, Docker execution, and delivery require separate approvals inside the workbench.",
+          "This opens configuration only. It starts no VM, runs no Docker commands, and makes no model calls. Sandbox readiness, testing, import, model use, and delivery require their own approvals inside the workbench.",
         buttons: ["Open Coding Workbench", "Cancel"],
         defaultId: 1,
         cancelId: 1,

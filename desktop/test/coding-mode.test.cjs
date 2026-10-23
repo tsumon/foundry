@@ -20,9 +20,14 @@ test("controlled coding menu explains configuration-only authority and launches 
   await item.click();
   assert.equal(calls.length, 1);
   assert.match(calls[0].message, /configuration/i);
-  assert.match(calls[0].detail, /no model calls/i);
-  assert.match(calls[0].detail, /no Docker commands/i);
-  assert.match(calls[0].detail, /separate approvals/i);
+  assert.match(calls[0].detail, /configuration only/i);
+  assert.match(calls[0].detail, /starts no VM/i);
+  assert.match(calls[0].detail, /runs no Docker commands/i);
+  assert.match(calls[0].detail, /makes no model calls/i);
+  assert.match(
+    calls[0].detail,
+    /Sandbox readiness, testing, import, model use, and delivery require their own approvals/i,
+  );
   assert.deepEqual(launches, [["coding"]]);
 });
 
