@@ -37,6 +37,7 @@ type missionMCPSelection struct {
 // Profiles are display-only; explicit settings remain the profile-edit surface.
 type SafeMissionView struct {
 	domain.Mission
+	C4ProfileBinding          *c4ProfileBinding                 `json:"c4_profile_binding,omitempty"`
 	ModelSnapshot             *safeMissionModelSnapshot         `json:"model_snapshot,omitempty"`
 	ModelSnapshotStatus       string                            `json:"model_snapshot_status,omitempty"`
 	ModelPolicySnapshot       *domain.MissionRolePolicySnapshot `json:"model_policy_snapshot,omitempty"`
@@ -47,7 +48,26 @@ type SafeMissionView struct {
 	ModelRuntime              *modelRuntimeView                 `json:"model_runtime,omitempty"`
 }
 
+// Response-only display binding; never persisted, accepted as consent, or used
+// by action gates. The detached profile ties its canonical digest to this view.
+type c4ProfileBinding struct {
+	Revision int64            `json:"revision"`
+	Profile  domain.C4Profile `json:"profile"`
+	Digest   string           `json:"digest"`
+}
+
+func missionC4ProfileBinding(m domain.Mission) *c4ProfileBinding {
+	if m.Revision < 1 || m.Spec.C4 == nil || m.Spec.C4.Mode != "embedded_vm" || m.Spec.C4.Validate() != nil {
+		return nil
+	}
+	p := *m.Spec.C4
+	identity := *p.EmbeddedVM
+	p.EmbeddedVM = &identity
+	return &c4ProfileBinding{Revision: m.Revision, Profile: p, Digest: p.ProfileDigest()}
+}
+
 func (s *server) missionView(m domain.Mission) (any, error) {
+	binding := missionC4ProfileBinding(m)
 	v2 := domain.IsResearchFlowV2(m.WorkspaceMode, m.ToolMode)
 	_, accountBound, _ := domain.BaseWorkspaceMode(m.WorkspaceMode)
 	accountData := accountBound || m.ModelSnapshot != nil || m.ModelSnapshotInvalid
@@ -56,9 +76,15 @@ func (s *server) missionView(m domain.Mission) (any, error) {
 		accountData = accountData || p.AccountID != "" || p.AccountRevision != 0 || p.CredentialVersion != 0
 	}
 	if !v2 && m.MCPBindings == nil && !accountData && !policyData {
+		if binding != nil {
+			return struct {
+				domain.Mission
+				C4ProfileBinding *c4ProfileBinding `json:"c4_profile_binding"`
+			}{m, binding}, nil
+		}
 		return m, nil
 	}
-	view := SafeMissionView{Mission: m, Profiles: map[domain.Role]displayProfile{}}
+	view := SafeMissionView{Mission: m, C4ProfileBinding: binding, Profiles: map[domain.Role]displayProfile{}}
 	view.Mission.MCPBindings = nil
 	view.Mission.ModelSnapshot = nil
 	view.Mission.ModelPolicySnapshot = nil

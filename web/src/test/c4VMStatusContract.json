@@ -1,0 +1,11 @@
+{
+  "read_only": false,
+  "simulation": false,
+  "real_execution": true,
+  "control": {
+    "available": true,
+    "structurally_available": true,
+    "source_kind": "embedded_vm_c4_control",
+    "expired": false
+  }
+}

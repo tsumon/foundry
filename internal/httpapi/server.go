@@ -305,7 +305,7 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 			"c4_control":         control,
 			"model_runtime":      s.modelRuntimeView(),
 			"capabilities": map[string]bool{
-				"c4_simulation": s.engine.C4SimulationEnabled(), "c4_real_execution": control.SourceKind == "docker_c4_control" && !control.Expired,
+				"c4_simulation": s.engine.C4SimulationEnabled(), "c4_real_execution": c4RealExecution(control.SourceKind, control.Expired, s.recoveryReadOnly),
 				"c4_controlled_simulation": control.SourceKind == "synthetic_c4_control" && !control.Expired,
 				"account_management":       !s.c4ControlledOnly, "credential_versions": !s.c4ControlledOnly, "model_snapshots": true,
 				"provider_login": false, "account_inference": false, "automatic_paid_fallback": false,

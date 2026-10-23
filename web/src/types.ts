@@ -805,6 +805,11 @@ export interface Delivery {
   created_at: string;
 }
 export interface Mission {
+  c4_profile_binding?: {
+    revision: number;
+    profile: import("./c4").C4Profile;
+    digest: string;
+  };
   c4_operations?: import("./c4").C4Operation[];
   c4_controls?: import("./c4").C4Control[];
   import_version?: number;

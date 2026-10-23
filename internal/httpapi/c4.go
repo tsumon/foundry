@@ -54,6 +54,10 @@ type c4Request struct {
 	ContainerID    string `json:"container_id,omitempty"`
 }
 
+func c4RealExecution(source string, expired, readOnly bool) bool {
+	return !expired && !readOnly && (source == "docker_c4_control" || source == "embedded_vm_c4_control")
+}
+
 func (s *server) c4(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method == http.MethodGet {
 		m, err := s.store.GetMission(id)
@@ -67,7 +71,7 @@ func (s *server) c4(w http.ResponseWriter, r *http.Request, id string) {
 			available = control.StructurallyAvailable
 		}
 		readOnly := s.recoveryReadOnly || !available
-		writeJSON(w, http.StatusOK, map[string]any{"mission_id": id, "revision": m.Revision, "profile": m.Spec.C4, "operations": m.C4Operations, "controls": m.C4Controls, "control": control, "read_only": readOnly, "simulation": s.engine.C4SimulationEnabled() && !readOnly, "real_execution": control.SourceKind == "docker_c4_control" && !control.Expired && !s.recoveryReadOnly})
+		writeJSON(w, http.StatusOK, map[string]any{"mission_id": id, "revision": m.Revision, "profile": m.Spec.C4, "operations": m.C4Operations, "controls": m.C4Controls, "control": control, "read_only": readOnly, "simulation": s.engine.C4SimulationEnabled() && !readOnly, "real_execution": c4RealExecution(control.SourceKind, control.Expired, s.recoveryReadOnly)})
 		return
 	}
 	if r.Method != http.MethodPost {

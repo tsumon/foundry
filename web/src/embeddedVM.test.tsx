@@ -3,6 +3,8 @@ import { useCallback, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   c4BaselinePassed,
+  c4CandidatePassed,
+  c4ReadinessFresh,
   c4ControlSource,
   c4OperationLabel,
   c4Supported,
@@ -11,7 +13,13 @@ import {
 } from "./c4";
 import { decisionMaterial } from "./decisionMaterials";
 import { parseCodingTaskCapability } from "./codingTaskApi";
-import { c4Mission, c4Operation, c4Profile } from "./test/c4Fixtures";
+import {
+  c4CandidateOperation,
+  c4Mission,
+  c4Operation,
+  c4Profile,
+} from "./test/c4Fixtures";
+import vmStatusContract from "./test/c4VMStatusContract.json";
 import {
   CodingTaskSetup,
   type CodingTaskSelection,
@@ -78,7 +86,15 @@ const metadata = {
     "delivery",
   ],
 };
-const vmMission = { ...c4Mission, spec: { ...c4Mission.spec, c4: profile } };
+const vmMission = {
+  ...c4Mission,
+  spec: { ...c4Mission.spec, c4: profile },
+  c4_profile_binding: {
+    revision: c4Mission.revision,
+    profile: structuredClone(profile),
+    digest: c4Operation.profile_digest,
+  },
+};
 afterEach(() => vi.restoreAllMocks());
 
 it("accepts server-frozen VM metadata and keeps missing bundle blocked without discarding Docker choice", () => {
@@ -253,13 +269,9 @@ it("permits explicit VM readiness preparation with real execution metadata but n
     revision: m.revision,
     profile,
     operations: [],
-    read_only: false,
-    simulation: false,
-    real_execution: true,
+    ...vmStatusContract,
     control: {
-      available: true,
-      structurally_available: true,
-      source_kind: "embedded_vm_c4_control",
+      ...vmStatusContract.control,
       activation_digest: "f".repeat(64),
       expires_at: new Date(Date.now() + 600000).toISOString(),
       expired: false,
@@ -281,7 +293,7 @@ it("permits explicit VM readiness preparation with real execution metadata but n
   );
 });
 
-it("distinguishes VM bound success from synthetic and requires exact approval, cleanup and instance identity", () => {
+function boundVMFixture() {
   const control: C4Control = {
     schema_version: 1,
     id: "ready",
@@ -309,11 +321,17 @@ it("distinguishes VM bound success from synthetic and requires exact approval, c
     readiness_id: "ready",
     readiness_digest: control.material_digest,
   };
-  const m = {
+  return {
     ...vmMission,
     c4_controls: [control],
     c4_operations: [operation],
   };
+}
+
+it("distinguishes VM bound success from synthetic and requires exact approval, cleanup and instance identity", () => {
+  const m = boundVMFixture();
+  const operation = m.c4_operations[0];
+  const control = m.c4_controls[0];
   expect(c4BaselinePassed(m)).toBe(true);
   expect(c4OperationLabel(m, operation)).toBe(
     "内置 VM 验证通过 · 已记录隔离执行",
@@ -345,6 +363,119 @@ it("distinguishes VM bound success from synthetic and requires exact approval, c
   ).toBe(false);
 });
 
+it("never promotes truncated VM baseline or candidate facts to green", () => {
+  const m = boundVMFixture();
+  const baseline = m.c4_operations[0];
+  const candidate = {
+    ...c4CandidateOperation,
+    readiness_id: baseline.readiness_id,
+    readiness_digest: baseline.readiness_digest,
+  };
+  const current = {
+    ...m,
+    candidate_digest: candidate.candidate_digest!,
+    candidate_generation: candidate.candidate_generation!,
+    approvals: [
+      ...m.approvals,
+      {
+        kind: "execute",
+        plan_revision: candidate.plan_revision,
+        digest: candidate.approval!.digest,
+        revision: candidate.approval!.revision,
+        created_at: candidate.approval!.at,
+      },
+    ],
+    c4_operations: [baseline, candidate],
+  };
+  expect(c4CandidatePassed(current)).toBe(true);
+  const truncatedBaseline = {
+    ...baseline,
+    result: { ...baseline.result!, truncated: true },
+  };
+  const truncatedCandidate = {
+    ...candidate,
+    result: { ...candidate.result!, truncated: true },
+  };
+  expect(
+    c4BaselinePassed({ ...current, c4_operations: [truncatedBaseline] }),
+  ).toBe(false);
+  expect(
+    c4CandidatePassed({
+      ...current,
+      c4_operations: [baseline, truncatedCandidate],
+    }),
+  ).toBe(false);
+  expect(c4OperationLabel(current, truncatedBaseline)).not.toContain(
+    "验证通过",
+  );
+  expect(c4OperationLabel(current, truncatedCandidate)).not.toContain(
+    "验证通过",
+  );
+});
+
+it.each([
+  ["manifest_digest", "6".repeat(64)],
+  ["runtime_digest", "6".repeat(64)],
+  ["kernel_digest", "6".repeat(64)],
+  ["rootfs_digest", "6".repeat(64)],
+  ["verifier_digest", "6".repeat(64)],
+  ["policy_version", "future"],
+  ["protocol", "future"],
+  ["host_platform", "windows/amd64"],
+  ["guest_platform", "linux/amd64"],
+])(
+  "rejects old VM success and readiness after current identity %s changes",
+  (key, value) => {
+    const m = boundVMFixture();
+    const control = m.c4_controls[0];
+    control.result = {
+      ...control.result!,
+      valid_until: "2026-10-23T10:00:00Z",
+    };
+    const status = {
+      ...vmStatusContract.control,
+      activation_digest: control.activation_digest,
+      expires_at: control.activation_expires_at,
+    };
+    expect(
+      c4ReadinessFresh(m, Date.parse("2026-10-23T09:00:00Z"), status),
+    ).toBe(true);
+    const changed = {
+      ...m,
+      spec: {
+        ...m.spec,
+        c4: { ...profile, embedded_vm: { ...identity, [key]: value } },
+      },
+    };
+    expect(c4BaselinePassed(changed)).toBe(false);
+    expect(
+      c4ReadinessFresh(changed, Date.parse("2026-10-23T09:00:00Z"), status),
+    ).toBe(false);
+    expect(c4OperationLabel(changed, m.c4_operations[0])).not.toContain(
+      "验证通过",
+    );
+  },
+);
+
+it.each([
+  undefined,
+  null,
+  {},
+  {
+    revision: c4Mission.revision + 1,
+    profile,
+    digest: c4Operation.profile_digest,
+  },
+  { revision: c4Mission.revision, profile, digest: "malformed" },
+  { revision: c4Mission.revision, profile, digest: "9".repeat(64) },
+])("requires exact response binding for VM historical facts: %j", (binding) => {
+  const m = {
+    ...boundVMFixture(),
+    c4_profile_binding: binding,
+  } as unknown as typeof vmMission;
+  expect(c4BaselinePassed(m)).toBe(false);
+});
+
 it("names the VM in decision material without claiming local or real account model evidence from the profile", () => {
   const material = decisionMaterial({
     ...vmMission,
@@ -355,6 +486,18 @@ it("names the VM in decision material without claiming local or real account mod
   expect(source).toContain("内置 VM");
   expect(source).toContain("模型调用回执");
   expect(source).not.toContain("synthetic_stub");
+});
+
+it("rejects malformed profile-binding types without throwing or treating them as authority", () => {
+  const m = {
+    ...boundVMFixture(),
+    c4_profile_binding: {
+      revision: vmMission.revision,
+      digest: c4Operation.profile_digest,
+      profile: { ...docker, endpoint: 42 },
+    },
+  } as unknown as typeof vmMission;
+  expect(c4BaselinePassed(m)).toBe(false);
 });
 
 it("accepts Windows amd64 VM identity only with its matching guest platform", () => {

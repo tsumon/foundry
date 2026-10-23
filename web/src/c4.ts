@@ -153,6 +153,7 @@ export const c4BackendLabel = (mode?: string) => {
 };
 export const c4ControlBound = (m: Mission, c: C4Control) =>
   c4Supported(m) &&
+  c4VMProfileBound(m, c.profile_digest) &&
   c.schema_version === 1 &&
   c.mission_id === m.id &&
   c.base_commit === m.base_commit &&
@@ -278,6 +279,59 @@ export function c4VMIdentityValid(value: unknown): value is C4VMIdentity {
   );
 }
 export const c4Supported = (m: Mission) => c4ProfileSupported(m.spec.c4);
+
+// A response-only display assertion from the controller, not execution consent.
+// Compare every version-1 profile field, independent of JSON property order.
+export function c4VMProfileBound(m: Mission, recordedDigest?: string): boolean {
+  const p = m.spec.c4;
+  if (p?.mode !== "embedded_vm") return true;
+  const binding = m.c4_profile_binding;
+  const q = binding?.profile;
+  if (
+    !binding ||
+    !q ||
+    q.mode !== "embedded_vm" ||
+    !c4ProfileSupported(p) ||
+    !c4ProfileSupported(q) ||
+    !Number.isSafeInteger(binding.revision) ||
+    binding.revision < 1 ||
+    binding.revision !== m.revision ||
+    typeof binding.digest !== "string" ||
+    !c4SHA.test(binding.digest) ||
+    (recordedDigest !== undefined && recordedDigest !== binding.digest)
+  )
+    return false;
+  return (
+    (
+      [
+        "schema_version",
+        "control_version",
+        "id",
+        "mode",
+        "image_id",
+        "platform",
+        "docker_path",
+        "endpoint",
+        "verifier",
+      ] as const
+    ).every((key) => p[key] === q[key]) &&
+    (
+      [
+        "schema_version",
+        "manifest_digest",
+        "host_platform",
+        "guest_platform",
+        "runtime_digest",
+        "kernel_digest",
+        "rootfs_digest",
+        "verifier_digest",
+        "protocol",
+        "policy_version",
+      ] as const
+    ).every((key) => p.embedded_vm![key] === q.embedded_vm?.[key])
+  );
+}
+
 export const c4ProfileSupported = (p?: C4Profile) => {
   if (!p) return false;
   if (p.mode === "embedded_vm")
@@ -352,6 +406,10 @@ function c4MissionOperationBindings(m: Mission, o: C4Operation): boolean {
   return (
     c4Supported(m) &&
     c4OperationBindings(o) &&
+    c4VMProfileBound(m, o.profile_digest) &&
+    (m.spec.c4?.mode !== "embedded_vm" ||
+      !o.result ||
+      o.result.truncated === false) &&
     (m.spec.c4?.mode !== "embedded_vm" ||
       o.container_id === undefined ||
       (typeof o.container_id === "string" && c4SHA.test(o.container_id))) &&
@@ -469,6 +527,13 @@ export function c4CandidatePassed(m: Mission): boolean {
   );
 }
 export function c4OperationLabel(m: Mission, o: C4Operation): string {
+  if (
+    m.spec.c4?.mode === "embedded_vm" &&
+    !c4VMProfileBound(m, o.profile_digest)
+  )
+    return "历史事实未绑定当前 VM 配置 · 不能确认通过";
+  if (m.spec.c4?.mode === "embedded_vm" && o.result?.truncated === true)
+    return "输出截断 · 证据不完整，不能确认通过";
   if (!c4MissionOperationBindings(m, o)) return "配置不支持 · 仅显示原始事实";
   if (o.kind === "candidate" && !c4CandidateApprovalBound(m, o))
     return "审批绑定缺失或不匹配 · 不能确认通过";

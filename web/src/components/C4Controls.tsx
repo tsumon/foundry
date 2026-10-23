@@ -11,6 +11,7 @@ import {
   c4OperationLabel,
   c4ReadinessFresh,
   c4Supported,
+  c4VMProfileBound,
   isModelBackedC4,
   isTerminalModelBackedDelivery,
   type C4Action,
@@ -141,6 +142,7 @@ export function C4Controls({
     !status?.read_only &&
     status?.control?.structurally_available &&
     status.control.source_kind === source &&
+    c4VMProfileBound(m) &&
     c4Supported(m)
   );
   const configured = !!(
