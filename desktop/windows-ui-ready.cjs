@@ -79,6 +79,8 @@ function codingWorkbenchReadiness(snapshot, expected) {
     status: false,
     setup: false,
     unavailable: false,
+    unavailableWarning: false,
+    providerUnavailable: false,
     closed: false,
   };
   if (
@@ -140,19 +142,30 @@ function codingWorkbenchReadiness(snapshot, expected) {
   );
   if (setup < 0)
     return { ...missing, document: true, status: statusReady };
-  const unavailable =
-    find(
-      setup,
-      (node) =>
-        node.type === "Text" &&
-        node.name.includes(
-          "账户模型编码不可用：windows_docker_trust_unavailable",
-        ),
-    ) >= 0 &&
-    find(
-      setup,
-      (node) => node.type === "Text" && node.name.includes("不可用 · openai"),
-    ) >= 0;
+  const children = nodes.map(() => []);
+  for (let index = 1; index < nodes.length; index += 1)
+    children[nodes[index].parent].push(index);
+  const setupTextParts = [];
+  const stack = [...children[setup]].reverse();
+  while (stack.length > 0) {
+    const index = stack.pop();
+    const node = nodes[index];
+    if (!beneath(index, setup)) continue;
+    if (node.type === "Text") setupTextParts.push(node.name);
+    for (let child = children[index].length - 1; child >= 0; child -= 1)
+      stack.push(children[index][child]);
+  }
+  const normalizeWhitespace = (value) => value.replace(/\s+/gu, "");
+  const setupText = normalizeWhitespace(setupTextParts.join(""));
+  const unavailableWarning = setupText.includes(
+    normalizeWhitespace(
+      "账户模型编码不可用：windows_docker_trust_unavailable。配置记录不是授权或成功证据。",
+    ),
+  );
+  const providerUnavailable = setupText.includes(
+    normalizeWhitespace("不可用 · openai"),
+  );
+  const unavailable = unavailableWarning && providerUnavailable;
   const closed =
     find(
       setup,
@@ -174,6 +187,8 @@ function codingWorkbenchReadiness(snapshot, expected) {
     status: statusReady,
     setup: true,
     unavailable,
+    unavailableWarning,
+    providerUnavailable,
     closed,
   };
 }

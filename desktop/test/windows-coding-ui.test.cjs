@@ -43,6 +43,43 @@ function renderedUnavailableCodingWorkbench() {
   };
 }
 
+function splitUnavailableCodingWorkbench() {
+  const node = (parent, type, name, enabled = true, visible = true) => ({
+    parent,
+    type,
+    name,
+    visible,
+    enabled,
+  });
+  return {
+    window: "5678",
+    processId: 42,
+    nodes: [
+      node(-1, "Window", "Foundry — Controlled Coding Workbench"),
+      node(0, "Document", "FOUNDRY"),
+      node(1, "Group", "工作台状态"),
+      node(2, "Text", "已收到"),
+      node(2, "Text", "事件流已连接"),
+      node(1, "Group", "账户模型编码设置"),
+      node(5, "Text", "账户模型编码 · 受控 Docker"),
+      node(5, "Text", "账户模型编码不可用："),
+      node(5, "Text", "windows_docker_trust_unavailable"),
+      node(5, "Text", "。配置记录不是授权或成功证据。"),
+      node(5, "Text", "运行时 / 提供商"),
+      node(5, "Text", "不可用"),
+      node(5, "Text", " · "),
+      node(5, "Text", "openai"),
+      node(
+        5,
+        "CheckBox",
+        "启用账户模型与受控 Docker（仅创建配置，不批准或执行）",
+        false,
+      ),
+      node(5, "Button", "刷新编码能力", false),
+    ],
+  };
+}
+
 test("coding UI readiness requires the actual Windows-unavailable rendered boundary", () => {
   const expected = { window: "5678", processId: 42 };
   assert.equal(
@@ -62,6 +99,26 @@ test("coding UI readiness requires the actual Windows-unavailable rendered bound
     (s) => (s.processId = 43),
   ]) {
     const snapshot = renderedUnavailableCodingWorkbench();
+    mutate(snapshot);
+    assert.equal(codingWorkbenchReadiness(snapshot, expected).ready, false);
+  }
+});
+
+test("coding UI readiness reconstructs only exact ordered visible setup text fragments", () => {
+  const expected = { window: "5678", processId: 42 };
+  assert.equal(
+    codingWorkbenchReadiness(splitUnavailableCodingWorkbench(), expected).ready,
+    true,
+  );
+  for (const mutate of [
+    (s) => s.nodes.splice(8, 1),
+    (s) => ([s.nodes[7], s.nodes[8]] = [s.nodes[8], s.nodes[7]]),
+    (s) => (s.nodes[8].name = "coding_runtime_unavailable_or_expired"),
+    (s) => (s.nodes[13].name = "anthropic"),
+    (s) => (s.nodes[8].visible = false),
+    (s) => (s.nodes[8].parent = 1),
+  ]) {
+    const snapshot = splitUnavailableCodingWorkbench();
     mutate(snapshot);
     assert.equal(codingWorkbenchReadiness(snapshot, expected).ready, false);
   }
