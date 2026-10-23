@@ -952,6 +952,7 @@ internal/vmruntime/diagnostics_qemu.go
 internal/vmruntime/diagnostics_qemu_test.go
 internal/vmruntime/diagnostics_test.go
 internal/vmruntime/diagnostics_windows_test.go
+internal/vmruntime/crypto_environment_windows_test.go
 internal/vmruntime/manifest.go
 internal/vmruntime/manifest_test.go
 internal/vmruntime/ownership_test.go

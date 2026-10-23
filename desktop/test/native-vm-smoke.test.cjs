@@ -558,6 +558,7 @@ test("invalid harness output cannot produce a failure diagnostic or retain a rec
 });
 test("startup categories and capture failures remain diagnostic-only fixed enums", (t) => {
   for (const code of [
+    "crypto_initialization",
     "kernel_load",
     "initrd_load",
     "rom_load",

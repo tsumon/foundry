@@ -427,6 +427,7 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
               "memory_mapping",
               "host_socket",
               "resource_access",
+              "crypto_initialization",
             ].includes(code),
           ),
         );

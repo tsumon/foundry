@@ -305,3 +305,27 @@ Mac 86d557b installed contracts, physical VM repair loop and native GUI/restart
 passed separately; that does not certify Windows or real model accounts.
 
 Completion requires reviewed source, passing safety checks and CI, two installed packages, authentic installed native guest failure/repair/pass/cleanup evidence for both host platforms, and truthful bilingual README. A missing host capability or real-account authorization is stated precisely; neither is hidden by mocked success. Real account acceptance remains outside this authorization and does not prevent accountless sandbox verification.
+
+### Windows early-start dependency diagnosis — 2026-10-23
+
+Run 39954907497 confirms zero-byte readiness EOF, complete unrecognized stderr,
+and exact process termination. This disproves the clock-warning/marker-prefix
+hypothesis for that run; do not patch QEMU serial behavior or relax readiness.
+Pinned QEMU initializes its crypto provider before parsing options. Its Windows
+path uses CryptAcquireContext with null container/provider and only
+CRYPT_VERIFYCONTEXT | CRYPT_SILENT; the current explicit child environment omits
+SYSTEMROOT, which Go's ordinary exec launcher treats as critical. This is a
+testable hypothesis, not a confirmed startup cause.
+
+First extend the failure-only classifier with a fixed crypto-initialization
+category and private-text regressions. In native Windows boundary tests, launch
+a fixed test helper through the actual suspended/Job/handle-owning launcher,
+once with the current environment and once with only the authoritative system
+Windows directory added as SYSTEMROOT. The helper calls that same ephemeral
+provider API, releases its handle, and reports only success and numeric error
+facts. It never opens a named key container, accesses accounts, creates keys,
+changes host environment/features, boots a VM, or changes production launch
+behavior. Require complete bounded results and confirmed exact child termination.
+Publish only these fixed diagnostic facts, not environment values or raw errors.
+Use the native comparison and the real installed readiness result to establish
+whether a production correction is justified. Keep all existing acceptance gates.

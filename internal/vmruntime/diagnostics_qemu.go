@@ -14,7 +14,7 @@ type qemuDiagnostic struct {
 
 func qemuCodeAllowed(code string) bool {
 	switch code {
-	case "machine_property", "whpx_partition", "whpx_initialization", "firmware", "character_device", "cpu_model", "memory_allocation", "option", "kernel_load", "initrd_load", "rom_load", "device_configuration", "event_loop", "memory_mapping", "host_socket", "resource_access":
+	case "machine_property", "whpx_partition", "whpx_initialization", "firmware", "character_device", "cpu_model", "memory_allocation", "option", "kernel_load", "initrd_load", "rom_load", "device_configuration", "event_loop", "memory_mapping", "host_socket", "resource_access", "crypto_initialization":
 		return true
 	}
 	return false
@@ -53,6 +53,8 @@ func (b *diagnosticBuffer) parseQEMU() (*qemuDiagnostic, string) {
 	code := ""
 	// Most specific first; never include arbitrary text, paths or numbers.
 	switch {
+	case has("cannot initialize crypto:", "unable to create cryptographic provider"):
+		code = "crypto_initialization"
 	case has("property '", "-machine.", "not found"):
 		code = "machine_property"
 	case has("whpx", "partition"):

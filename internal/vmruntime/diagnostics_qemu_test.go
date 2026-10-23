@@ -13,6 +13,7 @@ import (
 
 func TestQEMUDiagnosticsProjectOnlyFixedCategories(t *testing.T) {
 	cases := []struct{ input, code, status string }{
+		{"qemu: cannot initialize crypto: Unable to create cryptographic provider: PRIVATE_SENTINEL", "crypto_initialization", "valid"},
 		{"qemu-system-x86_64.exe: Property 'pc-q35-machine.usb' not found", "machine_property", "valid"},
 		{"WHPX: Failed to create partition, hr=0x80370301", "whpx_partition", "valid"},
 		{"qemu: could not load PC BIOS 'PRIVATE_SENTINEL'", "firmware", "valid"},
