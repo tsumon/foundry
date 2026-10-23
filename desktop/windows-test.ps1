@@ -17,6 +17,7 @@ Checked 'go' @('test', '-count=1', './internal/store', '-run', '^TestWindows')
 Checked 'go' @('test', '-count=1', './internal/sandbox', '-run', '^TestWindows')
 Checked 'go' @('test', '-v', '-count=1', './internal/vmruntime', '-run', '^Test(Windows|QEMU)')
 Checked 'node' @('--test', 'desktop/test/windows-hypervisor-probe.test.cjs')
+Checked 'node' @('--test', 'desktop/test/windows-stdio.test.cjs')
 Checked 'go' @('test', '-count=1', './internal/model', '-run', '^Test(CredentialManager|WindowsSecret)')
 Checked 'go' @('test', '-count=1', './cmd/foundry', '-run', 'Test(Desktop|DataDirectoryLock|LockProcessCrash|Windows)')
 # Actual SQLite/controller source import, multi-file repair, export, explicit

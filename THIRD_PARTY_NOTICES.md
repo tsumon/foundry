@@ -116,3 +116,10 @@ Two installed npm entries require explicit provenance notes:
 The copied texts preserve upstream copyright, attribution, notice, bundled
 third-party-license, and applicable patent-grant material. Consult the
 inventory for the exact mapping from every dependency version to those bytes.
+
+The Windows pipe regression fixture in
+`desktop/test/fixtures/qemu-11.1.2-win-stdio.c` is the exact QEMU 11.1.2
+`chardev/char-win-stdio.c`, with its original Fabrice Bellard copyright and MIT
+permission notice retained. The application-specific pipe correction is in
+`desktop/sandbox/windows-stdio.cjs`; its recipe accompanies the complete pinned
+QEMU source archive in Windows sandbox source sidecars.

@@ -329,3 +329,40 @@ behavior. Require complete bounded results and confirmed exact child termination
 Publish only these fixed diagnostic facts, not environment values or raw errors.
 Use the native comparison and the real installed readiness result to establish
 whether a production correction is justified. Keep all existing acceptance gates.
+
+### Preserve binary requests in the Windows stdio transport — 2026-10-23
+
+Independent source review found a second, post-readiness defect: QEMU 11.1.2's
+non-console `win_stdio_thread` discards every carriage-return byte. Foundry's
+four-byte big-endian frame length is binary; a valid 525-byte verify request has
+length `00 00 02 0d` and is corrupted. This does not explain the earlier EOF.
+Keep protocol v1 and all checks unchanged. Reproduce byte loss by compiling the
+actual pinned upstream thread function with controlled ReadFile/event boundaries,
+then remove its terminal-emulator CR filter for pipe input. The same source also
+acknowledges a byte when the UART cannot receive; retain a BQL-protected pending
+byte and deliver/acknowledge it only when the frontend readiness callback permits.
+The pipe reader never accesses this flag. No polling, retrying execution or extra buffering.
+Test all 256 byte values, repeated CR and blocked-then-ready/exact-once delivery;
+reject changed source and repeat application, and pin both before/after
+file hashes. Run the same regression with native Windows GCC before building QEMU.
+Apply the patch only in the fresh verified source tree before compilation, record
+its identity in the build proof, and require the identity again during bundle
+assembly. Ship the local patch recipe alongside the already-pinned upstream source
+archive and licenses. Never change the console handler, frame parser, byte bounds,
+network policy, Job containment, independent approvals or success-only EXE gate.
+
+### Confirmed Windows crypto environment correction — 2026-10-23
+
+Run 39960225908 established the startup cause: the actual owned Windows helper
+failed ephemeral CryptAcquireContext without SYSTEMROOT (2148073501), but acquired
+and released the provider with only that variable added. Installed QEMU reported
+the fixed crypto_initialization category and readiness EOF. Add only SYSTEMROOT
+from GetSystemWindowsDirectory, not the parent environment, before CreateProcess.
+Reject missing/invalid OS directory, NUL injection, case-insensitive duplicate
+names and caller attempts to override SYSTEMROOT. Encode a sorted, double-NUL
+terminated UTF-16 environment without inheriting PATH, user or account variables.
+Turn the native diagnostic into a regression requiring acquisition/release and
+the OS directory despite poisoned parent environment. Test malformed inputs and
+Unicode encoding offline. Keep suspended admission, Job/handle ownership and all
+execution restrictions unchanged. Then re-run installed Windows acceptance; the
+crypto test alone cannot certify WHPX boot, repair, UI, restart or uninstall.

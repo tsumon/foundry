@@ -9,7 +9,6 @@ import (
 	"os"
 	"runtime"
 	"time"
-	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -169,12 +168,14 @@ func launchNative(ctx context.Context, c command) (process nativeProcess, err er
 	if e != nil {
 		return nil, e
 	}
-	env := []uint16{}
-	for _, v := range c.Env {
-		env = append(env, utf16.Encode([]rune(v))...)
-		env = append(env, 0)
+	systemRoot, e := windows.GetSystemWindowsDirectory()
+	if e != nil {
+		return nil, e
 	}
-	env = append(env, 0)
+	env, e := windowsEnvironment(c.Env, systemRoot)
+	if e != nil {
+		return nil, e
+	}
 	pi := windows.ProcessInformation{}
 	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_NO_WINDOW | windows.CREATE_UNICODE_ENVIRONMENT | windows.EXTENDED_STARTUPINFO_PRESENT)
 	stage = "create_process"

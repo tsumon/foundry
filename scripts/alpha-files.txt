@@ -883,6 +883,9 @@ desktop/sandbox/macos/main.swift
 desktop/sandbox/windows-bundle.cjs
 desktop/sandbox/windows-source-build.cjs
 desktop/sandbox/windows-zlib.cjs
+desktop/sandbox/windows-stdio.cjs
+desktop/test/windows-stdio.test.cjs
+desktop/test/fixtures/qemu-11.1.2-win-stdio.c
 desktop/sandbox/zlib-regression.c
 desktop/test/build-guest.test.cjs
 desktop/test/coding-mode.test.cjs
@@ -953,6 +956,8 @@ internal/vmruntime/diagnostics_qemu_test.go
 internal/vmruntime/diagnostics_test.go
 internal/vmruntime/diagnostics_windows_test.go
 internal/vmruntime/crypto_environment_windows_test.go
+internal/vmruntime/windows_environment.go
+internal/vmruntime/windows_environment_test.go
 internal/vmruntime/manifest.go
 internal/vmruntime/manifest_test.go
 internal/vmruntime/ownership_test.go
