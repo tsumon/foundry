@@ -55,6 +55,34 @@ function Assert-RejectedFact([object]$Facts, [string]$Property, [object]$Value) 
   }
 }
 
+function Find-FixtureAction([object]$Dialog, [int]$ProcessId, [string]$Name) {
+  $items = $Dialog.FindAll(
+    [System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.Condition]::TrueCondition
+  )
+  if ($items.Count -gt 256) { throw 'Fixture UI tree exceeds bound' }
+  $match = $null
+  foreach ($element in $items) {
+    $current = $element.Current
+    $allowedType =
+      $current.ControlType -eq [System.Windows.Automation.ControlType]::Button -or
+      $current.ControlType -eq [System.Windows.Automation.ControlType]::Pane
+    if (
+      $current.ProcessId -eq $ProcessId -and
+      $allowedType -and
+      $current.Name -ceq $Name -and
+      $current.IsEnabled -and
+      -not $current.IsOffscreen -and
+      $current.NativeWindowHandle -ne 0
+    ) {
+      if ($null -ne $match) { throw 'Fixture native action is ambiguous' }
+      $match = $element
+    }
+  }
+  if ($null -eq $match) { throw 'Fixture native action unavailable' }
+  return $match
+}
+
 $electron = Join-Path $PSScriptRoot 'node_modules/electron/dist/electron.exe'
 $fixtureScript = Join-Path $PSScriptRoot 'test/windows-taskdialog-fixture.cjs'
 if (-not (Test-Path -LiteralPath $electron -PathType Leaf)) { throw 'Pinned Electron runtime missing' }
@@ -89,11 +117,9 @@ try {
   Assert-RejectedFact $facts 'DialogEnabled' $false
   Assert-RejectedFact $facts 'ActionOwned' $false
   Assert-RejectedFact $facts 'ActionIsChild' $false
-  Assert-RejectedFact $facts 'ActionMatchesId' $false
   Assert-RejectedFact $facts 'DialogClass' 'OtherDialog'
   Assert-RejectedFact $facts 'DialogTitle' 'Other title'
   Assert-RejectedFact $facts 'ActionClass' 'Pane'
-  Assert-RejectedFact $facts 'ActionId' 101
   Assert-RejectedFact $facts 'ActionTitle' 'Open Another Workbench'
   Assert-RejectedFact $facts 'ActionStyleType' 2
   Assert-RejectedFact $facts 'ActionVisible' $false
@@ -103,6 +129,11 @@ try {
   $caught = $null
   try { Invoke-CodingTaskDialogAction $dialog $action $wrongOwner } catch { $caught = $_ }
   Assert-True ($null -ne $caught) 'Wrong TaskDialog owner did not fail closed'
+
+  $cancel = Find-FixtureAction $dialog $OwnerProcess 'Cancel'
+  $caught = $null
+  try { Invoke-CodingTaskDialogAction $dialog $cancel $OwnerProcess } catch { $caught = $_ }
+  Assert-True ($null -ne $caught) 'Wrong native TaskDialog action did not fail closed'
 
   Invoke-CodingTaskDialogAction $dialog $action $OwnerProcess
   if (-not $process.WaitForExit(10000)) { throw 'Pinned Electron TaskDialog fixture did not exit' }

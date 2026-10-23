@@ -12,11 +12,10 @@ public sealed class FoundryTaskDialogFacts {
   public string DialogTitle { get; set; }
   public bool ActionOwned { get; set; }
   public bool ActionIsChild { get; set; }
-  public bool ActionMatchesId { get; set; }
   public bool ActionVisible { get; set; }
   public bool ActionEnabled { get; set; }
   public string ActionClass { get; set; }
-  public int ActionId { get; set; }
+  public int ActionControlId { get; set; }
   public string ActionTitle { get; set; }
   public int ActionStyleType { get; set; }
 }
@@ -30,12 +29,9 @@ public static class FoundryTaskDialogNative {
   private const uint TDM_CLICK_BUTTON = 0x0400 + 102;
   private const uint SMTO_BLOCK = 0x0001;
   private const uint SMTO_ABORTIFHUNG = 0x0002;
-  private const int ActionId = 100;
+  private const int LogicalTaskDialogActionId = 100;
   private const string DialogTitle = "Open Controlled Coding Workbench?";
   private const string ActionTitle = "Open Coding Workbench";
-
-  [DllImport("user32.dll", ExactSpelling = true)]
-  private static extern IntPtr GetDlgItem(IntPtr dialog, int itemId);
 
   [DllImport("user32.dll", ExactSpelling = true)]
   private static extern int GetDlgCtrlID(IntPtr control);
@@ -86,11 +82,6 @@ public static class FoundryTaskDialogNative {
     return new IntPtr(unchecked((long)(uint)value));
   }
 
-  public static IntPtr GetActionHandle(IntPtr dialog) {
-    if (dialog == IntPtr.Zero) return IntPtr.Zero;
-    return GetDlgItem(dialog, ActionId);
-  }
-
   public static string ClassName(IntPtr window) {
     if (window == IntPtr.Zero) return String.Empty;
     StringBuilder value = new StringBuilder(128);
@@ -98,7 +89,7 @@ public static class FoundryTaskDialogNative {
     return length > 0 ? value.ToString(0, length) : String.Empty;
   }
 
-  public static int ControlId(IntPtr window) {
+  public static int DiagnosticControlId(IntPtr window) {
     return window == IntPtr.Zero ? -1 : GetDlgCtrlID(window);
   }
 
@@ -122,12 +113,10 @@ public static class FoundryTaskDialogNative {
       ActionOwned = actionThread != 0 && actionProcess == (uint)expectedProcessId,
       ActionIsChild = dialog != IntPtr.Zero && action != IntPtr.Zero &&
                       IsChild(dialog, action),
-      ActionMatchesId = dialog != IntPtr.Zero && action != IntPtr.Zero &&
-                        GetDlgItem(dialog, ActionId) == action,
       ActionVisible = action != IntPtr.Zero && IsWindowVisible(action),
       ActionEnabled = action != IntPtr.Zero && IsWindowEnabled(action),
       ActionClass = ClassName(action),
-      ActionId = ControlId(action),
+      ActionControlId = DiagnosticControlId(action),
       ActionTitle = ControlText(action),
       ActionStyleType = StyleType(action)
     };
@@ -142,14 +131,12 @@ public static class FoundryTaskDialogNative {
       throw new InvalidOperationException("TaskDialog native class mismatch");
     if (!String.Equals(facts.DialogTitle, DialogTitle, StringComparison.Ordinal))
       throw new InvalidOperationException("TaskDialog native title mismatch");
-    if (!facts.ActionOwned || !facts.ActionIsChild || !facts.ActionMatchesId)
+    if (!facts.ActionOwned || !facts.ActionIsChild)
       throw new InvalidOperationException("TaskDialog action ownership mismatch");
     if (!facts.ActionVisible || !facts.ActionEnabled)
       throw new InvalidOperationException("TaskDialog action state mismatch");
     if (!String.Equals(facts.ActionClass, "Button", StringComparison.OrdinalIgnoreCase))
       throw new InvalidOperationException("TaskDialog action native class mismatch");
-    if (facts.ActionId != ActionId)
-      throw new InvalidOperationException("TaskDialog action native id mismatch");
     if (!String.Equals(facts.ActionTitle, ActionTitle, StringComparison.Ordinal))
       throw new InvalidOperationException("TaskDialog action native title mismatch");
     if (facts.ActionStyleType != BS_PUSHBUTTON &&
@@ -162,7 +149,8 @@ public static class FoundryTaskDialogNative {
     ValidateFacts(CaptureFacts(dialog, action, expectedProcessId));
     UIntPtr ignored;
     IntPtr sent = SendMessageTimeoutW(
-        dialog, TDM_CLICK_BUTTON, new IntPtr(ActionId), IntPtr.Zero,
+        dialog, TDM_CLICK_BUTTON,
+        new IntPtr(LogicalTaskDialogActionId), IntPtr.Zero,
         SMTO_BLOCK | SMTO_ABORTIFHUNG, 2000, out ignored);
     if (sent == IntPtr.Zero)
       throw new InvalidOperationException("TaskDialog action dispatch failed");
@@ -212,16 +200,13 @@ function Find-CodingTaskDialogAction([object]$Dialog, [int]$OwnerProcess) {
   if ($null -eq $freshDialog -or -not [System.Windows.Automation.Automation]::Compare($Dialog, $freshDialog)) {
     throw 'coding-confirmation-button: owned dialog native identity mismatch'
   }
-  $nativeAction = [FoundryTaskDialogNative]::GetActionHandle($dialogHandle)
-  if ($nativeAction -eq [IntPtr]::Zero) { return $null }
-  $nativeElement = [System.Windows.Automation.AutomationElement]::FromHandle($nativeAction)
-  if ($null -eq $nativeElement) { return $null }
   $items = $Dialog.FindAll(
     [System.Windows.Automation.TreeScope]::Descendants,
     [System.Windows.Automation.Condition]::TrueCondition
   )
   if ($items.Count -gt 256) { throw 'Dialog UI tree exceeds bound' }
   $match = $null
+  $exactCount = 0
   foreach ($element in $items) {
     $current = $element.Current
     $allowedType =
@@ -235,14 +220,17 @@ function Find-CodingTaskDialogAction([object]$Dialog, [int]$OwnerProcess) {
       -not $current.IsOffscreen -and
       $current.NativeWindowHandle -ne 0
     ) {
+      $exactCount++
+      if ($exactCount -gt 1) { throw 'coding-confirmation-button: native action is ambiguous' }
       $elementHandle = Get-AutomationNativeHandle $element
+      $nativeElement = [System.Windows.Automation.AutomationElement]::FromHandle($elementHandle)
       if (
-        $elementHandle -eq $nativeAction -and
-        [System.Windows.Automation.Automation]::Compare($element, $nativeElement)
+        $null -eq $nativeElement -or
+        -not [System.Windows.Automation.Automation]::Compare($element, $nativeElement)
       ) {
-        if ($null -ne $match) { throw 'coding-confirmation-button: native action is ambiguous' }
-        $match = $element
+        throw 'coding-confirmation-button: native action identity mismatch'
       }
+      $match = $element
     }
   }
   return $match
@@ -267,12 +255,12 @@ function Write-CodingTaskDialogDiagnostic([object]$Dialog, [int]$OwnerProcess) {
       if ($name.Length -gt 80) { $name = $name.Substring(0, 80) }
       $name = [Regex]::Replace($name, '[^\p{L}\p{Nd} ._():/+&-]', '?')
       $nativeClass = ''
-      $nativeId = -1
+      $nativeControlId = -1
       $nativeStyle = -1
       if ($current.NativeWindowHandle -ne 0) {
         $handle = Get-AutomationNativeHandle $element
         $nativeClass = [FoundryTaskDialogNative]::ClassName($handle)
-        $nativeId = [FoundryTaskDialogNative]::ControlId($handle)
+        $nativeControlId = [FoundryTaskDialogNative]::DiagnosticControlId($handle)
         $nativeStyle = [FoundryTaskDialogNative]::StyleType($handle)
       }
       $invoke = $null
@@ -284,7 +272,7 @@ function Write-CodingTaskDialogDiagnostic([object]$Dialog, [int]$OwnerProcess) {
         name=$name
         nativeHandle=($current.NativeWindowHandle -ne 0)
         nativeClass=$nativeClass
-        nativeId=$nativeId
+        nativeControlId=$nativeControlId
         nativeStyleType=$nativeStyle
         invoke=[bool]$hasInvoke
       }) | Out-Null
