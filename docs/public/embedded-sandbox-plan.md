@@ -34,6 +34,10 @@ Windows native links additionally encode file/directory type, absent in POSIX ta
 
 Native Windows tests and full QEMU extraction now pass. Configure correctly remains offline and fails because its required Python tooling group lacks setuptools, wheel and pip. Add their exact official MSYS2 package bytes/digests plus pip's distlib dependency to the existing local build transaction; retain the already-pinned Python/packaging inputs. Verify official package metadata and dependency closure, add a transaction regression, then rerun native configure/build/install gates. These are build-only tools, not installed-app runtime dependencies. Do not enable PyPI access, disable QEMU tooling checks, alter signature verification, or relax the shipped DLL allowlist.
 
+### Preserve native build failure diagnostics — 2026-10-23
+
+The next native run passes Python tooling and reaches Meson setup, but its subprocess standard output is lost on failure. Preserve bounded stdout/stderr for configure and compilation, emit only a bounded control-character-stripped stdout tail to the CI log, and propagate the original failure without retry. Add success/failure/size-bound regressions before inspecting the next native result. Do not speculate about or weaken feature checks without concrete failure evidence.
+
 - Built-in `embedded_vm` is the default for new tasks; Docker remains explicitly optional.
 - No host execution, TCG, automatic backend/accelerator fallback, real credentials/provider calls, automatic retries or paid API switching.
 - Existing UI/navigation and independent readiness/baseline/context/execute/delivery approvals remain.

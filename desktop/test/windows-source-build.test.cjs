@@ -60,6 +60,35 @@ function keyringFixture(t) {
   const files = names.map(name => { const raw = Buffer.from("pinned fixture: " + name), target = path.join(root, name); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, raw); return { path: name, bytes: raw.length, sha256: crypto.createHash("sha256").update(raw).digest("hex") }; });
   return { msysRoot: root, lock: { windows: { bootstrap: { keyring: files } } } };
 }
+test("native build logging preserves successful output and never dispatches unknown steps", t => {
+  assert.equal(typeof build.runLoggedBuildStep, "function");
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-build-log-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let calls = 0; const options = { outputRoot: root, step: "configure", program: "fixed-tool", args: ["fixed-argument"], cwd: root, run: (program, args, cwd) => { calls++; assert.equal(program, "fixed-tool"); assert.deepEqual(args, ["fixed-argument"]); assert.equal(cwd, root); return "configure complete\n"; }, report: () => assert.fail("Success must not report a failure") };
+  assert.equal(build.runLoggedBuildStep(options), "configure complete\n");
+  assert.equal(fs.readFileSync(path.join(root, "configure.log"), "utf8"), "configure complete\n");
+  assert.throws(() => build.runLoggedBuildStep({ ...options, step: "../outside" }), /step/i); assert.equal(calls, 1);
+});
+test("native build failure retains both streams, reports bounded diagnostics and never retries", t => {
+  assert.equal(typeof build.runLoggedBuildStep, "function");
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-build-log-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const failure = Object.assign(Error("exit 1"), { stdout: Buffer.from("a".repeat(100000) + "\x1b[31mMeson: missing required input\x00\n##[add-mask]fixture\n::error::fixture\n"), stderr: "setup failed\n" });
+  let calls = 0; const reports = [];
+  assert.throws(() => build.runLoggedBuildStep({ outputRoot: root, step: "configure", run: () => { calls++; throw failure; }, report: s => reports.push(s) }), e => e === failure);
+  assert.equal(calls, 1); assert.deepEqual(fs.readFileSync(path.join(root, "configure.log")), failure.stdout);
+  assert.equal(fs.readFileSync(path.join(root, "configure.stderr.log"), "utf8"), failure.stderr);
+  assert.equal(reports.length, 1); assert.ok(Buffer.byteLength(reports[0]) < 66000); assert.match(reports[0], /Meson: missing required input/); assert.doesNotMatch(reports[0], /[\x00\x1b]/);
+  assert.doesNotMatch(reports[0], /##\[/); assert.doesNotMatch(reports[0], /^\s*::/m);
+});
+test("native build logging caps retained failure bytes and propagates an empty-output failure", t => {
+  assert.equal(typeof build.runLoggedBuildStep, "function");
+  for (const stdout of [undefined, Buffer.alloc(33 * 1024 * 1024, 97), Buffer.alloc(100000, 255)]) {
+    const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-build-log-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const failure = Object.assign(Error("exit 1"), { stdout }); let calls = 0;
+    assert.throws(() => build.runLoggedBuildStep({ outputRoot: root, step: "ninja", run: () => { calls++; throw failure; }, report: value => assert.ok(Buffer.byteLength(value) < 66000) }), e => e === failure);
+    assert.equal(calls, 1); assert.equal(fs.statSync(path.join(root, "ninja.log")).size, stdout ? Math.min(stdout.length, 32 * 1024 * 1024) : 0);
+    assert.equal(fs.statSync(path.join(root, "ninja.stderr.log")).size, 0);
+  }
+});
 test("offline keyring setup precedes package installation without login, network key refresh or weakened signatures", t => {
   assert.equal(typeof build.installBuildPackages, "function", "Offline keyring setup is missing");
   const fixture = keyringFixture(t), calls = [];

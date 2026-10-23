@@ -33,6 +33,30 @@ function regularDirectory(p) {
   if (!path.isAbsolute(p)) throw Error("Absolute build directory required");
   let current = path.parse(p).root; for (const part of path.relative(current, p).split(path.sep).filter(Boolean)) { current = path.join(current, part); if (!fs.lstatSync(current).isDirectory()) throw Error("Regular non-symlink build directory required"); }
 }
+// Build-only diagnostics: retain the bounded pipe output even when execFileSync
+// throws. Otherwise Meson/Ninja's actionable stdout is lost behind a generic
+// stderr failure. The installed application never invokes this helper.
+function runLoggedBuildStep({ run, program, args, cwd, outputRoot, step, report = s => console.error(s) }) {
+  if (!["configure", "ninja"].includes(step)) throw Error("Unknown build step");
+  regularDirectory(outputRoot);
+  const log = path.join(outputRoot, step + ".log"), stderrLog = path.join(outputRoot, step + ".stderr.log");
+  if (fs.existsSync(log) || fs.existsSync(stderrLog)) throw Error("Fresh build step logs required");
+  const bounded = value => (Buffer.isBuffer(value) ? value : Buffer.from(typeof value === "string" ? value : "")).subarray(0, 32 * 1024 * 1024);
+  let output;
+  try { output = run(program, args, cwd); }
+  catch (error) {
+    const stdout = bounded(error.stdout), stderr = bounded(error.stderr);
+    fs.writeFileSync(log, stdout, { flag: "wx", mode: 0o600 });
+    fs.writeFileSync(stderrLog, stderr, { flag: "wx", mode: 0o600 });
+    // V2 commands require a line prefix; legacy ##[ commands are recognized
+    // anywhere in a line, so neutralize that introducer as well.
+    const safe = stdout.subarray(-64 * 1024).toString("utf8").replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "").replaceAll("##[", "# #[").replaceAll("\n", "\n| ");
+    report("[" + step + " stdout tail]\n| " + Buffer.from(safe).subarray(-60 * 1024).toString("utf8"));
+    throw error;
+  }
+  fs.writeFileSync(log, bounded(output), { flag: "wx", mode: 0o600 });
+  return output;
+}
 function verifyBootstrapRoot({ lock, msysRoot }) {
   regularDirectory(msysRoot);
   const bootstrap = lock.windows.bootstrap;
@@ -130,11 +154,10 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const sourceTar = path.join(outputRoot, "qemu-source.tar.xz"); fs.writeFileSync(sourceTar, sourceRaw, { flag: "wx" });
   const sourceRoot = extractQemuSource({ lock, sourceTar, outputRoot, run }), buildRoot = path.join(outputRoot, "build"), plan = minimalBuildPlan();
   fs.mkdirSync(buildRoot); fs.writeFileSync(path.join(sourceRoot, "configs", "devices", "x86_64-softmmu", "foundry.mak"), plan.devices, { flag: "wx" });
-  const configureLog = run(bash, [path.join(sourceRoot, "configure").replaceAll("\\", "/"), ...plan.configure], buildRoot);
-  fs.writeFileSync(path.join(outputRoot, "configure.log"), configureLog, { flag: "wx" });
+  runLoggedBuildStep({ run, program: bash, args: [path.join(sourceRoot, "configure").replaceAll("\\", "/"), ...plan.configure], cwd: buildRoot, outputRoot, step: "configure" });
   const options = JSON.parse(fs.readFileSync(path.join(buildRoot, "meson-info", "intro-buildoptions.json"))), devices = fs.readFileSync(path.join(buildRoot, "x86_64-softmmu-config-devices.mak"), "utf8"), host = fs.readFileSync(path.join(buildRoot, "config-host.h"), "utf8");
   auditConfiguration({ options, devices, host });
-  fs.writeFileSync(path.join(outputRoot, "ninja.log"), run(path.join(msysRoot, "ucrt64", "bin", "ninja.exe"), ["-j2", ...plan.targets], buildRoot), { flag: "wx" });
+  runLoggedBuildStep({ run, program: path.join(msysRoot, "ucrt64", "bin", "ninja.exe"), args: ["-j2", ...plan.targets], cwd: buildRoot, outputRoot, step: "ninja" });
   const runtime = path.join(outputRoot, "runtime"); fs.mkdirSync(runtime); const available = new Map();
   available.set("qemu-system-x86_64.exe", fs.readFileSync(path.join(buildRoot, "qemu-system-x86_64.exe")));
   for (const f of lock.windows.dependency_files) {
@@ -209,7 +232,7 @@ function extractQemuSource({ lock, sourceTar, outputRoot, run = (program, args) 
   }
   return sourceRoot;
 }
-module.exports = { minimalBuildPlan, auditConfiguration, assertMinimalClosure, assembleLegal, verifyBootstrapRoot, bootstrapWindowsBuildHost, buildMinimalWindowsRuntime, installBuildPackages, extractQemuSource };
+module.exports = { minimalBuildPlan, auditConfiguration, assertMinimalClosure, assembleLegal, verifyBootstrapRoot, bootstrapWindowsBuildHost, buildMinimalWindowsRuntime, installBuildPackages, extractQemuSource, runLoggedBuildStep };
 if (require.main === module) {
   const lock = require("./inputs.lock.json"), cacheRoot = process.env.FOUNDRY_SANDBOX_INPUTS;
   const action = process.argv[2] === "--bootstrap" ? bootstrapWindowsBuildHost({ lock, outputRoot: process.argv[3] || "", cacheRoot }) : buildMinimalWindowsRuntime({ lock, outputRoot: process.argv[2] || "", msysRoot: process.argv[3] || "", cacheRoot, installPinnedBuildPackages: process.argv[4] === "--install-pinned-build-packages" });
