@@ -91,3 +91,56 @@ test("keyring command failure stops before installing packages and does not retr
     assert.equal(calls, failedAt);
   }
 });
+function sourceFixture(t, entries) {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foundry-qemu-source-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { Header } = require("tar"), chunks = [];
+  for (const e of entries) {
+    const raw = Buffer.from(e.content || ""), h = new Header({ path: e.path, type: e.type || "File", linkpath: e.linkpath, size: raw.length, mode: 0o755 });
+    h.encode(); chunks.push(h.block, raw, Buffer.alloc((512 - raw.length % 512) % 512));
+  }
+  const raw = Buffer.concat([...chunks, Buffer.alloc(1024)]), sourceTar = path.join(root, "source.tar"); fs.writeFileSync(sourceTar, raw);
+  return { outputRoot: root, sourceTar, lock: { windows: { qemu_version: "1.2.3", source_sha256: crypto.createHash("sha256").update(raw).digest("hex") } } };
+}
+test("native source extraction preserves forward file/directory references and dangling links", t => {
+  assert.equal(typeof build.extractQemuSource, "function", "Native source extraction is missing");
+  const fixture = sourceFixture(t, [
+    { path: "qemu-1.2.3/forward-file", type: "SymbolicLink", linkpath: "later/file" },
+    { path: "qemu-1.2.3/forward-dir", type: "SymbolicLink", linkpath: "later" },
+    { path: "qemu-1.2.3/dangling", type: "SymbolicLink", linkpath: "not-present" },
+    { path: "qemu-1.2.3/later/", type: "Directory" },
+    { path: "qemu-1.2.3/later/file", content: "exact source bytes" },
+  ]);
+  const source = build.extractQemuSource(fixture);
+  assert.equal(source, path.join(fixture.outputRoot, "qemu-1.2.3"));
+  for (const [name, target] of [["forward-file", "later/file"], ["forward-dir", "later"], ["dangling", "not-present"]]) {
+    assert.equal(fs.lstatSync(path.join(source, name)).isSymbolicLink(), true, "Link must not become a deep copy");
+    assert.equal(fs.readlinkSync(path.join(source, name)).replaceAll("\\", "/"), target);
+  }
+  assert.equal(fs.readFileSync(path.join(source, "forward-file"), "utf8"), "exact source bytes");
+  assert.equal(fs.readFileSync(path.join(source, "forward-dir/file"), "utf8"), "exact source bytes");
+  assert.equal(fs.existsSync(path.join(source, "dangling")), false);
+  assert.throws(() => build.extractQemuSource(fixture), /fresh/i);
+});
+test("native source extraction refuses digest drift and unsafe members before extraction", t => {
+  assert.equal(typeof build.extractQemuSource, "function", "Native source extraction is missing");
+  const fixture = sourceFixture(t, [{ path: "qemu-1.2.3/safe", content: "source" }]); let calls = 0;
+  fixture.lock.windows.source_sha256 = "0".repeat(64);
+  assert.throws(() => build.extractQemuSource({ ...fixture, run: () => calls++ }), /integrity/i); assert.equal(calls, 0);
+  for (const member of ["../outside", "qemu-1.2.3/../../outside", "other/file", "qemu-1.2.3/a\\b"]) {
+    const unsafe = sourceFixture(t, [{ path: member, content: "unsafe" }]);
+    assert.throws(() => build.extractQemuSource(unsafe), /unsafe/i);
+    assert.equal(fs.existsSync(path.join(unsafe.outputRoot, "qemu-1.2.3")), false);
+  }
+});
+test("source extraction uses an absolute native tool and never retries a failing extraction", t => {
+  assert.equal(typeof build.extractQemuSource, "function", "Native source extraction is missing");
+  const fixture = sourceFixture(t, [{ path: "qemu-1.2.3/file", content: "source" }]), calls = [];
+  assert.throws(() => build.extractQemuSource({ ...fixture, run: (program, args) => {
+    calls.push({ program, args }); if (calls.length === 1) return "qemu-1.2.3/file\r\n"; throw Error("fixture extraction error");
+  } }), /fixture extraction error/);
+  const tar = process.platform === "win32" ? path.join(process.env.SystemRoot, "System32/tar.exe") : "/usr/bin/tar";
+  assert.deepEqual(calls, [
+    { program: tar, args: ["-tf", fixture.sourceTar] },
+    { program: tar, args: ["-xf", fixture.sourceTar, "-C", fixture.outputRoot, "--no-same-owner", "--no-same-permissions"] },
+  ]);
+});

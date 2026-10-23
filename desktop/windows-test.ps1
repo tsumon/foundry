@@ -34,3 +34,5 @@ Checked 'npm.cmd' @('test', '--prefix', 'web', '--', '--run')
 Checked 'npm.cmd' @('audit', '--prefix', 'web', '--audit-level=low')
 Checked 'npm.cmd' @('audit', '--prefix', 'desktop', '--audit-level=low')
 Checked 'node' @('--test', 'desktop/test/windows-provenance.test.cjs')
+# Exercise actual System32 tar/NTFS links before the full pinned source build.
+Checked 'node' @('--test', 'desktop/test/windows-source-build.test.cjs')

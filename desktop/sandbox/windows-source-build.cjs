@@ -128,10 +128,7 @@ async function buildMinimalWindowsRuntime({ lock, cacheRoot, outputRoot, msysRoo
   const sourceRaw = run(tar, ["-xOf", path.join(inputs, sourceArchive.file), "--include", lock.windows.source_member], outputRoot, { encoding: null, maxBuffer: 256 * 1024 * 1024 });
   if (digest(sourceRaw) !== lock.windows.source_sha256) throw Error("QEMU upstream source integrity failure");
   const sourceTar = path.join(outputRoot, "qemu-source.tar.xz"); fs.writeFileSync(sourceTar, sourceRaw, { flag: "wx" });
-  const members = run(tar, ["-tf", sourceTar]).trim().split("\n");
-  if (members.some(n => !n.startsWith("qemu-" + lock.windows.qemu_version + "/") || n.split("/").includes("..") || n.includes("\\"))) throw Error("Unsafe QEMU source path");
-  run(tar, ["-xf", sourceTar, "--no-same-owner", "--no-same-permissions"]);
-  const sourceRoot = path.join(outputRoot, "qemu-" + lock.windows.qemu_version), buildRoot = path.join(outputRoot, "build"), plan = minimalBuildPlan();
+  const sourceRoot = extractQemuSource({ lock, sourceTar, outputRoot, run }), buildRoot = path.join(outputRoot, "build"), plan = minimalBuildPlan();
   fs.mkdirSync(buildRoot); fs.writeFileSync(path.join(sourceRoot, "configs", "devices", "x86_64-softmmu", "foundry.mak"), plan.devices, { flag: "wx" });
   const configureLog = run(bash, [path.join(sourceRoot, "configure").replaceAll("\\", "/"), ...plan.configure], buildRoot);
   fs.writeFileSync(path.join(outputRoot, "configure.log"), configureLog, { flag: "wx" });
@@ -180,7 +177,39 @@ function installBuildPackages({ lock, msysRoot, archives, inputs, run }) {
   run(path.join(msysRoot, "usr/bin/gpgconf.exe"), ["--homedir", "/etc/pacman.d/gnupg", "--kill", "all"]);
   run(path.join(msysRoot, "usr/bin/pacman.exe"), ["-U", "--noconfirm", ...archives.map(e => path.join(inputs, e.file))]); // local archives only; no -S/-y, refresh or retry.
 }
-module.exports = { minimalBuildPlan, auditConfiguration, assertMinimalClosure, assembleLegal, verifyBootstrapRoot, bootstrapWindowsBuildHost, buildMinimalWindowsRuntime, installBuildPackages };
+// MSYS2's default symlink deep-copy cannot extract forward/dangling links.
+// Native tar preserves links. Native Windows also needs a directory-link type,
+// which POSIX tar does not encode; derive it only from validated directory members.
+function extractQemuSource({ lock, sourceTar, outputRoot, run = (program, args) => cp.execFileSync(program, args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 120000 }) }) {
+  regularDirectory(outputRoot);
+  if (!/^\d+\.\d+\.\d+$/.test(lock.windows.qemu_version)) throw Error("Unsafe QEMU source version");
+  const prefix = "qemu-" + lock.windows.qemu_version + "/", sourceRoot = path.join(outputRoot, prefix.slice(0, -1));
+  if (fs.lstatSync(sourceRoot, { throwIfNoEntry: false })) throw Error("Fresh QEMU source destination required");
+  if (!path.isAbsolute(sourceTar) || !fs.lstatSync(sourceTar).isFile() || digest(fs.readFileSync(sourceTar)) !== lock.windows.source_sha256) throw Error("QEMU upstream source integrity failure");
+  const tar = process.platform === "win32" ? path.join(process.env.SystemRoot, "System32", "tar.exe") : "/usr/bin/tar";
+  const members = run(tar, ["-tf", sourceTar]).trim().split(/\r?\n/);
+  if (members.some(n => !n.startsWith(prefix) || n.split("/").includes("..") || /[\\\x00-\x1f]/.test(n))) throw Error("Unsafe QEMU source path");
+  run(tar, ["-xf", sourceTar, "-C", outputRoot, "--no-same-owner", "--no-same-permissions"]);
+  regularDirectory(sourceRoot);
+  if (process.platform === "win32") {
+    const directories = new Set(members.filter(n => n.endsWith("/")).map(n => n.slice(0, -1)));
+    const visit = directory => {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const file = path.join(directory, entry.name);
+        if (entry.isSymbolicLink()) {
+          const target = fs.readlinkSync(file), member = path.relative(outputRoot, file).replaceAll("\\", "/");
+          const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(member), target.replaceAll("\\", "/")));
+          if (!path.win32.isAbsolute(target) && directories.has(resolved)) {
+            fs.unlinkSync(file); fs.symlinkSync(target, file, "dir");
+          }
+        } else if (entry.isDirectory()) visit(file);
+      }
+    };
+    visit(sourceRoot); // never follow archive links or inspect their external targets.
+  }
+  return sourceRoot;
+}
+module.exports = { minimalBuildPlan, auditConfiguration, assertMinimalClosure, assembleLegal, verifyBootstrapRoot, bootstrapWindowsBuildHost, buildMinimalWindowsRuntime, installBuildPackages, extractQemuSource };
 if (require.main === module) {
   const lock = require("./inputs.lock.json"), cacheRoot = process.env.FOUNDRY_SANDBOX_INPUTS;
   const action = process.argv[2] === "--bootstrap" ? bootstrapWindowsBuildHost({ lock, outputRoot: process.argv[3] || "", cacheRoot }) : buildMinimalWindowsRuntime({ lock, outputRoot: process.argv[2] || "", msysRoot: process.argv[3] || "", cacheRoot, installPinnedBuildPackages: process.argv[4] === "--install-pinned-build-packages" });
