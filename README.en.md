@@ -37,7 +37,7 @@ Foundry is a software-delivery workbench for a one-person team. It reads a commi
 
 Download the artifact only from a platform job that passed all its gates in [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml); one platform's success does not certify another. Check its source revision and `SHA256SUMS`; retain both runtime sources and `sandbox-sources`. **Distribution uses CI artifacts, not a GitHub Release. Older artifacts do not represent the current version.**
 
-**Acceptance status (2026-10-23):** Mac revision `b33f3bb` passed local installation, UI, restart and a real bundled-VM failure→repair→recheck. Role responses were local protocol fixtures. Its [complete Verify workflow](https://github.com/tsumon/foundry/actions/runs/39945298712) and [desktop CI Mac job](https://github.com/tsumon/foundry/actions/runs/39945298962) passed. The Windows installer built, but its real WHPX startup gate did not pass: **no accepted EXE is available yet**. This evidence covers that exact revision, not later builds automatically.
+**Acceptance status (2026-10-23):** Mac revision `86d557b` passed local installation, UI, restart and a real bundled-VM failure→repair→recheck. Role responses were local protocol fixtures. Its [complete Verify workflow](https://github.com/tsumon/foundry/actions/runs/39949492328) and [desktop CI Mac job](https://github.com/tsumon/foundry/actions/runs/39949492239/job/120400435549) passed. The Windows installer built, but its real WHPX startup gate did not pass: **no accepted EXE is available yet**. This evidence covers that exact revision, not later builds automatically.
 
 | Platform | Installer | Know before installing |
 | :--- | :--- | :--- |

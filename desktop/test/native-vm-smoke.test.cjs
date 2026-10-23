@@ -382,6 +382,46 @@ function failureFixture(t, mutation = () => {}) {
   assert.equal(calls, 1);
   return { diagnostic, options };
 }
+
+test("readiness failure facts distinguish owner stop from serial rejection without authorizing success", (t) => {
+  const { diagnostic } = failureFixture(t, ({ instance, terminal }) => {
+    Object.assign(terminal.native, {
+      readiness: "marker_mismatch",
+      readiness_prefix: "whpx_clock_query_prefix",
+      stop_requested: true,
+    });
+    fs.writeFileSync(
+      path.join(instance, "terminal.json"),
+      JSON.stringify(terminal),
+    );
+  });
+  assert.equal(diagnostic.terminal_status, "available");
+  assert.equal(diagnostic.terminals[0].readiness, "marker_mismatch");
+  assert.equal(
+    diagnostic.terminals[0].readiness_prefix,
+    "whpx_clock_query_prefix",
+  );
+  assert.equal(diagnostic.terminals[0].stop_requested, true);
+  for (const fields of [
+    { readiness: "PRIVATE_SENTINEL" },
+    { stop_requested: "yes" },
+    { readiness: "eof", readiness_prefix: "ready_crlf" },
+    { readiness: "marker_mismatch", readiness_prefix: "PRIVATE_SENTINEL" },
+  ]) {
+    const { diagnostic: rejected } = failureFixture(
+      t,
+      ({ instance, terminal }) => {
+        Object.assign(terminal.native, fields);
+        fs.writeFileSync(
+          path.join(instance, "terminal.json"),
+          JSON.stringify(terminal),
+        );
+      },
+    );
+    assert.equal(rejected.terminal_status, "rejected");
+    assert.ok(!JSON.stringify(rejected).includes("PRIVATE_SENTINEL"));
+  }
+});
 test("failed native gate reports its stage and only exact-run typed terminal facts without changing failure", (t) => {
   const { diagnostic, options } = failureFixture(t);
   assert.deepEqual(diagnostic, {

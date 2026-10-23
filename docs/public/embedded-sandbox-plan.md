@@ -287,4 +287,21 @@ this correction alone is not Windows installation acceptance.
 References: [Meson feature semantics](https://mesonbuild.com/Build-options.html#features)
 and [Meson 1.12.1 introspection](https://github.com/mesonbuild/meson/blob/1.12.1/mesonbuild/mintro.py).
 
+Windows run 39949492239 completed the EXE build but the installed readiness gate
+still failed with complete, unrecognized stderr and exit 1. The exit is ambiguous:
+the controller terminates its owned Job with code 1 after rejecting the serial
+readiness marker. Do not infer an autonomous QEMU crash or change runtime flags.
+Record the controller's exact bounded readiness outcome (matched, EOF, short
+read, read failure, deadline, or full marker mismatch), a fixed known-prefix
+classification only for mismatches, and whether native termination was requested.
+Never record marker bytes, raw stderr, paths, tokens, or arbitrary messages.
+Keep the exact readiness marker and all rejection/cleanup rules unchanged.
+First reproduce EOF, partial/foreign marker, CRLF and owner-stop cases offline;
+verify Go and Node projections reject unknown fields/values and cannot authorize
+success. Re-run full verification, independent review and native CI. Local
+inspection of the pinned source disproved the HPET/VMPORT omission hypothesis:
+their runtime defaults are compile-guarded; no speculative device flag fix.
+Mac 86d557b installed contracts, physical VM repair loop and native GUI/restart
+passed separately; that does not certify Windows or real model accounts.
+
 Completion requires reviewed source, passing safety checks and CI, two installed packages, authentic installed native guest failure/repair/pass/cleanup evidence for both host platforms, and truthful bilingual README. A missing host capability or real-account authorization is stated precisely; neither is hidden by mocked success. Real account acceptance remains outside this authorization and does not prevent accountless sandbox verification.

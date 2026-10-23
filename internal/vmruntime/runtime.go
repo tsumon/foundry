@@ -295,6 +295,7 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 	valid := false
 	var final error
 	startReported := false
+	readiness, readinessPrefix := "", ""
 	defer func() {
 		if final != nil {
 			p.Stop()
@@ -314,6 +315,7 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 			valid = false
 		}
 		facts := processDiagnostics(p)
+		facts.Readiness, facts.ReadinessPrefix = readiness, readinessPrefix
 		final = withNativeFacts(final, facts)
 		if e := s.receiptWithNative("terminal", &facts); e != nil {
 			final = errors.Join(final, e)
@@ -325,7 +327,36 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 		}
 	}()
 	marker := make([]byte, len(ReadyMarker))
-	if _, e := io.ReadFull(p.Output(), marker); e != nil || string(marker) != ReadyMarker {
+	_, readErr := io.ReadFull(p.Output(), marker)
+	validMarker := readErr == nil && string(marker) == ReadyMarker
+	switch {
+	case validMarker:
+		readiness = "matched"
+	case ctx.Err() == context.DeadlineExceeded:
+		readiness = "deadline"
+	case ctx.Err() != nil:
+		readiness = "canceled"
+	case readErr == io.EOF:
+		readiness = "eof"
+	case readErr == io.ErrUnexpectedEOF:
+		readiness = "short_read"
+	case readErr != nil:
+		readiness = "read_failed"
+	case string(marker) != ReadyMarker:
+		readiness, readinessPrefix = "marker_mismatch", "unknown"
+		// Classify only the already-read fixed public prefixes. Never scan past a
+		// rejected marker, accept CRLF, or retain arbitrary guest/host output.
+		if string(marker) == "WHPX: Failed to quer" {
+			readinessPrefix = "whpx_clock_query_prefix"
+		}
+		if string(marker) == "FOUNDRY_VM_READY_V1\r" {
+			readinessPrefix = "ready_crlf"
+		}
+	default:
+		readiness = "matched"
+	}
+	clear(marker)
+	if !validMarker {
 		final = errors.New("trusted guest readiness missing")
 		return
 	}

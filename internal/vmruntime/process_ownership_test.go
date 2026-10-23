@@ -2,6 +2,7 @@ package vmruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"syscall"
@@ -145,5 +146,29 @@ func TestSuspendedOwnershipAssignsBeforeResume(t *testing.T) {
 	}
 	if !reflect.DeepEqual(calls, []string{"assign", "resume"}) {
 		t.Fatal("guest resumed before job assignment", calls)
+	}
+}
+
+func TestOwnedStopRequestIsNotExitAuthority(t *testing.T) {
+	for _, assigned := range []bool{false, true} {
+		owner := &ownedProcess{process: 11, job: 22, assigned: assigned, calls: ownedProcessCalls{
+			terminateProcess: func(uintptr) error { return errors.New("denied") },
+			terminateJob:     func(uintptr) error { return errors.New("denied") },
+		}}
+		facts := func() map[string]any {
+			raw, _ := json.Marshal(owner.facts())
+			var value map[string]any
+			json.Unmarshal(raw, &value)
+			return value
+		}
+		if facts()["stop_requested"] != false {
+			t.Fatal("initial stop state missing")
+		}
+		if owner.stop() == nil {
+			t.Fatal("denied stop passed")
+		}
+		if facts()["stop_requested"] != true || owner.terminatedState() {
+			t.Fatal("stop request missing or misused as termination proof")
+		}
 	}
 }

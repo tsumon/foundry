@@ -23,6 +23,7 @@ type ownedProcess struct {
 	waitGate             chan struct{}
 	process, job         uintptr
 	assigned, terminated bool
+	stopRequested        bool
 	calls                ownedProcessCalls
 	stage                string
 	exit                 *int64
@@ -60,7 +61,8 @@ func (p *ownedProcess) setAdmission(stage string, e error) {
 func (p *ownedProcess) facts() nativeFacts {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return nativeFacts{TerminationConfirmed: p.terminated, ExitCode: p.exit, AdmissionStage: p.stage, NativeErrorCode: p.nativeError, DiagnosticStatus: "absent"}
+	requested := p.stopRequested
+	return nativeFacts{TerminationConfirmed: p.terminated, StopRequested: &requested, ExitCode: p.exit, AdmissionStage: p.stage, NativeErrorCode: p.nativeError, DiagnosticStatus: "absent"}
 }
 func (p *ownedProcess) stop() error {
 	p.mu.Lock()
@@ -68,6 +70,8 @@ func (p *ownedProcess) stop() error {
 	if p.terminated {
 		return nil
 	}
+	// This records only a request, not that the child was running or killed.
+	p.stopRequested = true
 	// Assignment may have failed. Closing or terminating an empty Job cannot
 	// terminate that suspended child; only its exact retained process can.
 	if !p.assigned {

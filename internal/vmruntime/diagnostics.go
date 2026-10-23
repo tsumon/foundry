@@ -21,6 +21,9 @@ type helperDiagnostic struct {
 }
 type nativeFacts struct {
 	TerminationConfirmed bool              `json:"termination_confirmed"`
+	StopRequested        *bool             `json:"stop_requested,omitempty"`
+	Readiness            string            `json:"readiness,omitempty"`
+	ReadinessPrefix      string            `json:"readiness_prefix,omitempty"`
 	ExitCode             *int64            `json:"exit_code,omitempty"`
 	Signal               *int              `json:"signal,omitempty"`
 	AdmissionStage       string            `json:"admission_stage,omitempty"`
@@ -87,6 +90,14 @@ func admissionStageAllowed(s string) bool {
 	return false
 }
 func safeNativeFacts(f nativeFacts) nativeFacts {
+	switch f.Readiness {
+	case "", "matched", "eof", "short_read", "read_failed", "deadline", "canceled", "marker_mismatch":
+	default:
+		f.Readiness = ""
+	}
+	if f.Readiness != "marker_mismatch" || (f.ReadinessPrefix != "unknown" && f.ReadinessPrefix != "whpx_clock_query_prefix" && f.ReadinessPrefix != "ready_crlf") {
+		f.ReadinessPrefix = ""
+	}
 	if !admissionStageAllowed(f.AdmissionStage) {
 		f.AdmissionStage = ""
 	}
@@ -128,6 +139,15 @@ func withNativeFacts(e error, f nativeFacts) error {
 	}
 	f = safeNativeFacts(f)
 	parts := []string{fmt.Sprintf("native_terminated=%t", f.TerminationConfirmed)}
+	if f.StopRequested != nil {
+		parts = append(parts, fmt.Sprintf("stop_requested=%t", *f.StopRequested))
+	}
+	if f.Readiness != "" {
+		parts = append(parts, "readiness="+f.Readiness)
+	}
+	if f.ReadinessPrefix != "" {
+		parts = append(parts, "readiness_prefix="+f.ReadinessPrefix)
+	}
 	if f.AdmissionStage != "" {
 		parts = append(parts, "native_stage="+f.AdmissionStage)
 	}

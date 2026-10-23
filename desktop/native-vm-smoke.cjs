@@ -314,6 +314,9 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
         "native_error_code",
         "helper",
         "qemu",
+        "stop_requested",
+        "readiness",
+        "readiness_prefix",
       ];
       keys(native, [
         "termination_confirmed",
@@ -336,6 +339,33 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
         termination_confirmed: native.termination_confirmed,
         diagnostic_status: native.diagnostic_status,
       };
+      if (Object.hasOwn(native, "stop_requested")) {
+        assert.equal(typeof native.stop_requested, "boolean");
+        facts.stop_requested = native.stop_requested;
+      }
+      if (Object.hasOwn(native, "readiness")) {
+        assert.ok(
+          [
+            "matched",
+            "eof",
+            "short_read",
+            "read_failed",
+            "deadline",
+            "canceled",
+            "marker_mismatch",
+          ].includes(native.readiness),
+        );
+        facts.readiness = native.readiness;
+      }
+      if (Object.hasOwn(native, "readiness_prefix")) {
+        assert.equal(native.readiness, "marker_mismatch");
+        assert.ok(
+          ["unknown", "whpx_clock_query_prefix", "ready_crlf"].includes(
+            native.readiness_prefix,
+          ),
+        );
+        facts.readiness_prefix = native.readiness_prefix;
+      }
       for (const key of ["exit_code", "native_error_code", "signal"]) {
         if (!Object.hasOwn(native, key)) continue;
         const n = native[key];

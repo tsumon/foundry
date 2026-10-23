@@ -10,9 +10,58 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 const validHelperDiagnostic = `{"schema_version":1,"stage":"configuration_failed","exit_code":70,"error_domain":"VZErrorDomain","error_code":2}`
+
+func TestReadinessFailureReceiptClassifiesWithoutRetainingSerial(t *testing.T) {
+	for _, tc := range []struct{ name, serial, outcome, prefix string }{
+		{"empty", "", "eof", ""},
+		{"partial", "FOUNDRY", "short_read", ""},
+		{"unknown", "PRIVATE_SENTINEL_SERIAL_DATA", "marker_mismatch", "unknown"},
+		{"clock", "WHPX: Failed to query tsc frequency, hr=0xPRIVATE", "marker_mismatch", "whpx_clock_query_prefix"},
+		{"crlf", "FOUNDRY_VM_READY_V1\r\n", "marker_mismatch", "ready_crlf"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, q := testRuntime(t)
+			s, e := r.Create(context.Background(), q)
+			if e != nil {
+				t.Fatal(e)
+			}
+			p := &diagnosticNative{failedStartNative: &failedStartNative{}, capture: &diagnosticBuffer{}, code: 1, serial: tc.serial}
+			r.launch = func(context.Context, command) (nativeProcess, error) { return p, nil }
+			if s.Start(context.Background()) == nil {
+				t.Fatal("bad readiness admitted")
+			}
+			raw, e := os.ReadFile(filepath.Join(s.dir, "terminal.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			var record struct {
+				Native map[string]any `json:"native"`
+			}
+			if e = json.Unmarshal(raw, &record); e != nil {
+				t.Fatal(e)
+			}
+			if record.Native["readiness"] != tc.outcome {
+				t.Fatalf("readiness=%v want %s", record.Native["readiness"], tc.outcome)
+			}
+			if tc.prefix != "" && record.Native["readiness_prefix"] != tc.prefix {
+				t.Fatalf("prefix=%v want %s", record.Native["readiness_prefix"], tc.prefix)
+			}
+			if strings.Contains(string(raw), "PRIVATE") {
+				t.Fatal("raw serial leaked")
+			}
+			if _, ok := s.Result(); ok {
+				t.Fatal("diagnostics authorized result")
+			}
+			if e = s.Close(context.Background()); e != nil {
+				t.Fatal(e)
+			}
+		})
+	}
+}
 
 func TestBoundedDiagnosticParser(t *testing.T) {
 	exit := int64(70)
@@ -62,9 +111,100 @@ type diagnosticNative struct {
 	code         int64
 	rawWaitError string
 	serial       string
+	serialReader io.ReadCloser
 }
 
-func (p *diagnosticNative) Output() io.ReadCloser { return io.NopCloser(strings.NewReader(p.serial)) }
+func (p *diagnosticNative) Output() io.ReadCloser {
+	if p.serialReader != nil {
+		return p.serialReader
+	}
+	return io.NopCloser(strings.NewReader(p.serial))
+}
+
+type failingReadinessReader struct{}
+
+func TestMatchedReadinessIsNotRelabeledByConcurrentCancellation(t *testing.T) {
+	r, q := testRuntime(t)
+	s, e := r.Create(context.Background(), q)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p := &diagnosticNative{failedStartNative: &failedStartNative{}, capture: &diagnosticBuffer{}, code: 1, serial: ReadyMarker}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s.exchange(ctx, p, make(chan error, 1))
+	raw, e := os.ReadFile(filepath.Join(s.dir, "terminal.json"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var record struct {
+		Native nativeFacts `json:"native"`
+	}
+	if e = json.Unmarshal(raw, &record); e != nil {
+		t.Fatal(e)
+	}
+	if record.Native.Readiness != "matched" {
+		t.Fatalf("successful marker read mislabeled: %s", record.Native.Readiness)
+	}
+	if _, ok := s.Result(); ok {
+		t.Fatal("canceled exchange authorized result")
+	}
+}
+
+func (failingReadinessReader) Read([]byte) (int, error) { return 0, errors.New("PRIVATE_SENTINEL") }
+
+func TestReadinessReadErrorAndCancellationRemainFailed(t *testing.T) {
+	for _, outcome := range []string{"read_failed", "canceled", "deadline"} {
+		r, q := testRuntime(t)
+		s, e := r.Create(context.Background(), q)
+		if e != nil {
+			t.Fatal(e)
+		}
+		p := &diagnosticNative{failedStartNative: &failedStartNative{}, capture: &diagnosticBuffer{}, code: 1, serialReader: io.NopCloser(failingReadinessReader{})}
+		ctx := context.Background()
+		if outcome == "canceled" {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithCancel(ctx)
+			cancel()
+		}
+		if outcome == "deadline" {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, time.Now().Add(-time.Second))
+			defer cancel()
+		}
+		started := make(chan error, 1)
+		s.exchange(ctx, p, started)
+		if e := <-started; e == nil || strings.Contains(e.Error(), "PRIVATE_SENTINEL") {
+			t.Fatal("read error accepted or leaked")
+		}
+		raw, e := os.ReadFile(filepath.Join(s.dir, "terminal.json"))
+		if e != nil {
+			t.Fatal(e)
+		}
+		var record struct {
+			Native nativeFacts `json:"native"`
+		}
+		if e = json.Unmarshal(raw, &record); e != nil {
+			t.Fatal(e)
+		}
+		if record.Native.Readiness != outcome || record.Native.ReadinessPrefix != "" {
+			t.Fatalf("wrong readiness: %+v", record.Native)
+		}
+		if _, ok := s.Result(); ok {
+			t.Fatal("failed read authorized result")
+		}
+	}
+}
+
+func TestReadinessFactsDiscardUnknownValues(t *testing.T) {
+	for _, f := range []nativeFacts{{Readiness: "PRIVATE_SENTINEL", ReadinessPrefix: "PRIVATE_SENTINEL"}, {Readiness: "eof", ReadinessPrefix: "whpx_clock_query_prefix"}, {Readiness: "marker_mismatch", ReadinessPrefix: "PRIVATE_SENTINEL"}} {
+		safe := safeNativeFacts(f)
+		raw, _ := json.Marshal(safe)
+		if safe.ReadinessPrefix != "" || strings.Contains(string(raw), "PRIVATE_SENTINEL") {
+			t.Fatal("invalid readiness data retained")
+		}
+	}
+}
 
 func (p *diagnosticNative) Wait() error {
 	p.mu.Lock()
