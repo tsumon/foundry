@@ -102,8 +102,14 @@ func secureJournalFile(f *journalFile) error {
 	if err != nil {
 		return err
 	}
+	return validateJournalSecurityDescriptor(sd, user.User.Sid)
+}
+
+// Validate the descriptor independently of handle acquisition so every policy
+// rejection can be exercised without changing owners or enabling privileges.
+func validateJournalSecurityDescriptor(sd *windows.SECURITY_DESCRIPTOR, user *windows.SID) error {
 	owner, _, err := sd.Owner()
-	if err != nil || !windows.EqualSid(owner, user.User.Sid) {
+	if err != nil || !windows.EqualSid(owner, user) {
 		return errors.New("journal owner mismatch")
 	}
 	control, _, err := sd.Control()
@@ -128,7 +134,7 @@ func secureJournalFile(f *journalFile) error {
 			return errors.New("journal ACE mismatch")
 		}
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
-		if windows.EqualSid(sid, user.User.Sid) {
+		if windows.EqualSid(sid, user) {
 			seenUser = true
 		} else if windows.EqualSid(sid, system) {
 			seenSystem = true

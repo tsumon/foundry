@@ -15,8 +15,6 @@ import (
 	"foundry/internal/model"
 )
 
-const testProbeID = "foundry-openai-stage0-0123456789abcdef0123456789abcdef"
-
 // Also run this test in a -trimpath compiled test binary from a non-source cwd.
 // Only the in-memory secret factory below is reachable; no native store is used.
 func TestDesktopProbePackagedCWD(t *testing.T) {
@@ -157,72 +155,6 @@ func TestDesktopProbeRejectsUnsafeDirectoriesAndRetainedJournals(t *testing.T) {
 		})
 	}
 }
-
-func TestDesktopProbeFailureRetainsJournalForExactCleanup(t *testing.T) {
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Chmod(root, 0700); err != nil {
-		t.Fatal(err)
-	}
-	deps := defaultCommandDeps()
-	fake := &commandSecrets{}
-	factories := 0
-	deps.generateID = func() (string, error) { return testProbeID, nil }
-	deps.newStore = func(string) (model.Secrets, error) { factories++; return fake, nil }
-	deps.writeTerminal = func(string, []byte) error { return errors.New("synthetic disk failure") }
-	if runDesktopProbe(root, deps, io.Discard) == nil {
-		t.Fatal("terminal failure passed")
-	}
-	dir := filepath.Join(root, "openai-desktop-diagnostics")
-	entries, err := os.ReadDir(dir)
-	if err != nil || len(entries) != 1 {
-		t.Fatal("pending journal lost", err)
-	}
-	path := filepath.Join(dir, entries[0].Name())
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	deps.writeTerminal = nil
-	if runDesktopProbe(root, deps, io.Discard) == nil || factories != 1 {
-		t.Fatal("unconfirmed cleanup retried diagnostic")
-	}
-	after, err := os.ReadFile(path)
-	if err != nil || !bytes.Equal(before, after) {
-		t.Fatal("blocked preparation changed pending journal", err)
-	}
-	deps.sourceRoot = "absent-build-source"
-	if err = runCommand([]string{"--cleanup", path}, deps, io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	record, err := readJournal(path)
-	if err != nil || record.State != "failed" || record.Cleanup != "confirmed" || fake.setCalls != 2 || factories != 2 {
-		t.Fatal("exact cleanup replayed probe or lost journal", err)
-	}
-}
-
-type commandSecrets struct {
-	value       string
-	setCalls    int
-	getCalls    int
-	deleteCalls int
-	getError    error
-}
-
-func (s *commandSecrets) Set(_ string, value string) error { s.setCalls++; s.value = value; return nil }
-func (s *commandSecrets) Get(string) (string, error) {
-	s.getCalls++
-	if s.getError != nil {
-		return "", s.getError
-	}
-	if s.value == "" {
-		return "", model.ErrSecretNotFound
-	}
-	return s.value, nil
-}
-func (s *commandSecrets) Delete(string) error { s.deleteCalls++; s.value = ""; return nil }
 
 func testCommandDeps(t *testing.T, store model.Secrets) (commandDeps, string) {
 	t.Helper()

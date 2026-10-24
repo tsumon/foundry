@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"foundry/internal/platformfs"
 	"foundry/internal/store"
 	"foundry/internal/vmruntime"
 	"os"
@@ -26,7 +27,14 @@ func TestRetainDesktopRuntimeExplicitLocalOnly(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
 		t.Skip("supported VM host only")
 	}
-	root, _ := filepath.EvalSymlinks(t.TempDir())
+	parent, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := platformfs.PrivateTemp(parent, "retain-")
+	if err != nil {
+		t.Fatal(err)
+	}
 	bundle := filepath.Join(root, "bundle")
 	if err := os.Mkdir(bundle, 0700); err != nil {
 		t.Fatal(err)
@@ -77,7 +85,7 @@ func TestRetainDesktopRuntimeExplicitLocalOnly(t *testing.T) {
 		t.Fatal("import executed VM")
 	}
 	data := filepath.Join(root, "coding")
-	if err := os.Mkdir(data, 0700); err != nil {
+	if err := platformfs.PrivateDirectory(data); err != nil {
 		t.Fatal(err)
 	}
 	s, err := store.Open(filepath.Join(data, "foundry.db"))
