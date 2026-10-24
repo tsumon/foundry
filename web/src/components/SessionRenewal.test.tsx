@@ -18,6 +18,29 @@ const disabled = {
 };
 afterEach(() => vi.resetAllMocks());
 describe("independent session renewal", () => {
+  it("closes mutations after failed explicit reread until a successful reread", async () => {
+    vi.mocked(sessionRenewalApi.read)
+      .mockResolvedValueOnce(disabled)
+      .mockRejectedValueOnce(Error("read unavailable"))
+      .mockResolvedValueOnce(disabled);
+    render(<SessionRenewal account={account} />);
+    await screen.findByText(/续期已关闭/);
+    expect(screen.getByRole("button", { name: "准备续期材料" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "读取续期状态" }));
+    await screen.findByRole("alert");
+    for (const name of ["准备续期材料", "批准并开启续期", "关闭续期"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "准备续期材料" }));
+    expect(sessionRenewalApi.mutate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "读取续期状态" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "准备续期材料" }),
+      ).toBeEnabled(),
+    );
+    expect(sessionRenewalApi.mutate).not.toHaveBeenCalled();
+  });
   it("mounts metadata only and requires separate prepare and approval", async () => {
     vi.mocked(sessionRenewalApi.read).mockResolvedValue(disabled);
     vi.mocked(sessionRenewalApi.mutate).mockResolvedValue({

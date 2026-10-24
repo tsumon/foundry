@@ -66,7 +66,7 @@ export function SessionRenewal({ account }: { account: ModelAccount }) {
       if (current === epoch.current) accept(next);
     } catch {
       if (current === epoch.current) {
-        if (action) setUnknown(true);
+        setUnknown(true);
         setMessage(
           action
             ? "操作结果未知或已被拒绝；请显式读取状态，不会自动重试。"

@@ -38,6 +38,15 @@ The shipped desktop composition supports this capability on Mac and Windows, but
 - Replacement validation, secret write, metadata commit or exact cleanup failure: fail closed, retain recovery evidence; startup recovery never retries network work. Distinguish a committed replacement with pending cleanup from an uncommitted one.
 - Withdrawal races with dispatch/commit must not resurrect an enabled policy. The operation journal is authoritative after a crash; a missing success receipt is not permission to resend.
 
+The coding desktop performs metadata-only authorization/renewal reconciliation
+under its exclusive startup data lock before starting the scheduler. A crash
+before an intent or during rotation becomes recovery-required/unknown; a committed
+replacement records its confirmed new generation even if receipt completion or
+exact cleanup was interrupted. Pending cleanup remains a blocker and is not
+performed by this startup path. No startup credential Get/Set/Delete or provider
+request is needed. A failed explicit status read also closes UI mutations until
+the user successfully rereads metadata; old displayed status is not actionable.
+
 No change to automatic paid-API switching, model retry, VM fallback or task continuation approvals is included.
 
 ## Acceptance

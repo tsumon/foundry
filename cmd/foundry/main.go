@@ -72,9 +72,14 @@ func newProductionModels(s *store.Store, legacy *model.Client, secrets model.Sec
 }
 
 func (p productionModels) Recover(ctx context.Context) error {
-	// Catalog/inference startup is metadata-only, including abandoned credential
-	// cleanup exists. Such intents remain blockers, never native deletions.
-	if !p.catalogMode && !p.inferenceMode && !p.codingMode {
+	// Called under the exclusive startup data lock, before desktop scheduling.
+	// Coding recovery reconciles authorization and renewal journals only. Exact
+	// cleanup remains a blocker; startup must never touch native credentials.
+	if p.codingMode {
+		if err := p.accounts.RecoverAuthorizationMetadata(ctx); err != nil {
+			return errors.New("recover model authorization metadata failed")
+		}
+	} else if !p.catalogMode && !p.inferenceMode {
 		if err := p.accounts.Recover(ctx); err != nil {
 			return errors.New("recover model accounts failed")
 		}

@@ -119,12 +119,17 @@ func (s *Service) RevokeCredential(ctx context.Context, accountID string, versio
 	return result, safeError(err)
 }
 
-// Recover is a startup readiness gate, before serving credential mutations. It
-// never reads or writes a secret: only abandoned intents and local deletions are
-// reconciled. A failed deletion remains durable and prevents successful startup.
-func (s *Service) Recover(ctx context.Context) error {
+// RecoverAuthorizationMetadata reconciles durable authorization/renewal
+// journals only. The startup owner must hold the exclusive data-directory lock;
+// no previous credential writer may still be running. Pending exact cleanup is
+// retained, never performed by this metadata-only coding startup path.
+func (s *Service) RecoverAuthorizationMetadata(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.recoverAuthorizationMetadata(ctx)
+}
+
+func (s *Service) recoverAuthorizationMetadata(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return safeError(err)
 	}
@@ -133,6 +138,18 @@ func (s *Service) Recover(ctx context.Context) error {
 	}
 	if err := s.store.RecoverSessionRenewals(); err != nil {
 		return safeError(err)
+	}
+	return nil
+}
+
+// Recover is a startup readiness gate for compositions that permit precise
+// native cleanup. It never gets or sets credentials, but does delete abandoned
+// exact references. Coding startup uses RecoverAuthorizationMetadata instead.
+func (s *Service) Recover(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.recoverAuthorizationMetadata(ctx); err != nil {
+		return err
 	}
 	if err := s.cleanupAuthorizations(ctx); err != nil {
 		return err
