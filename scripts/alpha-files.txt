@@ -1,6 +1,10 @@
 .github/workflows/verify.yml
 docs/public/session-renewal.md
 docs/public/session-renewal-plan.md
+docs/public/session-renewal-catalog.md
+docs/public/session-renewal-catalog-plan.md
+internal/store/model_acceptance_connection_origin.go
+internal/store/model_acceptance_catalog_renewal_test.go
 internal/domain/session_renewal.go
 internal/store/session_renewal.go
 internal/store/session_renewal_test.go

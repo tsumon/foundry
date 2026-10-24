@@ -221,6 +221,9 @@ func (s *Store) ClaimSessionRenewal(p domain.SessionRenewalPolicy, generation in
 	if pending > 0 {
 		return ErrConflict
 	}
+	if err = anchorCurrentConnection(tx, p.AccountID); err != nil {
+		return err
+	}
 	result, err := tx.Exec(`INSERT INTO session_renewal_dispatches(authorization_id,generation,account_id,policy_revision,stage,category,certainty,started_at,finished_at) VALUES(?,?,?,?,'dispatched','','unknown',?,'') ON CONFLICT(authorization_id,generation) DO UPDATE SET policy_revision=excluded.policy_revision,stage='dispatched',category='',certainty='unknown',started_at=excluded.started_at,finished_at='' WHERE session_renewal_dispatches.stage='waiting' AND session_renewal_dispatches.certainty='not_sent'`, a.Binding.ID, generation, p.AccountID, p.Revision, now.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return modelStoreError(err)

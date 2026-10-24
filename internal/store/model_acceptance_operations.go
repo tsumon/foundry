@@ -21,7 +21,10 @@ func (s *Store) initializeModelAcceptanceOperations() error {
 	if err != nil {
 		return err
 	}
-	return s.initializeProductionConnectionDispatch()
+	if err = s.initializeProductionConnectionDispatch(); err != nil {
+		return err
+	}
+	return s.initializeConnectionOrigins()
 }
 func acceptanceRead(row modelRowScanner) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
@@ -572,6 +575,11 @@ func (s *Store) finishModelAcceptance(account, id string, revision int64, state,
 		}
 		o.ResultAccountRevision = m.Account.Revision
 		o.ResultSnapshotDigest = acceptanceSnapshotDigest(m)
+		if o.Source == "production_connection" && certainty == "completed" && code == "" && o.Material.ConnectionPurpose == "subscription_only" {
+			if e = recordConnectionOrigin(tx, o.ID, m.Authorization); e != nil {
+				return o, e
+			}
+		}
 	}
 	o.State, o.Certainty, o.Code = state, certainty, code
 	o.Catalog = append([]domain.ModelAcceptanceCatalogEntry{}, catalog...)

@@ -19,7 +19,7 @@ func catalogPrerequisite(tx *sql.Tx, m domain.ModelAcceptanceMaterial) error {
 	comparison.ConnectionPurpose = p.Material.ConnectionPurpose
 	comparison.RequestedScopes = p.Material.RequestedScopes
 	comparison.RequestedResource = p.Material.RequestedResource
-	if p.ResultSnapshotDigest != acceptanceSnapshotDigest(comparison) {
+	if p.ResultSnapshotDigest != acceptanceSnapshotDigest(comparison) && renewedConnectionOrigin(tx, p, comparison) != nil {
 		return ErrConflict
 	}
 	var latest string
