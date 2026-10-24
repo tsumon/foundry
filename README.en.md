@@ -54,7 +54,7 @@ The app bundles its frontend, controller, Linux guest and Go toolchain. No separ
 
 Choose **Controlled Coding Workbench** in the application menu. It has its own persistent data, separate from the ordinary workbench and demonstrations:
 
-1. Explicitly select an OpenAI account, route and role models. API-key and subscription routes are distinct, never fallbacks for each other. The Mac coding account card can explicitly prepare connection, followed by independent approval/execution and a manual browser step; separately approve catalog discovery, select a recorded model and assign the resulting profile to future-task roles. Ordinary desktop and Windows do not expose this preparation entry.
+1. Explicitly select an OpenAI account, route and role models. API-key and subscription routes are distinct, never fallbacks for each other. Both Mac and Windows coding account cards can explicitly prepare connection, followed by independent approval/execution and a manual browser step; separately approve catalog discovery, select a recorded model and assign the resulting profile to future-task roles. The ordinary workbench does not expose this preparation entry.
 2. Provide a goal, committed Go repository and editable/protected file scope. The built-in sandbox is selected by default and its identity is frozen with the task. Creation neither calls a model nor boots a VM.
 3. Separately approve and execute sandbox readiness and baseline verification. After a passing baseline, approve context sharing for Researcher and Planner to produce the plan.
 4. Review or revise the plan, then approve execution. Workers propose isolated changes. A confirmed test failure can trigger at most two Debugger repairs, each followed by verification.
@@ -80,10 +80,26 @@ Have a disposable repository? **Open Committed Descriptor Repository…** accept
 
 ## What works—and what stays closed
 
-Mac subscription wiring has local synthetic acceptance only: no real Keychain,
-sign-in, catalog or model task is claimed. Catalog selections pin account, route,
-authorization generation/expiry and receipt; existing task snapshots stay frozen.
-A catalog receipt never approves inference. See the [subscription workbench](docs/public/mac-subscription-workbench.md).
+Both desktop platforms share the subscription approval flow. Mac uses Keychain;
+Windows uses Credential Manager with bounded segmented storage for complete large
+bundles, never plaintext files. Protocol acceptance uses local synthetic services;
+native credential diagnostics use Foundry-only test items. **Neither certifies a
+real-account model loop.** Catalog selections pin account, route, authorization
+generation/expiry and receipt. A catalog receipt never approves inference.
+See the [subscription workbench](docs/public/mac-subscription-workbench.md).
+
+### Upgrade the app, preserve the task
+
+| Retained state | Upgrade behavior |
+| :--- | :--- |
+| Original task, plan, baseline and evidence | Original records are not rewritten or relabeled as new-build results |
+| Consumed model budget | Never reset; unknown-outcome calls remain consumed |
+| Frozen sandbox | Retain and select by complete identity; new tasks use the current default |
+| Independent approvals | Retention grants no authority; expired, missing or damaged inputs block, without refresh or fallback |
+
+Tasks predating runtime retention can recover their exact sandbox from an explicitly
+verified local previous installation, without downgrading the app or rewriting its
+database. See the [upgrade compatibility design](docs/public/desktop-parity-upgrade.md).
 
 | Capability | Actual boundary |
 | :--- | :--- |

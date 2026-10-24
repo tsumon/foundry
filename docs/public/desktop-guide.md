@@ -121,9 +121,9 @@ local image matching the verifier contract; Foundry does not pull or build it.
 Native credentials use Foundry-scoped macOS Keychain or Windows Credential
 Manager. Only explicit account operations or approved claimed task calls may
 access them; opening/restarting the workbench does not enumerate, refresh or
-clean them. In the **Mac coding workbench only**, the Models account card can
+clean them. In the **Mac and Windows coding workbenches**, the Models account card can
 explicitly prepare a subscription connection. It first explains and runs a
-Foundry-only synthetic Keychain write/read/exact-delete check; confirmed cleanup
+Foundry-only synthetic native-store write/read/exact-delete check; confirmed cleanup
 grants ten minutes of process-local readiness, not login approval. Propose,
 approve and execute connection separately, then manually open the current local
 handoff in your normal browser. The desktop validates that exact waiting session
@@ -136,13 +136,24 @@ to roles. Catalog provenance pins account, route, authorization generation and
 expiry; account switches or reconnections cannot silently retarget older tasks.
 No catalog receipt approves model use. A failed diagnostic retains its private
 exact-item journal; unconfirmed cleanup blocks new preparation after restart.
-Ordinary desktop and Windows remain closed. The current evidence is synthetic
-local integration/UI testing only, not real native readiness, sign-in, catalog
-or model-task acceptance. See [Mac subscription workbench](mac-subscription-workbench.md).
+Ordinary desktop mode remains closed. Protocol acceptance uses local synthetic
+services; native-store diagnostics use isolated Foundry-owned test items. Neither
+certifies real sign-in, catalog or model-task acceptance. See the
+[desktop subscription workbench](mac-subscription-workbench.md).
 
-Windows Credential Manager rejects blobs above its native 2,560-byte ceiling;
-larger serialized subscription bundles are not supported. This is a hard error,
-not truncation or a fallback to plaintext storage.
+Windows Credential Manager keeps its native 2,560-byte per-record ceiling. A
+bounded segmented representation supports subscription bundles up to 256 KiB,
+with an exact-reference commit envelope and verified cleanup. Missing or altered
+segments fail closed; there is no truncation or plaintext fallback.
+
+Upgrades retain verified runtimes in the private coding data archive. Existing
+tasks resolve only their complete frozen runtime identity; new tasks use the
+new installed default. Original task, baseline, evidence and consumed budget
+remain unchanged. An older installation that predates retention needs an exact
+verified local bundle import; missing or damaged assets block, never silently
+select the new runtime. Archive retention grants no execution permission and
+does not refresh expired credentials or approvals. See
+[upgrade compatibility](desktop-parity-upgrade.md).
 
 The current task defaults are a finite 16-call budget and at most two repairs.
 Usage is recorded, not a promise of available subscription quota. A transport

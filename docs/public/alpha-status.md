@@ -16,19 +16,26 @@ links in the [verified-build table](../../README.en.md#verified-builds--2026-10-
 Mac GUI evidence is local; Windows GUI evidence is native automation and captured
 painted windows, not a claim of manual interactive testing. Roles use local
 model-protocol fixtures on both platforms. Newer revisions require their own
-gates; real-account end-to-end acceptance remains unauthorized.
+gates; real-account end-to-end acceptance is not established by these results.
 
 ## Implemented
 
-- [Mac subscription account workbench](mac-subscription-workbench.md): the trusted
-  Mac coding desktop can explicitly prepare native credential readiness, then
+- [Desktop subscription account workbench](mac-subscription-workbench.md): the trusted
+  Mac and Windows coding desktops can explicitly prepare native credential readiness, then
   separately propose/approve/execute connection and catalog operations. A manual
   browser handoff is checked against its current owned waiting session. Locally
   recorded catalog evidence binds an explicit profile choice to account, route,
   authorization generation and expiry for future tasks; no catalog receipt grants
-  inference. Normal desktop and Windows remain closed. Only synthetic local
-  integration/UI acceptance is claimed; real Keychain, sign-in, catalog/model use
-  and account-driven task acceptance remain separately unauthorized.
+  inference. Normal desktop remains closed. Local protocol fixtures and isolated
+  native diagnostic items do not certify real sign-in, catalog/model use or
+  account-driven task acceptance. Windows stores bounded large bundles through
+  exact-owned Credential Manager segments, never plaintext files.
+
+- [Upgrade compatibility](desktop-parity-upgrade.md): verified native runtimes
+  are retained privately by complete identity. Old tasks keep their original
+  records, baselines, evidence and consumed budgets; new tasks use the installed
+  default. Missing or tampered old assets block. Retention does not approve
+  execution, refresh credentials or retry calls.
 
 - [Model-driven coding workbench](live-coding.md): a native opt-in composes OpenAI
   account-backed role calls, committed Go imports, immutable candidates, controlled
@@ -90,7 +97,7 @@ The [independent single-inference gate](openai-inference-gate.md) adds a mutuall
 - Multi-worker scheduling or autonomous background execution.
 - Generic external MCP `tools/call`, MCP stdio/OAuth, Skill/script execution, hook scripts/webhooks, or Git hooks.
 - Automatic provider fallback, paid fallback, retry/replay of unknown remote outcomes, or automatic Docker image pulls.
-- Ordinary-browser, normal-desktop, Windows or default-CLI native Keychain probing, and ordinary-startup real-login, live catalog or live-inference actions. Explicit Mac coding-workbench preparation may initiate the host-owned Foundry-only diagnostic through desktop-capability and same-origin protected requests; its private journals are anchored to the installed data directory, not the build checkout. The separate operator CLI retains its source-checkout path safeguards. Preparation does not start login or catalog discovery: each still requires its independent approval. Coding task inference has a separate claimed-invocation capability; it does not open login, catalog or single-inference operator gates.
+- Ordinary-browser, normal-desktop or default-CLI native credential probing, and ordinary-startup real-login, live catalog or live-inference actions. Explicit Mac/Windows coding-workbench preparation may initiate the host-owned Foundry-only native diagnostic through desktop-capability and same-origin protected requests; its private journals are anchored to the installed data directory, not the build checkout. The separate operator CLI retains its source-checkout path safeguards. Preparation does not start login or catalog discovery: each still requires its independent approval. Coding task inference has a separate claimed-invocation capability; it does not open login, catalog or single-inference operator gates.
 - A production code-signing/notarization service, automatic updater, package
   manager formula, or GitHub Release. Installers are versioned CI artifacts with
   finite retention, not a permanent release channel.

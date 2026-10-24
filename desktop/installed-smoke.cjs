@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const { startBackend } = require("./runtime.cjs");
+const { startBackend, verifySandboxBundle } = require("./runtime.cjs");
 const { installedFlow } = require("./installed-flow.cjs");
 const { assertCodingMetadata } = require("./coding-smoke.cjs");
 function hashFile(file) {
@@ -52,7 +52,7 @@ async function assertDesktopSubscriptionMetadata(
   const response = await request(child, "/api/model-routes", options);
   assert.equal(response.status, 200);
   const { runtime } = await response.json();
-  const enabled = platform === "darwin" && mode === "coding";
+  const enabled = ["darwin", "win32"].includes(platform) && mode === "coding";
   assert.equal(runtime.desktop_subscription, enabled);
   assert.equal(runtime.live_authorization, false);
   assert.equal(runtime.live_discovery, false);
@@ -168,6 +168,17 @@ async function main() {
       codingMetadata.profile.embedded_vm.manifest_digest,
       hashFile(path.join(resources, "sandbox/manifest.json")),
     );
+    const retainedRuntime = path.join(
+      child.ready.dataDir,
+      "vm-bundles",
+      codingMetadata.profile.embedded_vm.manifest_digest,
+    );
+    const installedManifest = verifySandboxBundle(path.join(resources, "sandbox"));
+    assert.deepEqual(verifySandboxBundle(retainedRuntime), installedManifest);
+    assert.equal(
+      hashFile(path.join(retainedRuntime, "manifest.json")),
+      codingMetadata.profile.embedded_vm.manifest_digest,
+    );
     const codingDB = path.join(child.ready.dataDir, "foundry.db");
     await child.stop();
     const codingHash = hashFile(codingDB);
@@ -178,6 +189,7 @@ async function main() {
       integrity,
     });
     cookie = await session(child);
+    assert.deepEqual(verifySandboxBundle(retainedRuntime), installedManifest);
     codingResponse = await authorized(child, "/api/coding-tasks", {
       headers: { Cookie: cookie },
     });
@@ -260,8 +272,9 @@ async function main() {
             "EOF graceful exit",
             "persistent restart",
             "normal startup keeps coding metadata closed",
-            "subscription metadata is Mac-coding-only and unprepared across restart; reads create no diagnostic journals",
+            "subscription metadata is desktop-coding-only and unprepared across restart; reads create no diagnostic journals",
             "coding startup exposes installed VM identity metadata only; hardware readiness and execution remain separately approved",
+            "current runtime is retained byte-exact in the private archive and revalidated after restart; no VM execution",
             "isolated simulation baseline remains prepared without approval or execution facts",
             "evidence retained",
             "installed binaries: two separately approved baseline/plan/failure-repair/review/delivery flows",

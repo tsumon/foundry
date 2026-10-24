@@ -4,6 +4,14 @@ All notable public-facing changes will be recorded here.
 
 ## Unreleased
 
+- Bring Windows subscription preparation, single-use connection/browser handoff,
+  separately approved catalog and task-account continuation to parity with Mac.
+  Native Credential Manager supports bounded complete token bundles using exact
+  Foundry-owned segments; incomplete writes and cleanup failures remain blockers.
+- Retain verified sandbox bundles across desktop upgrades and select the exact
+  frozen identity for existing tasks. Original snapshots, baselines, evidence and
+  consumed budgets remain unchanged. No readiness, model call or retry is implied.
+
 - Add bounded, redacted task-response diagnostics that distinguish media/SSE
   parsing, stream termination, provider terminal events and completed-output
   validation without relaxing success checks or retrying calls. Historical

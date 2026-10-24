@@ -15,7 +15,7 @@ test("installed subscription metadata stays unprepared and never creates diagnos
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const platform of ["darwin", "win32", "linux"]) {
     for (const mode of ["normal", "coding"]) {
-      const enabled = platform === "darwin" && mode === "coding";
+      const enabled = ["darwin", "win32"].includes(platform) && mode === "coding";
       const calls = [];
       const request = async (_child, route, options) => {
         calls.push(route);
