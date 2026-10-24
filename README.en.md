@@ -37,6 +37,8 @@ Foundry is a software-delivery workbench for a one-person team. It reads a commi
 
 Download the artifact only from a platform job that passed all its gates in [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml); one platform's success does not certify another. Check its source revision and `SHA256SUMS`; retain both runtime sources and `sandbox-sources`. **Distribution uses CI artifacts, not a GitHub Release. Older artifacts do not represent the current version.**
 
+**For the cross-platform subscription and upgrade features described here, select the successful build for the current commit**: `foundry-macos-arm64` for Mac or `foundry-windows-x64` for Windows. The table below retains historical native-loop evidence, not a latest-download index.
+
 ### Verified builds · 2026-10-24
 
 | Platform / revision | Download | Acceptance actually performed |

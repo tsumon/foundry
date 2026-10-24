@@ -37,6 +37,8 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 
 从 [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml) 中对应平台通过全部门禁的任务下载 artifact；一个平台通过不代表另一个平台通过。核对其提交与 `SHA256SUMS`；保留随包提供的 runtime source 和 `sandbox-sources` 材料。**这里只使用 CI artifacts，不创建 GitHub Release；不要把旧版产物当成当前版本。**
 
+**要使用本页的双端订阅与升级兼容功能，请选当前提交的成功构建**：Mac artifact 名为 `foundry-macos-arm64`，Windows 为 `foundry-windows-x64`。下面是保留的历史原生闭环证据，不是最新版下载索引。
+
 ### 已验收构建 · 2026-10-24
 
 | 平台 / 提交 | 下载包 | 实际通过的验收 |

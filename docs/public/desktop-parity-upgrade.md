@@ -1,6 +1,6 @@
 # Desktop subscription parity and upgrade compatibility
 
-Status: implementation and local acceptance in progress; real provider results must not be inferred from fixtures.
+Status: implemented. Installer acceptance is bound to the exact-commit workflow and native reports; real provider results must not be inferred from fixtures.
 
 ## Contract
 
