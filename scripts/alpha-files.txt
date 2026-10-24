@@ -641,6 +641,7 @@ web/src/rolePolicyTypes.ts
 web/src/styles.css
 web/src/test/appStyles.ts
 web/src/test/fixtures.ts
+web/src/test/modelContinuationInvalidHistoryContract.json
 web/src/test/setup.ts
 web/src/types.ts
 web/src/verificationSource.ts

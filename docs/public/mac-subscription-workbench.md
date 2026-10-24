@@ -74,11 +74,18 @@ DMG packaging and installed-interface checks are separate from provider acceptan
 Continuation controls are local-fixture tested only, not real-task accepted. The
 test-only loopback harness serves the actual built workbench with temporary
 SQLite and synthetic production-lifecycle catalog receipts. It includes ready,
-pending, stale, applied and old-context-approval-denied tasks, each retaining one
+pending, stale, applied, old-context-approval-denied and malformed-history tasks, each retaining one
 unknown-outcome invocation of a seven-call budget. Its HTTP wrapper permits only
 session creation and the actual continuation mutations; all login, provider,
 desktop-preparation, model and VM mutations are closed. Browser screenshots and
 real acceptance are separate gates, not implied by passing component/fixture tests.
+
+Continuation candidates use the task-scoped, read-only
+`GET /api/missions/{id}/model-continuations/candidates` projection (only grant ID,
+account ID, state, generation and expiry). They do not consume the identity-bearing
+general account-management list; the existing account settings contract is unchanged.
+Malformed continuation history keeps valid original snapshot details readable but
+blocks effective authority and all continuation/context/execution controls.
 
 ## Official protocol references
 

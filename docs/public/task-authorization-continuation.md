@@ -91,9 +91,28 @@ effective approved continuation, expired/missing catalog, and pending material.
 Controls prepare, approve, and apply independently; no automatic checkbox or
 execution chaining. Explain that the local authorization ID is per sign-in, not
 the registered OpenAI client ID. Display remaining task calls, with unknown
-provider usage retained. Renderer DTOs contain no subject, client ID, secret
-reference, OAuth parameters or tokens. Activity records contain safe IDs/digests
-and outcomes only.
+provider usage retained. Continuation renderer DTOs contain no subject, client
+ID, secret reference, OAuth parameters or tokens. Activity records contain safe
+IDs/digests and outcomes only. Existing account-management identity display and
+its general authorization DTO remain unchanged; continuation never consumes that
+general list.
+
+The explicit local-candidate read uses
+`GET /api/missions/{id}/model-continuations/candidates`, with no query parameters
+or request body. Its response is `{ "authorizations": [...] }`; each entry has
+only `id`, `account_id`, `state`, `generation`, and `expires_at`. It reads the
+current local grant for each distinct SIWC account in the task's validated
+effective snapshot (the frozen original before application), never unrelated
+accounts. It performs no mutation, secret read, login, refresh or provider query.
+Recorded catalog choices still come from the existing local desktop-preparation
+GET. Missing evidence stays missing. The read does not grant approval or replace
+the exact prepare/approve/apply validations.
+
+Original snapshot display validity is evaluated independently of continuation
+history. Invalid history retains readable valid original details but yields
+`model_continuation_status: invalid_or_unsupported`, no valid effective selection,
+and blocked continuation/context/execution controls; malformed persisted history
+is not returned to the renderer. Historical readability is not current authority.
 
 ## Acceptance
 

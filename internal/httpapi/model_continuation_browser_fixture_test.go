@@ -45,7 +45,7 @@ func continuationBrowserSeed(t *testing.T) (*fixture, map[string]domain.Mission)
 	if err != nil {
 		t.Fatal(err)
 	}
-	modes := []string{"ready", "pending", "stale", "applied", "old-approval-denied"}
+	modes := []string{"ready", "pending", "stale", "applied", "old-approval-denied", "malformed-history"}
 	missions := map[string]domain.Mission{}
 	for _, mode := range modes {
 		m, e := f.store.CreateMission(domain.Mission{ID: "synthetic-continuation-" + mode, Title: "SYNTHETIC continuation / " + mode, Goal: "Local fixture only: preserve unknown 1/7 budget and frozen history. No real task, repository, model, native credential or VM access.", RepoPath: filepath.Join(f.dataDir, "synthetic-not-opened"), BaseCommit: strings.Repeat("a", 40), State: "planning", Stage: "plan", Epoch: 1, CodingVersion: 1, WorkspaceMode: "generations_account_snapshot_v2", Spec: domain.Spec{ProfileID: def, MaxCalls: 7}, Profiles: profiles, ModelSnapshot: snapshot, Budget: domain.Budget{MaxCalls: 7}, Approvals: []domain.Approval{{Kind: "context", Digest: strings.Repeat("b", 64), Revision: 1, CreatedAt: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)}}})
@@ -77,6 +77,10 @@ func continuationBrowserSeed(t *testing.T) (*fixture, map[string]domain.Mission)
 	catalog = continuationHTTPCatalog(t, f, a, route, "synthetic-replacement-grant")
 	for _, mode := range modes[1:] {
 		m := missions[mode]
+		if mode == "malformed-history" {
+			missions[mode] = corruptContinuationBrowserHistory(t, f, m)
+			continue
+		}
 		m, err = f.store.PrepareModelContinuation(m.ID, m.Revision, "synthetic-replacement-grant", catalog, time.Now())
 		if err != nil {
 			t.Fatal(err)
@@ -191,7 +195,7 @@ func continuationBrowserHandler(s *server) http.Handler {
 func TestModelContinuationBrowserFixtureStates(t *testing.T) {
 	f, missions := continuationBrowserSeed(t)
 	original, _ := json.Marshal(missions["ready"].ModelSnapshot)
-	for _, mode := range []string{"ready", "pending", "stale", "applied", "old-approval-denied"} {
+	for _, mode := range []string{"ready", "pending", "stale", "applied", "old-approval-denied", "malformed-history"} {
 		m := missions[mode]
 		if m.Budget.UsedCalls != 1 || m.Budget.MaxCalls != 7 || !m.Budget.UsageUnknown {
 			t.Fatal("fixture changed unknown budget", mode)
@@ -216,6 +220,14 @@ func TestModelContinuationBrowserFixtureStates(t *testing.T) {
 		}
 		if strings.Contains(rr.Body.String(), "private-subject") || strings.Contains(rr.Body.String(), "private-client") {
 			t.Fatal("private identity in task DTO")
+		}
+		candidates := f.request("GET", "/api/missions/"+m.ID+"/model-continuations/candidates", "", true)
+		if mode == "malformed-history" {
+			if candidates.Code != 409 || envelope.Mission.ModelSnapshotStatus != "valid" || envelope.Mission.ModelContinuationStatus != "invalid_or_unsupported" || envelope.Mission.EffectiveModelSnapshot != nil || strings.Contains(rr.Body.String(), "private-malformed-history") {
+				t.Fatal("malformed fixture did not retain history while blocking authority", rr.Body.String(), candidates.Body.String())
+			}
+		} else if candidates.Code != 200 || !strings.Contains(candidates.Body.String(), `"id":"synthetic-replacement-grant"`) || strings.Contains(candidates.Body.String(), "subject") || strings.Contains(candidates.Body.String(), "client_id") {
+			t.Fatal("fixture candidate projection missing or private", candidates.Body.String())
 		}
 		invocations, err := f.store.ListInvocations(m.ID, 0, 30)
 		if err != nil || len(invocations) != 1 || invocations[0].Status != "outcome_unknown" || invocations[0].Ordinal != 1 {

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { errorMessage } from "../api";
 import { desktopSubscriptionApi } from "../desktopSubscriptionApi";
-import { modelAuthorizationApi } from "../modelAccountApi";
 import { modelContinuationApi } from "../modelContinuationApi";
 import {
   continuationState,
@@ -96,7 +95,7 @@ export function ModelContinuation({
       ...new Set(selections.map((s) => s!.profile.account_id!)),
     ];
     const [grants, catalogs] = await Promise.all([
-      modelAuthorizationApi.list(),
+      modelContinuationApi.candidates(mission.id),
       Promise.all(
         accountIDs.map(async (id) => ({
           id,

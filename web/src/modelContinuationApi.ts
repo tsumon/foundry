@@ -9,6 +9,16 @@ const post = (url: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 export const modelContinuationApi = {
+  candidates: (id: string) =>
+    request<{
+      authorizations: {
+        id: string;
+        account_id: string;
+        state: string;
+        generation: number;
+        expires_at: string;
+      }[];
+    }>(`${path(id)}/candidates`),
   prepare: (
     id: string,
     revision: number,

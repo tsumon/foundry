@@ -109,7 +109,12 @@ func (s *server) missionView(m domain.Mission) (any, error) {
 	}
 	if accountData {
 		view.ModelSnapshotStatus = "valid"
-		if domain.ValidateMissionModelSnapshot(m) != nil {
+		// Display only: original history remains independently readable when the
+		// continuation chain is invalid. No authority/action validation uses this copy.
+		original := m
+		original.ModelContinuations = nil
+		original.ModelContinuationsInvalid = false
+		if domain.ValidateMissionModelSnapshot(original) != nil {
 			view.ModelSnapshotStatus = "invalid_or_unsupported"
 		}
 	}
@@ -127,7 +132,7 @@ func (s *server) missionView(m domain.Mission) (any, error) {
 	if b := m.MCPBindings; b != nil {
 		view.MCPSelection = &missionMCPSelection{b.ConnectionID, b.ConnectionRevision, b.Endpoint, b.Protocol, b.SnapshotID, b.SnapshotDigest, b.Tools, b.Budget, v2}
 	}
-	if !v2 || view.ModelSnapshotStatus == "invalid_or_unsupported" || view.ModelPolicySnapshotStatus == "invalid_or_unsupported" {
+	if !v2 || view.ModelSnapshotStatus == "invalid_or_unsupported" || view.ModelPolicySnapshotStatus == "invalid_or_unsupported" || view.ModelContinuationStatus == "invalid_or_unsupported" {
 		return view, nil
 	}
 	status, err := s.engine.ResearchMCPStatus(m.ID, m.Revision)

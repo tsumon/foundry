@@ -1,10 +1,63 @@
 package httpapi
 
 import (
+	"errors"
 	"foundry/internal/domain"
+	"foundry/internal/store"
 	"net/http"
 	"time"
 )
+
+// Task-scoped metadata only. Identity-bearing account-management DTOs must not
+// enter the continuation renderer, even when it would hide those fields.
+type modelContinuationCandidate struct {
+	ID         string `json:"id"`
+	AccountID  string `json:"account_id"`
+	State      string `json:"state"`
+	Generation int64  `json:"generation"`
+	ExpiresAt  string `json:"expires_at"`
+}
+
+func (s *server) modelContinuationCandidates(w http.ResponseWriter, r *http.Request, missionID string) {
+	if r.Method != "GET" {
+		writeError(w, 404, "not_found", "route not found")
+		return
+	}
+	if r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
+		writeError(w, 400, "validation", "query parameters and request bodies are not supported")
+		return
+	}
+	m, err := s.store.GetMission(missionID)
+	if err != nil {
+		writeMappedError(w, err)
+		return
+	}
+	snapshot, err := domain.EffectiveModelSnapshot(m)
+	if err != nil || snapshot == nil {
+		writeError(w, 409, "conflict", "valid task model authority required")
+		return
+	}
+	views := []modelContinuationCandidate{}
+	seen := map[string]bool{}
+	for _, role := range domain.RolePolicyRoles() {
+		selection := snapshot.Roles[role]
+		if selection.Authorization == nil || selection.Route == nil || selection.Route.Adapter != "openai_siwc_responses" || seen[selection.Profile.AccountID] {
+			continue
+		}
+		accountID := selection.Profile.AccountID
+		seen[accountID] = true
+		grant, err := s.store.CurrentModelAuthorization(accountID)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			writeMappedError(w, err)
+			return
+		}
+		views = append(views, modelContinuationCandidate{ID: grant.Binding.ID, AccountID: accountID, State: grant.State, Generation: grant.Generation, ExpiresAt: grant.ExpiresAt})
+	}
+	writeJSON(w, 200, map[string]any{"authorizations": views})
+}
 
 type modelContinuationView struct {
 	ID                      string                        `json:"id"`
@@ -61,6 +114,10 @@ func modelContinuationViews(m domain.Mission) []modelContinuationView {
 func (s *server) modelContinuationRoute(w http.ResponseWriter, r *http.Request, parts []string) bool {
 	if len(parts) < 2 || parts[1] != "model-continuations" {
 		return false
+	}
+	if len(parts) == 3 && parts[2] == "candidates" {
+		s.modelContinuationCandidates(w, r, parts[0])
+		return true
 	}
 	if r.Method != "POST" || (len(parts) != 2 && len(parts) != 4) || (len(parts) == 4 && (parts[2] == "" || (parts[3] != "approve" && parts[3] != "apply"))) {
 		writeError(w, 404, "not_found", "route not found")

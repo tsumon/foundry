@@ -1,14 +1,167 @@
 package httpapi
 
 import (
+	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"foundry/internal/domain"
 	"net/http/httptest"
+	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestModelContinuationHTTPCandidatesScopedReadOnly(t *testing.T) {
+	f, missions := continuationBrowserSeed(t)
+	_, secretRef := seedHTTPAuthorization(t, f) // unrelated account must not leak
+	before := diagnosticDurableSnapshot(t, f)
+	grantsBefore, err := f.store.ListModelAuthorizations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"ready", "applied"} {
+		path := "/api/missions/" + missions[mode].ID + "/model-continuations/candidates"
+		rr := f.request("GET", path, "", true)
+		if rr.Code != 200 {
+			t.Fatalf("candidate projection: %d %s", rr.Code, rr.Body.String())
+		}
+		var body struct {
+			Authorizations []map[string]any `json:"authorizations"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Authorizations) != 1 {
+			t.Fatal("not scoped to task account", rr.Body.String())
+		}
+		grant := body.Authorizations[0]
+		if len(grant) != 5 || grant["id"] != "synthetic-replacement-grant" || grant["account_id"] != "production" || grant["state"] != "available" || grant["generation"] == nil || grant["expires_at"] == nil {
+			t.Fatal("unexpected candidate fields", rr.Body.String())
+		}
+		for _, forbidden := range []string{"subject", "client_id", "issuer", "scopes", "secret", "token", "private-client", "private-subject", "oauth-account", secretRef} {
+			if strings.Contains(rr.Body.String(), forbidden) {
+				t.Fatal("private/unrelated metadata escaped", forbidden)
+			}
+		}
+		for _, tc := range []struct {
+			method, suffix, body string
+			status               int
+		}{
+			{"GET", "?account_id=oauth-account", "", 400}, {"GET", "?", "", 400},
+			{"GET", "/extra", "", 404}, {"POST", "", `{}`, 404}, {"GET", "", `{}`, 400},
+		} {
+			if rr := f.request(tc.method, path+tc.suffix, tc.body, true); rr.Code != tc.status {
+				t.Fatal(tc, rr.Code, rr.Body.String())
+			}
+		}
+		if rr := f.request("GET", path, "", false); rr.Code != 401 {
+			t.Fatal("unauthenticated read", rr.Code)
+		}
+	}
+	if rr := f.request("GET", "/api/missions/missing/model-continuations/candidates", "", true); rr.Code != 404 {
+		t.Fatal(rr.Code)
+	}
+	// Account settings intentionally retains its existing identity contract.
+	general := f.request("GET", "/api/model-authorizations", "", true)
+	if general.Code != 200 || !strings.Contains(general.Body.String(), `"subject"`) || !strings.Contains(general.Body.String(), `"client_id"`) {
+		t.Fatal("changed account-management contract")
+	}
+	grantsAfter, err := f.store.ListModelAuthorizations()
+	if err != nil || !reflect.DeepEqual(grantsBefore, grantsAfter) || before != diagnosticDurableSnapshot(t, f) {
+		t.Fatal("candidate reads mutated persisted state", err)
+	}
+}
+
+// Persist deliberately malformed history in temporary SQLite; do not bypass the
+// production decoder/projection by constructing a pre-sanitized Mission view.
+func corruptContinuationBrowserHistory(t *testing.T, f *fixture, m domain.Mission) domain.Mission {
+	t.Helper()
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]json.RawMessage
+	if err = json.Unmarshal(raw, &data); err != nil {
+		t.Fatal(err)
+	}
+	data["model_continuations"] = json.RawMessage(`{"unexpected":"private-malformed-history"}`)
+	raw, err = json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite3", f.storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec("UPDATE missions SET data=? WHERE id=?", string(raw), m.ID); err != nil {
+		t.Fatal(err)
+	}
+	m, err = f.store.GetMission(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestModelContinuationHTTPMalformedHistoryPreservesOriginalDisplay(t *testing.T) {
+	f, missions := continuationBrowserSeed(t)
+	m := missions["ready"]
+	original, _ := json.Marshal(modelSnapshotView(m.ModelSnapshot))
+	m = corruptContinuationBrowserHistory(t, f, m)
+	before := diagnosticDurableSnapshot(t, f)
+	rr := f.request("GET", "/api/missions/"+m.ID, "", true)
+	if rr.Code != 200 {
+		t.Fatal(rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Mission map[string]json.RawMessage `json:"mission"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	contract, err := os.ReadFile("../../web/src/test/modelContinuationInvalidHistoryContract.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var status map[string]json.RawMessage
+	if err = json.Unmarshal(contract, &status); err != nil {
+		t.Fatal(err)
+	}
+	for key, expected := range status {
+		if !bytes.Equal(body.Mission[key], expected) {
+			t.Errorf("HTTP/UI contract %s: got %s, want %s", key, body.Mission[key], expected)
+		}
+	}
+	if !bytes.Equal(body.Mission["model_snapshot"], original) || body.Mission["effective_model_snapshot"] != nil || body.Mission["model_continuations"] != nil || strings.Contains(rr.Body.String(), "private-malformed-history") {
+		t.Fatal("original hidden or malformed authority exposed", rr.Body.String())
+	}
+	if err = f.store.CheckModelCall(m.ID, domain.Planner); err == nil {
+		t.Fatal("invalid authority permits model admission")
+	}
+	if rr := f.request("GET", "/api/missions/"+m.ID+"/model-continuations/candidates", "", true); rr.Code != 409 {
+		t.Error("invalid history candidates", rr.Code)
+	}
+	if rr := f.request("POST", "/api/missions/"+m.ID+"/model-continuations", fmt.Sprintf(`{"revision":%d,"authorization_id":"synthetic-replacement-grant","catalog_operation_id":"synthetic-catalog"}`, m.Revision), true); rr.Code != 409 {
+		t.Error("invalid history prepare", rr.Code, rr.Body.String())
+	}
+	for _, action := range []string{"approve", "apply"} {
+		if rr := f.request("POST", "/api/missions/"+m.ID+"/model-continuations/material/"+action, fmt.Sprintf(`{"revision":%d,"digest":%q}`, m.Revision, strings.Repeat("c", 64)), true); rr.Code != 409 {
+			t.Error("invalid history continuation action", action, rr.Code, rr.Body.String())
+		}
+	}
+	for _, action := range []string{"plan", "approve"} {
+		if rr := f.request("POST", "/api/missions/"+m.ID+"/"+action, fmt.Sprintf(`{"revision":%d}`, m.Revision), true); rr.Code != 409 {
+			t.Error("invalid history model action", action, rr.Code, rr.Body.String())
+		}
+	}
+	if before != diagnosticDurableSnapshot(t, f) {
+		t.Fatal("invalid history changed durable state")
+	}
+}
 
 func TestModelContinuationHTTPStrictIndependentActions(t *testing.T) {
 	f := newFixture(t)

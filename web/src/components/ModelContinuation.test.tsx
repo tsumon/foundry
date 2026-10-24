@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { MissionViews } from "./MissionViews";
 import { DecisionPanel } from "./DecisionPanel";
 import { mission, profile, response } from "../test/fixtures";
+import invalidHistoryContract from "../test/modelContinuationInvalidHistoryContract.json";
 import { roles, type Mission, type RoleModelSelection } from "../types";
 
 const oldDigest = "a".repeat(64),
@@ -164,20 +165,20 @@ it("reads existing metadata, then prepares, approves and applies exact independe
     },
   };
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
-    if (url === "/api/model-authorizations" && !init?.method)
+    if (
+      url === "/api/missions/synthetic-task/model-continuations/candidates" &&
+      !init?.method
+    )
       return response({
         authorizations: [
           {
-            ...fixture().model_snapshot!.roles.worker.authorization,
+            account_id: "synthetic-account",
             id: "new-local-sign-in",
             state: "available",
             generation: 1,
             expires_at: future,
-            subject: "RAW-PRIVATE-SUBJECT",
-            client_id: "RAW-PRIVATE-CLIENT",
           },
         ],
-        remote_revocations: [],
       });
     if (
       url === "/api/model-accounts/synthetic-account/desktop-preparation" &&
@@ -358,6 +359,39 @@ it("retains readable original history when continuation authority is invalid", (
   expect(screen.getByRole("button", { name: "批准续接材料" })).toBeDisabled();
   expect(fetchMock).not.toHaveBeenCalled();
 });
+it("uses the persisted-malformed-history HTTP contract without hiding original history or enabling authority", () => {
+  // The HTTP regression verifies these exact status fields from actual corrupt
+  // persisted history, with no history/effective selection in the response.
+  const m = { ...fixture(), ...invalidHistoryContract } as Mission;
+  const view = render(<Harness initial={m} />);
+  expect(screen.getByLabelText("原始冻结模型")).toHaveTextContent(
+    "old-local-sign-in",
+  );
+  expect(screen.queryByLabelText("当前有效模型选择")).not.toBeInTheDocument();
+  for (const name of ["读取本地续接候选", "准备续接材料"]) {
+    const button = screen.getByRole("button", { name });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+  }
+  view.unmount();
+  const onAction = vi.fn();
+  const decision = render(
+    <DecisionPanel mission={m} busy={false} onAction={onAction} />,
+  );
+  expect(
+    screen.getByRole("button", { name: "授权上下文并生成计划" }),
+  ).toBeDisabled();
+  decision.rerender(
+    <DecisionPanel
+      mission={{ ...m, state: "awaiting_approval", plan: mission.plan }}
+      busy={false}
+      onAction={onAction}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "批准并执行计划" })).toBeDisabled();
+  expect(onAction).not.toHaveBeenCalled();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
 it.each([
   ["authorization.id", { unexpected: "value" }],
   ["authorization.id", ""],
@@ -447,18 +481,17 @@ it("offers one recorded catalog covering distinct frozen role models without que
   const m = fixture();
   m.model_snapshot!.roles.planner.profile.model = "second-model";
   fetchMock.mockImplementation(async (url: string) =>
-    url === "/api/model-authorizations"
+    url === "/api/missions/synthetic-task/model-continuations/candidates"
       ? response({
           authorizations: [
             {
-              ...m.model_snapshot!.roles.worker.authorization,
+              account_id: "synthetic-account",
               id: "new-local-sign-in",
               state: "available",
               generation: 1,
               expires_at: future,
             },
           ],
-          remote_revocations: [],
         })
       : response({
           preparation: {
