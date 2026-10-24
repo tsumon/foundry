@@ -695,6 +695,12 @@ export interface Invocation {
   model_receipt?: ModelCallReceipt;
 }
 export interface ModelResponseDiagnostic {
+  transport?: {
+    version: number;
+    content_type: string;
+    protocol: string;
+    body_length: string;
+  };
   version: number;
   stage: string;
   reason: string;

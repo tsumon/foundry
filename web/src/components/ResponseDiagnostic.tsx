@@ -70,8 +70,45 @@ const media: Record<string, string> = {
   invalid: "类型无效",
   missing: "类型缺失",
 };
+const transportHeaders: Record<string, string> = {
+  absent: "Content-Type 字段不存在",
+  empty: "Content-Type 字段为空",
+  single: "Content-Type 单一非空值",
+  multiple: "Content-Type 多个值",
+};
+const transportProtocols: Record<string, string> = {
+  http1_0: "HTTP/1.0",
+  http1_1: "HTTP/1.1",
+  http2: "HTTP/2",
+  other: "其他协议",
+};
+const transportLengths: Record<string, string> = {
+  zero: "0",
+  positive: "大于 0",
+  unknown: "未知",
+};
+
+function validTransport(d: ModelResponseDiagnostic): boolean {
+  const t = d.transport;
+  if (t === undefined) return true;
+  if (
+    !t ||
+    t.version !== 1 ||
+    typeof t.content_type !== "string" ||
+    typeof t.protocol !== "string" ||
+    typeof t.body_length !== "string" ||
+    !Object.hasOwn(transportHeaders, t.content_type) ||
+    !Object.hasOwn(transportProtocols, t.protocol) ||
+    !Object.hasOwn(transportLengths, t.body_length)
+  )
+    return false;
+  const missing = d.stage === "http_media" && d.reason === "missing_media_type";
+  if (t.content_type === "absent" || t.content_type === "empty") return missing;
+  return t.content_type !== "single" || !missing;
+}
 
 function validObservation(d: ModelResponseDiagnostic): boolean {
+  if (!validTransport(d)) return false;
   if (d.stage === "http_media") {
     const kind =
       d.reason === "missing_media_type"
@@ -150,6 +187,22 @@ export function ResponseDiagnostic({
         仅说明失败观察点，不单独归因于服务端；HTTP 200 或 completed
         事件不等于有效输出或审批通过。
       </p>
+      {d.transport ? (
+        <div aria-label="脱敏传输观察">
+          <p>HTTP 客户端返回时：{transportHeaders[d.transport.content_type]}</p>
+          <p className="muted">
+            {transportProtocols[d.transport.protocol]} · 客户端报告的正文长度：
+            {transportLengths[d.transport.body_length]}（非实际读取字节数）
+          </p>
+        </div>
+      ) : d.stage === "http_media" ? (
+        <p className="muted">未记录传输层观察；不能区分字段不存在与空值。</p>
+      ) : null}
+      {d.stage === "http_media" && (
+        <p className="muted">
+          正文未解析；不代表响应为空，也不代表未消耗套餐额度。
+        </p>
+      )}
     </div>
   );
 }

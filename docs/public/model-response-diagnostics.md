@@ -28,6 +28,54 @@ Old receipts remain unchanged and display “no staged diagnostic recorded”; t
 software cannot reconstruct missing historical evidence. Existing task budget,
 baseline, candidate, approvals and evidence are not migrated or rewritten.
 
+## Observed live stop, 2026-10-24
+
+One separately authorized Mac task invocation on `61cb519` recorded HTTP 200,
+`http_media / missing_media_type`, `events_seen: 0`, `bytes_read: 0`, unknown
+usage and a consumed reservation. This means the response reaching the router
+had an absent or empty Content-Type value as seen by `Header.Get`. The old receipt
+cannot distinguish these cases. The router stopped before SSE decoding; it does **not** prove
+that an SSE stream was empty, that the provider emitted `response.incomplete`,
+or that inference was not performed remotely. The body was not retained, and
+the historical request cannot be reconstructed by replaying its code or token.
+
+Inspection of the task transport confirms `Accept: text/event-stream`, JSON
+request content, `stream: true`, `store: false`, and no max-output-token field on
+the subscription route. It does not strip the response Content-Type. The current
+evidence cannot distinguish upstream omission from an intermediary. Keep the
+strict success boundary and unknown outcome; do not invent a parser fix or infer
+safe replay. Further live diagnosis needs a distinct explicit authorization.
+
+## Bounded offline transport diagnosis
+
+The follow-up fixes the diagnostic blind spot, not a proven upstream defect.
+After `http.Client.Do` returns and before router header handling, a receipt may
+now record an optional version-1 `transport` observation: Content-Type is absent,
+empty, single non-empty, or multiple; the parsed protocol is HTTP/1.0, HTTP/1.1,
+HTTP/2, or other; and `ContentLength` is zero, positive, or unknown. These are
+closed enums, not raw headers or packet captures. Decompression/chunking may
+make the reported length unknown. No extra body reads, request, or retry is
+introduced. No provider identity, URL, credential, header value, or body is logged.
+
+The transport is an isolated standard-library client with no environment-proxy
+configuration, redirect following, or keep-alive reuse. The router only removes
+credential echoes from request-ID response headers; it does not remove
+Content-Type. That narrows the local path but cannot prove where the historical
+header was lost outside it. No success fallback by body sniffing is permitted.
+
+Offline implementation/verification sequence for this bounded fix:
+1. Reproduce absent and empty headers over an actual loopback HTTP connection,
+   including complete SSE content and a valid Content-Type control case.
+2. Capture the fixed-value transport observation at the HTTP return boundary;
+   propagate it to failed receipts without changing parser or status semantics.
+3. Test redaction, closed-vocabulary validation, persistent unknown outcome,
+   one consumed call, no replay, and immutable historical receipts.
+4. Verify the existing activity display with synthetic receipts. Historical
+   receipts show missing transport evidence rather than invented observations.
+5. Run offline regressions and compare the original task, invocations, baseline,
+   evidence and 2/7 budget before/after. Do not replay the real request, refresh
+   credentials, execute a VM, replace the installed app, or claim live recovery.
+
 ## Offline implementation and acceptance plan
 
 1. Add table-driven failing task-router tests for content type, invalid JSON,

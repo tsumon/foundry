@@ -47,7 +47,7 @@ func routedPayload(r Request, adapter string) (string, any) {
 	}
 }
 
-func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, endpoint string, payload any) (*http.Response, int64, error) {
+func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, endpoint string, payload any) (*routedHTTPResponse, int64, error) {
 	if ctx.Err() != nil {
 		return nil, 0, providerFailure("request_rejected", "not_sent")
 	}
@@ -100,6 +100,10 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 	if err != nil {
 		return nil, lease.Generation, providerFailure("transport_unknown", "unknown")
 	}
+	var transport domain.HTTPTransportDiagnostic
+	if s.Route.Adapter == "openai_siwc_responses" && method == http.MethodPost && response.StatusCode == http.StatusOK {
+		transport = observeHTTPTransport(response)
+	}
 	// A hostile provider can echo credentials into otherwise valid ID fields.
 	for _, name := range []string{"X-Request-ID", "Request-ID"} {
 		if strings.Contains(response.Header.Get(name), lease.Secret) {
@@ -127,7 +131,7 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 		removeCredentialErrorEchoes(response.Request, failure)
 		return nil, lease.Generation, failure
 	}
-	return response, lease.Generation, nil
+	return &routedHTTPResponse{Response: response, transport: transport}, lease.Generation, nil
 }
 
 func validSIWCRequestPair(method, endpoint string) bool {

@@ -7,16 +7,30 @@ acceptance evidence are required before treating its artifact as accepted;
 build configuration alone is not a pass. See the
 [desktop guide](desktop-guide.md) for installation and actual capabilities.
 
-2026-10-24 acceptance snapshot: Mac `46e1247` passed local physical-Mac install,
-native UI, restart and real bundled-VM failure/repair/recheck. Windows `0c87188`
-passed the complete native package job: Unicode-path install, cross-drive data,
-real WHPX failure/repair/recheck, native UI automation, restart and uninstall with
-persistent evidence retained. Download the exact artifacts and inspect workflow
-links in the [verified-build table](../../README.en.md#verified-builds--2026-10-24).
+2026-10-24 desktop acceptance snapshot: `61cb519` passed
+[Verify](https://github.com/tsumon/foundry/actions/runs/40085553607) and both
+[Desktop packages jobs](https://github.com/tsumon/foundry/actions/runs/40085553628).
+The Mac CI job validates installation and backend contracts, not VM execution.
+Physical-Mac VM failure/repair/recheck evidence remains scoped to historical
+build `46e1247`; later installation and retained-runtime checks do not renew it.
+Windows passed Unicode-path
+installation, cross-drive data, real WHPX failure/repair/recheck, native UI,
+restart and uninstall with persistent evidence retained. Earlier builds in the
+[README table](../../README.en.md#verified-builds--2026-10-24) are historical evidence.
 Mac GUI evidence is local; Windows GUI evidence is native automation and captured
 painted windows, not a claim of manual interactive testing. Roles use local
 model-protocol fixtures on both platforms. Newer revisions require their own
 gates; real-account end-to-end acceptance is not established by these results.
+
+A separately authorized Mac real-account attempt on the same revision completed
+subscription connection, one catalog query containing the selected model,
+same-identity task continuation and native VM readiness with confirmed shutdown.
+The first new Researcher invocation stopped at HTTP media validation: HTTP 200
+with an absent or empty Content-Type, before reading any SSE events. Its outcome and usage remain
+unknown; the reservation stays consumed and no retry occurred. Planner, Worker,
+candidate tests, repair and delivery did not run in that attempt. This is not a
+successful real-model coding-loop acceptance or a claim about Windows real-account
+behavior. See [response diagnostics](model-response-diagnostics.md).
 
 ## Implemented
 
@@ -44,7 +58,8 @@ gates; real-account end-to-end acceptance is not established by these results.
   current independent approval. It uses no descriptor-supplied solution. Tests
   exercise the production protocol with owned loopback services; synthetic tests
   and native-VM tests have separate evidence. Real-account end-to-end acceptance
-  remains pending authorization. Windows Docker remains unavailable.
+  remains incomplete; each real operation still requires explicit authority.
+  Windows Docker remains unavailable.
 
 - [Built-in sandbox](embedded-sandbox.md): the default for new controlled coding
   tasks is a bundled Linux VM (Apple Virtualization on Mac arm64; headless
@@ -113,9 +128,11 @@ uses protected per-user DACLs and native held locks, not POSIX chmod emulation.
 
 Native credential backends are macOS Keychain with cgo and Windows Credential
 Manager. Normal desktop/simulation modes keep credential access disabled; coding
-mode uses native storage only for explicit operations. Windows rejects blobs
-over its native 2,560-byte limit rather than silently truncating or using plaintext;
-larger subscription bundles are therefore unsupported. Windows real Docker stays
+mode uses native storage only for explicit operations. Windows preserves the native
+2,560-byte per-record ceiling and supports bounded larger subscription bundles
+through exact-owned segments and an integrity-checked commit record. Partial,
+tampered or oversized bundles fail closed; there is no plaintext fallback.
+Windows real Docker stays
 closed. Compilation alone does not establish native or real-provider acceptance.
 
 The expected validation toolchain is Go 1.27.3, Node.js 22.23.2, and npm 10.9.8. The trusted system `/usr/bin/git` must pass `/usr/bin/git --no-lazy-fetch --version`; a newer Git elsewhere on `PATH` does not substitute for it. CI targets the public-repository arm64 `macos-26` image and retains that feature check. The initial public snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) completed both macOS verification and security checks in [public workflow run 39188374585](https://github.com/tsumon/foundry/actions/runs/39188374585). That evidence is commit-scoped; it does not cover later commits or any skipped Docker, Keychain, real-provider, or independent-machine check. Docker-dependent behavior requires a running local daemon and a preloaded trusted image. A skipped Docker smoke test is unverified, not passed.
@@ -126,9 +143,14 @@ the product is not globally offline. See [safety](safety.md).
 
 ## Not yet verified or claimed
 
-- C3 acceptance uses disposable local Git/SQLite/HTTP with synthetic model responses and content checks. It does not execute compiler commands or Docker. C4 real-project / trusted-image readiness remains `not_checked`; a synthetic pass is not real-project readiness.
+- C3 synthetic acceptance does not execute compiler commands or Docker. Separate
+  C4 Docker and native-VM results above cover only their exact accepted inputs;
+  they do not establish readiness for another project, image or host.
 
-- No real provider account, API key, subscription, entitlement, quota, billing, balance, or reset-time behavior is certified. The presence of the Keychain diagnostic is not a claim that it passed on this or any other machine.
+- The explicitly reported Mac subscription connection and catalog attempt does
+  not certify real-model task completion, general account compatibility,
+  entitlement, quota, billing, balance or reset-time behavior. Native diagnostics
+  are exact-item and host-scoped; an implementation alone is not a passed check.
 - No external MCP implementation is certified for task execution.
 - No independent fresh Apple Silicon Mac acceptance run is claimed.
 - No security audit, penetration test, dependency legal review, or production-readiness assessment is claimed.
@@ -150,4 +172,5 @@ The source snapshot does not resolve every release-readiness question:
 3. Docker, real Keychain, real-provider, and independent-machine acceptance must each be reported as run, failed, or skipped based on evidence.
 
 Publishing source or a CI installer does not create a GitHub Release or certify
-production readiness. Real models/subscriptions remain paused.
+production readiness. Real model/subscription operations remain individually
+approval-bound; the failed real task attempt is not replayed automatically.

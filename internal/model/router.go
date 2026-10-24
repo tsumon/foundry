@@ -177,7 +177,10 @@ func (r *Router) Complete(ctx context.Context, request Request) (Result, error) 
 		return Result{CredentialGeneration: generation}, err
 	}
 	defer response.Body.Close()
-	result, err := r.decodeResponse(response, s.Route.Adapter)
+	result, err := r.decodeResponse(response.Response, s.Route.Adapter)
+	if p, ok := err.(*ProviderError); ok && p.ResponseDiagnostic.Valid() && response.transport.Valid() {
+		p.ResponseDiagnostic.Transport = response.transport
+	}
 	result.CredentialGeneration = generation
 	return result, err
 }

@@ -3,16 +3,33 @@ package domain
 // ResponseDiagnostic contains observations, never provider prose or authority.
 // BytesRead includes scanner read-ahead; neither counter is token/billing usage.
 type ResponseDiagnostic struct {
-	Version       int    `json:"version"`
-	Stage         string `json:"stage"`
-	Reason        string `json:"reason"`
-	MediaType     string `json:"media_type,omitempty"`
-	TerminalEvent string `json:"terminal_event,omitempty"`
-	EventsSeen    int    `json:"events_seen"`
-	BytesRead     int64  `json:"bytes_read"`
+	Version       int                     `json:"version"`
+	Stage         string                  `json:"stage"`
+	Reason        string                  `json:"reason"`
+	MediaType     string                  `json:"media_type,omitempty"`
+	TerminalEvent string                  `json:"terminal_event,omitempty"`
+	EventsSeen    int                     `json:"events_seen"`
+	BytesRead     int64                   `json:"bytes_read"`
+	Transport     HTTPTransportDiagnostic `json:"transport,omitzero"`
 }
 
 func (d ResponseDiagnostic) Valid() bool {
+	if d.Transport != (HTTPTransportDiagnostic{}) {
+		if !d.Transport.Valid() {
+			return false
+		}
+		missing := d.Stage == "http_media" && d.Reason == "missing_media_type"
+		switch d.Transport.ContentType {
+		case "absent", "empty":
+			if !missing {
+				return false
+			}
+		case "single":
+			if missing {
+				return false
+			}
+		}
+	}
 	if d.Version != 1 || d.EventsSeen < 0 || d.EventsSeen > 2<<20 || d.BytesRead < 0 || d.BytesRead > (2<<20)+1 {
 		return false
 	}
@@ -66,4 +83,36 @@ func (d ResponseDiagnostic) Valid() bool {
 		return false
 	}
 	return int64(d.EventsSeen) <= d.BytesRead && (d.Stage == "stream_read" || d.EventsSeen > 0)
+}
+
+// HTTPTransportDiagnostic is captured immediately after http.Client.Do returns,
+// before router header handling or body parsing. Values are classifications,
+// not raw headers, body bytes, wire captures, or evidence of remote execution.
+type HTTPTransportDiagnostic struct {
+	Version     int    `json:"version"`
+	ContentType string `json:"content_type"`
+	Protocol    string `json:"protocol"`
+	BodyLength  string `json:"body_length"`
+}
+
+func (d HTTPTransportDiagnostic) Valid() bool {
+	if d.Version != 1 {
+		return false
+	}
+	switch d.ContentType {
+	case "absent", "empty", "single", "multiple":
+	default:
+		return false
+	}
+	switch d.Protocol {
+	case "http1_0", "http1_1", "http2", "other":
+	default:
+		return false
+	}
+	switch d.BodyLength {
+	case "zero", "positive", "unknown":
+	default:
+		return false
+	}
+	return true
 }

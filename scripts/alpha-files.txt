@@ -17,6 +17,9 @@ web/src/components/ModelContinuation.test.tsx
 docs/public/model-response-diagnostics.md
 internal/domain/response_diagnostics.go
 internal/domain/response_diagnostics_test.go
+internal/domain/transport_diagnostics_test.go
+internal/model/transport_diagnostics.go
+internal/model/transport_diagnostics_test.go
 internal/engine/response_diagnostics_test.go
 internal/model/response_diagnostics_test.go
 internal/store/response_diagnostics_test.go

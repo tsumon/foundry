@@ -52,6 +52,125 @@ const invocation = {
 };
 
 it.each([
+  [
+    {
+      version: 1,
+      stage: "http_media",
+      reason: "missing_media_type",
+      media_type: "missing",
+      events_seen: 0,
+      bytes_read: 0,
+      transport: {
+        version: 1,
+        content_type: ["absent"],
+        protocol: "http1_1",
+        body_length: "positive",
+      },
+    },
+    "分阶段诊断不可验证",
+  ],
+  [
+    {
+      version: 1,
+      stage: "http_media",
+      reason: "missing_media_type",
+      media_type: "missing",
+      events_seen: 0,
+      bytes_read: 0,
+      transport: {
+        version: 1,
+        content_type: "absent",
+        protocol: { toString: null },
+        body_length: "positive",
+      },
+    },
+    "分阶段诊断不可验证",
+  ],
+  [
+    {
+      version: 1,
+      stage: "http_media",
+      reason: "missing_media_type",
+      media_type: "missing",
+      events_seen: 0,
+      bytes_read: 0,
+      transport: {
+        version: 1,
+        content_type: "absent",
+        protocol: "http1_1",
+        body_length: ["positive"],
+      },
+    },
+    "分阶段诊断不可验证",
+  ],
+  [
+    {
+      version: 1,
+      stage: "http_media",
+      reason: "missing_media_type",
+      media_type: "missing",
+      events_seen: 0,
+      bytes_read: 0,
+      transport: {
+        version: 1,
+        content_type: "absent",
+        protocol: "http1_1",
+        body_length: "positive",
+      },
+    },
+    "HTTP 客户端返回时：Content-Type 字段不存在",
+  ],
+  [
+    {
+      version: 1,
+      stage: "http_media",
+      reason: "missing_media_type",
+      media_type: "missing",
+      events_seen: 0,
+      bytes_read: 0,
+      transport: {
+        version: 1,
+        content_type: "empty",
+        protocol: "http2",
+        body_length: "unknown",
+      },
+    },
+    "HTTP 客户端返回时：Content-Type 字段为空",
+  ],
+  [
+    {
+      version: 1,
+      stage: "http_media",
+      reason: "missing_media_type",
+      media_type: "missing",
+      events_seen: 0,
+      bytes_read: 0,
+      transport: {
+        version: 1,
+        content_type: "PRIVATE",
+        protocol: "http1_1",
+        body_length: "positive",
+      },
+    },
+    "分阶段诊断不可验证",
+  ],
+  [
+    {
+      version: 1,
+      stage: "http_media",
+      reason: "missing_media_type",
+      media_type: "missing",
+      events_seen: 0,
+      bytes_read: 0,
+      transport: {
+        version: 1,
+        content_type: "single",
+        protocol: "http1_1",
+        body_length: "positive",
+      },
+    },
+    "分阶段诊断不可验证",
+  ],
   [undefined, "未记录分阶段诊断"],
   [
     {
