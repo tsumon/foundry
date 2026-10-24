@@ -22,9 +22,11 @@ func Retain(source, archive string, expected domain.C4VMIdentity) (string, error
 	if !filepath.IsAbs(archive) || filepath.Clean(archive) != archive || validateInstanceLocation(source, filepath.Dir(archive)) != nil {
 		return "", errors.New("runtime archive must be outside source")
 	}
-	if err := canonicalDirectory(filepath.Dir(archive)); err != nil {
+	release, err := protectArchiveParent(filepath.Dir(archive))
+	if err != nil {
 		return "", err
 	}
+	defer release()
 	if err := ensureArchiveDirectory(archive); err != nil {
 		return "", err
 	}
@@ -150,6 +152,11 @@ func ensureArchiveDirectory(path string) error {
 // LoadRetained is metadata-only. Incomplete staging is never authority; a
 // malformed published object fails closed rather than silently picking latest.
 func LoadRetained(archive, instances string) ([]*Runtime, error) {
+	release, err := protectArchiveParent(filepath.Dir(archive))
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	if err := canonicalDirectory(archive); err != nil {
 		return nil, err
 	}

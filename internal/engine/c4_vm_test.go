@@ -62,6 +62,12 @@ func TestC4VMVerificationNamesExactBackend(t *testing.T) {
 // Inert metadata only: no helper is executable and no VM is started.
 func newInertVMRuntime(t *testing.T, variant ...string) (*vmruntime.Runtime, string, domain.C4VMIdentity) {
 	t.Helper()
+	vm, instances, identity, _ := newInertVMRuntimeBundle(t, variant...)
+	return vm, instances, identity
+}
+
+func newInertVMRuntimeBundle(t *testing.T, variant ...string) (*vmruntime.Runtime, string, domain.C4VMIdentity, string) {
+	t.Helper()
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
 		t.Skip("fixture manifest targets Apple Silicon")
 	}
@@ -100,7 +106,7 @@ func newInertVMRuntime(t *testing.T, variant ...string) (*vmruntime.Runtime, str
 	}
 	manifestSum := sha256.Sum256(raw)
 	expected := domain.C4VMIdentity{SchemaVersion: 1, ManifestDigest: hex.EncodeToString(manifestSum[:]), HostPlatform: "darwin/arm64", GuestPlatform: "linux/arm64", RuntimeDigest: digest, KernelDigest: digest, RootFSDigest: digest, VerifierDigest: digest, Protocol: "foundry-vm-v1", PolicyVersion: "go-vm-v1"}
-	return vm, instances, expected
+	return vm, instances, expected, bundle
 }
 
 func TestCodingVMCapabilityFrozenMetadataAndExactIdentity(t *testing.T) {
