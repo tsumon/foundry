@@ -49,8 +49,9 @@ unknown usage are unchanged. See [task continuation](task-authorization-continua
 - Login timeout/cancellation, token/identity failure: preserve sanitized stage evidence; consume the attempt; do not reuse the code, restore an old browser URL or begin another login.
 - A credential may have committed before a final receipt error. Reconcile existing durable metadata; do not claim rollback or delete a valid credential merely because presentation failed.
 - Catalog 401/403/429/5xx, redirects, malformed response or transport ambiguity: retain the one-call receipt, stop, and report certainty correctly. Never retry.
-- Restart: metadata recovery and exact pending cleanup, with no provider retry,
-  browser opening or catalog query. Process-local connection/catalog authority
+- Restart: metadata-only recovery; exact pending cleanup remains retained and
+  blocking, with no credential Get/Set/Delete, provider retry, browser opening
+  or catalog query. Process-local connection/catalog authority
   does not survive. Separately persisted renewal consent may resume at its next
   scheduled time; absent/disabled consent has no credential or network effects.
 - Account/route/revision/generation mismatch or expired credential: disable task selection and fail closed before a credential read/provider send. Existing task snapshots are never rewritten.
