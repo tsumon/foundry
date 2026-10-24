@@ -42,7 +42,10 @@ func openChain(p string, directory bool) (*File, error) {
 		if e != nil {
 			return fail(e)
 		}
-		access := uint32(windows.FILE_READ_ATTRIBUTES | windows.READ_CONTROL)
+		// Metadata-only opens do not participate in read/write/delete sharing
+		// checks. Directory-data read access makes omission of SHARE_DELETE
+		// actually pin every component, including an empty terminal directory.
+		access := uint32(windows.FILE_LIST_DIRECTORY | windows.FILE_READ_ATTRIBUTES | windows.READ_CONTROL)
 		if !wantDir {
 			access = windows.GENERIC_READ
 		}

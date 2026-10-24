@@ -86,6 +86,48 @@ func TestWindowsReadRetainsAncestorsAndRejectsDirectory(t *testing.T) {
 	}
 }
 
+func TestWindowsOpenDirectoryPinsEmptyDirectoryChainUntilClose(t *testing.T) {
+	for _, component := range []string{"leaf", "ancestor"} {
+		t.Run(component, func(t *testing.T) {
+			parent := filepath.Join(nativeFixtureRoot(t), "parent")
+			leaf := filepath.Join(parent, "empty")
+			if err := os.MkdirAll(leaf, 0700); err != nil {
+				t.Fatal(err)
+			}
+			target := leaf
+			if component == "ancestor" {
+				target = parent
+			}
+			moved := target + "-moved"
+			// Establish that ordinary access permits replacement. There is no
+			// open child file whose data handle could incidentally pin the path.
+			if err := os.Rename(target, moved); err != nil {
+				t.Fatalf("fixture is not renameable before acquisition: %v", err)
+			}
+			if err := os.Rename(moved, target); err != nil {
+				t.Fatal(err)
+			}
+			f, err := OpenDirectory(leaf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			if err := os.Rename(target, moved); err == nil {
+				t.Fatal("directory namespace renamed while held")
+			}
+			if _, err := os.Stat(leaf); err != nil {
+				t.Fatalf("held namespace disappeared: %v", err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(target, moved); err != nil {
+				t.Fatalf("directory stayed pinned after release: %v", err)
+			}
+		})
+	}
+}
+
 // Junction creation does not require the symlink privilege. This fixture uses
 // only a newly created test-owned directory, never a shell command or real root.
 func testJunction(t *testing.T, link, target string) {
