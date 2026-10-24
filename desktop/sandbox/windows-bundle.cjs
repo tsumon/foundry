@@ -125,13 +125,15 @@ async function acquireWindowsRuntime({ lock, cacheRoot, outputRoot, fetchImpl })
   const peFiles = new Map(), extracted = [];
   for (const f of [...lock.windows.files, ...lock.windows.notices]) {
     const archive = path.join(inputRoot, f.archive);
-    const listing = cp.execFileSync("tar", ["-tvf", archive, "--include", f.member], { encoding: "utf8", maxBuffer: 8192, timeout: 30000 }).trim().split("\n");
+    // Literal operands work with GNU tar and bsdtar. Disable recursive name
+    // matching so a selected file name cannot admit a same-prefix descendant.
+    const listing = cp.execFileSync("tar", ["-tvf", archive, "--no-recursion", "--", f.member], { encoding: "utf8", maxBuffer: 8192, timeout: 30000 }).trim().split("\n");
     if (listing.length !== 1 || !listing[0].startsWith("-")) throw Error("Regular archive member required");
-    let raw = cp.execFileSync("tar", ["-xOf", archive, "--include", f.member], { maxBuffer: f.inner_member ? 512 * 1024 * 1024 : f.bytes + 1, timeout: 30000 });
+    let raw = cp.execFileSync("tar", ["-xOf", archive, "--no-recursion", "--", f.member], { maxBuffer: f.inner_member ? 512 * 1024 * 1024 : f.bytes + 1, timeout: 30000 });
     if (f.inner_member) {
-      const innerListing = cp.execFileSync("tar", ["-tvf", "-", "--include", f.inner_member], { input: raw, encoding: "utf8", maxBuffer: 8192, timeout: 30000 }).trim().split("\n");
+      const innerListing = cp.execFileSync("tar", ["-tvf", "-", "--no-recursion", "--", f.inner_member], { input: raw, encoding: "utf8", maxBuffer: 8192, timeout: 30000 }).trim().split("\n");
       if (innerListing.length !== 1 || !innerListing[0].startsWith("-")) throw Error("Regular source notice member required");
-      raw = cp.execFileSync("tar", ["-xOf", "-", "--include", f.inner_member], { input: raw, maxBuffer: f.bytes + 1, timeout: 30000 });
+      raw = cp.execFileSync("tar", ["-xOf", "-", "--no-recursion", "--", f.inner_member], { input: raw, maxBuffer: f.bytes + 1, timeout: 30000 });
     }
     if (raw.length !== f.bytes || crypto.createHash("sha256").update(raw).digest("hex") !== f.sha256) throw Error("Runtime member integrity failure");
     extracted.push({ f, raw }); if (/\.(exe|dll)$/i.test(f.path)) peFiles.set(path.basename(f.path), raw);

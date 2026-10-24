@@ -98,6 +98,7 @@ docs/media/README.md
 docs/media/model-acceptance.jpg
 docs/media/workbench-plan-approval.jpg
 docs/public/alpha-status.md
+docs/public/release-readiness.md
 docs/public/architecture.md
 docs/public/coding-loop-c1.md
 docs/public/coding-loop-c2.md

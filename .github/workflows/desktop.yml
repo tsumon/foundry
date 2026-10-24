@@ -13,6 +13,9 @@ jobs:
     name: Pinned native runtime source sidecar
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      macos_installer: ${{ steps.package-metadata.outputs.macos_installer }}
+      windows_installer: ${{ steps.package-metadata.outputs.windows_installer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -23,6 +26,17 @@ jobs:
           package-manager-cache: false
       - name: Install source verifier without Electron install scripts
         run: npm ci --prefix desktop --ignore-scripts
+      - name: Read installer names from the package version
+        id: package-metadata
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const { version } = require("./desktop/package.json");
+            if (typeof version !== "string" || /[\r\n]/.test(version) || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version))
+              throw new Error("Invalid desktop package version");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,
+              `macos_installer=Foundry-${version}-arm64.dmg\nwindows_installer=Foundry-${version}-x64.exe\n`);
+          '
       - name: Fetch each immutable source once and check every digest
         run: |
           node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources"
@@ -91,13 +105,15 @@ jobs:
           cp -R "$RUNNER_TEMP/foundry-macos-sandbox/sandbox-sources" "$FOUNDRY_DESKTOP_OUTPUT/sandbox-sources"
       - name: Installed backend contracts and persistence (no hardware VM acceptance)
         id: installed-contract
+        env:
+          FOUNDRY_MAC_INSTALLER: ${{ needs.runtime-sources.outputs.macos_installer }}
         run: |
           set -eu
           output="$RUNNER_TEMP/foundry-macos-output"
           mountpoint="$RUNNER_TEMP/foundry-mount"
           install="$RUNNER_TEMP/Foundry Installed"
           mkdir "$mountpoint" "$install"
-          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$output/Foundry-0.1.0-alpha.3-arm64.dmg"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$output/$FOUNDRY_MAC_INSTALLER"
           trap 'hdiutil detach "$mountpoint"' EXIT
           ditto "$mountpoint/Foundry.app" "$install/Foundry.app"
           codesign --verify --deep --strict "$install/Foundry.app"
@@ -110,7 +126,7 @@ jobs:
           name: foundry-macos-arm64
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/foundry-macos-output/Foundry-0.1.0-alpha.3-arm64.dmg
+            ${{ runner.temp }}/foundry-macos-output/${{ needs.runtime-sources.outputs.macos_installer }}
             ${{ runner.temp }}/foundry-macos-output/SHA256SUMS
             ${{ runner.temp }}/foundry-macos-output/build-inputs.json
             ${{ runner.temp }}/foundry-macos-output/native-smoke.json
@@ -248,7 +264,7 @@ jobs:
           name: foundry-windows-x64
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/foundry-windows-output/Foundry-0.1.0-alpha.3-x64.exe
+            ${{ runner.temp }}/foundry-windows-output/${{ needs.runtime-sources.outputs.windows_installer }}
             ${{ runner.temp }}/foundry-windows-output/SHA256SUMS
             ${{ runner.temp }}/foundry-windows-output/build-inputs.json
             ${{ runner.temp }}/foundry-windows-output/native-smoke.json

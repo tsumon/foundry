@@ -5,7 +5,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { sandboxFixture } = require("./sandbox-fixture.cjs");
+const {
+  sandboxFixture,
+  loadDesktopFixtureModule,
+} = require("./sandbox-fixture.cjs");
 const { writeManifest } = require("../build-support.cjs");
 const {
   parseReadiness,
@@ -14,7 +17,24 @@ const {
   startBackend,
   verifyResources,
   verifySandboxBundle,
-} = require("../runtime.cjs");
+} = loadDesktopFixtureModule("runtime.cjs");
+
+test("fixture host does not enable the shipping runtime on an unsupported host", (t) => {
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "foundry-unsupported-host-")),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  sandboxFixture(root, "darwin/arm64");
+  assert.throws(
+    () => require("../runtime.cjs").verifySandboxBundle(root, "linux/amd64"),
+    /platform|contract/i,
+  );
+  if (process.platform === "linux")
+    assert.throws(
+      () => require("../runtime.cjs").verifySandboxBundle(root),
+      /platform|contract/i,
+    );
+});
 
 test("sandbox inventory validates exact manifest, legal files, hashes, sizes and platform without executing", (t) => {
   const root = fs.realpathSync(
@@ -174,12 +194,18 @@ function fixture(t, body) {
   fs.mkdirSync(path.join(root, "bin"));
   fs.mkdirSync(path.join(root, "web"));
   fs.writeFileSync(path.join(root, "web/index.html"), "SPA");
-  for (const name of ["foundry", "foundry-acceptance", "foundry-vm-acceptance"])
+  for (const name of [
+    "foundry",
+    "foundry-acceptance",
+    "foundry-vm-acceptance",
+  ]) {
     fs.writeFileSync(
       path.join(root, "bin", name),
       "#!" + process.execPath + "\n" + body,
       { mode: 0o755 },
     );
+    fs.chmodSync(path.join(root, "bin", name), 0o755);
+  }
   sandboxFixture(path.join(root, "sandbox"));
   writeManifest(root);
   return root;

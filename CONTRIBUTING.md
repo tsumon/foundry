@@ -49,6 +49,12 @@ Run all checks from the repository root unless the command changes directory:
 
 The shared script checks exact Go/Node.js/npm versions and system Git capabilities, verifies Go modules, runs exporter tests, normal and race-enabled Go tests, `go vet`, frontend tests, and the production build. It is also the verification entrypoint used by CI.
 
+Linux x86_64 cloud environments run the same shared checks and the desktop
+source-contract tests. The source tests model supported native hosts with inert
+fixtures; Linux is not a supported desktop packaging or installed-acceptance
+target. See the [release readiness gates](docs/public/release-readiness.md) before
+promoting a desktop build out of Alpha.
+
 For desktop changes, additionally install the exact desktop lock and run its
 tests (`npm ci --prefix desktop`, `npm test --prefix desktop`). The **Desktop
 packages** workflow performs native packaging and installed-resource acceptance

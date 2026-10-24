@@ -8,6 +8,37 @@ permissions:
   contents: read
 
 jobs:
+  linux-source-verify:
+    name: Linux source verification (not native desktop acceptance)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # Bound concurrent package/race workers on the four-CPU Linux runner.
+      GOFLAGS: "-p=2"
+      GOMAXPROCS: "2"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .go-version
+          cache: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Run shared verification
+        run: ./scripts/verify.sh
+      - name: Verify desktop source contracts without installing Electron
+        run: |
+          set -eu
+          npm ci --prefix desktop --ignore-scripts
+          npm test --prefix desktop
+
   macos-verify:
     name: macOS verification
     # Public-repository arm64 image with current Apple developer tools.
