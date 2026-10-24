@@ -75,6 +75,20 @@ export function invalidContinuation(m: Mission): boolean {
       const item = effective.roles[role],
         original = m.model_snapshot?.roles[role];
       if (!item?.profile || !original?.profile) return true;
+      // The DTO is runtime input: even collapsed snapshot details render their
+      // children. Reject non-scalar display values before selecting authority.
+      if (
+        ![
+          item.profile.id,
+          item.profile.name,
+          item.profile.model,
+          item.profile.protocol,
+        ].every(identifier) ||
+        (item.profile.credential_version !== undefined &&
+          (!Number.isSafeInteger(item.profile.credential_version) ||
+            item.profile.credential_version < 0))
+      )
+        return true;
       if (
         [
           "id",
@@ -95,16 +109,45 @@ export function invalidContinuation(m: Mission): boolean {
         return !!item.account || !!item.route || !!item.authorization;
       return (
         !item.account ||
+        ![item.account.id, item.account.name, item.account.billing_mode].every(
+          identifier,
+        ) ||
+        !["subscription", "api_credits", "metered_api", "unknown"].includes(
+          item.account.billing_mode,
+        ) ||
+        !Number.isSafeInteger(item.account.revision) ||
+        item.account.revision < 1 ||
+        !Number.isSafeInteger(item.profile.account_revision) ||
+        (item.profile.account_revision ?? 0) < 1 ||
         item.account.id !== item.profile.account_id ||
         item.account.revision !== item.profile.account_revision ||
         !item.route ||
+        ![
+          item.route.id,
+          item.route.account_id,
+          item.route.protocol,
+          item.route.adapter,
+          item.route.base_url,
+          item.route.environment,
+          item.route.spend_class,
+          item.route.extra_usage,
+        ].every(identifier) ||
         item.route.id !== item.profile.route_id ||
         item.route.account_id !== item.profile.account_id ||
         item.route.protocol !== item.profile.protocol ||
         (item.route.adapter === "openai_siwc_responses" &&
-          (!item.authorization?.id ||
+          (!item.authorization ||
+            !identifier(item.authorization.id) ||
+            !identifier(item.authorization.spend_class) ||
             item.authorization.account_id !== item.profile.account_id ||
-            !Array.isArray(item.authorization.scopes)))
+            !Array.isArray(item.authorization.scopes) ||
+            !item.authorization.scopes.every(identifier))) ||
+        (!!item.catalog &&
+          (!identifier(item.catalog.operation_id) ||
+            !digest(item.catalog.receipt_digest) ||
+            !Number.isSafeInteger(item.catalog.authorization_generation) ||
+            item.catalog.authorization_generation < 1 ||
+            !date(item.catalog.expires_at)))
       );
     })
   );

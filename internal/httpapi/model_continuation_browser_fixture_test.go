@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"foundry/internal/acceptance"
 	"foundry/internal/domain"
+	"foundry/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -53,7 +54,7 @@ func continuationBrowserSeed(t *testing.T) (*fixture, map[string]domain.Mission)
 		}
 		// Reserve then recover an uncompleted synthetic dispatch. This consumes
 		// exactly one ordinal without performing a model call or reading a secret.
-		_, invocation, e := f.store.BeginInvocation(continuationBrowserIntent(m, "synthetic-unknown-"+mode), m.Revision)
+		_, invocation, e := f.store.BeginInvocation(continuationBrowserIntent(t, m, "synthetic-unknown-"+mode), m.Revision)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -100,8 +101,34 @@ func continuationBrowserSeed(t *testing.T) (*fixture, map[string]domain.Mission)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, _, e := f.store.BeginInvocation(continuationBrowserIntent(m, "synthetic-denied-old-approval"), m.Revision); e == nil {
-					t.Fatal("old context approval unexpectedly admitted")
+				// Current grant/catalog metadata and the effective snapshot must pass;
+				// only the retained pre-continuation context approval is stale.
+				if err = f.store.CheckModelCall(m.ID, domain.Planner); err != nil {
+					t.Fatal("effective selection unavailable before old approval check", err)
+				}
+				before, err := f.store.ListInvocations(m.ID, 0, 30)
+				if err != nil {
+					t.Fatal(err)
+				}
+				intent := continuationBrowserIntent(t, m, "synthetic-denied-old-approval")
+				if len(m.Approvals) != 1 || intent.AuthorityDigest != m.Approvals[0].Digest || domain.ApprovalPostdatesModelContinuation(m, m.Approvals[0]) {
+					t.Fatal("old context authority not retained")
+				}
+				if _, _, e := f.store.BeginInvocation(intent, m.Revision); !errors.Is(e, store.ErrConflict) {
+					t.Fatal("old context approval did not fail closed with conflict", e)
+				}
+				after, err := f.store.GetMission(m.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ledger, err := f.store.ListInvocations(m.ID, 0, 30)
+				if err != nil {
+					t.Fatal(err)
+				}
+				beforeJSON, _ := json.Marshal(before)
+				afterJSON, _ := json.Marshal(ledger)
+				if after.Revision != m.Revision || after.Budget != m.Budget || !bytes.Equal(beforeJSON, afterJSON) {
+					t.Fatal("old approval denial changed task budget or invocation ledger")
 				}
 				m, err = f.store.UpdateMission(m.ID, m.Revision, "fixture.old_context_denied", func(m *domain.Mission) error {
 					m.State = "blocked"
@@ -125,9 +152,14 @@ func continuationBrowserSeed(t *testing.T) (*fixture, map[string]domain.Mission)
 	return f, missions
 }
 
-func continuationBrowserIntent(m domain.Mission, id string) domain.Invocation {
+func continuationBrowserIntent(t *testing.T, m domain.Mission, id string) domain.Invocation {
+	t.Helper()
+	snapshot, err := domain.EffectiveModelSnapshot(m)
+	if err != nil || snapshot == nil {
+		t.Fatal("fixture effective snapshot unavailable", err)
+	}
 	sum := sha256.Sum256([]byte(`{}`))
-	return domain.Invocation{ID: id, MissionID: m.ID, Epoch: m.Epoch, SessionID: "synthetic-session", Kind: "model", Role: domain.Planner, Name: "model.complete", BindingDigest: m.ModelSnapshot.Digest, AuthorityDigest: strings.Repeat("b", 64), Input: domain.EvidenceEnvelope{SchemaVersion: 1, Kind: "model_input", InvocationID: id, MissionID: m.ID, Epoch: m.Epoch, Producer: "controller", CapturedAt: time.Now().UTC().Format(time.RFC3339Nano), Digest: hex.EncodeToString(sum[:]), Bytes: 2, ContentType: "application/json", BindingDigest: m.ModelSnapshot.Digest}}
+	return domain.Invocation{ID: id, MissionID: m.ID, Epoch: m.Epoch, SessionID: "synthetic-session", Kind: "model", Role: domain.Planner, Name: "model.complete", BindingDigest: snapshot.Digest, AuthorityDigest: strings.Repeat("b", 64), Input: domain.EvidenceEnvelope{SchemaVersion: 1, Kind: "model_input", InvocationID: id, MissionID: m.ID, Epoch: m.Epoch, Producer: "controller", CapturedAt: time.Now().UTC().Format(time.RFC3339Nano), Digest: hex.EncodeToString(sum[:]), Bytes: 2, ContentType: "application/json", BindingDigest: snapshot.Digest}}
 }
 
 func continuationBrowserHandler(s *server) http.Handler {
@@ -188,6 +220,22 @@ func TestModelContinuationBrowserFixtureStates(t *testing.T) {
 		invocations, err := f.store.ListInvocations(m.ID, 0, 30)
 		if err != nil || len(invocations) != 1 || invocations[0].Status != "outcome_unknown" || invocations[0].Ordinal != 1 {
 			t.Fatal("fixture invocation history changed", mode, err)
+		}
+		if invocations[0].BindingDigest != m.ModelSnapshot.Digest || invocations[0].Input.BindingDigest != m.ModelSnapshot.Digest {
+			t.Fatal("prior unknown invocation lost original snapshot binding", mode)
+		}
+		if mode == "old-approval-denied" {
+			effective, e := domain.EffectiveModelSnapshot(m)
+			if e != nil {
+				t.Fatal(e)
+			}
+			intent := continuationBrowserIntent(t, m, "synthetic-denied-old-approval")
+			if intent.BindingDigest != effective.Digest || intent.Input.BindingDigest != effective.Digest || effective.Digest == m.ModelSnapshot.Digest {
+				t.Fatal("old-approval fixture tests original snapshot mismatch instead of stale approval")
+			}
+			if len(m.Approvals) != 1 || intent.AuthorityDigest != m.Approvals[0].Digest || domain.ApprovalPostdatesModelContinuation(m, m.Approvals[0]) {
+				t.Fatal("old-approval fixture did not retain exact old context authority")
+			}
 		}
 	}
 	rr := f.request("GET", "/api/model-accounts/production/desktop-preparation", "", true)

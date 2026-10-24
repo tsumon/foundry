@@ -358,6 +358,62 @@ it("retains readable original history when continuation authority is invalid", (
   expect(screen.getByRole("button", { name: "批准续接材料" })).toBeDisabled();
   expect(fetchMock).not.toHaveBeenCalled();
 });
+it.each([
+  ["authorization.id", { unexpected: "value" }],
+  ["authorization.id", ""],
+  ["authorization.spend_class", { unexpected: "value" }],
+  ["authorization.scopes", [{ unexpected: "value" }]],
+  ["account.name", { unexpected: "value" }],
+  ["account.billing_mode", { unexpected: "value" }],
+  ["account.billing_mode", "__proto__"],
+  ["account.revision", { unexpected: "value" }],
+  ["profile.name", { unexpected: "value" }],
+  ["profile.account_revision", { unexpected: "value" }],
+  ["profile.credential_version", { unexpected: "value" }],
+  ["route.adapter", { unexpected: "value" }],
+  ["route.base_url", { unexpected: "value" }],
+  ["route.spend_class", { unexpected: "value" }],
+  ["catalog.operation_id", { unexpected: "value" }],
+  ["catalog.authorization_generation", { unexpected: "value" }],
+  ["catalog.expires_at", { unexpected: "value" }],
+])(
+  "blocks malformed effective scalar %s while retaining original history",
+  (path, value) => {
+    const m = withMaterial("approved");
+    m.model_continuations![0].state = "applied";
+    m.model_continuations![0].application = {
+      revision: 12,
+      digest,
+      created_at: "2026-10-24T00:02:00Z",
+    };
+    m.revision = 12;
+    m.effective_model_snapshot = structuredClone(m.model_snapshot!);
+    m.effective_model_snapshot.digest = newDigest;
+    const worker = m.effective_model_snapshot.roles.worker;
+    worker.catalog = {
+      operation_id: "local-catalog",
+      receipt_digest: digest,
+      authorization_generation: 1,
+      expires_at: future,
+    };
+    const [group, field] = (path as string).split(".");
+    (
+      worker[group as keyof typeof worker] as unknown as Record<string, unknown>
+    )[field] = value;
+    render(<Harness initial={m} />);
+    expect(screen.getByLabelText("原始冻结模型")).toHaveTextContent(
+      "old-local-sign-in",
+    );
+    expect(screen.queryByLabelText("当前有效模型选择")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "读取本地续接候选" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "准备续接材料" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "批准续接材料" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "应用续接" })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  },
+);
 it("disables a pending approval at local expiry without sending a request", () => {
   vi.useFakeTimers();
   try {
