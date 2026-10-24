@@ -1,10 +1,33 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
 )
+
+func TestSessionRenewalTrustedDesktopOnly(t *testing.T) {
+	for _, tc := range []struct {
+		platform                        string
+		desktop, coding, readonly, want bool
+	}{{"darwin", true, true, false, true}, {"windows", true, true, false, true}, {"linux", true, true, false, false}, {"darwin", false, true, false, false}, {"darwin", true, false, false, false}, {"windows", true, true, true, false}} {
+		_, p, a, _ := operatorFixture(t, "valid")
+		defer p.acceptance.Close()
+		c := newDesktopSessionRenewal(&p, tc.platform, tc.desktop, tc.coding, tc.readonly, time.Now)
+		if (c != nil) != tc.want {
+			t.Fatalf("wrong renewal capability %+v", tc)
+		}
+		if c != nil {
+			status, err := c.Status(a.ID)
+			if err != nil || status.Enabled {
+				t.Fatalf("default: %+v %v", status, err)
+			}
+			c.Tick(context.Background())
+			c.Close()
+		}
+	}
+}
 
 func TestDesktopOpenAIOnlyTrustedDesktopCoding(t *testing.T) {
 	for _, tc := range []struct {

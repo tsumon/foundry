@@ -36,6 +36,7 @@ const (
 )
 
 type Options struct {
+	SessionRenewal   *accounts.SessionRenewal
 	DesktopAccounts  *acceptance.DesktopCoordinator
 	CodingWorkbench  bool
 	C4ControlledOnly bool
@@ -51,6 +52,7 @@ type Options struct {
 }
 
 type server struct {
+	sessionRenewal   *accounts.SessionRenewal
 	desktopAccounts  *acceptance.DesktopCoordinator
 	codingWorkbench  bool
 	c4ControlledOnly bool
@@ -119,6 +121,7 @@ func New(s *store.Store, e *engine.Engine, client *model.Client, secrets model.S
 	}
 	return &server{
 		desktopAccounts:  opts.DesktopAccounts,
+		sessionRenewal:   opts.SessionRenewal,
 		codingWorkbench:  opts.CodingWorkbench,
 		c4ControlledOnly: opts.C4ControlledOnly,
 		recoveryError:    opts.RecoveryError,

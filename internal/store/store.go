@@ -115,6 +115,9 @@ func (s *Store) initialize() error {
 	if err := s.initializeModelAuthorizations(); err != nil {
 		return err
 	}
+	if err := s.initializeSessionRenewal(); err != nil {
+		return err
+	}
 	if err := s.initializeModelAcceptanceOperations(); err != nil {
 		return err
 	}

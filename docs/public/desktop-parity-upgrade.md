@@ -4,7 +4,7 @@ Status: implemented. Installer acceptance is bound to the exact-commit workflow 
 
 ## Contract
 
-macOS and Windows expose the same controlled-coding subscription preparation, independent connection approval, browser handoff, independent catalog approval, and separately approved task-account continuation. Normal workbench mode remains non-executing. Existing UI layout is retained. There is no automatic OAuth retry, credential refresh, paid-API fallback, or host execution fallback.
+macOS and Windows expose the same controlled-coding subscription preparation, independent connection approval, browser handoff, independent catalog approval, and separately approved task-account continuation. Normal workbench mode remains non-executing. Existing UI layout is retained. Optional [credential renewal](session-renewal.md) requires separate persisted standing consent; existing accounts default disabled. It never renews operation evidence or retries an unknown outcome. There is no automatic OAuth retry, paid-API fallback, or host execution fallback. Renewal acceptance is local simulation only; real refresh was not performed.
 
 Original task snapshots, baseline records, evidence, and consumed budgets are immutable. An upgrade must not turn a missing frozen runtime into a corrupt-snapshot diagnosis or rewrite the task to the current runtime. New tasks use the current verified runtime; old tasks may use only a fully verified runtime whose complete identity equals their frozen profile. Fresh operational readiness/approvals remain necessary where required.
 

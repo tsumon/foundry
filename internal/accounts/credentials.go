@@ -131,6 +131,9 @@ func (s *Service) Recover(ctx context.Context) error {
 	if err := s.store.RecoverModelAuthorizations(); err != nil {
 		return safeError(err)
 	}
+	if err := s.store.RecoverSessionRenewals(); err != nil {
+		return safeError(err)
+	}
 	if err := s.cleanupAuthorizations(ctx); err != nil {
 		return err
 	}

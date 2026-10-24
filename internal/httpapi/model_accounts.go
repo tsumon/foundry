@@ -108,6 +108,10 @@ func (s *server) modelAccountsRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	id := parts[0]
+	if len(parts) == 2 && parts[1] == "session-renewal" {
+		s.sessionRenewalRoute(w, r, id)
+		return
+	}
 	if id == "" {
 		writeError(w, 404, "not_found", "route not found")
 		return

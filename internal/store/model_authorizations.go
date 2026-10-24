@@ -176,6 +176,12 @@ func (s *Store) ClaimModelAuthorizationWrite(id string) error {
 }
 
 func (s *Store) CommitModelAuthorization(operationID string, b domain.ModelAuthorizationBinding, expiresAt string) (domain.ModelAuthorization, error) {
+	return s.CommitModelAuthorizationSchedule(operationID, b, expiresAt, "", 0)
+}
+
+// Renewal commits fence withdrawn consent in the same transaction as the
+// generation pointer. Schedule is nonsecret and advances atomically with it.
+func (s *Store) CommitModelAuthorizationSchedule(operationID string, b domain.ModelAuthorizationBinding, expiresAt, earliest string, renewalRevision int64) (domain.ModelAuthorization, error) {
 	var zero domain.ModelAuthorization
 	if domain.ValidateModelAuthorizationBinding(b) != nil {
 		return zero, domain.ErrInvalidModelAuthorization
@@ -194,6 +200,31 @@ func (s *Store) CommitModelAuthorization(operationID string, b domain.ModelAutho
 	}
 	if o.State != "pending" || o.AccountID != b.AccountID || o.AuthorizationID != b.ID {
 		return zero, ErrConflict
+	}
+	if earliest != "" {
+		if _, err = time.Parse(time.RFC3339, earliest); err != nil {
+			return zero, domain.ErrInvalidModelAuthorization
+		}
+	}
+	if renewalRevision != 0 {
+		p, e := renewalPolicyTx(tx, b.AccountID)
+		if e != nil {
+			return zero, e
+		}
+		account, e := modelAccountTx(tx, b.AccountID)
+		if e != nil {
+			return zero, e
+		}
+		if !p.Enabled || p.Revision != renewalRevision || account.Revision != p.Material.AccountRevision || !domain.SameModelAuthorizationBinding(p.Material.Binding, b) {
+			return zero, ErrConflict
+		}
+		var n int
+		if err = tx.QueryRow(`SELECT COUNT(*) FROM session_renewal_dispatches WHERE authorization_id=? AND generation=? AND policy_revision=? AND stage='dispatched'`, b.ID, o.Generation-1, renewalRevision).Scan(&n); err != nil {
+			return zero, err
+		}
+		if n != 1 {
+			return zero, ErrConflict
+		}
 	}
 	account, err := modelAccountTx(tx, b.AccountID)
 	if err != nil {
@@ -240,6 +271,9 @@ func (s *Store) CommitModelAuthorization(operationID string, b domain.ModelAutho
 		return zero, modelStoreError(err)
 	}
 	if _, err = tx.Exec(`UPDATE model_authorization_operations SET state='available',write_claimed=0 WHERE id=?`, o.ID); err != nil {
+		return zero, err
+	}
+	if _, err = tx.Exec(`INSERT INTO session_renewal_schedule VALUES(?,?,?)`, b.ID, o.Generation, earliest); err != nil {
 		return zero, err
 	}
 	if err = tx.Commit(); err != nil {

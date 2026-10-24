@@ -13,6 +13,7 @@ import type {
   Profile,
 } from "../types";
 import { DesktopSubscription } from "./DesktopSubscription";
+import { SessionRenewal } from "./SessionRenewal";
 import { ModelAccountCredentials } from "./ModelAccountCredentials";
 import { ModelAuthorizationCard } from "./ModelAuthorizationCard";
 import { ModelAcceptanceCard } from "./ModelAcceptanceCard";
@@ -391,13 +392,19 @@ export function ModelAccounts({
           />
           {runtime?.desktop_subscription === true &&
             selected.auth_method === "openai_siwc" && (
-              <DesktopSubscription
-                key={selected.id}
-                account={selected}
-                routes={routes}
-                onPrepared={() => setPreparationEpoch((e) => e + 1)}
-                onProfileSaved={onProfileSaved}
-              />
+              <>
+                <DesktopSubscription
+                  key={selected.id}
+                  account={selected}
+                  routes={routes}
+                  onPrepared={() => setPreparationEpoch((e) => e + 1)}
+                  onProfileSaved={onProfileSaved}
+                />
+                <SessionRenewal
+                  key={`renewal-${selected.id}`}
+                  account={selected}
+                />
+              </>
             )}
         </section>
       )}

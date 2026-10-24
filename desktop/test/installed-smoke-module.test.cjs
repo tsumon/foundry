@@ -15,7 +15,8 @@ test("installed subscription metadata stays unprepared and never creates diagnos
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const platform of ["darwin", "win32", "linux"]) {
     for (const mode of ["normal", "coding"]) {
-      const enabled = ["darwin", "win32"].includes(platform) && mode === "coding";
+      const enabled =
+        ["darwin", "win32"].includes(platform) && mode === "coding";
       const calls = [];
       const request = async (_child, route, options) => {
         calls.push(route);
@@ -33,6 +34,11 @@ test("installed subscription metadata stays unprepared and never creates diagnos
               },
             }),
           };
+        if (
+          route ===
+          "/api/model-accounts/installed-smoke-unconfigured/session-renewal"
+        )
+          return { status: enabled ? 404 : 403 };
         assert.equal(
           route,
           "/api/model-accounts/installed-smoke-unconfigured/desktop-preparation",
@@ -56,7 +62,7 @@ test("installed subscription metadata stays unprepared and never creates diagnos
         mode,
         request,
       );
-      assert.equal(calls.length, 2);
+      assert.equal(calls.length, 3);
     }
   }
   fs.mkdirSync(path.join(root, "openai-desktop-diagnostics"));

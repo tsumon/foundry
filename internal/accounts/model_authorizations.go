@@ -54,6 +54,10 @@ func (s *Service) BeginModelAuthorization(ctx context.Context, accountID, operat
 }
 
 func (s *Service) CommitModelAuthorization(ctx context.Context, operationID string, b domain.ModelAuthorizationBinding, bundle ModelTokenBundle) (domain.ModelAuthorization, error) {
+	return s.commitModelAuthorization(ctx, operationID, b, bundle, 0)
+}
+
+func (s *Service) commitModelAuthorization(ctx context.Context, operationID string, b domain.ModelAuthorizationBinding, bundle ModelTokenBundle, renewalRevision int64) (domain.ModelAuthorization, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var zero domain.ModelAuthorization
@@ -102,7 +106,7 @@ func (s *Service) CommitModelAuthorization(ctx context.Context, operationID stri
 	if err = ctx.Err(); err != nil {
 		return zero, s.failAuthorization(o.ID, "failed", err)
 	}
-	result, err := s.store.CommitModelAuthorization(operationID, b, bundle.ExpiresAt)
+	result, err := s.store.CommitModelAuthorizationSchedule(operationID, b, bundle.ExpiresAt, bundle.EarliestRefreshAt, renewalRevision)
 	if err != nil {
 		return zero, s.failAuthorization(o.ID, "failed", err)
 	}

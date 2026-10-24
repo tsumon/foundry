@@ -351,6 +351,12 @@ func safeSIWCCallbackValue(value string, limit int) bool {
 }
 
 func (s *SIWCService) refreshSimulation(ctx context.Context, authorizationID string, expectedAccountRevision int64) (result domain.ModelAuthorization, resultErr error) {
+	return s.refreshSession(ctx, authorizationID, expectedAccountRevision, 0, time.Now)
+}
+
+// Only the desktop renewal coordinator supplies a durable consent revision.
+// The public legacy Refresh entrypoint continues to deny production calls.
+func (s *SIWCService) refreshSession(ctx context.Context, authorizationID string, expectedAccountRevision, renewalRevision int64, now func() time.Time) (result domain.ModelAuthorization, resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return result, safeError(err)
 	}
@@ -372,7 +378,12 @@ func (s *SIWCService) refreshSimulation(ctx context.Context, authorizationID str
 	if err != nil || current.Binding.ID != authorizationID || current.State != "available" {
 		return result, ErrUnavailable
 	}
-	if err = s.preflightSIWCRefresh(ctx, authorization, account); err != nil {
+	if renewalRevision != 0 {
+		if err = s.lifecycle.store.SessionRenewalConsentCurrent(account.ID, renewalRevision); err != nil {
+			return result, err
+		}
+	}
+	if err = s.preflightSIWCRefresh(ctx, authorization, account, now()); err != nil {
 		return result, err
 	}
 	operationID, err := opaqueID("siwc-refresh-")
@@ -391,6 +402,11 @@ func (s *SIWCService) refreshSimulation(ctx context.Context, authorizationID str
 	previous, err := s.lifecycle.ReadModelAuthorizationRefresh(ctx, operationID)
 	if err != nil || previous.RefreshToken == "" || previous.Resource != account.BaseURL {
 		return result, ErrUnavailable
+	}
+	if renewalRevision != 0 {
+		if err = s.lifecycle.store.SessionRenewalConsentCurrent(account.ID, renewalRevision); err != nil {
+			return result, err
+		}
 	}
 	form := url.Values{
 		"grant_type":    {"refresh_token"},
@@ -431,11 +447,11 @@ func (s *SIWCService) refreshSimulation(ctx context.Context, authorizationID str
 	if err = s.revalidateSIWCAccount(account); err != nil {
 		return result, err
 	}
-	expiresAt := time.Now().UTC().Add(time.Duration(tokens.ExpiresIn) * time.Second).Format(time.RFC3339)
-	result, err = s.lifecycle.CommitModelAuthorization(ctx, operationID, binding, ModelTokenBundle{
+	expiresAt := now().UTC().Add(time.Duration(tokens.ExpiresIn) * time.Second).Format(time.RFC3339)
+	result, err = s.lifecycle.commitModelAuthorization(ctx, operationID, binding, ModelTokenBundle{
 		AccessToken: tokens.AccessToken, RefreshToken: tokens.RefreshToken, IDToken: tokens.IDToken,
 		ExpiresAt: expiresAt, EarliestRefreshAt: tokens.EarliestRefreshAt, Resource: previous.Resource,
-	})
+	}, renewalRevision)
 	if err != nil {
 		return domain.ModelAuthorization{}, err
 	}
@@ -459,7 +475,7 @@ func terminalSIWCRefreshError(err error) bool {
 // preflightSIWCRefresh reads only the scheduling field from the exact current
 // bundle while holding the lifecycle mutex. A clearly early request remains
 // available and never creates a durable refresh intent or reaches the issuer.
-func (s *SIWCService) preflightSIWCRefresh(ctx context.Context, expected domain.ModelAuthorization, expectedAccount domain.ModelAccount) error {
+func (s *SIWCService) preflightSIWCRefresh(ctx context.Context, expected domain.ModelAuthorization, expectedAccount domain.ModelAccount, now time.Time) error {
 	s.lifecycle.mu.Lock()
 	defer s.lifecycle.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -490,7 +506,10 @@ func (s *SIWCService) preflightSIWCRefresh(ctx context.Context, expected domain.
 		if parseErr != nil {
 			return ErrUnavailable
 		}
-		if time.Now().UTC().Before(earliest) {
+		if now.UTC().Before(earliest) {
+			if err = s.lifecycle.store.RecordSessionRenewalEarliest(current.Binding.ID, current.Generation, schedule.EarliestRefreshAt); err != nil {
+				return safeError(err)
+			}
 			return siwcFailure("refresh_not_ready", "not_sent")
 		}
 	}

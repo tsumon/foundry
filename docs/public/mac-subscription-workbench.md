@@ -4,6 +4,13 @@ Status: shared Mac/Windows wiring. Protocol acceptance uses local fixtures; nati
 
 ## Outcome and boundaries
 
+The separate [session renewal](session-renewal.md) control now maintains a
+registration only after explicit standing approval. Existing accounts remain
+disabled. Prepare, read and mount are metadata-only; approve and disable do not
+query a provider. The desktop-owned 30-second scheduler never retries model calls
+or extends catalog, task, continuation or budget evidence. A fresh sign-in needs
+new renewal consent. Acceptance here is synthetic/local; no real renewal was run.
+
 Connect an OpenAI ChatGPT subscription inside the Mac or Windows Controlled Coding Workbench, independently query its model catalog, and deliberately select that account/model for future coding tasks. Keep the current navigation, account cards, approval materials, task model snapshots, isolated candidates and sandbox controls. Do not copy credentials or databases between the normal, simulation and coding workbench stores.
 
 This is desktop wiring, not a new OAuth implementation. Reuse the existing SIWC connection, native diagnostic, durable single-use approvals, production catalog, account revision and authorization lineage checks. The ordinary desktop workbench and unsupported platforms do not acquire this capability. Application startup, opening settings, metadata reads and task configuration must have no credential-store or provider-network effects.
@@ -42,7 +49,10 @@ unknown usage are unchanged. See [task continuation](task-authorization-continua
 - Login timeout/cancellation, token/identity failure: preserve sanitized stage evidence; consume the attempt; do not reuse the code, restore an old browser URL or begin another login.
 - A credential may have committed before a final receipt error. Reconcile existing durable metadata; do not claim rollback or delete a valid credential merely because presentation failed.
 - Catalog 401/403/429/5xx, redirects, malformed response or transport ambiguity: retain the one-call receipt, stop, and report certainty correctly. Never retry.
-- Restart: metadata recovery only; no credential probe, refresh, browser opening or catalog query. Previously granted process-local authority does not survive.
+- Restart: metadata recovery and exact pending cleanup, with no provider retry,
+  browser opening or catalog query. Process-local connection/catalog authority
+  does not survive. Separately persisted renewal consent may resume at its next
+  scheduled time; absent/disabled consent has no credential or network effects.
 - Account/route/revision/generation mismatch or expired credential: disable task selection and fail closed before a credential read/provider send. Existing task snapshots are never rewritten.
 - Sandbox unavailability still blocks tests: no host shell fallback. API billing routes remain distinct and are never substituted.
 
@@ -89,4 +99,4 @@ blocks effective authority and all continuation/context/execution controls.
 
 ## Official protocol references
 
-Checked 2026-10-24: [registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference), [accounts and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions). Foundry intentionally requires explicit new approvals instead of automatic refresh/retry. Model availability and remaining subscription quota are not inferred from local metadata.
+Checked 2026-10-24: [registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference), [accounts and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions). Foundry requires independent operation approvals; optional credential renewal has separate standing consent, not model retry authority. Model availability and remaining subscription quota are not inferred from local metadata.

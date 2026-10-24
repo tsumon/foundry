@@ -72,6 +72,14 @@ async function assertDesktopSubscriptionMetadata(
       },
       catalog_choices: [],
     });
+  // An absent sentinel registration is not manufactured by a metadata read.
+  // The renewal path is desktop-only and never prepares/enables consent here.
+  const renewal = await request(
+    child,
+    "/api/model-accounts/installed-smoke-unconfigured/session-renewal",
+    options,
+  );
+  assert.equal(renewal.status, enabled ? 404 : 403);
   assert.equal(
     fs.existsSync(diagnostics),
     false,
@@ -173,7 +181,9 @@ async function main() {
       "vm-bundles",
       codingMetadata.profile.embedded_vm.manifest_digest,
     );
-    const installedManifest = verifySandboxBundle(path.join(resources, "sandbox"));
+    const installedManifest = verifySandboxBundle(
+      path.join(resources, "sandbox"),
+    );
     assert.deepEqual(verifySandboxBundle(retainedRuntime), installedManifest);
     assert.equal(
       hashFile(path.join(retainedRuntime, "manifest.json")),

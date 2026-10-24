@@ -1,4 +1,17 @@
 .github/workflows/verify.yml
+docs/public/session-renewal.md
+docs/public/session-renewal-plan.md
+internal/domain/session_renewal.go
+internal/store/session_renewal.go
+internal/store/session_renewal_test.go
+internal/accounts/session_renewal.go
+internal/accounts/session_renewal_test.go
+internal/httpapi/session_renewal.go
+internal/httpapi/session_renewal_test.go
+internal/httpapi/session_renewal_browser_fixture_test.go
+web/src/sessionRenewalApi.ts
+web/src/components/SessionRenewal.tsx
+web/src/components/SessionRenewal.test.tsx
 docs/public/task-authorization-continuation.md
 docs/public/task-authorization-continuation-plan.md
 internal/domain/model_continuations.go

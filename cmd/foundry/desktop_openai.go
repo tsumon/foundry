@@ -3,8 +3,17 @@ package main
 import (
 	"errors"
 	"foundry/internal/acceptance"
+	"foundry/internal/accounts"
 	"foundry/internal/store"
+	"time"
 )
+
+func newDesktopSessionRenewal(p *productionModels, platform string, desktop, coding, readonly bool, now func() time.Time) *accounts.SessionRenewal {
+	if (platform != "darwin" && platform != "windows") || !desktop || !coding || readonly {
+		return nil
+	}
+	return accounts.NewSessionRenewal(p.siwc, now)
+}
 
 // Only the trusted desktop coding composition calls this constructor. The
 // platform and dependencies are private test seams, never flags or settings.

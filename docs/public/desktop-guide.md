@@ -119,9 +119,10 @@ local image matching the verifier contract; Foundry does not pull or build it.
    write.
 
 Native credentials use Foundry-scoped macOS Keychain or Windows Credential
-Manager. Only explicit account operations or approved claimed task calls may
-access them; opening/restarting the workbench does not enumerate, refresh or
-clean them. In the **Mac and Windows coding workbenches**, the Models account card can
+Manager. Only explicit account operations, separately approved standing renewal,
+or approved claimed task calls may access them. Existing accounts have renewal
+disabled; opening settings or reading status never reads credentials or calls a
+provider. In the **Mac and Windows coding workbenches**, the Models account card can
 explicitly prepare a subscription connection. It first explains and runs a
 Foundry-only synthetic native-store write/read/exact-delete check; confirmed cleanup
 grants ten minutes of process-local readiness, not login approval. Propose,
@@ -140,6 +141,17 @@ Ordinary desktop mode remains closed. Protocol acceptance uses local synthetic
 services; native-store diagnostics use isolated Foundry-owned test items. Neither
 certifies real sign-in, catalog or model-task acceptance. See the
 [desktop subscription workbench](mac-subscription-workbench.md).
+
+For **Stay signed in**, prepare renewal material, review the exact registration,
+resource, endpoint, scopes, native store and failure behavior, then separately
+approve enabling it. Material expires after ten minutes. The desktop checks every
+30 seconds while running and renews at expiry minus five minutes, respecting the
+provider's earliest time. Disable stops future dispatch and joins local work;
+already-sent work in another process may remain in progress until its bounded
+deadline. Unknown outcomes require explicit recovery, never automatic replay.
+Renewal does not refresh catalog evidence, readiness, task continuation approvals
+or call budgets. A new sign-in needs fresh consent. See [session renewal](session-renewal.md).
+Only synthetic local renewal has been tested; real renewal remains separately approved.
 
 Windows Credential Manager keeps its native 2,560-byte per-record ceiling. A
 bounded segmented representation supports subscription bundles up to 256 KiB,
@@ -217,7 +229,8 @@ Back up retained evidence explicitly; uninstall is not evidence cleanup.
   approvals. Changing its bundle/profile requires new material. No automatic
   backend switch, host execution or TCG fallback is allowed.
 - No host scripts, Git writes, deployment or migration.
-- No automatic model/provider retry, token refresh, paid fallback or updates.
+- No automatic model/provider retry, paid fallback or updates. Credential renewal
+  requires its own explicit standing approval and is disabled for existing accounts.
 - The renderer has no Node.js or filesystem bridge. A random per-launch capability
   protects the local server, including its bootstrap and static content. Other
   browser tabs cannot simply open the desktop server URL.

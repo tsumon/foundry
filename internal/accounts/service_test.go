@@ -20,6 +20,7 @@ type memorySecrets struct {
 	values              map[string]string
 	sets, gets, deletes int
 	setErr, deleteErr   error
+	getErr              error
 	afterSet            func()
 }
 
@@ -38,7 +39,7 @@ func (m *memorySecrets) Get(id string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.gets++
-	return m.values[id], nil
+	return m.values[id], m.getErr
 }
 func (m *memorySecrets) Delete(id string) error {
 	m.mu.Lock()

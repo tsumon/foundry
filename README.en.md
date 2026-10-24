@@ -92,6 +92,8 @@ See the [subscription workbench](docs/public/mac-subscription-workbench.md).
 
 ### Upgrade the app, preserve the task
 
+Mac and Windows coding desktops support [independently approved session renewal](docs/public/session-renewal.md). Existing accounts start disabled: prepare ten-minute material in the account card, then explicitly approve enabling it. Disabling does not sign out. While the desktop runs, this maintains that registration's credentials only; it never retries model calls or extends catalog, task or budget approvals. Installation and status reads grant no consent. Renewal acceptance is local synthetic testing only; no real-account refresh was performed.
+
 | Retained state | Upgrade behavior |
 | :--- | :--- |
 | Original task, plan, baseline and evidence | Original records are not rewritten or relabeled as new-build results |

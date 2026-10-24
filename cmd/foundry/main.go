@@ -294,7 +294,17 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 	if desktopAccounts != nil {
 		defer desktopAccounts.Close()
 	}
-	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{DesktopAccounts: desktopAccounts, CodingWorkbench: cfg.codingWorkbench, Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly, RecoveryError: recoveryError})
+	var renewal *accounts.SessionRenewal
+	if desktopAccounts != nil {
+		renewal = newDesktopSessionRenewal(&models, runtime.GOOS, desktopSession != nil, cfg.codingWorkbench, recoveryReadOnly, time.Now)
+	}
+	if renewal != nil {
+		renewalCtx, renewalCancel := context.WithCancel(ctx)
+		renewalDone := make(chan struct{})
+		go func() { defer close(renewalDone); renewal.Run(renewalCtx) }()
+		defer func() { renewalCancel(); renewal.Close(); <-renewalDone }()
+	}
+	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{SessionRenewal: renewal, DesktopAccounts: desktopAccounts, CodingWorkbench: cfg.codingWorkbench, Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly, RecoveryError: recoveryError})
 	if desktopSession != nil {
 		handler = desktophost.Protect(desktopSession.Capability, handler)
 	}
