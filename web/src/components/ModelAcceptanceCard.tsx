@@ -209,7 +209,7 @@ function AcceptanceRead(props: Props) {
                 <>
                   <p>订阅连接适配器：已实现，默认关闭 · 仅通过本地仿真验证</p>
                   <p className="field-help">
-                    真实账户、Keychain
+                    真实账户、系统凭据存储
                     与额度均未验证；本地检查不授权连接、目录或推理，各阶段需单独准入与审批，自动刷新保持关闭。
                   </p>
                 </>
@@ -219,7 +219,7 @@ function AcceptanceRead(props: Props) {
                   <h6>OpenAI 生产准入准备</h6>
                   <p>生产连接准入：已接线，默认关闭</p>
                   <p>验证范围：仅本地仿真，不是实际账户验收</p>
-                  <p>原生 Keychain：未检查</p>
+                  <p>原生 系统凭据存储：未检查</p>
                   <p>
                     {report.openai_preparation.production_admission
                       .operator_activation === "explicit_startup"
@@ -232,7 +232,7 @@ function AcceptanceRead(props: Props) {
                 </section>
               )}
               <p className="field-help">
-                Keychain：本页未检查。此读取不运行 Keychain
+                系统凭据存储：本页未检查。此读取不运行 系统凭据存储
                 诊断，也不认证当前主机存储或账户；请按公开文档使用本地合成诊断命令
                 foundry-keychain-check。
               </p>

@@ -1127,7 +1127,7 @@ it("separates real connection proposal, six-scope approval, execution and manual
   ]);
   for (const scope of subscriptionScopes)
     expect(screen.getByText(scope, { selector: "code" })).toBeVisible();
-  expect(screen.getByText(/令牌保存在.*Keychain/)).toBeVisible();
+  expect(screen.getByText(/令牌保存在.*系统凭据存储/)).toBeVisible();
   expect(screen.getByText(/账户与工作区由用户/)).toBeVisible();
   expect(screen.getByText(/远端授权不是单次/)).toBeVisible();
   expect(screen.queryByRole("link")).not.toBeInTheDocument();

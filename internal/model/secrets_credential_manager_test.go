@@ -12,9 +12,24 @@ type fakeCredentialManager struct {
 	getTarget    string
 	deleteTarget string
 	err          error
+	setCalls     int
+	failSet      int
+	failDelete   string
+	keepDeleted  bool
+	beforeSet    func(string, []byte)
 }
 
 func (f *fakeCredentialManager) set(target string, value []byte) error {
+	f.setCalls++
+	if f.beforeSet != nil {
+		f.beforeSet(target, value)
+	}
+	if len(value) > 2560 {
+		return errors.New("native limit")
+	}
+	if f.setCalls == f.failSet {
+		return errors.New("interrupted")
+	}
 	f.setTarget = target
 	if f.err != nil {
 		return f.err
@@ -39,6 +54,12 @@ func (f *fakeCredentialManager) get(target string) ([]byte, error) {
 }
 
 func (f *fakeCredentialManager) delete(target string) error {
+	if target == f.failDelete {
+		return errors.New("delete denied")
+	}
+	if f.keepDeleted {
+		return nil
+	}
 	f.deleteTarget = target
 	if f.err != nil {
 		return f.err
@@ -60,7 +81,7 @@ func TestCredentialManagerSecretsRoundTripUsesFoundryScopedOpaqueTarget(t *testi
 	if err != nil || got != "private-value" || native.getTarget != native.setTarget {
 		t.Fatalf("got=%q err=%v targets=%q/%q", got, err, native.setTarget, native.getTarget)
 	}
-	if err = store.Delete("foundry-model-account-0123456789abcdef"); err != nil || native.deleteTarget != native.setTarget {
+	if err = store.Delete("foundry-model-account-0123456789abcdef"); err != nil || len(native.values) != 0 {
 		t.Fatalf("delete err=%v target=%q", err, native.deleteTarget)
 	}
 	if _, err = store.Get("foundry-model-account-0123456789abcdef"); !errors.Is(err, ErrSecretNotFound) {
@@ -95,7 +116,7 @@ func TestCredentialManagerSecretsValidateIdentifiersAndBlobSizeBeforeNativeCall(
 	}
 	native := &fakeCredentialManager{}
 	store := newCredentialManagerSecrets(native, credentialManagerSecretNamespace, "")
-	for _, value := range []string{"", strings.Repeat("x", credentialManagerMaxBlobSize+1)} {
+	for _, value := range []string{"", strings.Repeat("x", 256*1024+1)} {
 		if err := store.Set("safe-id", value); err == nil || native.setTarget != "" {
 			t.Fatalf("value length=%d err=%v target=%q", len(value), err, native.setTarget)
 		}
@@ -116,8 +137,145 @@ func TestCredentialManagerBlobLimitCountsExactUTF8Bytes(t *testing.T) {
 	if err != nil || got != boundary {
 		t.Fatalf("multibyte round trip bytes=%d err=%v", len(got), err)
 	}
-	if err = store.Set("safe-id", boundary+"y"); err == nil {
-		t.Fatal("native byte boundary plus one was accepted")
+	if err = store.Set("safe-id", boundary+"y"); err != nil {
+		t.Fatal("segmented byte boundary plus one was rejected")
+	}
+}
+
+func TestCredentialManagerSegmentedRoundTripAndBoundedCleanup(t *testing.T) {
+	for _, size := range []int{2561, 12000, 256 * 1024} {
+		native := &fakeCredentialManager{}
+		store := newCredentialManagerSecrets(native, credentialManagerSecretNamespace, "")
+		value := strings.Repeat("abc", size/3) + strings.Repeat("x", size%3)
+		if err := store.Set("subscription", value); err != nil {
+			t.Fatalf("size %d: %v", size, err)
+		}
+		got, err := store.Get("subscription")
+		if err != nil || got != value {
+			t.Fatalf("size %d roundtrip: %v", size, err)
+		}
+		if len(native.values) < 3 || len(native.values) > 104 {
+			t.Fatalf("unbounded representation: %d", len(native.values))
+		}
+		for _, blob := range native.values {
+			if len(blob) > 2560 {
+				t.Fatal("native limit exceeded")
+			}
+		}
+		if err := store.Set("neighboring-reference", "untouched"); err != nil {
+			t.Fatal(err)
+		}
+		neighbor, _ := store.target("neighboring-reference")
+		root, _ := store.target("subscription")
+		delete(native.values, root) // Process died before publication, root absent.
+		if err = store.Delete("subscription"); err != nil {
+			t.Fatal(err)
+		}
+		if len(native.values) != 1 || string(native.values[neighbor]) != "untouched" {
+			t.Fatal("orphan cleanup incomplete or unrelated item touched")
+		}
+	}
+}
+
+func TestCredentialManagerInterruptedWritesNeverPublish(t *testing.T) {
+	for _, fail := range []int{1, 2, 3, 4} { // pending, two chunks, commit
+		native := &fakeCredentialManager{failSet: fail}
+		store := newCredentialManagerSecrets(native, credentialManagerSecretNamespace, "")
+		if err := store.Set("interrupted", strings.Repeat("x", 3000)); err == nil {
+			t.Fatalf("failure %d ignored", fail)
+		}
+		if native.setCalls != fail {
+			t.Fatal("injected native write failure was not exercised")
+		}
+		if got, err := store.Get("interrupted"); err == nil || got != "" {
+			t.Fatal("failed write readable")
+		}
+		if err := store.Delete("interrupted"); err != nil || len(native.values) != 0 {
+			t.Fatal("interrupted cleanup incomplete", err)
+		}
+	}
+}
+
+func TestCredentialManagerPendingAndCorruptSegmentsFailClosed(t *testing.T) {
+	for _, damage := range []string{"pending", "missing", "tampered", "reordered", "malformed", "truncated-marker", "oversized"} {
+		t.Run(damage, func(t *testing.T) {
+			native := &fakeCredentialManager{}
+			store := newCredentialManagerSecrets(native, credentialManagerSecretNamespace, "")
+			root, _ := store.target("corrupt")
+			var pending []byte
+			native.beforeSet = func(target string, blob []byte) {
+				if target == root && pending == nil {
+					pending = append([]byte(nil), blob...)
+				}
+			}
+			if err := store.Set("corrupt", strings.Repeat("a", 2560)+strings.Repeat("b", 2560)); err != nil {
+				t.Fatal(err)
+			}
+			var chunks []string
+			for target := range native.values {
+				if target != root {
+					chunks = append(chunks, target)
+				}
+			}
+			switch damage {
+			case "pending":
+				native.values[root] = pending
+			case "missing":
+				delete(native.values, chunks[0])
+			case "tampered":
+				native.values[chunks[0]][0] ^= 1
+			case "reordered":
+				native.values[chunks[0]], native.values[chunks[1]] = native.values[chunks[1]], native.values[chunks[0]]
+			case "malformed":
+				native.values[root] = native.values[root][:len(native.values[root])-1]
+			case "truncated-marker":
+				native.values[root] = native.values[root][:1]
+			case "oversized":
+				native.values[chunks[0]] = make([]byte, 2561)
+			}
+			if got, err := store.Get("corrupt"); err == nil || got != "" {
+				t.Fatal("corrupt credential readable")
+			}
+		})
+	}
+}
+
+func TestCredentialManagerDeletionFailureRemainsUnconfirmed(t *testing.T) {
+	native := &fakeCredentialManager{}
+	store := newCredentialManagerSecrets(native, credentialManagerSecretNamespace, "")
+	if err := store.Set("delete", strings.Repeat("x", 3000)); err != nil {
+		t.Fatal(err)
+	}
+	root, _ := store.target("delete")
+	for target := range native.values {
+		if target != root {
+			native.failDelete = target
+			break
+		}
+	}
+	delete(native.values, root)
+	if err := store.Delete("delete"); err == nil {
+		t.Fatal("orphan delete failure ignored")
+	}
+	native.failDelete = ""
+	native.keepDeleted = true
+	if err := store.Delete("delete"); err == nil {
+		t.Fatal("absence not verified")
+	}
+	native.keepDeleted = false
+	if err := store.Delete("delete"); err != nil || len(native.values) != 0 {
+		t.Fatal("cleanup retry failed", err)
+	}
+}
+
+func TestCredentialManagerLegacyRawSecretStillReadable(t *testing.T) {
+	native := &fakeCredentialManager{values: map[string][]byte{}}
+	store := newCredentialManagerSecrets(native, credentialManagerSecretNamespace, "")
+	root, _ := store.target("legacy")
+	native.values[root] = []byte("legacy-small-value")
+	got, err := store.Get("legacy")
+	if err != nil || got != "legacy-small-value" {
+		t.Fatal("legacy read failed", err)
 	}
 }
 

@@ -134,10 +134,10 @@ export function DesktopSubscription({
     state?.blocker === "diagnostic_failed" ||
     state?.blocker === "admission_unavailable";
   return (
-    <section className="note" aria-label="Mac 订阅账户准备">
-      <h4>Mac 订阅账户准备</h4>
+    <section className="note" aria-label="桌面订阅账户准备">
+      <h4>桌面订阅账户准备</h4>
       <p>
-        准备连接会执行 Foundry 专属合成凭据的 Keychain
+        准备连接会执行 Foundry 专属合成凭据的系统凭据存储
         写入、读取和精确删除检查；只有确认清理成功才获得十分钟本进程准备权限。不会登录、打开浏览器或自动批准材料。
       </p>
       <p>

@@ -56,7 +56,7 @@ const runtime = {
   ],
 };
 
-it("Mac desktop capability explains explicit account preparation while direct login stays closed", async () => {
+it("desktop capability explains explicit account preparation while direct login stays closed", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
@@ -68,7 +68,7 @@ it("Mac desktop capability explains explicit account preparation while direct lo
   );
   render(<ModelRouteSettings accounts={[account]} onSnapshot={vi.fn()} />);
   expect(
-    await screen.findByText(/Mac 编码工作台可在账户卡中显式准备/),
+    await screen.findByText(/桌面编码工作台可在账户卡中显式准备/),
   ).toBeVisible();
   expect(
     screen.getByRole("button", { name: "OpenAI 真实登录（未开放）" }),

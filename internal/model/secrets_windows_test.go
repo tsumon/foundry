@@ -5,6 +5,7 @@ package model
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -48,7 +49,7 @@ func TestWindowsCredentialManagerNativeCIProbe(t *testing.T) {
 			t.Errorf("diagnostic cleanup failed: %v", err)
 		}
 	}()
-	const value = "synthetic-foundry-windows-credential-manager-ci"
+	value := `{"access_token":"` + strings.Repeat("synthetic-access-", 600) + `","refresh_token":"` + strings.Repeat("synthetic-refresh-", 400) + `","id_token":"` + strings.Repeat("synthetic-id-", 400) + `"}`
 	if err = store.Set(id, value); err != nil {
 		t.Fatal(err)
 	}

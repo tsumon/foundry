@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-func TestDesktopOpenAIOnlyTrustedMacCoding(t *testing.T) {
+func TestDesktopOpenAIOnlyTrustedDesktopCoding(t *testing.T) {
 	for _, tc := range []struct {
 		name, platform            string
 		desktop, coding, readonly bool
 		want                      bool
-	}{{"mac", "darwin", true, true, false, true}, {"windows", "windows", true, true, false, false}, {"linux", "linux", true, true, false, false}, {"cli", "darwin", false, true, false, false}, {"normal", "darwin", true, false, false, false}, {"recovery", "darwin", true, true, true, false}} {
+	}{{"mac", "darwin", true, true, false, true}, {"windows", "windows", true, true, false, true}, {"linux", "linux", true, true, false, false}, {"cli", "darwin", false, true, false, false}, {"normal", "darwin", true, false, false, false}, {"recovery", "darwin", true, true, true, false}, {"windows-cli", "windows", false, true, false, false}, {"windows-normal", "windows", true, false, false, false}, {"windows-recovery", "windows", true, true, true, false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, p, a, r := operatorFixture(t, "valid")
 			defer p.acceptance.Close()

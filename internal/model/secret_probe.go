@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"strings"
 )
 
 const secretProbePrefix = "foundry-openai-stage0-"
@@ -44,8 +45,10 @@ func RunSecretProbe(store Secrets, id string) SecretProbeReport {
 	if store == nil || ValidateSecretProbeID(id) != nil {
 		return report
 	}
-	const first = "synthetic-foundry-stage0-a"
-	const second = "synthetic-foundry-stage0-b"
+	// Exercise subscription-sized serialized bundles, not just a short API key.
+	// Values are synthetic and never enter journals, diagnostics or reports.
+	first := `{"access_token":"` + strings.Repeat("synthetic-stage0-a", 600) + `","refresh_token":"` + strings.Repeat("synthetic-refresh-a", 400) + `"}`
+	second := `{"access_token":"` + strings.Repeat("synthetic-stage0-b", 500) + `","refresh_token":"` + strings.Repeat("synthetic-refresh-b", 300) + `"}`
 	if err := store.Set(id, first); err != nil {
 		report.FailedStep = "write_initial"
 		return finishSecretProbeCleanup(store, report)

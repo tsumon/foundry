@@ -16,10 +16,12 @@ type probeSecrets struct {
 	deleteError  error
 	deleteClears bool
 	wrongReads   map[int]string
+	writtenSizes []int
 }
 
 func (s *probeSecrets) Set(_ string, value string) error {
 	s.setCalls++
+	s.writtenSizes = append(s.writtenSizes, len(value))
 	s.value = value // model a backend that partly writes before reporting failure
 	return s.setErrors[s.setCalls]
 }
@@ -52,6 +54,19 @@ func TestSecretProbeRoundTripAndCleanup(t *testing.T) {
 	}
 	if store.setCalls != 2 || store.getCalls != 3 || store.deleteCalls != 1 || store.value != "" {
 		t.Fatalf("calls=%+v", store)
+	}
+}
+
+func TestSecretProbeExercisesSubscriptionSizedNativeValues(t *testing.T) {
+	store := &probeSecrets{}
+	report := RunSecretProbe(store, "foundry-openai-stage0-0123456789abcdef0123456789abcdef")
+	if report.Status != "passed" || len(store.writtenSizes) != 2 {
+		t.Fatal("probe failed")
+	}
+	for _, size := range store.writtenSizes {
+		if size <= 2560 || size > 256*1024 {
+			t.Fatalf("diagnostic skipped subscription-sized storage: %d bytes", size)
+		}
 	}
 }
 

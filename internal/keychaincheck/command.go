@@ -1,5 +1,3 @@
-//go:build !windows
-
 // Package keychaincheck owns the journaled, exact-item native storage diagnostic.
 package keychaincheck
 
@@ -16,9 +14,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"foundry/internal/model"
+	"foundry/internal/platformfs"
 )
 
 const journalVersion = 1
@@ -52,11 +50,11 @@ func Probe(path string) error {
 	return Run([]string{"--journal", path}, io.Discard)
 }
 
-// ProbeDesktop is called only by the trusted Mac coding composition. Its
+// ProbeDesktop is called only by the trusted desktop coding composition. Its
 // existing private data directory replaces the CLI's build-source exclusion;
 // no renderer, environment selector or journal path supplies this authority.
 func ProbeDesktop(dataDir string) error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
 		return errors.New("desktop credential diagnostic is unsupported")
 	}
 	return runDesktopProbe(dataDir, defaultCommandDeps(), io.Discard)
@@ -69,7 +67,7 @@ func runDesktopProbe(dataDir string, deps commandDeps, out io.Writer) error {
 	dir := filepath.Join(dataDir, "openai-desktop-diagnostics")
 	// Never create parents or chmod an existing directory. Only this immediate
 	// child of the already validated host-owned data root may be created.
-	if err := os.Mkdir(dir, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+	if err := createDesktopDirectory(dir); err != nil && !errors.Is(err, os.ErrExist) {
 		return err
 	}
 	if err := validateDesktopDirectory(dir); err != nil {
@@ -104,25 +102,6 @@ func runDesktopProbe(dataDir string, deps commandDeps, out io.Writer) error {
 	}
 	defer lock.release()
 	return runNewJournal(path, deps, out)
-}
-
-func validateDesktopDirectory(path string) error {
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) == path {
-		return errors.New("desktop diagnostic directory must be clean and absolute")
-	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || resolved != path {
-		return errors.New("desktop diagnostic directory must exist without symlinks")
-	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
-		return errors.New("desktop diagnostic directory must be private")
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Getuid()) {
-		return errors.New("desktop diagnostic directory must be user-owned")
-	}
-	return nil
 }
 
 func defaultCommandDeps() commandDeps {
@@ -280,16 +259,15 @@ func validateNewJournalPath(path, sourceRoot string) error {
 
 type journalLock struct {
 	path string
-	file *os.File
+	file *journalFile
 }
 
 func acquireJournalLock(path string) (*journalLock, error) {
-	fd, err := syscall.Open(path, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW, 0600)
+	f, err := createPrivateJournalFile(path)
 	if err != nil {
 		return nil, errors.New("journal lock exists or is unavailable; after confirming no process is running, remove only this journal's adjacent .lock file")
 	}
-	f := os.NewFile(uintptr(fd), path)
-	if err = f.Chmod(0600); err == nil {
+	if err = secureJournalFile(f); err == nil {
 		_, err = fmt.Fprintf(f, "pid=%d\n", os.Getpid())
 	}
 	if err == nil {
@@ -316,11 +294,10 @@ func createJournal(path string, record journalRecord, syncParent func(string) er
 	if err != nil {
 		return errors.New("encode pending journal failed")
 	}
-	fd, err := syscall.Open(path, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW, 0600)
+	f, err := createPrivateJournalFile(path)
 	if err != nil {
 		return errors.New("journal must be a new file")
 	}
-	f := os.NewFile(uintptr(fd), path)
 	ok := false
 	defer func() {
 		_ = f.Close()
@@ -328,7 +305,7 @@ func createJournal(path string, record journalRecord, syncParent func(string) er
 			_ = os.Remove(path)
 		}
 	}()
-	if err = f.Chmod(0600); err == nil {
+	if err = secureJournalFile(f); err == nil {
 		_, err = f.Write(b)
 	}
 	if err == nil {
@@ -353,14 +330,13 @@ func createJournal(path string, record journalRecord, syncParent func(string) er
 func readJournal(path string) (journalRecord, error) {
 	var zero journalRecord
 	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || info.Size() < 1 || info.Size() > maxJournalBytes {
+	if err != nil || !info.Mode().IsRegular() || !privateJournalMode(info) || info.Size() < 1 || info.Size() > maxJournalBytes {
 		return zero, errors.New("journal is unavailable, unsafe, or oversized")
 	}
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := openPrivateJournalFile(path)
 	if err != nil {
 		return zero, errors.New("journal is unavailable, unsafe, or oversized")
 	}
-	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	limited, err := io.ReadAll(io.LimitReader(f, maxJournalBytes+1))
 	if err != nil || len(limited) > maxJournalBytes {
@@ -427,7 +403,7 @@ func atomicWriteJournal(path string, b []byte, syncParent func(string) error) er
 	if err != nil || !info.Mode().IsRegular() {
 		return errors.New("terminal journal target is unsafe")
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-")
+	tmp, err := createPrivateJournalTemp(path)
 	if err != nil {
 		return err
 	}
@@ -439,7 +415,7 @@ func atomicWriteJournal(path string, b []byte, syncParent func(string) error) er
 			_ = os.Remove(tmpPath)
 		}
 	}()
-	if err = tmp.Chmod(0600); err == nil {
+	if err = secureJournalFile(tmp); err == nil {
 		_, err = tmp.Write(b)
 	}
 	if err == nil {
@@ -449,7 +425,7 @@ func atomicWriteJournal(path string, b []byte, syncParent func(string) error) er
 		err = closeErr
 	}
 	if err == nil {
-		err = os.Rename(tmpPath, path)
+		err = replaceJournal(tmpPath, path)
 	}
 	if err == nil {
 		if syncParent == nil {
@@ -465,10 +441,5 @@ func atomicWriteJournal(path string, b []byte, syncParent func(string) error) er
 }
 
 func syncParentDirectory(path string) error {
-	dir, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return platformfs.SyncPath(filepath.Dir(path))
 }

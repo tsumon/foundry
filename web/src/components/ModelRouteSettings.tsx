@@ -203,7 +203,7 @@ export function ModelRouteSettings({
         </button>
         <p id="live-login-reason" className="field-help">
           {runtime?.desktop_subscription
-            ? "此直接登录按钮保持禁用；Mac 编码工作台可在账户卡中显式准备，再独立审批、执行连接与目录。"
+            ? "此直接登录按钮保持禁用；桌面编码工作台可在账户卡中显式准备，再独立审批、执行连接与目录。"
             : "此直接登录按钮保持禁用；账户级真实连接仅在操作员显式启动后，由验收材料独立审批与执行。"}
           本界面不会自动打开授权页或轮询。Claude 订阅与智谱 Coding Plan 未开放。
         </p>

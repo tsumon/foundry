@@ -406,7 +406,7 @@ export function MCPSettings({
               />
               <p className="field-help">
                 凭据保存在后端
-                Keychain。相同端点留空保留，保存成功或离开此页清空输入；不存浏览器。
+                系统凭据存储。相同端点留空保留，保存成功或离开此页清空输入；不存浏览器。
               </p>
               <label className="capability-check">
                 <input

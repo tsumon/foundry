@@ -93,7 +93,7 @@ it("describes explicit startup as installed preparation, not current connection 
   fireEvent.click(screen.getByRole("button", { name: "本地验收检查" }));
   expect(await screen.findByText(/操作员启用：显式启动/)).toBeVisible();
   expect(screen.getByText(/当前连接许可.*验收记录/)).toBeVisible();
-  expect(screen.getByText(/原生 Keychain：未检查/)).toBeVisible();
+  expect(screen.getByText(/原生 系统凭据存储：未检查/)).toBeVisible();
   expect(
     screen.queryByRole("button", { name: /登录|启用|激活/ }),
   ).not.toBeInTheDocument();
@@ -115,7 +115,7 @@ it("shows default-closed production admission without claiming native or real va
   expect(screen.getByText(/验证范围：仅本地仿真/)).toHaveTextContent(
     /不是实际账户验收/,
   );
-  expect(screen.getByText(/原生 Keychain：未检查/)).toBeVisible();
+  expect(screen.getByText(/原生 系统凭据存储：未检查/)).toBeVisible();
   expect(screen.getByText(/操作员启用：不可用/)).toHaveTextContent(
     /仍需单独确认与审批/,
   );
@@ -202,18 +202,20 @@ it("shows honest OpenAI stage-zero preparation without promoting metadata to per
   expect(screen.getByText(/地址策略：官方规范基址/)).toHaveTextContent(
     /仅账户基础元数据；不证明全部路由或端点归属已通过/,
   );
-  expect(screen.getByText(/Keychain：本页未检查/)).toHaveTextContent(
+  expect(screen.getByText(/系统凭据存储：本页未检查/)).toHaveTextContent(
     /本地合成诊断命令 foundry-keychain-check/,
   );
   expect(screen.getByText(/远端计费：未验证/)).toHaveTextContent(/额度：未知/);
   expect(
     screen.getByText(/订阅连接适配器：已实现，默认关闭/),
   ).toHaveTextContent(/仅通过本地仿真验证/);
-  expect(screen.getByText(/真实账户、Keychain 与额度均未验证/)).toBeVisible();
+  expect(
+    screen.getByText(/真实账户、系统凭据存储 与额度均未验证/),
+  ).toBeVisible();
   expect(screen.getByText("真实连接：待单独审批")).toBeVisible();
   expect(screen.getByText("真实目录：待单独审批")).toBeVisible();
   expect(screen.getByText("真实推理：待单独审批")).toBeVisible();
-  expect(screen.queryByText(/Keychain：.*成功/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/系统凭据存储：.*成功/)).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: /登录|启用/ }),
   ).not.toBeInTheDocument();

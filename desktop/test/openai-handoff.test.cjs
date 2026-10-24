@@ -40,7 +40,7 @@ test("only current Mac coding session can launch once after host verification", 
   current = false;
   assert.equal(await handoff("http://127.0.0.1:4321/auth/start"), false);
   for (const patch of [
-    { platform: "win32" },
+    { platform: "linux" },
     { mode: "normal" },
     { mode: "simulation" },
   ])
@@ -50,6 +50,24 @@ test("only current Mac coding session can launch once after host verification", 
       ),
       false,
     );
+  assert.equal(opened, 1);
+});
+test("Windows coding handoff requires independent verification and launches only once", async () => {
+  let allowed = false,
+    opened = 0;
+  const handoff = createOpenAIHandoff({
+    platform: "win32",
+    mode: "coding",
+    isCurrent: () => true,
+    verify: async () => allowed,
+    open: async () => opened++,
+  });
+  const link = "http://127.0.0.1:2345/auth/start";
+  assert.equal(await handoff(link), false);
+  assert.equal(opened, 0);
+  allowed = true;
+  assert.equal(await handoff(link), true);
+  assert.equal(await handoff(link), false);
   assert.equal(opened, 1);
 });
 test("concurrent clicks, backend changes and verification failures never replay", async () => {

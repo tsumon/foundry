@@ -386,8 +386,7 @@ export function ModelSettings() {
                     placeholder="可选：无认证的本地网关可留空"
                   />
                   <p className="field-help">
-                    只写不读，保存到 macOS
-                    Keychain；保存成功后清空输入，不读取其他应用配置。
+                    只写不读，保存到系统凭据存储；保存成功后清空输入，不读取其他应用配置。
                   </p>
                 </>
               )}
