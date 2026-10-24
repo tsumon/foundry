@@ -17,10 +17,33 @@ prepare/approve/apply payloads, invalid/expired/stale/denied states, unchanged
 unknown 1/7 usage, and effective selection in future consent. The test-only
 loopback fixture uses actual web/dist, temporary SQLite, synthetic catalog
 lifecycle receipts and actual continuation endpoints; it includes ready, pending,
-stale, applied and old-approval-denied tasks. Browser screenshot acceptance,
-final combined regression/scanner evidence and remote synchronization are separate
-review gates and must be recorded independently; no provider/native/VM acceptance
-is claimed by these local tests.
+stale, applied, old-approval-denied and malformed-history tasks. Fixture browser
+acceptance and local regression/scanner gates passed on 2026-10-24. Remote CI
+is a separate gate for the exact pushed commit; no provider/native/VM acceptance
+or installed-app replacement is claimed by these local tests.
+
+### Local acceptance evidence
+
+- Final implementation `723a0e1`: all-package offline Go tests passed; final HTTP
+  race and all-package vet passed. The earlier all-package race run covered the
+  unchanged domain/store/engine implementation; later HTTP changes received the
+  final full HTTP race run.
+- Frontend: 53 files / 840 tests and TypeScript/Vite build passed. Existing
+  non-fatal bundle-size advisory remains. Unchanged desktop contracts: 191 tests.
+- Export regression: 13 tests; allowlist export: 1,030 files. Source export and
+  public Git history passed local secret scanning. No dependencies or lockfiles
+  were changed and no scanning thresholds were lowered.
+- Browser used actual compiled web assets and HTTP handlers with temporary
+  SQLite/synthetic grants. Independent prepare/approve/apply preserved history and
+  1/7 usage; malformed history kept original details readable and actions blocked.
+  Console warnings/errors were empty; fixture shutdown completed successfully.
+- Whole-branch review identified two cross-layer issues (identity-bearing candidate
+  reads and original-display status contamination). Both were fixed and passed
+  scoped re-review. Candidate reads now use the task-scoped sanitized GET.
+- Remaining nonblocking test limitation: store apply/fresh admission and engine
+  sealed-request selection are tested separately; a single combined dispatch
+  regression is not yet present. Neither these tests nor the fixture constitute
+  real-account continuation acceptance.
 
 ## Global Constraints
 
@@ -41,9 +64,9 @@ is claimed by these local tests.
 **Interfaces:**
 - Consumes existing `MissionModelSnapshot`, `catalogSelectionTx`, immutable authorization metadata, revisioned mission updates and invocation ledger.
 - Produces `domain.EffectiveModelSnapshot(m Mission) (*MissionModelSnapshot, error)` and digest-addressed historical lookup, append-only `model_continuations` mission metadata, engine prepare/approve/apply methods, sanitized HTTP DTOs.
-- HTTP: `POST /api/missions/{id}/model-continuations` prepares with `{revision, authorization_id, catalog_operation_id}`. `POST /api/missions/{id}/model-continuations/{continuationID}/approve` and `/apply` consume `{revision,digest}`. Read with the normal mission response. Return existing mission response envelope; no provider/secret fields in DTOs. If router conventions require a naming adjustment, report it before Task 2.
+- HTTP: `POST /api/missions/{id}/model-continuations` prepares with `{revision, authorization_id, catalog_operation_id}`. `POST /api/missions/{id}/model-continuations/{continuationID}/approve` and `/apply` consume `{revision,digest}`. Read with the normal mission response. `GET /api/missions/{id}/model-continuations/candidates` reads task-scoped local authorization metadata without identity/client fields. Return existing mission response envelope for mutations; no provider/secret fields in continuation DTOs.
 
-- [ ] Write a store regression with a real SQLite fixture: freeze an original SIWC snapshot, consume one unknown-outcome invocation of a seven-call budget, replace grant, independently record new catalog receipt, prepare/approve/apply continuation. Assert no original data is rewritten, used calls stays one, and effective selection changes only on apply.
+- [x] Write a store regression with a real SQLite fixture: freeze an original SIWC snapshot, consume one unknown-outcome invocation of a seven-call budget, replace grant, independently record new catalog receipt, prepare/approve/apply continuation. Assert no original data is rewritten, used calls stays one, and effective selection changes only on apply.
 
 ```go
 before, _ := json.Marshal(m.ModelSnapshot)
@@ -59,12 +82,12 @@ if err != nil || effective.Roles[domain.Researcher].Authorization.ID != replacem
 }
 ```
 
-- [ ] Run focused tests before implementation; preserve expected RED evidence in the private task report.
-- [ ] Implement canonical records and validation, dedicated transactional operations, expiry/CAS/cleanup guards, append-only protection and sanitized DTOs. Ordinary update paths must reject fabricated/applied continuations.
-- [ ] Integrate effective selection into future authority, actual sealed model request and dispatch gates. Integrate digest-addressed original/applied history into recovery without granting historical records current permission. Reject old approvals after application.
-- [ ] Add targeted failure tests for every constraint in the spec, including duplicate application, concurrent prepare/account changes, reopening after a committed apply, malformed persisted records and catalog lineage drift. Prove zero secret/provider/VM effects.
-- [ ] Add HTTP tests for missing/incorrect revisions/digests, CSRF/body validation, safe mission projection and the three independent operations.
-- [ ] Run `go test -count=1 -timeout=600s ./internal/domain ./internal/store ./internal/accounts ./internal/engine ./internal/httpapi` with offline environment. Record command/output; self-review and commit only the task files after passing.
+- [x] Run focused tests before implementation; preserve expected RED evidence in the private task report.
+- [x] Implement canonical records and validation, dedicated transactional operations, expiry/CAS/cleanup guards, append-only protection and sanitized DTOs. Ordinary update paths must reject fabricated/applied continuations.
+- [x] Integrate effective selection into future authority, actual sealed model request and dispatch gates. Integrate digest-addressed original/applied history into recovery without granting historical records current permission. Reject old approvals after application.
+- [x] Add targeted failure tests for every constraint in the spec, including duplicate application, concurrent prepare/account changes, reopening after a committed apply, malformed persisted records and catalog lineage drift. Prove zero secret/provider/VM effects.
+- [x] Add HTTP tests for missing/incorrect revisions/digests, CSRF/body validation, safe mission projection and the three independent operations.
+- [x] Run `go test -count=1 -timeout=600s ./internal/domain ./internal/store ./internal/accounts ./internal/engine ./internal/httpapi` with offline environment. Record command/output; self-review and commit only the task files after passing.
 
 ### Task 2: Workbench controls, local browser fixture and final acceptance
 
@@ -77,7 +100,7 @@ if err != nil || effective.Roles[domain.Researcher].Authorization.ID != replacem
 - Consume sanitized `model_continuations` and existing account/catalog metadata APIs without fetching any provider catalog.
 - Use Task 1's exact prepare/approve/apply routes. Display original snapshot separately from approved effective selection.
 
-- [ ] Write failing component/API tests for render causing zero mutations; preparation showing pending material; separate approval and apply clicks; expired/malformed material keeping actions disabled; unchanged 1/7 budget display and no auto context/model call.
+- [x] Write failing component/API tests for render causing zero mutations; preparation showing pending material; separate approval and apply clicks; expired/malformed material keeping actions disabled; unchanged 1/7 budget display and no auto context/model call.
 
 ```tsx
 render(<ModelContinuation mission={fixture} onChanged={changed} />);
@@ -87,7 +110,7 @@ expect(fetchMock).not.toHaveBeenCalled();
 // outgoing method, route and exact revision/digest independently.
 ```
 
-- [ ] Implement a compact panel within existing task details; surface missing current catalog as a blocker, never a refresh/query shortcut. Explain per-sign-in local IDs and preserve original snapshot details.
-- [ ] Add a loopback-only fixture covering pending, stale, applied, and old-approval-denied states with fake identities and no real app storage.
-- [ ] Run focused RED/GREEN, all frontend tests and build. Run full Go tests, race and vet offline, export/scanner checks already available locally, and fixture-only browser screenshots with a fresh data directory.
-- [ ] Record exact evidence and unresolved limits; do not claim real continuation acceptance. Keep current installed app and real task binding untouched. Commit verified source/docs only; remote synchronization follows existing user authorization and clean-source rules, never publishes private reports or creates a Release.
+- [x] Implement a compact panel within existing task details; surface missing current catalog as a blocker, never a refresh/query shortcut. Explain per-sign-in local IDs and preserve original snapshot details.
+- [x] Add a loopback-only fixture covering pending, stale, applied, and old-approval-denied states with fake identities and no real app storage.
+- [x] Run focused RED/GREEN, all frontend tests and build. Run full Go tests, race and vet offline, export/scanner checks already available locally, and fixture-only browser screenshots with a fresh data directory.
+- [x] Record exact evidence and unresolved limits; do not claim real continuation acceptance. Keep current installed app and real task binding untouched. Commit verified source/docs only; remote synchronization follows existing user authorization and clean-source rules, never publishes private reports or creates a Release.

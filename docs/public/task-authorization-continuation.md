@@ -2,8 +2,10 @@
 
 Status: backend and workbench implemented and local-fixture tested; real-task
 continuation is not accepted. No existing real task is rebound by installation,
-startup, account connection, or these tests. Browser acceptance remains a separate
-fixture-only review gate.
+startup, account connection, or these tests. Fixture-only browser acceptance
+passed on 2026-10-24, including independent prepare/approve/apply, retained 1/7
+unknown usage, stale approval denial and readable original snapshots when
+continuation history is malformed. No installed real task was used.
 
 ## Problem and outcome
 
