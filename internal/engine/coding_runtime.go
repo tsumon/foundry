@@ -70,6 +70,8 @@ func NewCodingDockerCapability(g *model.Router) (*C4ControlledCapability, error)
 
 func isModelC4(m domain.Mission) bool { return m.Spec.C4 != nil && m.Spec.C4.ID == "c4_go_model_v1" }
 
+// Historical structure must accept valid pre-catalog snapshots unchanged.
+// New-task selection policy belongs to admission, not startup recovery.
 func modelC4Profiles(profiles map[domain.Role]domain.Profile, snapshot *domain.MissionModelSnapshot) error {
 	if snapshot == nil || snapshot.SchemaVersion != 2 || len(profiles) != 7 {
 		return ErrC4Unavailable
@@ -79,6 +81,16 @@ func modelC4Profiles(profiles map[domain.Role]domain.Profile, snapshot *domain.M
 		if !ok || profiles[role] != s.Profile || s.Account == nil || s.Route == nil || s.Account.Provider != "openai" || s.Profile.AccountID == "" || s.Route.ExtraUsage != "off" || domain.ValidateModelRoute(*s.Route, *s.Account) != nil {
 			return ErrC4Unavailable
 		}
+	}
+	return nil
+}
+
+func newModelC4Profiles(profiles map[domain.Role]domain.Profile, snapshot *domain.MissionModelSnapshot) error {
+	if err := modelC4Profiles(profiles, snapshot); err != nil {
+		return err
+	}
+	for _, role := range domain.RolePolicyRoles() {
+		s := snapshot.Roles[role]
 		if s.Account.AuthMethod == "openai_siwc" && s.Route.Environment == "live" && (s.Catalog == nil || s.Profile.CatalogOperationID == "" || s.Catalog.OperationID != s.Profile.CatalogOperationID) {
 			return ErrC4Unavailable
 		}

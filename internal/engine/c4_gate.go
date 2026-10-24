@@ -94,7 +94,7 @@ func (e *Engine) c4CreateGate(r CreateRequest) error {
 		if err != nil {
 			return err
 		}
-		return modelC4Profiles(profiles, snapshot)
+		return newModelC4Profiles(profiles, snapshot)
 	}
 	if e.options.C4Controlled != nil || r.Spec.C4 != nil && r.Spec.C4.ControlVersion == 1 {
 		c := e.options.C4Controlled

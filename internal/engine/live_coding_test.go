@@ -32,7 +32,15 @@ func (l *codingLease) ResolveModelCredential(ctx context.Context, s domain.RoleM
 
 func codingImport(t *testing.T, base string) (*Engine, *store.Store, CreateRequest, *c4Driver, *codingLease) {
 	t.Helper()
+	return codingImportWithStore(t, base, nil)
+}
+
+func codingImportWithStore(t *testing.T, base string, persistent *store.Store) (*Engine, *store.Store, CreateRequest, *c4Driver, *codingLease) {
+	t.Helper()
 	e, s, repo, _ := importFixture(t)
+	if persistent != nil {
+		s, e.s = persistent, persistent
+	}
 	for name, body := range map[string]string{"main.go": "package demo\nfunc Label() string { return \"old\" }\n", "main_test.go": "package demo\n", "go.mod": "module demo\n\ngo 1.27.3\n"} {
 		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0644); err != nil {
 			t.Fatal(err)
