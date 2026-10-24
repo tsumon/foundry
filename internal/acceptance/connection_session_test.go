@@ -178,6 +178,31 @@ func startRetainedSession(t *testing.T, svc *Service, a domain.ModelAccount, r d
 	return o
 }
 
+func TestBrowserHandoffExplicitCancelKeepsCanceledDiagnostic(t *testing.T) {
+	svc, account, route, _ := retainedSessionFixture(t)
+	// These sessions have a fresh ten-minute lifetime. Repeated admission and
+	// cancellation exercises the owned-stop/context-observer scheduling boundary
+	// without introducing a provider, browser action, or an expiry timeout.
+	for attempt := 0; attempt < 32; attempt++ {
+		o := startRetainedSession(t, svc, account, route)
+		_, view, err := svc.Read(account.ID, o.ID)
+		if err != nil || view == nil || view.State != "waiting" {
+			t.Fatalf("attempt %d: session not waiting: %+v %v", attempt, view, err)
+		}
+		expires, err := time.Parse(time.RFC3339Nano, view.ExpiresAt)
+		if err != nil || time.Until(expires) < 9*time.Minute {
+			t.Fatalf("attempt %d: session already near expiry: %+v %v", attempt, view, err)
+		}
+		o, err = svc.Cancel(account.ID, o.ID, o.Revision, o.MaterialDigest)
+		if err != nil || o.State != "unknown" || o.Attempts != 1 || o.ConnectionDiagnostic == nil || o.ConnectionDiagnostic.Stage != "session" || o.ConnectionDiagnostic.Code != "canceled" || o.ConnectionDiagnostic.CredentialCommit != "not_committed" || o.ConnectionDiagnostic.Cleanup != "not_required" {
+			t.Fatalf("attempt %d: explicit cancellation: state=%s attempts=%d diagnostic=%+v error=%v", attempt, o.State, o.Attempts, o.ConnectionDiagnostic, err)
+		}
+		if _, err := svc.Cancel(account.ID, o.ID, o.Revision, o.MaterialDigest); !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("attempt %d: cancellation replay accepted: %v", attempt, err)
+		}
+	}
+}
+
 func TestBrowserHandoffTerminalSessionsReleaseOwnedAttempt(t *testing.T) {
 	for _, receiptFault := range []bool{false, true} {
 		t.Run(map[bool]string{false: "completed receipt", true: "failed receipt"}[receiptFault], func(t *testing.T) {

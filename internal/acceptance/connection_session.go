@@ -56,7 +56,9 @@ func (s *Service) startConnection(o domain.ModelAcceptanceOperation) (domain.Mod
 		return s.finish(o, err, nil, model.Result{})
 	}
 	session := &connectionSession{claim: o, flow: flow, done: make(chan struct{})}
-	session.stop = func() { cancel(); stop() }
+	// Record owned cancellation and close callback admission before waking the
+	// parent-context observer, which otherwise can misclassify this stop as expiry.
+	session.stop = func() { stop(); cancel() }
 	s.sessionsMu.Lock()
 	s.sessions[o.ID] = session
 	s.sessionsMu.Unlock()

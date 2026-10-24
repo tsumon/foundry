@@ -7,6 +7,9 @@ acceptance evidence are required before treating its artifact as accepted;
 build configuration alone is not a pass. See the
 [desktop guide](desktop-guide.md) for installation and actual capabilities.
 
+The [release readiness gates](release-readiness.md) describe the source, native,
+real-account and distribution evidence required before promotion out of Alpha.
+
 2026-10-24 desktop acceptance snapshot: `61cb519` passed
 [Verify](https://github.com/tsumon/foundry/actions/runs/40085553607) and both
 [Desktop packages jobs](https://github.com/tsumon/foundry/actions/runs/40085553628).

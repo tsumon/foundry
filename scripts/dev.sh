@@ -20,7 +20,7 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-(cd web && ./node_modules/.bin/vite build --watch) &
+(cd web && exec ./node_modules/.bin/vite build --watch) &
 WEB_PID=$!
 ./bin/foundry &
 SERVER_PID=$!

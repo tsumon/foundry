@@ -5,17 +5,14 @@ const fs = require("node:fs"),
   os = require("node:os"),
   path = require("node:path");
 const {
-  assertNativeVMReceipt,
-  runNativeVMSmoke,
-  probeWindowsHypervisor,
-} = require("../native-vm-smoke.cjs");
-const { sandboxFixture } = require("./sandbox-fixture.cjs");
+  sandboxFixture,
+  loadDesktopFixtureModule,
+} = require("./sandbox-fixture.cjs");
+const { assertNativeVMReceipt, runNativeVMSmoke, probeWindowsHypervisor } =
+  loadDesktopFixtureModule("native-vm-smoke.cjs");
 const { writeManifest } = require("../build-support.cjs");
-const {
-  verifyResources,
-  resourceDigest,
-  executableName,
-} = require("../runtime.cjs");
+const { verifyResources, resourceDigest, executableName } =
+  loadDesktopFixtureModule("runtime.cjs");
 function success() {
   return {
     schema_version: 1,
@@ -258,7 +255,7 @@ test("explicit native driver executes only the verified installed harness with b
   receipt.manifest_digest = resourceDigest(
     path.join(options.resources, "sandbox/manifest.json"),
   );
-  if (process.platform === "darwin") {
+  if (process.platform !== "win32") {
     receipt.host_platform = "darwin/arm64";
     receipt.guest_platform = "linux/arm64";
     receipt.acceleration = "virtualization_framework";

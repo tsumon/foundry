@@ -4,6 +4,20 @@ All notable public-facing changes will be recorded here.
 
 ## Unreleased
 
+- Make development watcher cleanup target the actual Vite process and remove a
+  launcher-test scheduling race. Verify cleanup and preserve the controller's
+  exit status after both successful and failed runs.
+- Record owned connection cancellation before stopping its lifetime context,
+  preventing explicit cancellation from being misreported as session expiry.
+- Derive native installer acceptance and artifact names from the desktop package
+  version, so future prerelease and stable version changes use the same outputs
+  as the package builders.
+- Add Linux shared verification and desktop source-contract checks to CI;
+  native desktop and VM acceptance still require their supported hosts.
+- Use literal, non-recursive archive member selection with GNU tar and bsdtar,
+  preserving regular-file, size and digest checks for runtime assets and nested
+  license notices.
+
 - Bring Windows subscription preparation, single-use connection/browser handoff,
   separately approved catalog and task-account continuation to parity with Mac.
   Native Credential Manager supports bounded complete token bundles using exact
