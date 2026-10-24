@@ -33,6 +33,10 @@ func (e *Engine) preflightModelRoles(ctx context.Context, m domain.Mission, role
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 		return err
 	}
+	snapshot, err := domain.EffectiveModelSnapshot(m)
+	if err != nil {
+		return err
+	}
 	for _, role := range roles {
 		p := m.Profiles[role]
 		if domain.IsInferenceSnapshot(m) {
@@ -40,7 +44,7 @@ func (e *Engine) preflightModelRoles(ctx context.Context, m domain.Mission, role
 				return err
 			}
 			if preflight, ok := e.gateway.(model.SelectionPreflighter); ok {
-				if err := preflight.PreflightModelSelection(ctx, 2, m.ModelSnapshot.Roles[role]); err != nil {
+				if err := preflight.PreflightModelSelection(ctx, 2, snapshot.Roles[role]); err != nil {
 					return err
 				}
 			} else if p.AccountID != "" {

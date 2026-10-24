@@ -324,12 +324,12 @@ func TestFrozenAuthorizationViewEnumeratesOnlyStableMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	for _, expected := range []string{`"route":{"id":"route"`, `"authorization":{"id":"binding"`, `"subject":"subject"`, `"scopes":["openid","resource.invoke","chatgpt.tokens.use.direct"]`} {
+	for _, expected := range []string{`"route":{"id":"route"`, `"authorization":{"id":"binding"`, `"issuer":"https://auth.openai.com"`, `"scopes":["openid","resource.invoke","chatgpt.tokens.use.direct"]`} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("missing %s in %s", expected, text)
 		}
 	}
-	for _, forbidden := range []string{"secret_ref", "access_token", "refresh_token", "id_token", "generation", "expires_at", "write_claimed"} {
+	for _, forbidden := range []string{"subject", "client_id", "issued-client", "secret_ref", "access_token", "refresh_token", "id_token", "generation", "expires_at", "write_claimed"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("unsafe authorization field %q in %s", forbidden, text)
 		}

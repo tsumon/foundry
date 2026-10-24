@@ -162,7 +162,8 @@ func (e *Engine) AdmitCodingModelCall(ctx context.Context, q model.Request) erro
 		return errors.New("invalid sealed input")
 	}
 	expected := model.Request{InvocationID: v.ID, SnapshotSchema: input.SnapshotSchema, Selection: input.Selection, Profile: input.Profile, Role: input.Role, System: input.System, Prompt: input.Prompt, MaxOutputTokens: input.MaxOutputTokens}
-	if !reflect.DeepEqual(q, expected) || input.Selection == nil || !reflect.DeepEqual(*input.Selection, m.ModelSnapshot.Roles[q.Role]) {
+	snapshot, err := domain.EffectiveModelSnapshot(m)
+	if err != nil || !reflect.DeepEqual(q, expected) || input.Selection == nil || !reflect.DeepEqual(*input.Selection, snapshot.Roles[q.Role]) {
 		return ErrC4Unavailable
 	}
 	return nil

@@ -143,18 +143,27 @@ func modelAuthority(m domain.Mission, base string, includePlan bool) (string, er
 		return "", err
 	}
 	if bound {
+		snapshot, err := domain.EffectiveModelSnapshot(m)
+		if err != nil {
+			return "", err
+		}
 		inner := m
 		inner.WorkspaceMode = baseMode
 		inner.ModelSnapshot = nil
+		inner.ModelContinuations = nil
+		inner.Profiles, err = domain.EffectiveModelProfiles(m)
+		if err != nil {
+			return "", err
+		}
 		digest, err := legacyAuthority(inner, base, includePlan)
 		if err != nil {
 			return "", err
 		}
 		prefix := "FOUNDRY account snapshot authority v1\x00"
-		if m.ModelSnapshot.SchemaVersion == 2 {
+		if snapshot.SchemaVersion == 2 {
 			prefix = "FOUNDRY account snapshot authority v2\x00"
 		}
-		h := sha256.Sum256([]byte(prefix + m.WorkspaceMode + "\x00" + m.ModelSnapshot.Digest + "\x00" + digest))
+		h := sha256.Sum256([]byte(prefix + m.WorkspaceMode + "\x00" + snapshot.Digest + "\x00" + digest))
 		return hex.EncodeToString(h[:]), nil
 	}
 	return legacyAuthority(m, base, includePlan)
@@ -218,6 +227,9 @@ func legacyAuthority(m domain.Mission, base string, includePlan bool) (string, e
 func hasSeal(m domain.Mission, kind, digest string) bool {
 	for i := len(m.Approvals) - 1; i >= 0; i-- {
 		if m.Approvals[i].Kind == kind {
+			if (kind == "context" || kind == "execute") && !domain.ApprovalPostdatesModelContinuation(m, m.Approvals[i]) {
+				return false
+			}
 			return m.Approvals[i].Digest == digest
 		}
 	}
@@ -271,7 +283,11 @@ func (e *Engine) checkFrozenAuthority(m domain.Mission) error {
 	if m.Budget.MaxCalls != m.Spec.MaxCalls || m.Budget.UsedCalls < 0 || m.Budget.UsedCalls > m.Budget.MaxCalls {
 		return errors.New("approved budget changed")
 	}
-	seal, err := authority(m, filepath.Join(e.dir(m.ID), "base"), false)
+	// The source/spec seal remains historical; continuation changes only future
+	// context/execution authority, not the imported source or original budget.
+	original := m
+	original.ModelContinuations = nil
+	seal, err := authority(original, filepath.Join(e.dir(m.ID), "base"), false)
 	if err != nil {
 		return err
 	}

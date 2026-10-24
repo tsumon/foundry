@@ -78,6 +78,9 @@ func (s *server) missionRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	if s.modelContinuationRoute(w, r, parts) {
+		return
+	}
 	if len(parts) == 2 && parts[1] == "c4" {
 		s.c4(w, r, id)
 		return

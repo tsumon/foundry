@@ -94,6 +94,16 @@ func ModelSnapshotDigest(snapshot MissionModelSnapshot) (string, error) {
 }
 
 func ValidateMissionModelSnapshot(m Mission) error {
+	if err := validateOriginalMissionModelSnapshot(m); err != nil {
+		return err
+	}
+	if _, err := validateModelContinuationHistory(m); err != nil {
+		return ErrInvalidModelSnapshot
+	}
+	return nil
+}
+
+func validateOriginalMissionModelSnapshot(m Mission) error {
 	if err := ValidateMissionRolePolicySnapshot(m); err != nil {
 		return ErrInvalidModelSnapshot
 	}

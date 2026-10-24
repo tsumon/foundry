@@ -694,6 +694,15 @@ func (s *Store) recoverInvocation(id, trustedMissionID string) error {
 	if v.MissionID != trustedMissionID {
 		return errors.New("trusted invocation mission identity mismatch")
 	}
+	historicalMission, err := readMissionRow(tx, trustedMissionID)
+	if err != nil {
+		return err
+	}
+	if domain.IsInferenceSnapshot(historicalMission) && historicalMission.ToolMode == "" && v.Kind == "model" {
+		if _, err = domain.HistoricalModelSnapshot(historicalMission, v.BindingDigest); err != nil {
+			return err
+		}
+	}
 	if v.Status != "authorized_pending" && v.Status != "dispatching" {
 		return nil
 	}

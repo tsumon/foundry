@@ -11,7 +11,8 @@ func invocationMissionAuthority(m domain.Mission, v domain.Invocation) (domain.T
 	}
 	var bindings domain.TaskBindings
 	if domain.IsInferenceSnapshot(m) && m.ToolMode == "" && v.Kind == "model" {
-		if v.BindingDigest != m.ModelSnapshot.Digest || v.GrantID != "" {
+		snapshot, err := domain.EffectiveModelSnapshot(m)
+		if err != nil || v.BindingDigest != snapshot.Digest || v.GrantID != "" {
 			return bindings, ErrConflict
 		}
 	} else {
@@ -32,7 +33,7 @@ func invocationMissionAuthority(m domain.Mission, v domain.Invocation) (domain.T
 			if a.Kind != kind {
 				continue
 			}
-			if a.Digest != v.AuthorityDigest || !lowerHex(a.Digest, 64) || (kind == "execute" && (m.Plan == nil || a.PlanRevision != m.Plan.Revision)) {
+			if !domain.ApprovalPostdatesModelContinuation(m, a) || a.Digest != v.AuthorityDigest || !lowerHex(a.Digest, 64) || (kind == "execute" && (m.Plan == nil || a.PlanRevision != m.Plan.Revision)) {
 				return bindings, ErrConflict
 			}
 			return bindings, nil

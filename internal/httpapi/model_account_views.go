@@ -80,11 +80,11 @@ type safeModelRoute struct {
 type safeModelAuthorizationBinding struct {
 	ID         string   `json:"id"`
 	AccountID  string   `json:"account_id"`
-	Issuer     string   `json:"issuer"`
-	Subject    string   `json:"subject"`
-	ClientID   string   `json:"client_id"`
+	Issuer     string   `json:"issuer,omitempty"`
+	Subject    string   `json:"subject,omitempty"`
+	ClientID   string   `json:"client_id,omitempty"`
 	SpendClass string   `json:"spend_class"`
-	Scopes     []string `json:"scopes"`
+	Scopes     []string `json:"scopes,omitempty"`
 }
 type displayModelAccount struct {
 	ID               string `json:"id"`
@@ -117,7 +117,7 @@ func modelSnapshotView(snapshot *domain.MissionModelSnapshot) *safeMissionModelS
 			v.Route = &safeModelRoute{ID: route.ID, AccountID: route.AccountID, Adapter: route.Adapter, Protocol: route.Protocol, BaseURL: route.BaseURL, Environment: route.Environment, SpendClass: route.SpendClass, ExtraUsage: route.ExtraUsage, CreatedAt: route.CreatedAt}
 		}
 		if authorization := selection.Authorization; authorization != nil {
-			v.Authorization = &safeModelAuthorizationBinding{ID: authorization.ID, AccountID: authorization.AccountID, Issuer: authorization.Issuer, Subject: authorization.Subject, ClientID: authorization.ClientID, SpendClass: authorization.SpendClass, Scopes: append([]string(nil), authorization.Scopes...)}
+			v.Authorization = &safeModelAuthorizationBinding{ID: authorization.ID, AccountID: authorization.AccountID, Issuer: authorization.Issuer, SpendClass: authorization.SpendClass, Scopes: append([]string(nil), authorization.Scopes...)}
 		}
 		view.Roles[role] = v
 	}

@@ -177,6 +177,9 @@ func (e *Engine) resetGeneration(m domain.Mission) (domain.Mission, error) {
 			}
 		}
 		resetRun(current, m.Revision, ref)
+		// Planning consent is to this reset's effective authority. The original
+		// snapshot approval stays immutable audit history after a continuation.
+		current.Approvals[len(current.Approvals)-1].Digest = op.ApprovalDigest
 		if archive != nil {
 			current.RunArchives[len(current.RunArchives)-1] = *archive
 		}

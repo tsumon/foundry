@@ -37,6 +37,9 @@ type missionMCPSelection struct {
 // Profiles are display-only; explicit settings remain the profile-edit surface.
 type SafeMissionView struct {
 	domain.Mission
+	ModelContinuations        []modelContinuationView           `json:"model_continuations,omitempty"`
+	ModelContinuationStatus   string                            `json:"model_continuation_status,omitempty"`
+	EffectiveModelSnapshot    *safeMissionModelSnapshot         `json:"effective_model_snapshot,omitempty"`
 	C4ProfileBinding          *c4ProfileBinding                 `json:"c4_profile_binding,omitempty"`
 	ModelSnapshot             *safeMissionModelSnapshot         `json:"model_snapshot,omitempty"`
 	ModelSnapshotStatus       string                            `json:"model_snapshot_status,omitempty"`
@@ -70,7 +73,7 @@ func (s *server) missionView(m domain.Mission) (any, error) {
 	binding := missionC4ProfileBinding(m)
 	v2 := domain.IsResearchFlowV2(m.WorkspaceMode, m.ToolMode)
 	_, accountBound, _ := domain.BaseWorkspaceMode(m.WorkspaceMode)
-	accountData := accountBound || m.ModelSnapshot != nil || m.ModelSnapshotInvalid
+	accountData := accountBound || m.ModelSnapshot != nil || m.ModelSnapshotInvalid || len(m.ModelContinuations) > 0 || m.ModelContinuationsInvalid
 	policyData := m.ModelPolicySnapshot != nil || m.ModelPolicySnapshotInvalid
 	for _, p := range m.Profiles {
 		accountData = accountData || p.AccountID != "" || p.AccountRevision != 0 || p.CredentialVersion != 0
@@ -87,6 +90,17 @@ func (s *server) missionView(m domain.Mission) (any, error) {
 	view := SafeMissionView{Mission: m, C4ProfileBinding: binding, Profiles: map[domain.Role]displayProfile{}}
 	view.Mission.MCPBindings = nil
 	view.Mission.ModelSnapshot = nil
+	view.Mission.ModelContinuations = nil
+	if len(m.ModelContinuations) > 0 || m.ModelContinuationsInvalid {
+		view.ModelContinuations = modelContinuationViews(m)
+		view.ModelContinuationStatus = "valid"
+		effective, err := domain.EffectiveModelSnapshot(m)
+		if err != nil {
+			view.ModelContinuationStatus = "invalid_or_unsupported"
+		} else {
+			view.EffectiveModelSnapshot = modelSnapshotView(effective)
+		}
+	}
 	view.Mission.ModelPolicySnapshot = nil
 	view.ModelSnapshot = modelSnapshotView(m.ModelSnapshot)
 	if domain.IsInferenceSnapshot(m) {

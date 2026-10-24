@@ -196,18 +196,23 @@ func guardModelCallTx(tx *sql.Tx, m domain.Mission, role domain.Role) error {
 	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
 		return err
 	}
-	if m.ModelSnapshot == nil {
+	snapshot, err := domain.EffectiveModelSnapshot(m)
+	if err != nil {
+		return err
+	}
+	if snapshot == nil {
 		return nil
 	}
-	p, ok := m.Profiles[role]
+	selection, ok := snapshot.Roles[role]
+	p := selection.Profile
 	if !ok {
 		return errors.New("model role is not configured")
 	}
 	if p.AccountID == "" {
 		return nil
 	}
-	if m.ModelSnapshot.SchemaVersion == 2 {
-		_, _, err := resolveModelCredentialMetadataTx(tx, m.ModelSnapshot.Roles[role])
+	if snapshot.SchemaVersion == 2 {
+		_, _, err := resolveModelCredentialMetadataTx(tx, selection)
 		return err
 	}
 	a, err := modelAccountTx(tx, p.AccountID)

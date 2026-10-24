@@ -121,7 +121,11 @@ func (e *Engine) controlledAuthority(op *operation, role domain.Role) (domain.Mi
 		if _, err = e.selectedCandidate(m); err != nil {
 			return m, "", "", err
 		}
-		binding = m.ModelSnapshot.Digest
+		snapshot, snapshotErr := domain.EffectiveModelSnapshot(m)
+		if snapshotErr != nil {
+			return m, "", "", snapshotErr
+		}
+		binding = snapshot.Digest
 	} else {
 		binding, err = controlledBindingDigest(m)
 	}
@@ -343,7 +347,12 @@ func (e *Engine) controlledModelInput(m domain.Mission, role domain.Role, extra 
 	}
 	input := controlledInput{Profile: m.Profiles[role], Role: role, System: missionRolePrompt(m, role), MaxOutputTokens: 8192}
 	if domain.IsInferenceSnapshot(m) {
-		selection := m.ModelSnapshot.Roles[role]
+		snapshot, err := domain.EffectiveModelSnapshot(m)
+		if err != nil {
+			return controlledInput{}, err
+		}
+		selection := snapshot.Roles[role]
+		input.Profile = selection.Profile
 		input.SnapshotSchema = 2
 		input.Selection = &selection
 	}
@@ -374,6 +383,13 @@ func (e *Engine) controlledModelInput(m domain.Mission, role domain.Role, extra 
 
 // All envelopes are verified before their projected content can enter another prompt.
 func (e *Engine) verifiedInvocations(id string) ([]domain.Invocation, error) {
+	m, err := e.s.GetMission(id)
+	if err != nil {
+		return nil, err
+	}
+	if err = domain.ValidateMissionModelSnapshot(m); err != nil {
+		return nil, err
+	}
 	all := []domain.Invocation{}
 	before := int64(0)
 	for {
@@ -382,8 +398,19 @@ func (e *Engine) verifiedInvocations(id string) ([]domain.Invocation, error) {
 			return nil, err
 		}
 		for _, v := range rows {
-			if _, err = e.evidenceStore().Read(v.Input); err != nil {
+			raw, readErr := e.evidenceStore().Read(v.Input)
+			if err = readErr; err != nil {
 				return nil, fmt.Errorf("invocation %s input integrity: %w", v.ID, err)
+			}
+			if domain.IsInferenceSnapshot(m) && m.ToolMode == "" && v.Kind == "model" {
+				historical, err := domain.HistoricalModelSnapshot(m, v.BindingDigest)
+				if err != nil {
+					return nil, err
+				}
+				var input controlledInput
+				if decodeControlled(string(raw), &input) != nil || input.SnapshotSchema != 2 || input.Role != v.Role || input.Selection == nil || !reflect.DeepEqual(*input.Selection, historical.Roles[v.Role]) || input.Profile != historical.Roles[v.Role].Profile {
+					return nil, domain.ErrInvalidModelSnapshot
+				}
 			}
 			if v.Result != nil {
 				if _, err = e.evidenceStore().Read(*v.Result); err != nil {

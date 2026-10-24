@@ -1,0 +1,115 @@
+package httpapi
+
+import (
+	"foundry/internal/domain"
+	"net/http"
+	"time"
+)
+
+type modelContinuationView struct {
+	ID                      string                        `json:"id"`
+	Digest                  string                        `json:"digest"`
+	State                   string                        `json:"state"`
+	PreparedRevision        int64                         `json:"prepared_revision"`
+	PredecessorDigest       string                        `json:"predecessor_digest"`
+	ReplacementDigest       string                        `json:"replacement_digest"`
+	AuthorizationID         string                        `json:"authorization_id"`
+	AuthorizationGeneration int64                         `json:"authorization_generation"`
+	AuthorizationExpiresAt  string                        `json:"authorization_expires_at"`
+	CatalogOperationID      string                        `json:"catalog_operation_id"`
+	AffectedRoles           []domain.Role                 `json:"affected_roles"`
+	CreatedAt               string                        `json:"created_at"`
+	ExpiresAt               string                        `json:"expires_at"`
+	Approval                *domain.ModelContinuationFact `json:"approval,omitempty"`
+	Application             *domain.ModelContinuationFact `json:"application,omitempty"`
+}
+
+func modelContinuationViews(m domain.Mission) []modelContinuationView {
+	views := make([]modelContinuationView, 0, len(m.ModelContinuations))
+	for _, c := range m.ModelContinuations {
+		state := "prepared"
+		expected := c.PreparedRevision + 1
+		if c.Approval != nil {
+			state = "approved"
+			expected++
+		}
+		expiry, err := time.Parse(time.RFC3339Nano, c.ExpiresAt)
+		if m.Revision != expected {
+			state = "stale"
+		}
+		if err != nil || !expiry.After(time.Now()) {
+			state = "expired"
+		}
+		if c.Application != nil {
+			state = "applied"
+		}
+		v := modelContinuationView{ID: c.ID, Digest: c.Digest, State: state, PreparedRevision: c.PreparedRevision, PredecessorDigest: c.PredecessorDigest, ReplacementDigest: c.Replacement.Digest, AuthorizationGeneration: c.AuthorizationGeneration, AuthorizationExpiresAt: c.AuthorizationExpiresAt, AffectedRoles: c.AffectedRoles, CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, Approval: c.Approval, Application: c.Application}
+		if len(c.AffectedRoles) > 0 {
+			sel := c.Replacement.Roles[c.AffectedRoles[0]]
+			if sel.Authorization != nil {
+				v.AuthorizationID = sel.Authorization.ID
+			}
+			if sel.Catalog != nil {
+				v.CatalogOperationID = sel.Catalog.OperationID
+			}
+		}
+		views = append(views, v)
+	}
+	return views
+}
+
+func (s *server) modelContinuationRoute(w http.ResponseWriter, r *http.Request, parts []string) bool {
+	if len(parts) < 2 || parts[1] != "model-continuations" {
+		return false
+	}
+	if r.Method != "POST" || (len(parts) != 2 && len(parts) != 4) || (len(parts) == 4 && (parts[2] == "" || (parts[3] != "approve" && parts[3] != "apply"))) {
+		writeError(w, 404, "not_found", "route not found")
+		return true
+	}
+	if r.URL.RawQuery != "" {
+		writeError(w, 400, "validation", "query parameters are not supported")
+		return true
+	}
+	var m domain.Mission
+	var err error
+	if len(parts) == 2 {
+		var q struct {
+			Revision           int64  `json:"revision"`
+			AuthorizationID    string `json:"authorization_id"`
+			CatalogOperationID string `json:"catalog_operation_id"`
+		}
+		if err = decodeMCPAction(w, r, &q, "revision", "authorization_id", "catalog_operation_id"); err != nil {
+			writeDecodeError(w, err)
+			return true
+		}
+		if q.Revision < 1 || domain.ValidateModelCredentialOperation(q.AuthorizationID) != nil || domain.ValidateModelCredentialOperation(q.CatalogOperationID) != nil {
+			writeError(w, 400, "validation", "exact revision and recorded authorization/catalog IDs required")
+			return true
+		}
+		m, err = s.engine.PrepareModelContinuation(r.Context(), parts[0], q.Revision, q.AuthorizationID, q.CatalogOperationID)
+	} else {
+		var q struct {
+			Revision int64  `json:"revision"`
+			Digest   string `json:"digest"`
+		}
+		if err = decodeMCPAction(w, r, &q, "revision", "digest"); err != nil {
+			writeDecodeError(w, err)
+			return true
+		}
+		if q.Revision < 1 || len(q.Digest) != 64 {
+			writeError(w, 400, "validation", "exact revision and material digest required")
+			return true
+		}
+		if parts[3] == "approve" {
+			m, err = s.engine.ApproveModelContinuation(r.Context(), parts[0], parts[2], q.Revision, q.Digest)
+		} else {
+			m, err = s.engine.ApplyModelContinuation(r.Context(), parts[0], parts[2], q.Revision, q.Digest)
+		}
+	}
+	if err != nil {
+		writeMappedError(w, err)
+	} else {
+		s.writeMission(w, m, nil)
+	}
+	return true
+}

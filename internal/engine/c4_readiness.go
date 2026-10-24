@@ -65,6 +65,9 @@ func (e *Engine) currentC4Readiness(m domain.Mission) (domain.C4Control, error) 
 		if c.Kind != "readiness" {
 			continue
 		}
+		if applied := domain.ModelContinuationAppliedRevision(m); applied > 0 && c.PreparedRevision < applied {
+			return domain.C4Control{}, ErrC4Unavailable
+		}
 		// Latest attempted material supersedes previous authority; no fallback.
 		if c.Result == nil || c.Result.Status != "ready" || c.ActivationDigest != e.c4Activation(m).Digest() || c.ActivationExpiresAt != e.options.C4Controlled.config.ExpiresAt || c.SourceKind != e.options.C4Controlled.sourceFor(m.Spec.C4) || c.BaseCommit != m.BaseCommit || c.BaseDigest != m.RepositoryImport.BaseDigest || c.ProfileDigest != m.Spec.C4.ProfileDigest() {
 			return domain.C4Control{}, ErrC4Unavailable

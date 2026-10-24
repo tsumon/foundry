@@ -191,16 +191,18 @@ type Delivery struct {
 }
 
 type Mission struct {
-	C4Operations            []C4Operation            `json:"c4_operations,omitempty"`
-	C4Controls              []C4Control              `json:"c4_controls,omitempty"`
-	C4Invalid               bool                     `json:"-"`
-	ImportVersion           int                      `json:"import_version,omitempty"`
-	RepositoryImport        *RepositoryImportBinding `json:"repository_import,omitempty"`
-	RepositoryImportInvalid bool                     `json:"-"`
-	ReplanContext           *FailureBundle           `json:"replan_context,omitempty"`
-	CodingVersion           int                      `json:"coding_version,omitempty"`
-	CodingAttempts          []CodingAttempt          `json:"coding_attempts,omitempty"`
-	CodingTraceInvalid      bool                     `json:"-"`
+	ModelContinuations        []ModelContinuation      `json:"model_continuations,omitempty"`
+	ModelContinuationsInvalid bool                     `json:"-"`
+	C4Operations              []C4Operation            `json:"c4_operations,omitempty"`
+	C4Controls                []C4Control              `json:"c4_controls,omitempty"`
+	C4Invalid                 bool                     `json:"-"`
+	ImportVersion             int                      `json:"import_version,omitempty"`
+	RepositoryImport          *RepositoryImportBinding `json:"repository_import,omitempty"`
+	RepositoryImportInvalid   bool                     `json:"-"`
+	ReplanContext             *FailureBundle           `json:"replan_context,omitempty"`
+	CodingVersion             int                      `json:"coding_version,omitempty"`
+	CodingAttempts            []CodingAttempt          `json:"coding_attempts,omitempty"`
+	CodingTraceInvalid        bool                     `json:"-"`
 	// ModelPolicySnapshotInvalid is a read-only decode diagnostic. It never
 	// authorizes repair or serialization of malformed persisted provenance.
 	ModelPolicySnapshotInvalid bool                       `json:"-"`

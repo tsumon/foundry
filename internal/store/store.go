@@ -135,6 +135,9 @@ func (s *Store) CreateMission(m domain.Mission) (domain.Mission, error) {
 	return s.createMission(m, nil, "")
 }
 func (s *Store) createMission(m domain.Mission, importOperation *domain.RepositoryImportOperation, sourcePath string) (domain.Mission, error) {
+	if len(m.ModelContinuations) != 0 || m.ModelContinuationsInvalid {
+		return domain.Mission{}, ErrConflict
+	}
 	if err := domain.ValidateC4Mission(m); err != nil {
 		return domain.Mission{}, err
 	}
@@ -286,6 +289,10 @@ func (s *Store) UpdateMission(id string, expected int64, kind string, mutate fun
 // updateMissionTx is shared by operations and the revision ledger. Callbacks
 // must be pure state mutations: filesystem work cannot participate in SQLite.
 func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate func(*domain.Mission) error) (domain.Mission, error) {
+	return updateMissionTxAuthorized(tx, id, expected, kind, false, mutate)
+}
+
+func updateMissionTxAuthorized(tx *sql.Tx, id string, expected int64, kind string, continuation bool, mutate func(*domain.Mission) error) (domain.Mission, error) {
 	if mutate == nil || strings.TrimSpace(kind) == "" {
 		return domain.Mission{}, errors.New("mutation and event kind are required")
 	}
@@ -360,6 +367,9 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 	if err := mutate(&m); err != nil {
 		return domain.Mission{}, err
 	}
+	if !continuation && !domain.SameModelContinuations(c4Before.ModelContinuations, m.ModelContinuations) {
+		return domain.Mission{}, ErrConflict
+	}
 	if err := domain.ValidateC4Transition(c4Before, m); err != nil {
 		return domain.Mission{}, err
 	}
@@ -390,7 +400,9 @@ func updateMissionTx(tx *sql.Tx, id string, expected int64, kind string, mutate 
 	if !bytes.Equal(modelPolicySnapshot, updatedModelPolicySnapshot) {
 		return domain.Mission{}, errors.New("model policy snapshot is immutable")
 	}
-	if err := domain.ValidateMissionModelSnapshot(m); err != nil {
+	validationMission := m
+	validationMission.Revision = revision + 1
+	if err := domain.ValidateMissionModelSnapshot(validationMission); err != nil {
 		return domain.Mission{}, err
 	}
 	updatedBindings, err := json.Marshal(m.TaskBindings)
@@ -584,6 +596,20 @@ func decodeMission(data []byte) (domain.Mission, error) {
 	// Inspect the original envelope before a last-wins projection can erase an
 	// earlier control declaration. Valid legacy records remain unchanged.
 	mission.C4Invalid = invalidC4StoredEnvelope(data)
+	if bytes.Contains(bytes.ToLower(data), []byte(`"model_continuations"`)) {
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.UseNumber()
+		root, err := storedJSONValue(decoder)
+		if err != nil {
+			mission.ModelContinuationsInvalid = true
+		} else if fields, ok := root.(map[string]any); ok {
+			for key := range fields {
+				if strings.EqualFold(key, "model_continuations") && key != "model_continuations" {
+					mission.ModelContinuationsInvalid = true
+				}
+			}
+		}
+	}
 	// Isolate snapshot type errors without relaxing decoding of the legacy
 	// mission body. Get/List remain inspectable; every mutation validates the
 	// diagnostic and leaves the original stored bytes untouched.
@@ -596,6 +622,7 @@ func decodeMission(data []byte) (domain.Mission, error) {
 		ImportVersion       json.RawMessage `json:"import_version"`
 		CodingAttempts      json.RawMessage `json:"coding_attempts"`
 		ModelSnapshot       json.RawMessage `json:"model_snapshot"`
+		ModelContinuations  json.RawMessage `json:"model_continuations"`
 		ModelPolicySnapshot json.RawMessage `json:"model_policy_snapshot"`
 	}{Mission: &mission}
 	if err := json.Unmarshal(data, &projection); err != nil {
@@ -655,6 +682,12 @@ func decodeMission(data []byte) (domain.Mission, error) {
 		if err := json.Unmarshal(projection.ModelSnapshot, &mission.ModelSnapshot); err != nil {
 			mission.ModelSnapshot = nil
 			mission.ModelSnapshotInvalid = true
+		}
+	}
+	if len(projection.ModelContinuations) > 0 {
+		if bytes.Equal(bytes.TrimSpace(projection.ModelContinuations), []byte("null")) || decodeStoredJSON(projection.ModelContinuations, &mission.ModelContinuations) != nil {
+			mission.ModelContinuationsInvalid = true
+			mission.ModelContinuations = nil
 		}
 	}
 	if len(projection.ModelPolicySnapshot) > 0 {

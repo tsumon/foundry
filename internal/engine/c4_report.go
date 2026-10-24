@@ -13,6 +13,13 @@ import (
 // the exported coding result; every included envelope is integrity checked.
 func (e *Engine) deliveryReport(m domain.Mission) (string, error) {
 	report := marshalReport(m)
+	if len(m.ModelContinuations) > 0 || m.ModelContinuationsInvalid {
+		lineage, err := modelContinuationReport(m)
+		if err != nil {
+			return "", err
+		}
+		report += lineage
+	}
 	if !isModelC4(m) {
 		return report, nil
 	}
@@ -47,6 +54,49 @@ func (e *Engine) deliveryReport(m domain.Mission) (string, error) {
 		return report + "\n## Model-backed coding · independent provenance\n\nModel receipts and built-in VM readiness, baseline, candidate tests and owned cleanup are distinct facts. Local model protocol fixtures do not prove real-provider acceptance.\n\n```json\n" + string(raw) + "\n```\n", nil
 	}
 	return report + "\n## Model-backed coding · independent provenance\n\nSimulation routes are owned local integration observations, not real-provider acceptance. Each model receipt, Docker readiness, baseline, candidate test and cleanup is a distinct fact. Token usage is not remaining quota or a monetary hard cap.\n\n```json\n" + string(raw) + "\n```\n", nil
+}
+
+// New exports identify both historical and effective authority without
+// rewriting any earlier report or disclosing identity subjects/client IDs.
+func modelContinuationReport(m domain.Mission) (string, error) {
+	effective, err := domain.EffectiveModelSnapshot(m)
+	if err != nil {
+		return "", err
+	}
+	type roleView struct {
+		Model           string                         `json:"model"`
+		AuthorizationID string                         `json:"authorization_id,omitempty"`
+		Catalog         *domain.ModelCatalogProvenance `json:"catalog,omitempty"`
+	}
+	type record struct {
+		ID                string                        `json:"id"`
+		Digest            string                        `json:"digest"`
+		PredecessorDigest string                        `json:"predecessor_digest"`
+		ReplacementDigest string                        `json:"replacement_digest"`
+		Approval          *domain.ModelContinuationFact `json:"approval,omitempty"`
+		Application       *domain.ModelContinuationFact `json:"application,omitempty"`
+	}
+	view := struct {
+		OriginalDigest  string                   `json:"original_snapshot_digest"`
+		EffectiveDigest string                   `json:"effective_snapshot_digest"`
+		Roles           map[domain.Role]roleView `json:"effective_roles"`
+		Continuations   []record                 `json:"model_continuations"`
+	}{OriginalDigest: m.ModelSnapshot.Digest, EffectiveDigest: effective.Digest, Roles: map[domain.Role]roleView{}}
+	for role, sel := range effective.Roles {
+		v := roleView{Model: sel.Profile.Model, Catalog: sel.Catalog}
+		if sel.Authorization != nil {
+			v.AuthorizationID = sel.Authorization.ID
+		}
+		view.Roles[role] = v
+	}
+	for _, c := range m.ModelContinuations {
+		view.Continuations = append(view.Continuations, record{c.ID, c.Digest, c.PredecessorDigest, c.Replacement.Digest, c.Approval, c.Application})
+	}
+	raw, err := json.MarshalIndent(view, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return "\n## Explicit task authorization continuation\n\nOriginal snapshots, consumed calls and unknown usage remain historical facts. Local authorization IDs identify individual sign-ins, not registered clients. Workspace identity is not independently verified.\n\n```json\n" + string(raw) + "\n```\n", nil
 }
 
 // Rendering only: no execution, readiness refresh, mutation or new authority.
