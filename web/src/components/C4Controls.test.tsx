@@ -458,6 +458,7 @@ it("explains C4 recovery restriction without claiming model snapshot corruption"
     version: "test",
     read_only: true,
     c4_controlled_only: true,
+    recovery_error: "c4_unavailable",
     capabilities: {},
   });
   render(<RecoveryNotice enabled />);

@@ -81,6 +81,16 @@ grant. Preserve it when commit/source/profile digests still match. Preserve its
 historical readiness binding; acquire new readiness separately for future work.
 Do not rerun a baseline merely to change an authorization.
 
+An installed application update may contain a different embedded VM manifest,
+root filesystem or verifier. This is a runtime identity mismatch, not evidence
+that the task's model snapshot is corrupt. Startup reports
+`c4_runtime_mismatch` and remains instance-wide read-only. History, the baseline,
+original snapshot and consumed/unknown budget remain unchanged; old approvals
+cannot authorize the new sandbox. Authorization continuation does not migrate a
+sandbox binding. Restoring an exact trusted runtime, or designing a separately
+approved runtime transition, is distinct work; neither happens automatically.
+Missing/unknown recovery diagnostics use neutral wording, not a corruption claim.
+
 On mismatch, expiry, interrupted transaction or cleanup uncertainty, stay blocked.
 There is no rollback to a revoked credential. Retain the failed material and
 original records; a later explicit preparation is a distinct operation. A commit

@@ -15,46 +15,55 @@ import {
   emptyCapabilities,
 } from "./components/capabilities/testFixtures";
 
-it("keeps history usable with a global recovery-limited read-only notice across navigation", async () => {
-  const fetcher = vi.fn(async (path: string, _init?: RequestInit) => {
-    if (path === "/api/health")
-      return response({
-        status: "recovery_limited",
-        read_only: true,
-        recovery_error: "invalid_mission_model_snapshot",
-        capabilities: {},
-      });
-    if (path === "/api/missions") return response({ missions: [mission] });
-    return response({});
-  });
-  vi.stubGlobal("fetch", fetcher);
-  render(<App />);
-  const notice = await screen.findByRole("alert", {
-    name: "恢复受限：只读诊断",
-  });
-  expect(notice).toHaveTextContent("历史仍可查看");
-  expect(notice).toHaveTextContent("所有业务变更、模型和工具调用已禁止");
-  fireEvent.click(await screen.findByRole("button", { name: /改进导入校验/ }));
-  expect(
-    screen.getByRole("alert", { name: "恢复受限：只读诊断" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("heading", { name: /改进导入校验/ }),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "交付记录" }));
-  expect(
-    screen.getByRole("alert", { name: "恢复受限：只读诊断" }),
-  ).toBeInTheDocument();
-  expect(
-    fetcher.mock.calls.filter(([path]) => path === "/api/health"),
-  ).toHaveLength(1);
-  expect(
-    fetcher.mock.calls.filter(
-      ([path, init]) =>
-        path !== "/api/session" && init?.method && init.method !== "GET",
-    ),
-  ).toEqual([]);
-});
+it.each(["invalid_mission_model_snapshot", "c4_runtime_mismatch"])(
+  "keeps history usable with a global %s read-only notice across navigation",
+  async (recoveryError) => {
+    const fetcher = vi.fn(async (path: string, _init?: RequestInit) => {
+      if (path === "/api/health")
+        return response({
+          status: "recovery_limited",
+          read_only: true,
+          recovery_error: recoveryError,
+          capabilities: {},
+        });
+      if (path === "/api/missions") return response({ missions: [mission] });
+      return response({});
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<App />);
+    const notice = await screen.findByRole("alert", {
+      name: "恢复受限：只读诊断",
+    });
+    expect(notice).toHaveTextContent("历史仍可查看");
+    expect(notice).toHaveTextContent("所有业务变更、模型和工具调用已禁止");
+    if (recoveryError === "c4_runtime_mismatch") {
+      expect(notice).not.toHaveTextContent("任务模型快照损坏");
+      expect(notice).toHaveTextContent("原基线、证据和已用预算保留");
+    }
+    fireEvent.click(
+      await screen.findByRole("button", { name: /改进导入校验/ }),
+    );
+    expect(
+      screen.getByRole("alert", { name: "恢复受限：只读诊断" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /改进导入校验/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "交付记录" }));
+    expect(
+      screen.getByRole("alert", { name: "恢复受限：只读诊断" }),
+    ).toBeInTheDocument();
+    expect(
+      fetcher.mock.calls.filter(([path]) => path === "/api/health"),
+    ).toHaveLength(1);
+    expect(
+      fetcher.mock.calls.filter(
+        ([path, init]) =>
+          path !== "/api/session" && init?.method && init.method !== "GET",
+      ),
+    ).toEqual([]);
+  },
+);
 
 it("does not show a diagnostic notice for normal startup", async () => {
   vi.stubGlobal(

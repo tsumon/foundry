@@ -230,6 +230,9 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 				}
 				recoveryReadOnly = true
 				recoveryError = "c4_unavailable"
+				if errors.Is(err, engine.ErrC4RuntimeMismatch) {
+					recoveryError = "c4_runtime_mismatch"
+				}
 			}
 		}
 	}

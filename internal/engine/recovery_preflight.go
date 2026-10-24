@@ -2,10 +2,15 @@ package engine
 
 import (
 	"errors"
+	"fmt"
 
 	"foundry/internal/domain"
 	"foundry/internal/store"
 )
+
+// A diagnostic subtype only: callers must still deny all C4 recovery and
+// execution. It never authorizes adoption of the installed runtime by a task.
+var ErrC4RuntimeMismatch = fmt.Errorf("%w: installed embedded VM differs from frozen task", ErrC4Unavailable)
 
 func CheckCodingRecoveryModelSnapshots(s *store.Store) error {
 	missions, err := s.ListMissions()
@@ -50,10 +55,19 @@ func (e *Engine) CheckC4ControlledRecovery() error {
 		return err
 	}
 	for _, m := range missions {
-		if e.c4ControlledGate(m, false) != nil || domain.ValidateCodingTrace(m) != nil {
+		if c4Structure(m) != nil || domain.ValidateMissionModelSnapshot(m) != nil || domain.ValidateCodingTrace(m) != nil {
 			return ErrC4Unavailable
 		}
 		if err = e.ValidateRepositoryImport(m); err != nil {
+			return ErrC4Unavailable
+		}
+		if e.c4ControlledGate(m, false) != nil {
+			c := e.options.C4Controlled
+			// Compare validated, trusted metadata only. No VM/credential access,
+			// migration or rewritten readiness/baseline authority is allowed.
+			if c.modelBacked && isModelC4(m) && c.source == "embedded_vm_c4_control" && c.vm != nil && c.vm.Trusted() && m.Spec.C4.Mode == "embedded_vm" && !c.vmProfileMatches(*m.Spec.C4) {
+				return ErrC4RuntimeMismatch
+			}
 			return ErrC4Unavailable
 		}
 	}

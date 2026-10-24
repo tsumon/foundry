@@ -214,6 +214,7 @@ internal/engine/plan_revision_test.go
 internal/engine/planning.go
 internal/engine/prompts.go
 internal/engine/recovery_preflight.go
+internal/engine/recovery_runtime_test.go
 internal/engine/recovery_test.go
 internal/engine/research_flow.go
 internal/engine/research_flow_acceptance_test.go
@@ -587,6 +588,7 @@ web/src/components/ModelSnapshot.tsx
 web/src/components/PlanRevisionEditor.test.tsx
 web/src/components/PlanRevisionEditor.tsx
 web/src/components/RecoveryNotice.tsx
+web/src/components/RecoveryNotice.test.tsx
 web/src/components/ResearchBrief.test.tsx
 web/src/components/ResearchBrief.tsx
 web/src/components/RoleBindings.test.tsx
@@ -743,6 +745,7 @@ internal/engine/repository_import_inspection.go
 internal/engine/repository_import_inspection_test.go
 internal/httpapi/recovery_diagnostic.go
 internal/httpapi/recovery_diagnostic_test.go
+internal/httpapi/recovery_runtime_test.go
 internal/httpapi/repository_import.go
 internal/httpapi/repository_import_test.go
 internal/store/recovery_diagnostic.go
