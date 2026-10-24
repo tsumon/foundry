@@ -63,11 +63,14 @@ func TestWindowsSecureJournalFileRejectsUnsafeACL(t *testing.T) {
 	userACE := "(A;;FA;;;" + user.User.Sid.String() + ")"
 	for _, tc := range []struct {
 		name, dacl, want string
+		protected        bool
+		firstTrustee     string
+		firstFlags       uint8
 	}{
-		{"private", "D:P(A;;FA;;;SY)" + userACE, ""},
-		{"unprotected", "D:(A;;FA;;;SY)" + userACE, "journal DACL is not protected"},
-		{"unexpected-trustee", "D:P(A;;FA;;;WD)" + userACE, "unexpected journal trustee"},
-		{"ace-flags", "D:P(A;OI;FA;;;SY)" + userACE, "journal ACE mismatch"},
+		{"private", "D:P(A;;FA;;;SY)" + userACE, "", true, "S-1-5-18", 0},
+		{"unprotected", "D:(A;;FA;;;SY)" + userACE, "journal DACL is not protected", false, "S-1-5-18", 0},
+		{"unexpected-trustee", "D:P(A;;FA;;;WD)" + userACE, "unexpected journal trustee", true, "S-1-1-0", 0},
+		{"ace-flags", "D:P(A;OI;FA;;;SY)" + userACE, "journal ACE mismatch", true, "S-1-5-18", windows.OBJECT_INHERIT_ACE},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "journal.json")
@@ -80,7 +83,7 @@ func TestWindowsSecureJournalFileRejectsUnsafeACL(t *testing.T) {
 				t.Fatal(err)
 			}
 			sa := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: sd}
-			h, err := windows.CreateFile(ptr, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL, windows.FILE_SHARE_READ, &sa, windows.CREATE_NEW, windows.FILE_ATTRIBUTE_NORMAL, 0)
+			h, err := windows.CreateFile(ptr, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL|windows.WRITE_DAC, windows.FILE_SHARE_READ, &sa, windows.CREATE_NEW, windows.FILE_ATTRIBUTE_NORMAL, 0)
 			if err != nil {
 				t.Fatalf("create ACL fixture: %v", err)
 			}
@@ -92,6 +95,57 @@ func TestWindowsSecureJournalFileRejectsUnsafeACL(t *testing.T) {
 			}
 			if _, err := f.Write(b); err != nil {
 				t.Fatal(err)
+			}
+			if !tc.protected {
+				// Omitting P from creation SDDL did not produce an unprotected
+				// file in native CI. Explicitly enable inheritance on this file.
+				// https://learn.microsoft.com/en-us/windows/win32/secauthz/security-information
+				dacl, _, err := sd.DACL()
+				if err != nil || dacl == nil {
+					t.Fatalf("unprotected fixture DACL unavailable: %v", err)
+				}
+				if err := windows.SetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.UNPROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
+					t.Fatalf("unprotect fixture DACL: %v", err)
+				}
+			}
+			// Check the OS descriptor, not just the creation SDDL: Windows can
+			// normalize the latter, making an intended negative fixture valid.
+			actual, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actualOwner, _, err := actual.Owner()
+			if err != nil || !windows.EqualSid(actualOwner, user.User.Sid) {
+				t.Fatalf("fixture owner changed: %v", err)
+			}
+			control, _, err := actual.Control()
+			if err != nil || (control&windows.SE_DACL_PROTECTED != 0) != tc.protected {
+				t.Fatalf("fixture protected=%t, want %t (control=%#x): %v", control&windows.SE_DACL_PROTECTED != 0, tc.protected, control, err)
+			}
+			acl, _, err := actual.DACL()
+			if err != nil || acl == nil || acl.AceCount < 2 || (tc.protected && acl.AceCount != 2) {
+				t.Fatalf("fixture DACL missing expected explicit ACEs: %v", err)
+			}
+			for i := uint32(0); i < uint32(acl.AceCount); i++ {
+				var ace *windows.ACCESS_ALLOWED_ACE
+				if err := windows.GetAce(acl, i, &ace); err != nil {
+					t.Fatal(err)
+				}
+				if i >= 2 {
+					// Explicitly unprotecting permits additional inherited ACEs.
+					if ace.Header.AceFlags&windows.INHERITED_ACE == 0 {
+						t.Fatal("fixture has an unexpected additional explicit ACE")
+					}
+					continue
+				}
+				wantTrustee, wantFlags := tc.firstTrustee, tc.firstFlags
+				if i == 1 {
+					wantTrustee, wantFlags = user.User.Sid.String(), 0
+				}
+				trustee := (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String()
+				if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || ace.Mask != 0x1f01ff || ace.Header.AceFlags != wantFlags || trustee != wantTrustee {
+					t.Fatalf("fixture ACE %d changed: type=%d mask=%#x flags=%#x trustee=%s", i, ace.Header.AceType, ace.Mask, ace.Header.AceFlags, trustee)
+				}
 			}
 			err = secureJournalFile(f)
 			if tc.want == "" {
