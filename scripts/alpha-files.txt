@@ -914,6 +914,8 @@ docs/public/embedded-sandbox-plan.md
 docs/public/embedded-sandbox.md
 docs/public/live-coding-plan.md
 docs/public/live-coding.md
+docs/public/mac-subscription-workbench.md
+docs/public/mac-subscription-workbench-plan.md
 internal/c4verify/platform_test.go
 internal/domain/c4_vm.go
 internal/domain/c4_vm_test.go
