@@ -76,7 +76,13 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 		return zero, err
 	}
 	if r.Spec.C4 != nil {
-		if err := c4SelectedProfiles(r.Spec.C4, frozen, modelSnapshot); err != nil {
+		// Settings may change after preliminary admission. Validate the actual
+		// new-task snapshot before reserving or preparing any import effects.
+		validateProfiles := c4Profiles
+		if r.Spec.C4.ID == "c4_go_model_v1" {
+			validateProfiles = newModelC4Profiles
+		}
+		if err := validateProfiles(frozen, modelSnapshot); err != nil {
 			return zero, err
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/store"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -48,6 +49,69 @@ func TestCodingNewSubscriptionTaskWithoutCatalogRejectedBeforeEffects(t *testing
 	missions, err := s.ListMissions()
 	if err != nil || len(missions) != 0 || lease.reads != 0 || driver.creates != 0 {
 		t.Fatal("rejected new task had effects", err)
+	}
+}
+
+func TestCodingFinalFrozenSelectionRejectsBetweenReadSettingsSwap(t *testing.T) {
+	for _, change := range []string{"default", "worker"} {
+		t.Run(change, func(t *testing.T) {
+			e, s, request, driver, lease := codingImport(t, "http://127.0.0.1:1/v1")
+			forbidden := &c4Forbidden{}
+			e.gateway, e.options.C4Controlled.models = forbidden, forbidden
+			a, err := s.SaveModelAccount(domain.ModelAccount{ID: "subscription", Name: "Metadata only", Provider: "openai", AuthMethod: "openai_siwc", BillingMode: "subscription", Enabled: true, BaseURL: domain.OpenAISubscriptionRequestedResource}, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := s.CreateModelRoute(domain.ModelRoute{ID: "subscription-route", AccountID: a.ID, Adapter: "openai_siwc_responses", Protocol: "responses", BaseURL: a.BaseURL, Environment: "live", SpendClass: "subscription_only", ExtraUsage: "off"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := domain.Profile{ID: "pre-catalog-profile", Name: "Legacy metadata", Kind: "openai", AccountID: a.ID, RouteID: r.ID, BaseURL: r.BaseURL, Protocol: r.Protocol, Model: "gpt-5.1"}
+			if err = s.PutProfile(p); err != nil {
+				t.Fatal(err)
+			}
+			settings := domain.Settings{DefaultProfileID: request.Spec.ProfileID, RoleBindings: map[domain.Role]string{}}
+			if err = s.PutSettings(settings); err != nil {
+				t.Fatal(err)
+			}
+			request.Spec.ProfileID = ""
+			sourceBefore := importSourceDigest(t, request.RepoPath)
+			// Split the actual Engine.Create phases deterministically. Its mutex
+			// is held just as in production; settings writes use their own Store
+			// transaction and are not serialized by this engine lock.
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if err = e.c4CreateGate(request); err != nil {
+				t.Fatalf("initial valid selection denied: %v", err)
+			}
+			if change == "default" {
+				settings.DefaultProfileID = p.ID
+			} else {
+				settings.RoleBindings[domain.Worker] = p.ID
+			}
+			if err = s.PutSettings(settings); err != nil {
+				t.Fatal(err)
+			}
+			_, err = e.createRepositoryImport(context.Background(), request)
+			if !errors.Is(err, ErrC4Unavailable) {
+				t.Fatalf("changed final selection was not denied before import: %v", err)
+			}
+			missions, err := s.ListMissions()
+			if err != nil || len(missions) != 0 {
+				t.Fatal("rejected selection created a mission", err)
+			}
+			imports, err := s.ListRepositoryImportOperations()
+			if err != nil || len(imports) != 0 {
+				t.Fatal("rejected selection reserved an import", err)
+			}
+			entries, err := os.ReadDir(e.options.DataDir)
+			if err != nil || len(entries) != 0 {
+				t.Fatal("rejected selection created import files", err)
+			}
+			if sourceBefore != importSourceDigest(t, request.RepoPath) || forbidden.calls != 0 || lease.reads != 0 || driver.creates != 0 || driver.starts != 0 || driver.inspects != 0 || driver.removes != 0 {
+				t.Fatal("rejected selection caused source, credential, provider or sandbox effects")
+			}
+		})
 	}
 }
 
