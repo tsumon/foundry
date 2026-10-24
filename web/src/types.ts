@@ -672,7 +672,18 @@ export interface Invocation {
   output_tokens: number;
   model_receipt?: ModelCallReceipt;
 }
+export interface ModelResponseDiagnostic {
+  version: number;
+  stage: string;
+  reason: string;
+  media_type?: string;
+  terminal_event?: string;
+  events_seen: number;
+  bytes_read: number;
+}
+
 export interface ModelCallReceipt {
+  response_diagnostic?: ModelResponseDiagnostic;
   request_id?: string;
   resolved_model?: string;
   credential_generation?: number;

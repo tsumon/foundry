@@ -3,6 +3,8 @@ package model
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
+	"foundry/internal/domain"
 	"io"
 	"net/http"
 	"strings"
@@ -10,8 +12,26 @@ import (
 
 // decodeSIWCStream never exposes partial deltas as successful output. The full
 // completed response is authoritative; unknown event payloads stay inert data.
-func decodeSIWCStream(reader io.Reader, header http.Header) (Result, error) {
+func decodeSIWCStream(reader io.Reader, header http.Header) (result Result, err error) {
+	return decodeSIWCStreamObserved(reader, header, nil)
+}
+
+func decodeSIWCStreamObserved(reader io.Reader, header http.Header, observed *domain.ResponseDiagnostic) (result Result, err error) {
 	limited := &io.LimitedReader{R: reader, N: maxResponseBytes + 1}
+	diagnostic := domain.ResponseDiagnostic{Version: 1, MediaType: "sse"}
+	fail := func(stage, reason string) (Result, error) {
+		diagnostic.Stage, diagnostic.Reason = stage, reason
+		return Result{}, providerFailure("response_incomplete", "unknown")
+	}
+	defer func() {
+		diagnostic.BytesRead = maxResponseBytes + 1 - limited.N
+		if observed != nil {
+			*observed = diagnostic
+		}
+		if p, ok := err.(*ProviderError); ok {
+			p.ResponseDiagnostic = diagnostic
+		}
+	}()
 	scanner := bufio.NewScanner(limited)
 	scanner.Buffer(make([]byte, 4096), maxResponseBytes)
 	var data strings.Builder
@@ -19,7 +39,7 @@ func decodeSIWCStream(reader io.Reader, header http.Header) (Result, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if limited.N <= 0 {
-			return Result{}, providerFailure("response_incomplete", "unknown")
+			return fail("stream_read", "body_limit")
 		}
 		if line != "" {
 			if strings.HasPrefix(line, "data:") {
@@ -45,21 +65,36 @@ func decodeSIWCStream(reader io.Reader, header http.Header) (Result, error) {
 			Code     string          `json:"code"`
 			Param    string          `json:"param"`
 		}
-		if json.Unmarshal([]byte(data.String()), &event) != nil || event.Type == "" || (eventName != "" && eventName != event.Type) {
-			return Result{}, providerFailure("response_incomplete", "unknown")
+		diagnostic.EventsSeen++
+		if json.Unmarshal([]byte(data.String()), &event) != nil {
+			return fail("sse_decode", "invalid_json")
+		}
+		if event.Type == "" {
+			return fail("sse_decode", "missing_event_type")
+		}
+		if eventName != "" && eventName != event.Type {
+			return fail("sse_decode", "event_type_mismatch")
 		}
 		data.Reset()
 		eventName = ""
 		switch event.Type {
 		case "response.completed":
-			return decodeRoutedResponses(event.Response)
+			diagnostic.Stage, diagnostic.TerminalEvent = "completed_response", "response.completed"
+			result, err = decodeSIWCCompletedResponse(event.Response)
+			if p, ok := err.(*ProviderError); ok {
+				diagnostic.Reason = p.ResponseDiagnostic.Reason
+			}
+			return result, err
 		case "response.failed":
+			diagnostic.Stage, diagnostic.Reason, diagnostic.TerminalEvent = "provider_terminal", "provider_failed", "response.failed"
 			p := classifyProviderError(http.StatusOK, header, event.Response)
 			p.Certainty = "rejected"
 			return Result{}, p
 		case "response.incomplete":
-			return Result{}, providerFailure("response_incomplete", "unknown")
+			diagnostic.TerminalEvent = "response.incomplete"
+			return fail("provider_terminal", "provider_incomplete")
 		case "error":
+			diagnostic.Stage, diagnostic.Reason, diagnostic.TerminalEvent = "provider_terminal", "provider_error", "error"
 			if len(event.Error) == 0 {
 				event.Error, _ = json.Marshal(map[string]string{"code": event.Code, "param": event.Param})
 			}
@@ -67,5 +102,17 @@ func decodeSIWCStream(reader io.Reader, header http.Header) (Result, error) {
 			return Result{}, classifyProviderError(http.StatusOK, header, raw)
 		}
 	}
-	return Result{}, providerFailure("response_incomplete", "unknown")
+	if errors.Is(scanner.Err(), bufio.ErrTooLong) {
+		return fail("stream_read", "line_limit")
+	}
+	if limited.N <= 0 {
+		return fail("stream_read", "body_limit")
+	}
+	if scanner.Err() != nil {
+		return fail("stream_read", "read_error")
+	}
+	if data.Len() > 0 || eventName != "" {
+		return fail("stream_read", "unterminated_frame")
+	}
+	return fail("stream_read", "missing_terminal")
 }

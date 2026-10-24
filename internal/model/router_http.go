@@ -156,10 +156,25 @@ func (r *Router) decodeResponse(response *http.Response, adapter string) (result
 		want = "text/event-stream"
 	}
 	if err != nil || media != want {
-		return Result{}, providerFailure("response_incomplete", "unknown")
+		p := providerFailure("response_incomplete", "unknown")
+		if adapter == "openai_siwc_responses" {
+			d := domain.ResponseDiagnostic{Version: 1, Stage: "http_media", Reason: "unexpected_media_type", MediaType: "other"}
+			if media == "application/json" {
+				d.MediaType = "json"
+			}
+			if err != nil {
+				d.Reason, d.MediaType = "invalid_media_type", "invalid"
+			}
+			if response.Header.Get("Content-Type") == "" {
+				d.Reason, d.MediaType = "missing_media_type", "missing"
+			}
+			p.ResponseDiagnostic = d
+		}
+		return Result{}, p
 	}
+	var observed domain.ResponseDiagnostic
 	if adapter == "openai_siwc_responses" {
-		result, err = decodeSIWCStream(response.Body, response.Header)
+		result, err = decodeSIWCStreamObserved(response.Body, response.Header, &observed)
 	} else {
 		var body []byte
 		body, err = readBounded(response.Body)
@@ -188,7 +203,12 @@ func (r *Router) decodeResponse(response *http.Response, adapter string) (result
 	// This exact leased credential must not enter sealed model evidence. This
 	// is intentionally not general secret detection or rewriting model output.
 	if echoesRequestCredential(response.Request, result.Text) {
-		return Result{}, providerFailure("response_incomplete", "unknown")
+		p := providerFailure("response_incomplete", "unknown")
+		if adapter == "openai_siwc_responses" {
+			observed.Stage, observed.Reason = "output_guard", "credential_echo"
+			p.ResponseDiagnostic = observed
+		}
+		return Result{}, p
 	}
 	result.RequestID = id
 	if echoesRequestCredential(response.Request, result.ResolvedModel) {

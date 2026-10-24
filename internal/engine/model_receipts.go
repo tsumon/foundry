@@ -24,6 +24,7 @@ func modelFailureReceipt(result model.Result, err error) (string, string, *domai
 		r.ProviderParam = p.ProviderParam
 		r.BodyShape = p.BodyShape
 		r.RetryAfterSeconds = p.RetryAfterSeconds
+		r.ResponseDiagnostic = p.ResponseDiagnostic
 	}
 	r = domain.SanitizeModelCallReceipt(r)
 	return status, code, &r

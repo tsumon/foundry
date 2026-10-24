@@ -51,6 +51,86 @@ const invocation = {
   output_tokens: 0,
 };
 
+it.each([
+  [undefined, "未记录分阶段诊断"],
+  [
+    {
+      version: 1,
+      stage: "stream_read",
+      reason: "missing_terminal",
+      media_type: "sse",
+      events_seen: 2,
+      bytes_read: 180,
+    },
+    "流结束时未收到终止事件",
+  ],
+  [
+    {
+      version: 1,
+      stage: "provider_terminal",
+      reason: "provider_incomplete",
+      media_type: "sse",
+      terminal_event: "response.incomplete",
+      events_seen: 2,
+      bytes_read: 180,
+    },
+    "已收到提供方 incomplete 事件",
+  ],
+  [
+    {
+      version: 1,
+      stage: "completed_response",
+      reason: "invalid_output",
+      media_type: "sse",
+      terminal_event: "response.completed",
+      events_seen: 2,
+      bytes_read: 180,
+    },
+    "完成响应的消息类型、角色或状态未通过校验",
+  ],
+  [
+    {
+      version: 1,
+      stage: "stream_read",
+      reason: "PRIVATE",
+      media_type: "sse",
+      events_seen: 1,
+      bytes_read: 40,
+    },
+    "分阶段诊断不可验证",
+  ],
+])(
+  "renders read-only diagnostic observations without guessing or replaying %j",
+  async (diagnostic, expected) => {
+    const fetcher = vi.fn(async () =>
+      response({
+        invocations: [
+          {
+            ...invocation,
+            status: "outcome_unknown",
+            result: undefined,
+            error_code: "response_incomplete",
+            model_receipt: {
+              http_status: 200,
+              certainty: "unknown",
+              response_diagnostic: diagnostic,
+            },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(<InvocationActivity mission={mission} visible />);
+    expect(await screen.findByText(new RegExp(expected))).toBeVisible();
+    expect(screen.getByText(/预算已消耗，不会自动重试/)).toBeVisible();
+    expect(document.body.textContent).not.toContain("PRIVATE");
+    expect(
+      screen.queryByRole("button", { name: /重试|重新调用|切换|批准/ }),
+    ).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+
 it("does not read while hidden, then lists metadata and lazily renders escaped detail text", async () => {
   const fetcher = vi.fn(async (path: string) => {
     if (path === "/api/missions/m1/invocations?before=0&limit=30")

@@ -132,20 +132,35 @@ func TestInferenceAllWorkspaceFlowsPreserveAtomicCheckpointBudget(t *testing.T) 
 		})
 	}
 }
-func inferenceEngineAt(t *testing.T, baseURL, environment string) (*Engine, *store.Store, domain.Mission, *inferenceGateway) {
+func inferenceEngineAt(t *testing.T, baseURL, environment string, subscription ...bool) (*Engine, *store.Store, domain.Mission, *inferenceGateway) {
 	t.Helper()
 	e, s, _, _, old := setup(t)
-	a, err := s.SaveModelAccount(domain.ModelAccount{ID: "inference-account", Name: "Synthetic", Provider: "openai", AuthMethod: "api_key", BillingMode: "api_credits", BaseURL: baseURL, Enabled: true}, 0)
+	account := domain.ModelAccount{ID: "inference-account", Name: "Synthetic", Provider: "openai", AuthMethod: "api_key", BillingMode: "api_credits", BaseURL: baseURL, Enabled: true}
+	adapter, spend := "openai_api_responses", "explicit_api"
+	if len(subscription) > 0 && subscription[0] {
+		account.AuthMethod, account.BillingMode, adapter, spend = "openai_siwc", "subscription", "openai_siwc_responses", "subscription_only"
+	}
+	a, err := s.SaveModelAccount(account, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.BeginModelCredential(domain.ModelCredentialVersion{AccountID: a.ID, OperationID: "inference-key", SecretRef: "foundry-model-account-fake-inference-key"}, a.Revision); err != nil {
-		t.Fatal(err)
+	if adapter == "openai_siwc_responses" {
+		if _, err = s.BeginModelAuthorization(a.ID, "fixture-sign-in", "sign_in", "fixture-auth"); err != nil {
+			t.Fatal(err)
+		}
+		_, err = s.CommitModelAuthorization("fixture-sign-in", domain.ModelAuthorizationBinding{ID: "fixture-auth", AccountID: a.ID, Issuer: "https://auth.openai.com", Subject: "fixture", ClientID: "fixture-client", SpendClass: spend, Scopes: []string{"openid", "resource.invoke", "chatgpt.tokens.use.direct"}}, "2099-01-01T00:00:00Z")
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if _, err = s.BeginModelCredential(domain.ModelCredentialVersion{AccountID: a.ID, OperationID: "inference-key", SecretRef: "foundry-model-account-fake-inference-key"}, a.Revision); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = s.FinishModelCredential("inference-key", "available"); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, err = s.FinishModelCredential("inference-key", "available"); err != nil {
-		t.Fatal(err)
-	}
-	r, err := s.CreateModelRoute(domain.ModelRoute{ID: "inference-route", AccountID: a.ID, Adapter: "openai_api_responses", Protocol: "responses", BaseURL: a.BaseURL, Environment: environment, SpendClass: "explicit_api", ExtraUsage: "off"})
+	r, err := s.CreateModelRoute(domain.ModelRoute{ID: "inference-route", AccountID: a.ID, Adapter: adapter, Protocol: "responses", BaseURL: a.BaseURL, Environment: environment, SpendClass: spend, ExtraUsage: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}

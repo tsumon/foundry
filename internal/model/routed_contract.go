@@ -22,14 +22,15 @@ type SelectionPreflighter interface {
 // ProviderError carries bounded, non-secret outcome metadata. Callers must
 // populate diagnostic fields from allowlisted protocol values, never raw text.
 type ProviderError struct {
-	Code              string `json:"code"`
-	Certainty         string `json:"certainty"`
-	RequestID         string `json:"request_id,omitempty"`
-	RetryAfterSeconds int    `json:"retry_after_seconds,omitempty"`
-	HTTPStatus        int    `json:"http_status,omitempty"`
-	ProviderCode      string `json:"provider_code,omitempty"`
-	ProviderParam     string `json:"provider_param,omitempty"`
-	BodyShape         string `json:"body_shape,omitempty"`
+	ResponseDiagnostic domain.ResponseDiagnostic `json:"response_diagnostic,omitzero"`
+	Code               string                    `json:"code"`
+	Certainty          string                    `json:"certainty"`
+	RequestID          string                    `json:"request_id,omitempty"`
+	RetryAfterSeconds  int                       `json:"retry_after_seconds,omitempty"`
+	HTTPStatus         int                       `json:"http_status,omitempty"`
+	ProviderCode       string                    `json:"provider_code,omitempty"`
+	ProviderParam      string                    `json:"provider_param,omitempty"`
+	BodyShape          string                    `json:"body_shape,omitempty"`
 }
 
 func (e *ProviderError) Error() string {

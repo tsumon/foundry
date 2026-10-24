@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"foundry/internal/domain"
 	"strings"
 )
 
@@ -37,6 +38,19 @@ func decodeRoutedChat(body []byte) (Result, error) {
 }
 
 func decodeRoutedResponses(body []byte) (Result, error) {
+	result, err := decodeSIWCCompletedResponse(body)
+	if p, ok := err.(*ProviderError); ok {
+		p.ResponseDiagnostic = domain.ResponseDiagnostic{}
+	}
+	return result, err
+}
+
+func decodeSIWCCompletedResponse(body []byte) (Result, error) {
+	fail := func(reason string) (Result, error) {
+		p := providerFailure("response_incomplete", "unknown")
+		p.ResponseDiagnostic = domain.ResponseDiagnostic{Version: 1, Stage: "completed_response", Reason: reason, TerminalEvent: "response.completed"}
+		return Result{}, p
+	}
 	var envelope struct {
 		Object string          `json:"object"`
 		Status string          `json:"status"`
@@ -53,8 +67,11 @@ func decodeRoutedResponses(body []byte) (Result, error) {
 		} `json:"output"`
 		Usage *responsesUsage `json:"usage"`
 	}
-	if json.Unmarshal(body, &envelope) != nil || envelope.Object != "response" || envelope.Status != "completed" || (len(envelope.Error) > 0 && string(envelope.Error) != "null") {
-		return Result{}, providerFailure("response_incomplete", "unknown")
+	if json.Unmarshal(body, &envelope) != nil {
+		return fail("invalid_envelope_json")
+	}
+	if envelope.Object != "response" || envelope.Status != "completed" || (len(envelope.Error) > 0 && string(envelope.Error) != "null") {
+		return fail("invalid_envelope")
 	}
 	var text strings.Builder
 	for _, output := range envelope.Output {
@@ -63,17 +80,17 @@ func decodeRoutedResponses(body []byte) (Result, error) {
 			continue
 		}
 		if output.Type != "message" || output.Role != "assistant" || output.Status != "completed" {
-			return Result{}, providerFailure("response_incomplete", "unknown")
+			return fail("invalid_output")
 		}
 		for _, content := range output.Content {
 			if content.Type != "output_text" {
-				return Result{}, providerFailure("response_incomplete", "unknown")
+				return fail("invalid_content")
 			}
 			text.WriteString(content.Text)
 		}
 	}
 	if strings.TrimSpace(text.String()) == "" {
-		return Result{}, providerFailure("response_incomplete", "unknown")
+		return fail("empty_output")
 	}
 	result := Result{Text: text.String(), ResolvedModel: safeIdentifier(envelope.Model)}
 	if u := envelope.Usage; u != nil && validUsage(u.InputTokens, u.OutputTokens) {

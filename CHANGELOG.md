@@ -4,6 +4,11 @@ All notable public-facing changes will be recorded here.
 
 ## Unreleased
 
+- Add bounded, redacted task-response diagnostics that distinguish media/SSE
+  parsing, stream termination, provider terminal events and completed-output
+  validation without relaxing success checks or retrying calls. Historical
+  receipts remain unchanged; unknown usage and consumed budgets stay preserved.
+
 ### Desktop Alpha 0.1.0-alpha.2
 
 - Add an opt-in controlled coding workbench that connects account-backed OpenAI

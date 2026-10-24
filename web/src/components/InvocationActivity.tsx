@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { api } from "../api";
+import { ResponseDiagnostic } from "./ResponseDiagnostic";
 import type {
   Invocation,
   InvocationDetail,
@@ -43,7 +44,10 @@ const certaintyLabels: Record<ModelCallReceipt["certainty"], string> = {
 
 function ModelReceipt({ row }: { row: Invocation }) {
   const receipt = row.model_receipt;
-  if (!receipt) return null;
+  if (!receipt)
+    return row.kind === "model" && row.error_code === "response_incomplete" ? (
+      <ResponseDiagnostic />
+    ) : null;
   return (
     <div className="model-receipt" aria-label={`模型调用回执 #${row.ordinal}`}>
       {row.error_code === "quota_exhausted" && (
@@ -87,6 +91,10 @@ function ModelReceipt({ row }: { row: Invocation }) {
           <span>provider retry-after {receipt.retry_after_seconds}s</span>
         )}
       </div>
+      {(receipt.response_diagnostic !== undefined ||
+        row.error_code === "response_incomplete") && (
+        <ResponseDiagnostic value={receipt.response_diagnostic} />
+      )}
     </div>
   );
 }

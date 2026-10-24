@@ -963,6 +963,16 @@ func validateModelReceipt(r *domain.ModelCallReceipt, status string) error {
 	if *r != domain.SanitizeModelCallReceipt(*r) {
 		return errors.New("invalid model receipt metadata")
 	}
+	if r.ResponseDiagnostic.Version != 0 {
+		want := "unknown"
+		if r.ResponseDiagnostic.Reason == "provider_failed" || r.ResponseDiagnostic.Reason == "provider_error" {
+			want = "rejected"
+		}
+		// A concurrent cancellation may conservatively demote rejection to unknown.
+		if r.HTTPStatus != 200 || r.Certainty != want && !(want == "rejected" && r.Certainty == "unknown") {
+			return errors.New("response diagnostic disagrees with outcome")
+		}
+	}
 	if status == "succeeded" && r.Certainty == "completed" || status == "failed" && (r.Certainty == "not_sent" || r.Certainty == "rejected") || status == "outcome_unknown" && r.Certainty == "unknown" || status == "interrupted_before_dispatch" && r.Certainty == "not_sent" {
 		return nil
 	}
