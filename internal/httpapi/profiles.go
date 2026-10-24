@@ -12,15 +12,16 @@ import (
 )
 
 type profileRequest struct {
-	AccountID string `json:"account_id"`
-	RouteID   string `json:"route_id"`
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	Protocol  string `json:"protocol"`
-	BaseURL   string `json:"base_url"`
-	Model     string `json:"model"`
-	APIKey    string `json:"api_key"`
+	CatalogOperationID string `json:"catalog_operation_id"`
+	AccountID          string `json:"account_id"`
+	RouteID            string `json:"route_id"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Kind               string `json:"kind"`
+	Protocol           string `json:"protocol"`
+	BaseURL            string `json:"base_url"`
+	Model              string `json:"model"`
+	APIKey             string `json:"api_key"`
 }
 
 func (s *server) listProfiles(w http.ResponseWriter) {
@@ -93,7 +94,8 @@ func (s *server) saveProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile := domain.Profile{
-		AccountID: request.AccountID, RouteID: request.RouteID,
+		CatalogOperationID: request.CatalogOperationID,
+		AccountID:          request.AccountID, RouteID: request.RouteID,
 		ID: request.ID, Name: strings.TrimSpace(request.Name), Kind: request.Kind,
 		Protocol: request.Protocol, BaseURL: request.BaseURL, Model: strings.TrimSpace(request.Model),
 	}
@@ -109,6 +111,10 @@ func (s *server) saveProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		if request.APIKey != "" || account.BaseURL != profile.BaseURL {
 			writeError(w, http.StatusBadRequest, "invalid_model_account", "account profile requires its fixed endpoint and no inline credential")
+			return
+		}
+		if s.codingWorkbench && account.AuthMethod == "openai_siwc" && request.CatalogOperationID == "" {
+			writeError(w, 409, "catalog_selection_required", "select a model from current approved catalog evidence")
 			return
 		}
 		if request.RouteID != "" {

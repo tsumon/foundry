@@ -79,6 +79,9 @@ func modelC4Profiles(profiles map[domain.Role]domain.Profile, snapshot *domain.M
 		if !ok || profiles[role] != s.Profile || s.Account == nil || s.Route == nil || s.Account.Provider != "openai" || s.Profile.AccountID == "" || s.Route.ExtraUsage != "off" || domain.ValidateModelRoute(*s.Route, *s.Account) != nil {
 			return ErrC4Unavailable
 		}
+		if s.Account.AuthMethod == "openai_siwc" && s.Route.Environment == "live" && (s.Catalog == nil || s.Profile.CatalogOperationID == "" || s.Catalog.OperationID != s.Profile.CatalogOperationID) {
+			return ErrC4Unavailable
+		}
 	}
 	return nil
 }

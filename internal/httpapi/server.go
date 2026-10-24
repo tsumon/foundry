@@ -36,6 +36,7 @@ const (
 )
 
 type Options struct {
+	DesktopAccounts  *acceptance.DesktopCoordinator
 	CodingWorkbench  bool
 	C4ControlledOnly bool
 	RecoveryError    string
@@ -50,6 +51,7 @@ type Options struct {
 }
 
 type server struct {
+	desktopAccounts  *acceptance.DesktopCoordinator
 	codingWorkbench  bool
 	c4ControlledOnly bool
 	recoveryError    string
@@ -116,6 +118,7 @@ func New(s *store.Store, e *engine.Engine, client *model.Client, secrets model.S
 		capabilities = capability.New(s, secrets)
 	}
 	return &server{
+		desktopAccounts:  opts.DesktopAccounts,
 		codingWorkbench:  opts.CodingWorkbench,
 		c4ControlledOnly: opts.C4ControlledOnly,
 		recoveryError:    opts.RecoveryError,
@@ -262,6 +265,10 @@ func (s *server) validMutation(r *http.Request) bool {
 }
 
 func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api/desktop/openai-handoff" {
+		s.desktopHandoff(w, r)
+		return
+	}
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/repository-imports/operations":
 		s.repositoryImportOperations(w, r)

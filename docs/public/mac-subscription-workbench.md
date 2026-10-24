@@ -1,6 +1,6 @@
 # Mac subscription account workbench
 
-Status: design approved for implementation; local-fixture acceptance only. Real sign-in and model calls remain unaccepted until the user separately authorizes them.
+Status: implemented desktop wiring; local-fixture acceptance only. Real sign-in, native credential readiness and real-model tasks remain unaccepted until the user separately authorizes them. A newer package does not inherit earlier account or VM acceptance.
 
 ## Outcome and boundaries
 
@@ -36,6 +36,25 @@ Keep settings in the existing Models area. Show connection, catalog and task-sel
 - Sandbox unavailability still blocks tests: no host shell fallback. API billing routes remain distinct and are never substituted.
 
 ## Acceptance evidence
+
+The Mac coding entry exposes **Models → account → Mac subscription preparation**.
+Choose the saved official SIWC route, explicitly prepare connection (the card
+explains the synthetic native storage diagnostic), then use the existing separate
+proposal, approval and execute controls. Browser opening is manual and the native
+desktop checks the exact current waiting session; arbitrary localhost links are
+still blocked. After reading the successful connection, independently prepare
+catalog, propose/approve/execute its one request, and explicitly read the local
+catalog evidence. Select a model and save a new account-bound profile, then
+assign that profile to roles for future tasks. No step auto-selects roles or
+approves a task. Ordinary desktop, Windows and CLI do not install this coordinator.
+
+The UI fixture is test-only and prominently synthetic: it exercises the actual
+coordinator's preparation and approval layer with a fake consent/dispatch adapter
+and real durable receipts. It is separate from the offline signed-protocol and
+coordinator/catalog integration tests; it is **not** a live-production browser
+end-to-end test. No native credential, provider, VM or Docker effects are part of
+local account-feature acceptance. Existing hosted CI retains its independent
+Windows synthetic-role/WHPX gates unchanged.
 
 Local fixtures must cover the real coordinator, existing approval service, catalog receipt and task-selection boundaries, not just mocked buttons. Include concurrent requests, lease expiration, rejected/stale materials, restart, cleanup uncertainty, catalog failure and cross-account selection. Label fixture evidence synthetic and prove zero real credential/provider effects. UI acceptance covers default closed state, explicit preparation wording, pending approval, stopped failure state, catalog selection and unchanged task approvals.
 

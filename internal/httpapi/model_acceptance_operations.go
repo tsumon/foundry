@@ -22,7 +22,7 @@ type acceptanceRouteView struct {
 // readiness: non-gate synthetic SIWC fixtures retain their existing local
 // controls, while owned acceptance accounts can never bypass their gate.
 func (s *server) legacySIWCSimulationEligible(accountID string) bool {
-	if s.recoveryReadOnly || s.acceptance.OwnsAccount(accountID) {
+	if s.recoveryReadOnly || s.desktopOwnsSubscription(accountID) || s.acceptance.OwnsAccount(accountID) {
 		return false
 	}
 	account, err := s.store.GetModelAccount(accountID)
@@ -30,7 +30,7 @@ func (s *server) legacySIWCSimulationEligible(accountID string) bool {
 }
 
 func (s *server) rejectAcceptanceBypass(w http.ResponseWriter, account string) bool {
-	if s.acceptance.OwnsAccount(account) {
+	if s.desktopOwnsSubscription(account) || s.acceptance.OwnsAccount(account) {
 		writeError(w, 403, "acceptance_gate_required", "this account requires a separate acceptance approval")
 		return true
 	}
@@ -49,6 +49,14 @@ func writeAcceptanceError(w http.ResponseWriter, e error) {
 	}
 }
 func (s *server) modelAcceptanceOperations(w http.ResponseWriter, r *http.Request, parts []string) {
+	if s.desktopAccounts != nil {
+		s.desktopAccounts.WithService(func(gate *acceptance.Service) {
+			// Request-local view: never mutate or retain the shared service pointer.
+			view := &server{store: s.store, siwc: s.siwc, acceptance: gate, recoveryReadOnly: s.recoveryReadOnly}
+			view.modelAcceptanceOperations(w, r, parts)
+		})
+		return
+	}
 	if len(parts) < 2 || len(parts) > 4 || r.URL.RawQuery != "" || r.URL.ForceQuery {
 		writeError(w, 400, "validation", "invalid acceptance route")
 		return

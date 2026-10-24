@@ -29,6 +29,7 @@ var modelAdapterViews = []modelAdapterView{
 }
 
 type modelRuntimeView struct {
+	DesktopSubscription     bool               `json:"desktop_subscription"`
 	LiveAuthorization       bool               `json:"live_authorization"`
 	LiveDiscovery           bool               `json:"live_discovery"`
 	LiveInference           bool               `json:"live_inference"`
@@ -40,6 +41,7 @@ type modelRuntimeView struct {
 
 func (s *server) modelRuntimeView() modelRuntimeView {
 	view := modelRuntimeView{Adapters: append([]modelAdapterView(nil), modelAdapterViews...)}
+	view.DesktopSubscription = s.desktopAccounts != nil && !s.recoveryReadOnly && s.codingWorkbench
 	// Display of a configured task transport only. Every actual send still needs
 	// its independently claimed, sealed, current engine invocation.
 	if s.codingWorkbench && !s.recoveryReadOnly && s.engine.CodingWorkbenchAvailable() {

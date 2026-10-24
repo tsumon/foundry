@@ -59,6 +59,12 @@ export interface ModelCredential {
   updated_at: string;
 }
 export interface RoleModelSelection {
+  catalog?: {
+    operation_id: string;
+    receipt_digest: string;
+    authorization_generation: number;
+    expires_at: string;
+  };
   profile: DisplayProfile;
   account?: SnapshotAccount;
   route?: ModelRoute;
@@ -402,6 +408,7 @@ export interface ModelAdapterRuntime {
   live_enabled: boolean;
 }
 export interface ModelRuntime {
+  desktop_subscription?: boolean;
   live_authorization: boolean;
   live_discovery: boolean;
   live_inference: boolean;
@@ -416,6 +423,7 @@ export interface MissionModelSnapshot {
   digest: string;
 }
 export interface Profile extends DisplayProfile {
+  catalog_operation_id?: string;
   kind: "direct" | "compatible" | "magpie";
   protocol: "chat_completions" | "responses" | "messages";
   base_url: string;
@@ -423,6 +431,7 @@ export interface Profile extends DisplayProfile {
   account?: ModelAccount;
 }
 export interface ProfileInput {
+  catalog_operation_id?: string;
   id?: string;
   name: string;
   kind: Profile["kind"];

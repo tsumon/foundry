@@ -30,6 +30,54 @@ async function session(child) {
   assert.equal(response.status, 200);
   return response.headers.get("set-cookie").split(";")[0];
 }
+// Read-only account-feature composition checks. The sentinel account is never
+// created; its preparation view must stay empty. Never invoke preparation here.
+async function assertDesktopSubscriptionMetadata(
+  child,
+  cookie,
+  platform,
+  mode,
+  request = authorized,
+) {
+  const diagnostics = path.join(
+    child.ready.dataDir,
+    "openai-desktop-diagnostics",
+  );
+  assert.equal(
+    fs.existsSync(diagnostics),
+    false,
+    "metadata startup created diagnostic journals",
+  );
+  const options = { headers: { Cookie: cookie } };
+  const response = await request(child, "/api/model-routes", options);
+  assert.equal(response.status, 200);
+  const { runtime } = await response.json();
+  const enabled = platform === "darwin" && mode === "coding";
+  assert.equal(runtime.desktop_subscription, enabled);
+  assert.equal(runtime.live_authorization, false);
+  assert.equal(runtime.live_discovery, false);
+  assert.equal(runtime.automatic_paid_fallback, false);
+  const preparation = await request(
+    child,
+    "/api/model-accounts/installed-smoke-unconfigured/desktop-preparation",
+    options,
+  );
+  assert.equal(preparation.status, enabled ? 200 : 403);
+  if (enabled)
+    assert.deepEqual(await preparation.json(), {
+      preparation: {
+        phase: "unprepared",
+        connection_ready: false,
+        catalog_ready: false,
+      },
+      catalog_choices: [],
+    });
+  assert.equal(
+    fs.existsSync(diagnostics),
+    false,
+    "metadata reads created diagnostic journals",
+  );
+}
 async function main() {
   const resources = process.env.FOUNDRY_INSTALLED_RESOURCES;
   const dataRoot = process.env.FOUNDRY_SMOKE_DATA;
@@ -90,6 +138,12 @@ async function main() {
       process.platform,
       false,
     );
+    await assertDesktopSubscriptionMetadata(
+      child,
+      cookie,
+      process.platform,
+      "normal",
+    );
     await child.stop();
     child = await startBackend({
       resources,
@@ -104,6 +158,12 @@ async function main() {
     assert.equal(codingResponse.status, 200);
     const codingMetadata = await codingResponse.json();
     assertCodingMetadata(codingMetadata, process.platform);
+    await assertDesktopSubscriptionMetadata(
+      child,
+      cookie,
+      process.platform,
+      "coding",
+    );
     assert.equal(
       codingMetadata.profile.embedded_vm.manifest_digest,
       hashFile(path.join(resources, "sandbox/manifest.json")),
@@ -123,6 +183,12 @@ async function main() {
     });
     assert.equal(codingResponse.status, 200);
     assertCodingMetadata(await codingResponse.json(), process.platform);
+    await assertDesktopSubscriptionMetadata(
+      child,
+      cookie,
+      process.platform,
+      "coding",
+    );
     await child.stop();
     assert.equal(hashFile(codingDB), codingHash);
     child = await startBackend({
@@ -194,6 +260,7 @@ async function main() {
             "EOF graceful exit",
             "persistent restart",
             "normal startup keeps coding metadata closed",
+            "subscription metadata is Mac-coding-only and unprepared across restart; reads create no diagnostic journals",
             "coding startup exposes installed VM identity metadata only; hardware readiness and execution remain separately approved",
             "isolated simulation baseline remains prepared without approval or execution facts",
             "evidence retained",
@@ -215,4 +282,4 @@ if (require.main === module)
     process.exitCode = 1;
   });
 
-module.exports = { hashFile };
+module.exports = { hashFile, assertDesktopSubscriptionMetadata };

@@ -8,6 +8,31 @@ import { ModelSnapshot } from "./ModelSnapshot";
 import { createPlanDraft, PlanRevisionEditor } from "./PlanRevisionEditor";
 import { accountActionBlockReason } from "../modelSnapshot";
 
+it("shows frozen catalog authorization generation and expiry without a current-use grant", () => {
+  const m = routed("live");
+  const selection = m.model_snapshot!.roles.worker;
+  selection.route!.adapter = "openai_siwc_responses";
+  selection.authorization = {
+    id: "catalog-auth",
+    account_id: "a-frozen",
+    issuer: "https://auth.openai.com",
+    subject: "synthetic",
+    client_id: "synthetic-client",
+    spend_class: "subscription_only",
+    scopes: ["openid"],
+  };
+  selection.catalog = {
+    operation_id: "catalog-frozen",
+    receipt_digest: "b".repeat(64),
+    authorization_generation: 3,
+    expires_at: "2030-01-01T00:00:00Z",
+  };
+  render(<ModelSnapshot mission={m} />);
+  expect(screen.getByText(/目录 catalog-frozen/)).toBeVisible();
+  expect(screen.getByText(/授权代次 3/)).toBeVisible();
+  expect(screen.getByText(/2030-01-01T00:00:00Z/)).toBeVisible();
+});
+
 function readAppStyles() {
   const process = (
     globalThis as typeof globalThis & {

@@ -13,17 +13,18 @@ const (
 )
 
 type Profile struct {
-	RouteID           string `json:"route_id,omitempty"`
-	AccountID         string `json:"account_id,omitempty"`
-	AccountRevision   int64  `json:"account_revision,omitempty"`
-	CredentialVersion int64  `json:"credential_version,omitempty"`
-	ID                string `json:"id"`
-	Name              string `json:"name"`
-	Kind              string `json:"kind"`
-	Protocol          string `json:"protocol"`
-	BaseURL           string `json:"base_url"`
-	Model             string `json:"model"`
-	HasKey            bool   `json:"has_key"`
+	CatalogOperationID string `json:"catalog_operation_id,omitempty"`
+	RouteID            string `json:"route_id,omitempty"`
+	AccountID          string `json:"account_id,omitempty"`
+	AccountRevision    int64  `json:"account_revision,omitempty"`
+	CredentialVersion  int64  `json:"credential_version,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Kind               string `json:"kind"`
+	Protocol           string `json:"protocol"`
+	BaseURL            string `json:"base_url"`
+	Model              string `json:"model"`
+	HasKey             bool   `json:"has_key"`
 }
 
 type Settings struct {

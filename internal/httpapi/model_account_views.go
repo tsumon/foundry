@@ -58,6 +58,7 @@ func (s *server) profileView(p domain.Profile) (safeAccountProfile, error) {
 }
 
 type safeRoleModelSelection struct {
+	Catalog       *domain.ModelCatalogProvenance `json:"catalog,omitempty"`
 	Profile       displayProfile                 `json:"profile"`
 	Account       *displayModelAccount           `json:"account,omitempty"`
 	Route         *safeModelRoute                `json:"route,omitempty"`
@@ -108,7 +109,7 @@ func modelSnapshotView(snapshot *domain.MissionModelSnapshot) *safeMissionModelS
 	}
 	view := &safeMissionModelSnapshot{SchemaVersion: snapshot.SchemaVersion, Roles: map[domain.Role]safeRoleModelSelection{}, Digest: snapshot.Digest}
 	for role, selection := range snapshot.Roles {
-		v := safeRoleModelSelection{Profile: displayModelProfile(selection.Profile)}
+		v := safeRoleModelSelection{Profile: displayModelProfile(selection.Profile), Catalog: selection.Catalog}
 		if a := selection.Account; a != nil {
 			v.Account = &displayModelAccount{ID: a.ID, Revision: a.Revision, Name: a.Name, Provider: a.Provider, BillingMode: a.BillingMode, Enabled: a.Enabled, IdentityStatus: "unverified", UsageStatus: "unknown", InferenceEnabled: false}
 		}

@@ -10,10 +10,21 @@ import (
 var ErrInvalidModelSnapshot = errors.New("invalid_mission_model_snapshot")
 
 type RoleModelSelection struct {
+	Catalog       *ModelCatalogProvenance    `json:"catalog,omitempty"`
 	Profile       Profile                    `json:"profile"`
 	Account       *ModelAccount              `json:"account,omitempty"`
 	Route         *ModelRoute                `json:"route,omitempty"`
 	Authorization *ModelAuthorizationBinding `json:"authorization,omitempty"`
+}
+
+// Catalog evidence is provenance, never permission to invoke a model. The
+// generation and expiry pin the selected authorization rather than refreshing
+// it behind an existing task's frozen identity.
+type ModelCatalogProvenance struct {
+	OperationID             string `json:"operation_id"`
+	ReceiptDigest           string `json:"receipt_digest"`
+	AuthorizationGeneration int64  `json:"authorization_generation"`
+	ExpiresAt               string `json:"expires_at"`
 }
 type MissionModelSnapshot struct {
 	SchemaVersion int                         `json:"schema_version"`
@@ -133,6 +144,12 @@ func ValidateMissionModelSnapshot(m Mission) error {
 		}
 		if _, _, err := ParseProviderBaseURL(p.BaseURL); err != nil {
 			return ErrInvalidModelSnapshot
+		}
+		if p.CatalogOperationID != "" || selection.Catalog != nil {
+			c := selection.Catalog
+			if wantSchema != 2 || c == nil || c.OperationID != p.CatalogOperationID || ValidateModelCredentialOperation(c.OperationID) != nil || len(c.ReceiptDigest) != 64 || c.AuthorizationGeneration < 1 || c.ExpiresAt == "" || selection.Account == nil || selection.Account.AuthMethod != "openai_siwc" || selection.Route == nil || selection.Route.Environment != "live" || selection.Authorization == nil {
+				return ErrInvalidModelSnapshot
+			}
 		}
 		if wantSchema == 1 && (p.RouteID != "" || selection.Route != nil || selection.Authorization != nil) {
 			return ErrInvalidModelSnapshot

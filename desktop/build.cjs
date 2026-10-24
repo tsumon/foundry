@@ -114,6 +114,7 @@ async function main() {
   for (const name of [
     "main.cjs",
     "coding-mode.cjs",
+    "openai-handoff.cjs",
     "runtime.cjs",
     "security.cjs",
     "downloads.cjs",
@@ -172,6 +173,7 @@ async function main() {
       files: [
         "main.cjs",
         "coding-mode.cjs",
+        "openai-handoff.cjs",
         "runtime.cjs",
         "security.cjs",
         "downloads.cjs",

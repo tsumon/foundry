@@ -230,6 +230,7 @@ async function main() {
   const appFiles = [
     "main.cjs",
     "coding-mode.cjs",
+    "openai-handoff.cjs",
     "runtime.cjs",
     "security.cjs",
     "downloads.cjs",

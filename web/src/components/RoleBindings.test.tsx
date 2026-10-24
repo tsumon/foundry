@@ -3,6 +3,35 @@ import { expect, it, vi } from "vitest";
 import { RoleBindings } from "./RoleBindings";
 import type { ModelAccount, Profile } from "../types";
 
+it("catalog-bound roles describe backend authorization recheck without claiming quota", () => {
+  const account = {
+    id: "a",
+    auth_method: "openai_siwc",
+    billing_mode: "subscription",
+    name: "Synthetic",
+  } as ModelAccount;
+  const profile = {
+    id: "p",
+    name: "Catalog model",
+    account_id: "a",
+    catalog_operation_id: "catalog-current",
+  } as Profile;
+  render(
+    <RoleBindings
+      profiles={[profile]}
+      accounts={[account]}
+      settings={{ default_profile_id: "p", role_bindings: {} }}
+      disabled={false}
+      onChange={vi.fn()}
+      onSave={vi.fn()}
+    />,
+  );
+  const row = screen.getByRole("row", { name: /Worker/ });
+  expect(row).toHaveTextContent("授权有效性由后端复核");
+  expect(row).toHaveTextContent("额度未知");
+  expect(row).not.toHaveTextContent("身份未验证");
+});
+
 it("labels every unresolved role as unconfigured instead of a legacy connection", () => {
   render(
     <RoleBindings

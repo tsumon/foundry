@@ -5,7 +5,14 @@ import {
   modelAccountApi,
   type AccountCreateInput,
 } from "../modelAccountApi";
-import type { ModelAccount, ModelCredential, ModelRuntime } from "../types";
+import type {
+  ModelAccount,
+  ModelCredential,
+  ModelRuntime,
+  ModelRoute,
+  Profile,
+} from "../types";
+import { DesktopSubscription } from "./DesktopSubscription";
 import { ModelAccountCredentials } from "./ModelAccountCredentials";
 import { ModelAuthorizationCard } from "./ModelAuthorizationCard";
 import { ModelAcceptanceCard } from "./ModelAcceptanceCard";
@@ -31,12 +38,17 @@ const blank: AccountCreateInput = {
 export function ModelAccounts({
   onAccounts,
   runtime,
+  routes = [],
+  onProfileSaved = () => {},
 }: {
   onAccounts: (accounts: ModelAccount[]) => void;
   runtime?: ModelRuntime;
+  routes?: ModelRoute[];
+  onProfileSaved?: (p: Profile) => void;
 }) {
   const [accounts, setAccounts] = useState<ModelAccount[]>([]);
   const [read, setRead] = useState(false);
+  const [preparationEpoch, setPreparationEpoch] = useState(0);
   const [form, setForm] = useState(blank);
   const [selected, setSelected] = useState<ModelAccount>();
   const [credentials, setCredentials] = useState<ModelCredential[]>([]);
@@ -112,7 +124,8 @@ export function ModelAccounts({
         {runtime?.live_inference
           ? "账户只是本地配置记录：身份未验证、额度未知；仅受支持的账户编码任务按独立审批，配置不代表已连接、已授权或可调用。"
           : "账户只是本地配置记录：身份未验证、额度未知、真实账户调用尚未开放。"}
-        厂商与计费渠道均为用户声明；保存不会登录、探测或自动付费降级。账户级真实订阅连接需操作员显式启动，并独立审批验收材料。
+        厂商与计费渠道均为用户声明；保存不会登录、探测或自动付费降级。Mac
+        编码工作台可显式准备订阅连接；其他入口需操作员启动。连接与目录仍独立审批。
       </p>
       {(error || readError) && (
         <p role="alert" className="form-error">
@@ -243,7 +256,11 @@ export function ModelAccounts({
                   ...form,
                   auth_method,
                   ...(auth_method === "openai_siwc"
-                    ? { provider: "openai", billing_mode: "subscription" }
+                    ? {
+                        provider: "openai",
+                        billing_mode: "subscription",
+                        base_url: "https://api.openai.com/v1",
+                      }
                     : {}),
                 });
               }}
@@ -367,11 +384,22 @@ export function ModelAccounts({
             accountRevision={selected.revision}
           />
           <ModelAcceptanceOperations
+            key={`${selected.id}:${preparationEpoch}`}
             account={selected}
             refreshAccount={refresh}
             onConnectionPolicy={setConnectionPolicy}
             onLegacySIWCCapability={setLegacySIWCCapability}
           />
+          {runtime?.desktop_subscription === true &&
+            selected.auth_method === "openai_siwc" && (
+              <DesktopSubscription
+                key={selected.id}
+                account={selected}
+                routes={routes}
+                onPrepared={() => setPreparationEpoch((e) => e + 1)}
+                onProfileSaved={onProfileSaved}
+              />
+            )}
         </section>
       )}
     </section>

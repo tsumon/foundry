@@ -121,8 +121,24 @@ local image matching the verifier contract; Foundry does not pull or build it.
 Native credentials use Foundry-scoped macOS Keychain or Windows Credential
 Manager. Only explicit account operations or approved claimed task calls may
 access them; opening/restarting the workbench does not enumerate, refresh or
-clean them. A subscription route must already have valid authorization; this
-entry does not perform a new subscription login or model-directory query.
+clean them. In the **Mac coding workbench only**, the Models account card can
+explicitly prepare a subscription connection. It first explains and runs a
+Foundry-only synthetic Keychain write/read/exact-delete check; confirmed cleanup
+grants ten minutes of process-local readiness, not login approval. Propose,
+approve and execute connection separately, then manually open the current local
+handoff in your normal browser. The desktop validates that exact waiting session
+and launches it at most once; arbitrary localhost URLs remain forbidden.
+
+After explicitly reading a successful connection, independently prepare,
+propose, approve and execute one catalog request. Read the recorded evidence,
+choose a model and save a new account-bound profile, then explicitly assign it
+to roles. Catalog provenance pins account, route, authorization generation and
+expiry; account switches or reconnections cannot silently retarget older tasks.
+No catalog receipt approves model use. A failed diagnostic retains its private
+exact-item journal; unconfirmed cleanup blocks new preparation after restart.
+Ordinary desktop and Windows remain closed. The current evidence is synthetic
+local integration/UI testing only, not real native readiness, sign-in, catalog
+or model-task acceptance. See [Mac subscription workbench](mac-subscription-workbench.md).
 
 Windows Credential Manager rejects blobs above its native 2,560-byte ceiling;
 larger serialized subscription bundles are not supported. This is a hard error,

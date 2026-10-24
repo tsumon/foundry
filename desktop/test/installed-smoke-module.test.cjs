@@ -6,6 +6,73 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFileSync, spawnSync } = require("node:child_process");
+const { assertDesktopSubscriptionMetadata } = require("../installed-smoke.cjs");
+
+test("installed subscription metadata stays unprepared and never creates diagnostic journals", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "foundry-account-metadata-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const platform of ["darwin", "win32", "linux"]) {
+    for (const mode of ["normal", "coding"]) {
+      const enabled = platform === "darwin" && mode === "coding";
+      const calls = [];
+      const request = async (_child, route, options) => {
+        calls.push(route);
+        assert.equal(options.method, undefined);
+        assert.equal(options.headers.Cookie, "local-cookie");
+        if (route === "/api/model-routes")
+          return {
+            status: 200,
+            json: async () => ({
+              runtime: {
+                desktop_subscription: enabled,
+                live_authorization: false,
+                live_discovery: false,
+                automatic_paid_fallback: false,
+              },
+            }),
+          };
+        assert.equal(
+          route,
+          "/api/model-accounts/installed-smoke-unconfigured/desktop-preparation",
+        );
+        return {
+          status: enabled ? 200 : 403,
+          json: async () => ({
+            preparation: {
+              phase: "unprepared",
+              connection_ready: false,
+              catalog_ready: false,
+            },
+            catalog_choices: [],
+          }),
+        };
+      };
+      await assertDesktopSubscriptionMetadata(
+        { ready: { dataDir: root } },
+        "local-cookie",
+        platform,
+        mode,
+        request,
+      );
+      assert.equal(calls.length, 2);
+    }
+  }
+  fs.mkdirSync(path.join(root, "openai-desktop-diagnostics"));
+  await assert.rejects(
+    assertDesktopSubscriptionMetadata(
+      { ready: { dataDir: root } },
+      "local-cookie",
+      "darwin",
+      "coding",
+      async () => {
+        throw new Error("must reject before read");
+      },
+    ),
+    /diagnostic/,
+  );
+});
 
 function removeCryptoImport(source) {
   const mutated = source.replace(
@@ -40,12 +107,10 @@ test("installed smoke hashing executes in its real CommonJS module scope", (t) =
   const runner = path.join(root, "runner.cjs");
   fs.writeFileSync(
     runner,
-    'const {hashFile}=require(process.argv[2]);process.stdout.write(hashFile(process.argv[3]));',
+    "const {hashFile}=require(process.argv[2]);process.stdout.write(hashFile(process.argv[3]));",
   );
   const childEnv =
-    process.platform === "win32"
-      ? { SystemRoot: process.env.SystemRoot }
-      : {};
+    process.platform === "win32" ? { SystemRoot: process.env.SystemRoot } : {};
   const run = (target) =>
     execFileSync(process.execPath, [runner, target, input], {
       encoding: "utf8",
@@ -72,7 +137,10 @@ test("installed smoke hashing executes in its real CommonJS module scope", (t) =
       'require("./coding-smoke.cjs")',
       `require(${JSON.stringify(path.join(__dirname, "../coding-smoke.cjs"))})`,
     );
-  assert.doesNotMatch(withoutImport, /const crypto = require\("node:crypto"\);/);
+  assert.doesNotMatch(
+    withoutImport,
+    /const crypto = require\("node:crypto"\);/,
+  );
   const brokenModule = path.join(root, "installed-smoke-without-crypto.cjs");
   fs.writeFileSync(brokenModule, withoutImport);
   const mutation = spawnSync(process.execPath, [runner, brokenModule, input], {

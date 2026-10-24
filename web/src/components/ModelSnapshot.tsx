@@ -89,8 +89,8 @@ export function ModelSnapshot({
           </p>
           {!!authorizations.length && (
             <p className="muted small">
-              稳定授权 {authorizations.join("、")}；当前 token
-              代数不是冻结快照。
+              稳定授权 {authorizations.join("、")}
+              ；目录绑定连接的授权代次与到期见冻结明细。
             </p>
           )}
           {bound && (
@@ -177,8 +177,9 @@ export function ModelSnapshot({
                         scopes {authorization?.scopes?.join(" · ") || "缺失"}
                       </code>
                       <small>
-                        当前 token
-                        代数不是冻结快照；当前授权可用性须由后端复核。
+                        {selection?.catalog
+                          ? `目录 ${selection.catalog.operation_id} · 授权代次 ${selection.catalog.authorization_generation} · 到期 ${selection.catalog.expires_at}。目录不授权推理，当前可用性由后端复核。`
+                          : "当前 token 代数不是冻结快照；当前授权可用性须由后端复核。"}
                       </small>
                     </>
                   ) : preview &&

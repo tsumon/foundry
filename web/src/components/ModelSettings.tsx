@@ -80,6 +80,9 @@ export function ModelSettings() {
             protocol: profile.protocol,
             base_url: profile.base_url,
             model: profile.model,
+            ...(profile.catalog_operation_id
+              ? { catalog_operation_id: profile.catalog_operation_id }
+              : {}),
             ...(profile.route_id ? { route_id: profile.route_id } : {}),
             ...(profile.account_id ? { account_id: profile.account_id } : {}),
           }
@@ -129,6 +132,9 @@ export function ModelSettings() {
         protocol: profile.protocol,
         base_url: profile.base_url,
         model: profile.model,
+        ...(profile.catalog_operation_id
+          ? { catalog_operation_id: profile.catalog_operation_id }
+          : {}),
         ...(profile.route_id ? { route_id: profile.route_id } : {}),
         ...(profile.account_id ? { account_id: profile.account_id } : {}),
       });
@@ -163,7 +169,17 @@ export function ModelSettings() {
         accounts={accounts}
         onSnapshot={acceptRouteSnapshot}
       />
-      <ModelAccounts onAccounts={setAccounts} runtime={modelRuntime} />
+      <ModelAccounts
+        onAccounts={setAccounts}
+        runtime={modelRuntime}
+        routes={routes}
+        onProfileSaved={(profile) =>
+          setProfiles((old) => [
+            profile,
+            ...old.filter((p) => p.id !== profile.id),
+          ])
+        }
+      />
       {error && (
         <p className="form-error" role="alert">
           {error}

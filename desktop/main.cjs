@@ -18,6 +18,7 @@ const {
 } = require("./runtime.cjs");
 const { createDownloadGuard } = require("./downloads.cjs");
 const { createCodingMenuItem } = require("./coding-mode.cjs");
+const { createOpenAIHandoff } = require("./openai-handoff.cjs");
 const {
   allowNavigation,
   allowExternal,
@@ -149,8 +150,37 @@ if (!owner) {
       window.webContents.on("will-redirect", (event, url) => {
         if (!allowNavigation(current.ready.url, url)) event.preventDefault();
       });
+      const openAccountHandoff = createOpenAIHandoff({
+        platform: process.platform,
+        mode,
+        isCurrent: () =>
+          backend === current &&
+          !current.isStopping() &&
+          !changing &&
+          !quitting,
+        verify: async (url) => {
+          const response = await isolated.fetch(
+            current.ready.url + "/api/desktop/openai-handoff",
+            {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+                Origin: current.ready.url,
+              },
+              body: JSON.stringify({ url }),
+              redirect: "error",
+            },
+          );
+          return (
+            response.status === 200 && (await response.json()).allowed === true
+          );
+        },
+        open: (url) => shell.openExternal(url),
+      });
       window.webContents.setWindowOpenHandler(({ url }) => {
         if (allowExternal(url)) void shell.openExternal(url);
+        else void openAccountHandoff(url);
         return { action: "deny" };
       });
       window.on("closed", () => {

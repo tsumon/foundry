@@ -39,6 +39,9 @@ export function RoleBindings({
     <section className="role-section">
       <h2>角色模型分配</h2>
       <p className="muted">用于之后创建的任务。已有任务保持冻结的角色连接。</p>
+      <p className="muted">
+        订阅连接需先从当前已审批目录显式选择；目录证据不批准模型使用，任务预算与执行仍需分别批准。
+      </p>
       {settings.model_policy_decision_id && (
         <p className="policy-source-line">
           当前七角色分配来自已确认策略{" "}
@@ -119,7 +122,11 @@ export function RoleBindings({
                         <code>{profile.account_id}</code>
                         <br />
                         {account?.auth_method === "openai_siwc" ? (
-                          "OpenAI SIWC 稳定授权（可用性由后端复核）"
+                          profile?.catalog_operation_id ? (
+                            `目录证据 ${profile.catalog_operation_id}（账户、授权代次及到期由后端复核）`
+                          ) : (
+                            "OpenAI SIWC 稳定授权（可用性由后端复核）"
+                          )
                         ) : (
                           <>
                             版本 {account?.current_credential_version ?? "未知"}
@@ -140,7 +147,11 @@ export function RoleBindings({
                       <>
                         {billingLabels[account.billing_mode]}
                         <br />
-                        身份未验证 · 额度未知 ·{" "}
+                        {profile?.catalog_operation_id &&
+                        account.auth_method === "openai_siwc"
+                          ? "授权有效性由后端复核"
+                          : "身份未验证"}{" "}
+                        · 额度未知 ·{" "}
                         {liveTaskInference
                           ? "仅受支持的账户编码任务按独立审批"
                           : "真实调用未开放"}

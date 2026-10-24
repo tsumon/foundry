@@ -6,6 +6,7 @@ import (
 	"errors"
 	"foundry/internal/domain"
 	"reflect"
+	"time"
 )
 
 // ResolveMissionModels reads all selections from one SQLite snapshot. The
@@ -132,6 +133,13 @@ func resolveModelProfileTx(tx *sql.Tx, id string) (domain.RoleModelSelection, er
 		}
 	}
 	selection.Profile = p
+	if p.CatalogOperationID != "" {
+		proof, err := catalogSelectionTx(tx, p, time.Now())
+		if err != nil {
+			return selection, err
+		}
+		selection.Catalog = &proof
+	}
 	return selection, nil
 }
 

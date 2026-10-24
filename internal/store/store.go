@@ -485,11 +485,21 @@ func (s *Store) PutProfile(p domain.Profile) error {
 	if err != nil {
 		return fmt.Errorf("encode profile: %w", err)
 	}
-	_, err = s.db.Exec(`INSERT INTO profiles(id, data) VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, p.ID, data)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if p.CatalogOperationID != "" {
+		if _, err = catalogSelectionTx(tx, p, time.Now()); err != nil {
+			return err
+		}
+	}
+	_, err = tx.Exec(`INSERT INTO profiles(id, data) VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, p.ID, data)
 	if err != nil {
 		return fmt.Errorf("put profile: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *Store) GetProfile(id string) (domain.Profile, error) {

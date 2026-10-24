@@ -165,6 +165,10 @@ func (s *server) modelAccountsRoute(w http.ResponseWriter, r *http.Request) {
 		s.modelAcceptance(w, r, id)
 		return
 	}
+	if parts[1] == "desktop-preparation" && len(parts) == 2 {
+		s.desktopPreparation(w, r, id)
+		return
+	}
 	if parts[1] == "acceptance-operations" {
 		s.modelAcceptanceOperations(w, r, parts)
 		return

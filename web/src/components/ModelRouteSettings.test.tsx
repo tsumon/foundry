@@ -56,6 +56,25 @@ const runtime = {
   ],
 };
 
+it("Mac desktop capability explains explicit account preparation while direct login stays closed", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      response({
+        routes: [],
+        runtime: { ...runtime, desktop_subscription: true },
+      }),
+    ),
+  );
+  render(<ModelRouteSettings accounts={[account]} onSnapshot={vi.fn()} />);
+  expect(
+    await screen.findByText(/Mac 编码工作台可在账户卡中显式准备/),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "OpenAI 真实登录（未开放）" }),
+  ).toBeDisabled();
+});
+
 it("reads route metadata only and keeps every production live control visibly closed", async () => {
   const storage = vi.spyOn(Storage.prototype, "setItem");
   const fetcher = vi.fn(async (_path: string) =>

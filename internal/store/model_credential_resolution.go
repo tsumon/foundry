@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"foundry/internal/domain"
+	"reflect"
 	"time"
 )
 
@@ -33,6 +34,12 @@ func resolveModelCredentialMetadataReadTx(tx *sql.Tx, sel domain.RoleModelSelect
 		return key, auth, ErrModelAccountUnavailable
 	}
 	p := sel.Profile
+	if p.CatalogOperationID != "" || sel.Catalog != nil {
+		proof, e := catalogSelectionTx(tx, p, time.Now())
+		if e != nil || sel.Catalog == nil || !reflect.DeepEqual(proof, *sel.Catalog) {
+			return deny()
+		}
+	}
 	if sel.Account == nil || sel.Route == nil || p.AccountID == "" || p.AccountID != sel.Account.ID || p.RouteID != sel.Route.ID || p.BaseURL != sel.Route.BaseURL || p.Protocol != sel.Route.Protocol || p.HasKey {
 		return deny()
 	}

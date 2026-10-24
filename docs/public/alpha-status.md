@@ -20,6 +20,16 @@ gates; real-account end-to-end acceptance remains unauthorized.
 
 ## Implemented
 
+- [Mac subscription account workbench](mac-subscription-workbench.md): the trusted
+  Mac coding desktop can explicitly prepare native credential readiness, then
+  separately propose/approve/execute connection and catalog operations. A manual
+  browser handoff is checked against its current owned waiting session. Locally
+  recorded catalog evidence binds an explicit profile choice to account, route,
+  authorization generation and expiry for future tasks; no catalog receipt grants
+  inference. Normal desktop and Windows remain closed. Only synthetic local
+  integration/UI acceptance is claimed; real Keychain, sign-in, catalog/model use
+  and account-driven task acceptance remain separately unauthorized.
+
 - [Model-driven coding workbench](live-coding.md): a native opt-in composes OpenAI
   account-backed role calls, committed Go imports, immutable candidates, controlled
   sandbox verification, at most two confirmed-failure repairs and final review/

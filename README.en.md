@@ -54,7 +54,7 @@ The app bundles its frontend, controller, Linux guest and Go toolchain. No separ
 
 Choose **Controlled Coding Workbench** in the application menu. It has its own persistent data, separate from the ordinary workbench and demonstrations:
 
-1. Explicitly select an OpenAI account, route and role models. API-key and subscription routes are distinct, never fallbacks for each other. Subscription use requires an existing valid authorization.
+1. Explicitly select an OpenAI account, route and role models. API-key and subscription routes are distinct, never fallbacks for each other. The Mac coding account card can explicitly prepare connection, followed by independent approval/execution and a manual browser step; separately approve catalog discovery, select a recorded model and assign the resulting profile to future-task roles. Ordinary desktop and Windows do not expose this preparation entry.
 2. Provide a goal, committed Go repository and editable/protected file scope. The built-in sandbox is selected by default and its identity is frozen with the task. Creation neither calls a model nor boots a VM.
 3. Separately approve and execute sandbox readiness and baseline verification. After a passing baseline, approve context sharing for Researcher and Planner to produce the plan.
 4. Review or revise the plan, then approve execution. Workers propose isolated changes. A confirmed test failure can trigger at most two Debugger repairs, each followed by verification.
@@ -79,6 +79,11 @@ Each simulation has fresh inputs and a retained separate database. **Persistent 
 Have a disposable repository? **Open Committed Descriptor Repository…** accepts one with a committed `foundry.task.json`. The bounded workflow supports multiple files, declared new files and dependent steps; uncommitted changes are excluded. A descriptor supplies preset proposals—it is not autonomous understanding of an arbitrary repository. Read the [contract and limits](docs/public/repository-task-orchestration.md).
 
 ## What works—and what stays closed
+
+Mac subscription wiring has local synthetic acceptance only: no real Keychain,
+sign-in, catalog or model task is claimed. Catalog selections pin account, route,
+authorization generation/expiry and receipt; existing task snapshots stay frozen.
+A catalog receipt never approves inference. See the [subscription workbench](docs/public/mac-subscription-workbench.md).
 
 | Capability | Actual boundary |
 | :--- | :--- |

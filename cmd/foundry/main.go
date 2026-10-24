@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -280,7 +281,14 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 			}
 		}()
 	}
-	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{CodingWorkbench: cfg.codingWorkbench, Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly, RecoveryError: recoveryError})
+	var desktopAccounts *acceptance.DesktopCoordinator
+	if cfg.openaiSubscriptionRoute == "" && cfg.openaiCatalogRoute == "" && cfg.openaiInferenceRoute == "" {
+		desktopAccounts = newDesktopOpenAI(persistent, &models, cfg.dataDir, runtime.GOOS, desktopSession != nil, cfg.codingWorkbench, recoveryReadOnly, nativeOpenAIConnectionDeps())
+	}
+	if desktopAccounts != nil {
+		defer desktopAccounts.Close()
+	}
+	handler := httpapi.New(persistent, controller, client, secrets, httpapi.Options{DesktopAccounts: desktopAccounts, CodingWorkbench: cfg.codingWorkbench, Address: cfg.address, WebDir: cfg.webDir, Hooks: observer, Accounts: models.accounts, ModelRouter: models.router, SIWC: models.siwc, Acceptance: models.acceptance, RecoveryReadOnly: recoveryReadOnly, RecoveryError: recoveryError})
 	if desktopSession != nil {
 		handler = desktophost.Protect(desktopSession.Capability, handler)
 	}
