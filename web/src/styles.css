@@ -1439,6 +1439,33 @@ summary {
 .account-version-list button {
   justify-self: start;
 }
+.model-continuation {
+  margin-block: 24px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.model-continuation p,
+.continuation-material code {
+  overflow-wrap: anywhere;
+}
+.model-continuation > button {
+  margin: 8px 12px 8px 0;
+}
+.model-continuation label {
+  display: block;
+  margin-block: 12px;
+}
+.model-continuation select {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+.continuation-material {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 16px;
+}
 .model-snapshot {
   min-width: 0;
   margin: 20px 0;

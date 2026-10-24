@@ -16,8 +16,6 @@ it("shows frozen catalog authorization generation and expiry without a current-u
     id: "catalog-auth",
     account_id: "a-frozen",
     issuer: "https://auth.openai.com",
-    subject: "synthetic",
-    client_id: "synthetic-client",
     spend_class: "subscription_only",
     scopes: ["openid"],
   };
@@ -445,7 +443,7 @@ it("shows a model-backed live route as per-call gated while keeping ordinary liv
   expect(screen.queryByText(/真实账户调用尚未开放/)).not.toBeInTheDocument();
 });
 
-it("shows stable authorization identity without inventing token generation or current readiness", () => {
+it("shows per-sign-in authorization without inventing token generation or current readiness", () => {
   const m = routed();
   const worker = m.model_snapshot!.roles.worker;
   worker.profile.credential_version = 0;
@@ -458,13 +456,11 @@ it("shows stable authorization identity without inventing token generation or cu
     id: "auth-stable",
     account_id: "a-frozen",
     issuer: "https://auth.openai.com",
-    subject: "subject-bounded",
-    client_id: "issued-client",
     spend_class: "subscription_only",
     scopes: ["resource.invoke", "chatgpt.tokens.use.direct"],
   };
   render(<ModelSnapshot mission={m} />);
-  expect(screen.getByText(/稳定授权 auth-stable/)).toBeVisible();
+  expect(screen.getByText(/本次登录本地授权 auth-stable/)).toBeVisible();
   expect(screen.getByText(/resource.invoke/)).toBeVisible();
   expect(screen.getByText(/当前 token 代数不是冻结快照/)).toBeVisible();
   expect(document.body.textContent).not.toContain("token generation");

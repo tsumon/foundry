@@ -13,6 +13,10 @@ import {
 import { billingLabels } from "./ModelAccounts";
 import { RolePolicySnapshot } from "./RolePolicySnapshot";
 import { isModelBackedC4 } from "../c4";
+import {
+  effectiveModelSnapshot,
+  invalidContinuation,
+} from "../modelContinuation";
 
 export function ModelSnapshot({
   mission,
@@ -20,13 +24,63 @@ export function ModelSnapshot({
   codingModePreview = false,
   compact = false,
   showPolicy = true,
+  historicalOnly = false,
+  effective = false,
 }: {
   mission?: Mission;
   preview?: Partial<Record<Role, RoleModelSelection>>;
   codingModePreview?: boolean;
   compact?: boolean;
   showPolicy?: boolean;
+  historicalOnly?: boolean;
+  effective?: boolean;
 }) {
+  if (
+    mission &&
+    !historicalOnly &&
+    (mission.model_continuation_status || mission.model_continuations?.length)
+  ) {
+    const selection = effectiveModelSnapshot(mission);
+    const changed =
+      selection && selection.digest !== mission.model_snapshot?.digest;
+    return (
+      <>
+        {invalidContinuation(mission) && (
+          <p className="warning-copy">
+            续接历史损坏或不受支持；有效模型选择不可用，未来调用禁用。
+          </p>
+        )}
+        {changed && (
+          <section aria-label="当前有效模型选择">
+            <h3>当前有效模型选择（已批准并应用）</h3>
+            <p>后续上下文与执行审批以此为依据；应用本身不授权任何调用。</p>
+            <ModelSnapshot
+              mission={{
+                ...mission,
+                model_snapshot: selection,
+                profiles: Object.fromEntries(
+                  roles.map((role) => [role, selection.roles[role].profile]),
+                ) as Mission["profiles"],
+              }}
+              compact={compact}
+              showPolicy={false}
+              historicalOnly
+              effective
+            />
+          </section>
+        )}
+        <section aria-label="原始冻结模型">
+          <h3>原始冻结模型（历史记录）</h3>
+          <ModelSnapshot
+            mission={mission}
+            compact={compact}
+            showPolicy={showPolicy}
+            historicalOnly
+          />
+        </section>
+      </>
+    );
+  }
   if (mission && invalidRolePolicySnapshot(mission))
     return (
       <section className="model-snapshot">
@@ -36,7 +90,18 @@ export function ModelSnapshot({
         </p>
       </section>
     );
-  if (mission && invalidModelSnapshot(mission))
+  // Historical display is not authority. Validate that snapshot on its own so
+  // invalid continuation metadata cannot hide otherwise readable original facts.
+  const displayMission =
+    mission && historicalOnly
+      ? {
+          ...mission,
+          model_continuations: undefined,
+          model_continuation_status: undefined,
+          effective_model_snapshot: undefined,
+        }
+      : mission;
+  if (displayMission && invalidModelSnapshot(displayMission))
     return (
       <section className="model-snapshot">
         <h3>任务模型快照</h3>
@@ -71,7 +136,7 @@ export function ModelSnapshot({
       <>
         <section
           className="model-snapshot model-snapshot-compact"
-          aria-label="冻结模型摘要"
+          aria-label={effective ? "有效模型摘要" : "冻结模型摘要"}
         >
           <strong>7 个角色已冻结</strong>
           <p className="muted small">
@@ -85,11 +150,14 @@ export function ModelSnapshot({
                   .join("、")}
               </>
             )}
-            。历史快照，非实时状态。
+            。
+            {effective
+              ? "已应用的有效选择，非当前调用授权。"
+              : "历史快照，非实时状态。"}
           </p>
           {!!authorizations.length && (
             <p className="muted small">
-              稳定授权 {authorizations.join("、")}
+              本次登录本地授权 {authorizations.join("、")}
               ；目录绑定连接的授权代次与到期见冻结明细。
             </p>
           )}
@@ -101,8 +169,17 @@ export function ModelSnapshot({
             </p>
           )}
           <details className="disclosure">
-            <summary>查看冻结模型明细（7 个角色）</summary>
-            <ModelSnapshot mission={mission} showPolicy={false} />
+            <summary>
+              {effective
+                ? "查看有效模型明细（7 个角色）"
+                : "查看冻结模型明细（7 个角色）"}
+            </summary>
+            <ModelSnapshot
+              mission={mission}
+              showPolicy={false}
+              historicalOnly
+              effective={effective}
+            />
           </details>
         </section>
         {showPolicy &&
@@ -121,11 +198,19 @@ export function ModelSnapshot({
       className="model-snapshot"
       aria-label={preview ? "创建前角色预览" : "任务模型快照"}
     >
-      <h3>{preview ? "创建前角色预览" : "冻结的七角色模型"}</h3>
+      <h3>
+        {preview
+          ? "创建前角色预览"
+          : effective
+            ? "有效的七角色模型"
+            : "冻结的七角色模型"}
+      </h3>
       <p className="muted small">
         {preview
           ? "当前角色专属分配优先于所选默认连接；此处仅为预览，以创建响应中的服务端冻结快照为准。"
-          : "来自任务创建时的历史快照，不查询或重新解释当前账户；更名、轮换和停用不会改写这里。"}
+          : effective
+            ? "来自已批准并应用的续接快照；后续审批必须绑定此选择，当前可用性仍由服务端复核。"
+            : "来自任务创建时的历史快照，不查询或重新解释当前账户；更名、轮换和停用不会改写这里。"}
       </p>
       {bound && (
         <p className="note">
@@ -170,7 +255,7 @@ export function ModelSnapshot({
                   {route?.adapter === "openai_siwc_responses" ? (
                     <>
                       <span>
-                        稳定授权 {authorization?.id ?? "缺失"} ·{" "}
+                        本次登录本地授权 {authorization?.id ?? "缺失"} ·{" "}
                         {authorization?.spend_class ?? route.spend_class}
                       </span>
                       <code>

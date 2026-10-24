@@ -137,7 +137,9 @@ export function DecisionPanel({
             mission.model_snapshot_status ||
             invalidSnapshot ||
             isAccountWorkspaceMode(mission.workspace_mode)) && (
-            <ModelSnapshot mission={mission} compact />
+            <div aria-label="本次审批模型依据">
+              <ModelSnapshot mission={mission} compact />
+            </div>
           )}
           {((planning && planAccountBlocked) ||
             (approval && executionAccountBlocked)) && (

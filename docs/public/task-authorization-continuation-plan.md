@@ -10,6 +10,18 @@
 
 **Spec:** `docs/public/task-authorization-continuation.md`
 
+**Acceptance status:** backend and workbench implementation are local-fixture
+tested only; no real task has been rebound or real continuation accepted. UI
+tests exercise zero requests on render, local-only candidate reads, independent
+prepare/approve/apply payloads, invalid/expired/stale/denied states, unchanged
+unknown 1/7 usage, and effective selection in future consent. The test-only
+loopback fixture uses actual web/dist, temporary SQLite, synthetic catalog
+lifecycle receipts and actual continuation endpoints; it includes ready, pending,
+stale, applied and old-approval-denied tasks. Browser screenshot acceptance,
+final combined regression/scanner evidence and remote synchronization are separate
+review gates and must be recorded independently; no provider/native/VM acceptance
+is claimed by these local tests.
+
 ## Global Constraints
 
 - Only local fixtures for development and acceptance. No real login, catalog, model, Keychain, VM or Docker access.

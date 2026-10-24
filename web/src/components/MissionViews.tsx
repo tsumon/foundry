@@ -14,6 +14,7 @@ import {
   codingAttemptLabel,
 } from "./VerificationView";
 import { ModelSnapshot } from "./ModelSnapshot";
+import { ModelContinuation } from "./ModelContinuation";
 import { RecoveryDiagnostic, RepositorySource } from "./RecoveryDiagnostic";
 export const views = [
   "总览",
@@ -35,6 +36,8 @@ export function MissionViews({
   planEditor,
   mcpDecision,
   onOpenDecision,
+  onChanged,
+  busy = false,
 }: {
   mission: Mission;
   view: MissionView;
@@ -45,6 +48,8 @@ export function MissionViews({
   planEditor?: ReactNode;
   mcpDecision?: ReactNode;
   onOpenDecision?: () => void;
+  onChanged?: (mission: Mission) => void;
+  busy?: boolean;
 }) {
   if (view === "总览")
     return (
@@ -97,7 +102,21 @@ export function MissionViews({
               : `输入 ${mission.budget.input_tokens} · 输出 ${mission.budget.output_tokens}`}
           </dd>
         </dl>
-        <ModelSnapshot mission={mission} />
+        <ModelSnapshot
+          mission={mission}
+          compact={mission.coding_version === 1}
+        />
+        {!demo &&
+          onChanged &&
+          mission.coding_version === 1 &&
+          mission.model_snapshot && (
+            <ModelContinuation
+              key={`${mission.id}:${mission.revision}`}
+              mission={mission}
+              onChanged={onChanged}
+              disabled={busy}
+            />
+          )}
         {mission.coding_version !== undefined && (
           <CodingAttempts mission={mission} />
         )}

@@ -1,7 +1,9 @@
 # Explicit task authorization continuation
 
-Status: design approved for local-fixture implementation. No existing real task
-is rebound by installation, startup, account connection, or these tests.
+Status: backend and workbench implemented and local-fixture tested; real-task
+continuation is not accepted. No existing real task is rebound by installation,
+startup, account connection, or these tests. Browser acceptance remains a separate
+fixture-only review gate.
 
 ## Problem and outcome
 

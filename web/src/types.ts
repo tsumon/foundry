@@ -68,7 +68,7 @@ export interface RoleModelSelection {
   profile: DisplayProfile;
   account?: SnapshotAccount;
   route?: ModelRoute;
-  authorization?: ModelAuthorizationBinding;
+  authorization?: Omit<ModelAuthorizationBinding, "subject" | "client_id">;
 }
 export type ModelAcceptanceReason =
   | "live_provider_access_pending_confirmation"
@@ -421,6 +421,28 @@ export interface MissionModelSnapshot {
   schema_version: number;
   roles: Record<Role, RoleModelSelection>;
   digest: string;
+}
+export interface ModelContinuationFact {
+  revision: number;
+  digest: string;
+  created_at: string;
+}
+export interface ModelContinuationMaterial {
+  id: string;
+  digest: string;
+  state: string;
+  prepared_revision: number;
+  predecessor_digest: string;
+  replacement_digest: string;
+  authorization_id: string;
+  authorization_generation: number;
+  authorization_expires_at: string;
+  catalog_operation_id: string;
+  affected_roles: Role[];
+  created_at: string;
+  expires_at: string;
+  approval?: ModelContinuationFact;
+  application?: ModelContinuationFact;
 }
 export interface Profile extends DisplayProfile {
   catalog_operation_id?: string;
@@ -838,6 +860,9 @@ export interface Mission {
   coding_version?: number;
   coding_attempts?: CodingAttempt[];
   model_snapshot?: MissionModelSnapshot;
+  effective_model_snapshot?: MissionModelSnapshot;
+  model_continuations?: ModelContinuationMaterial[];
+  model_continuation_status?: "valid" | "invalid_or_unsupported";
   model_snapshot_status?: "valid" | "invalid_or_unsupported";
   model_policy_snapshot?: MissionRolePolicySnapshot;
   model_policy_snapshot_status?: "valid" | "invalid_or_unsupported";

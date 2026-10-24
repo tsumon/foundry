@@ -27,6 +27,17 @@ Keep settings in the existing Models area. Show connection, catalog and task-sel
 
 ## Failure and recovery
 
+Existing eligible blocked/paused coding tasks can use **Task overview → Task
+authorization continuation** after a separately approved same-identity sign-in
+and catalog operation. Explicitly read already-recorded local candidates, choose
+one, prepare material, approve its exact digest, then separately apply it. These
+controls do not prepare desktop access, query a provider, refresh credentials,
+approve context, or retry model work. The local authorization ID belongs to that
+sign-in; it is not a stable client ID. Original snapshots remain historical;
+future consent shows the approved effective selection separately. Missing,
+expired, invalid or stale material remains blocked, and consumed budget and
+unknown usage are unchanged. See [task continuation](task-authorization-continuation.md).
+
 - Native diagnostic failure: retain exact-item journal and stop; do not scan or remove other credentials.
 - Login timeout/cancellation, token/identity failure: preserve sanitized stage evidence; consume the attempt; do not reuse the code, restore an old browser URL or begin another login.
 - A credential may have committed before a final receipt error. Reconcile existing durable metadata; do not claim rollback or delete a valid credential merely because presentation failed.
@@ -59,6 +70,15 @@ Windows synthetic-role/WHPX gates unchanged.
 Local fixtures must cover the real coordinator, existing approval service, catalog receipt and task-selection boundaries, not just mocked buttons. Include concurrent requests, lease expiration, rejected/stale materials, restart, cleanup uncertainty, catalog failure and cross-account selection. Label fixture evidence synthetic and prove zero real credential/provider effects. UI acceptance covers default closed state, explicit preparation wording, pending approval, stopped failure state, catalog selection and unchanged task approvals.
 
 DMG packaging and installed-interface checks are separate from provider acceptance. A new DMG does not inherit earlier real-account or VM acceptance. Publish exact source revision, package digest and the tests actually run; real sign-in and real-model task acceptance remain pending.
+
+Continuation controls are local-fixture tested only, not real-task accepted. The
+test-only loopback harness serves the actual built workbench with temporary
+SQLite and synthetic production-lifecycle catalog receipts. It includes ready,
+pending, stale, applied and old-context-approval-denied tasks, each retaining one
+unknown-outcome invocation of a seven-call budget. Its HTTP wrapper permits only
+session creation and the actual continuation mutations; all login, provider,
+desktop-preparation, model and VM mutations are closed. Browser screenshots and
+real acceptance are separate gates, not implied by passing component/fixture tests.
 
 ## Official protocol references
 

@@ -6,6 +6,10 @@ import {
   type Role,
 } from "./types";
 import { isModelBackedC4 } from "./c4";
+import {
+  invalidContinuation,
+  effectiveModelSnapshot,
+} from "./modelContinuation";
 
 export function invalidRolePolicySnapshot(mission: Mission): boolean {
   const policyStatus = mission.model_policy_snapshot_status;
@@ -44,6 +48,7 @@ export function invalidRolePolicySnapshot(mission: Mission): boolean {
 }
 
 export function invalidModelSnapshot(mission: Mission): boolean {
+  if (invalidContinuation(mission)) return true;
   if (invalidRolePolicySnapshot(mission)) return true;
   const bound = isAccountWorkspaceMode(mission.workspace_mode);
   if (mission.model_snapshot_status === "invalid_or_unsupported") return true;
@@ -134,7 +139,7 @@ export function accountActionBlockReason(
           ? ["worker", "debugger", "qa", "auditor"]
           : [];
   for (const role of relevant) {
-    const selection = mission.model_snapshot?.roles?.[role];
+    const selection = effectiveModelSnapshot(mission)?.roles?.[role];
     if (!selection?.profile?.account_id) continue;
     if (mission.model_snapshot?.schema_version !== 2)
       return "schema1 账户任务不具备推理执行权。";
