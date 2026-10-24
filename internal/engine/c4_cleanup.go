@@ -60,7 +60,7 @@ func (e *Engine) ExecuteC4Cleanup(ctx context.Context, id string, revision int64
 	cap := e.options.C4Controlled
 	switch cap.sourceFor(m.Spec.C4) {
 	case "embedded_vm_c4_control":
-		_, err = sandbox.CleanupC4VM(bounded, *m.Spec.C4, o, cap.vm, path, c.ContainerID, e.c4PersistLocked(id))
+		_, err = sandbox.CleanupC4VM(bounded, *m.Spec.C4, o, cap.vmForProfile(*m.Spec.C4), path, c.ContainerID, e.c4PersistLocked(id))
 	case "docker_c4_control":
 		_, err = sandbox.CleanupC4Docker(bounded, *m.Spec.C4, o, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust(m)}, path, c.ContainerID, e.c4PersistLocked(id))
 	case "synthetic_c4_control":

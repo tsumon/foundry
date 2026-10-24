@@ -101,6 +101,9 @@ func runWithArgs(args []string) error {
 }
 
 func runWithSecrets(args []string, secrets model.Secrets) error {
+	if handled, err := retainDesktopRuntime(args); handled {
+		return err
+	}
 	if handled, err := prepareDesktopData(args); handled {
 		return err
 	}

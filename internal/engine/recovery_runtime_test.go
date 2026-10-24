@@ -95,6 +95,32 @@ func TestCodingRecoveryRuntimeMismatchIsReadOnlyAndNotSnapshotCorruption(t *test
 			t.Fatal("preflight allocated a VM", err)
 		}
 	}
+	// An explicitly retained exact identity restores metadata compatibility, not
+	// execution approval. The new default remains distinct from the old mission.
+	retainedCap, err := NewCodingVMCapability(e.gateway.(*model.Router), newVM, oldVM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.options.C4Controlled = retainedCap
+	if err := e.CheckC4ControlledRecovery(); err != nil {
+		t.Fatal("exact retained runtime rejected", err)
+	}
+	currentProfile, ok := e.CodingVMProfile()
+	if !ok || *currentProfile.EmbeddedVM != newVM.Identity() {
+		t.Fatal("retention changed new-task default")
+	}
+	if selected := retainedCap.vmForProfile(*m.Spec.C4); selected != oldVM {
+		t.Fatal("old task did not resolve exact runtime")
+	}
+	if _, err := e.currentC4Readiness(m); err == nil {
+		t.Fatal("startup retained stale readiness authority")
+	}
+	if err = db.QueryRow("SELECT data FROM missions WHERE id=?", m.ID).Scan(&after); err != nil || !bytes.Equal(raw, after) {
+		t.Fatal("retention rewrote original task", err)
+	}
+	if lease.reads != 0 || driver.creates != 0 {
+		t.Fatal("retention caused external execution")
+	}
 	// Corruption must never be relabelled as a harmless bundle upgrade.
 	m.ModelSnapshot.SchemaVersion = 999
 	raw, _ = json.Marshal(m)

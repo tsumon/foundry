@@ -23,7 +23,7 @@ func (e *Engine) ExecuteC4Readiness(ctx context.Context, id string, revision int
 	var ready sandbox.C4ReadinessResult
 	var runErr error
 	if e.options.C4Controlled.sourceFor(m.Spec.C4) == "embedded_vm_c4_control" {
-		ready, runErr = sandbox.CheckC4VMReadiness(bounded, *m.Spec.C4, e.options.C4Controlled.vm)
+		ready, runErr = sandbox.CheckC4VMReadiness(bounded, *m.Spec.C4, e.options.C4Controlled.vmForProfile(*m.Spec.C4))
 	} else if e.options.C4Controlled.modelBacked && e.options.C4Controlled.sourceFor(m.Spec.C4) == "docker_c4_control" {
 		ready, runErr = sandbox.CheckC4DockerReadiness(bounded, *m.Spec.C4, sandbox.C4DockerConfig{Enabled: true, Trust: e.c4Trust(m)})
 	} else if e.options.C4Controlled.readiness != nil && (e.options.C4Controlled.sourceFor(m.Spec.C4) == "docker_c4_control" || e.options.C4Controlled.sourceFor(m.Spec.C4) == "synthetic_c4_control") {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"foundry/internal/engine"
 	"foundry/internal/model"
 	"foundry/internal/store"
@@ -33,7 +34,21 @@ func newCodingRuntime(s *store.Store, dataDir string, secrets model.Secrets) (pr
 		}
 		if mkdirErr := os.MkdirAll(instanceRoot, 0700); mkdirErr == nil {
 			if vm, loadErr := vmruntime.Load(bundle, instanceRoot); loadErr == nil {
-				cap, err = engine.NewCodingVMCapability(p.router, vm)
+				archive := filepath.Join(filepath.Dir(instanceRoot), "vm-bundles")
+				retainedPath, retainErr := vmruntime.Retain(bundle, archive, vm.Identity())
+				if retainErr != nil {
+					p.siwc.Close()
+					p.acceptance.Close()
+					return p, nil, errors.New("verified runtime retention failed; no fallback permitted")
+				}
+				current, loadErr := vmruntime.Load(retainedPath, instanceRoot)
+				retained, archiveErr := vmruntime.LoadRetained(archive, instanceRoot)
+				if loadErr != nil || archiveErr != nil {
+					p.siwc.Close()
+					p.acceptance.Close()
+					return p, nil, errors.New("retained runtime integrity check failed; no fallback permitted")
+				}
+				cap, err = engine.NewCodingVMCapability(p.router, current, retained...)
 			}
 		}
 	}

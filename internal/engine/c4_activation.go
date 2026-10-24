@@ -54,6 +54,7 @@ type C4ControlledCapability struct {
 	driver      *sandbox.C4SyntheticDriver
 	readiness   func(context.Context) (sandbox.C4ReadinessResult, error)
 	vm          *vmruntime.Runtime
+	retainedVMs map[domain.C4VMIdentity]*vmruntime.Runtime
 }
 
 // Production accepts only the accountless frozen local fixture, never a router.

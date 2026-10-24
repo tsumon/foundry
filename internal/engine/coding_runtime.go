@@ -14,7 +14,7 @@ import (
 
 // NewCodingVMCapability accepts only sealed, installed runtime provenance.
 // Construction and metadata never probe hardware or boot a guest.
-func NewCodingVMCapability(g *model.Router, vm *vmruntime.Runtime) (*C4ControlledCapability, error) {
+func NewCodingVMCapability(g *model.Router, vm *vmruntime.Runtime, retained ...*vmruntime.Runtime) (*C4ControlledCapability, error) {
 	if g == nil || vm == nil || !vm.Trusted() || vm.Identity().Validate() != nil {
 		return nil, ErrC4Unavailable
 	}
@@ -22,11 +22,30 @@ func NewCodingVMCapability(g *model.Router, vm *vmruntime.Runtime) (*C4Controlle
 	if err != nil {
 		return nil, err
 	}
-	return &C4ControlledCapability{modelBacked: true, vm: vm, source: "embedded_vm_c4_control", models: g, config: C4Activation{SchemaVersion: 1, Enabled: true, RuntimeID: id, ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339Nano)}}, nil
+	registry := map[domain.C4VMIdentity]*vmruntime.Runtime{vm.Identity(): vm}
+	for _, old := range retained {
+		if old == nil || !old.Trusted() || old.Identity().Validate() != nil {
+			return nil, ErrC4Unavailable
+		}
+		if _, exists := registry[old.Identity()]; !exists {
+			registry[old.Identity()] = old
+		}
+	}
+	return &C4ControlledCapability{modelBacked: true, vm: vm, retainedVMs: registry, source: "embedded_vm_c4_control", models: g, config: C4Activation{SchemaVersion: 1, Enabled: true, RuntimeID: id, ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339Nano)}}, nil
 }
 
 func (c *C4ControlledCapability) vmProfileMatches(p domain.C4Profile) bool {
-	return c != nil && c.vm != nil && c.vm.Trusted() && p.Validate() == nil && p.Mode == "embedded_vm" && p.EmbeddedVM != nil && *p.EmbeddedVM == c.vm.Identity()
+	return c.vmForProfile(p) != nil
+}
+
+func (c *C4ControlledCapability) vmForProfile(p domain.C4Profile) *vmruntime.Runtime {
+	if c == nil || p.Validate() != nil || p.Mode != "embedded_vm" || p.EmbeddedVM == nil {
+		return nil
+	}
+	if r := c.retainedVMs[*p.EmbeddedVM]; r != nil && r.Trusted() && r.Identity() == *p.EmbeddedVM {
+		return r
+	}
+	return nil
 }
 
 func (c *C4ControlledCapability) sourceFor(p *domain.C4Profile) string {
