@@ -1,8 +1,7 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
+	"errors"
 	"testing"
 	"time"
 )
@@ -17,7 +16,14 @@ func TestDesktopOpenAIOnlyTrustedMacCoding(t *testing.T) {
 			db, p, a, r := operatorFixture(t, "valid")
 			defer p.acceptance.Close()
 			calls := 0
-			c := newDesktopOpenAI(db, &p, t.TempDir(), tc.platform, tc.desktop, tc.coding, tc.readonly, openaiConnectionDeps{now: time.Now, probe: func(string) error { calls++; return nil }})
+			root := t.TempDir()
+			c := newDesktopOpenAI(db, &p, root, tc.platform, tc.desktop, tc.coding, tc.readonly, openaiConnectionDeps{now: time.Now, probe: func(string) error { t.Fatal("desktop used CLI diagnostic policy"); return errors.New("forbidden") }, desktopProbe: func(dataDir string) error {
+				if dataDir != root {
+					t.Fatal("desktop diagnostic root changed")
+				}
+				calls++
+				return nil
+			}})
 			if (c != nil) != tc.want {
 				t.Fatalf("capability=%v", c != nil)
 			}
@@ -33,24 +39,23 @@ func TestDesktopOpenAIOnlyTrustedMacCoding(t *testing.T) {
 		})
 	}
 }
-func TestDesktopOpenAIRestartRetainsCleanupBlocker(t *testing.T) {
+func TestDesktopOpenAIDiagnosticFailureStaysClosed(t *testing.T) {
 	db, p, a, r := operatorFixture(t, "valid")
 	defer p.acceptance.Close()
 	dir := t.TempDir()
-	journalDir := filepath.Join(dir, "openai-desktop-diagnostics")
-	if e := os.Mkdir(journalDir, 0700); e != nil {
-		t.Fatal(e)
-	}
-	if e := os.WriteFile(filepath.Join(journalDir, "synthetic-incomplete.json"), []byte(`{"cleanup":"unconfirmed"}`), 0600); e != nil {
-		t.Fatal(e)
-	}
 	calls := 0
-	c := newDesktopOpenAI(db, &p, dir, "darwin", true, true, false, openaiConnectionDeps{now: time.Now, probe: func(string) error { calls++; return nil }})
+	c := newDesktopOpenAI(db, &p, dir, "darwin", true, true, false, openaiConnectionDeps{now: time.Now, desktopProbe: func(string) error { calls++; return errors.New("diagnostic cleanup unresolved") }})
 	defer c.Close()
 	if c.Status(a.ID).ConnectionReady || calls != 0 {
 		t.Fatal("restart performed native check")
 	}
-	if e := c.Prepare(a.ID, "connection", r.ID, a.Revision); e == nil || calls != 0 {
+	if e := c.Prepare(a.ID, "connection", r.ID, a.Revision); e == nil || calls != 1 {
 		t.Fatal("unconfirmed prior cleanup bypassed")
+	}
+	if c.Status(a.ID).Blocker != "diagnostic_failed" || c.Status(a.ID).ConnectionReady {
+		t.Fatal("failed diagnostic granted readiness")
+	}
+	if e := c.Prepare(a.ID, "connection", r.ID, a.Revision); e == nil || calls != 1 {
+		t.Fatal("failed diagnostic automatically retried")
 	}
 }

@@ -14,12 +14,13 @@ import (
 // Only package-local tests replace the native runner or clock. There is no
 // settings, environment, HTTP, or imported-report path to credential readiness.
 type openaiConnectionDeps struct {
-	probe func(string) error
-	now   func() time.Time
+	probe        func(string) error
+	desktopProbe func(string) error
+	now          func() time.Time
 }
 
 func nativeOpenAIConnectionDeps() openaiConnectionDeps {
-	return openaiConnectionDeps{probe: keychaincheck.Probe, now: time.Now}
+	return openaiConnectionDeps{probe: keychaincheck.Probe, desktopProbe: keychaincheck.ProbeDesktop, now: time.Now}
 }
 
 func validateOpenAIStartupOptions(cfg config) error {

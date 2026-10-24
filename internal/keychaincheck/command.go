@@ -5,6 +5,8 @@ package keychaincheck
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -48,6 +50,79 @@ func Run(args []string, out io.Writer) error {
 // and its terminal report is durably persisted. It cannot import old reports.
 func Probe(path string) error {
 	return Run([]string{"--journal", path}, io.Discard)
+}
+
+// ProbeDesktop is called only by the trusted Mac coding composition. Its
+// existing private data directory replaces the CLI's build-source exclusion;
+// no renderer, environment selector or journal path supplies this authority.
+func ProbeDesktop(dataDir string) error {
+	if runtime.GOOS != "darwin" {
+		return errors.New("desktop credential diagnostic is unsupported")
+	}
+	return runDesktopProbe(dataDir, defaultCommandDeps(), io.Discard)
+}
+
+func runDesktopProbe(dataDir string, deps commandDeps, out io.Writer) error {
+	if err := validateDesktopDirectory(dataDir); err != nil {
+		return err
+	}
+	dir := filepath.Join(dataDir, "openai-desktop-diagnostics")
+	// Never create parents or chmod an existing directory. Only this immediate
+	// child of the already validated host-owned data root may be created.
+	if err := os.Mkdir(dir, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	if err := validateDesktopDirectory(dir); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".lock") {
+			return errors.New("diagnostic journal lock unresolved")
+		}
+		if filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		// Strict private/no-follow journal reads preserve all unresolved records.
+		// Preparation never cleans up, repairs or imports earlier readiness.
+		record, err := readJournal(filepath.Join(dir, entry.Name()))
+		if err != nil || record.Cleanup != "confirmed" {
+			return errors.New("diagnostic cleanup unresolved")
+		}
+	}
+	nonce := make([]byte, 16)
+	if _, err = rand.Read(nonce); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, hex.EncodeToString(nonce)+".json")
+	lock, err := acquireJournalLock(path + ".lock")
+	if err != nil {
+		return err
+	}
+	defer lock.release()
+	return runNewJournal(path, deps, out)
+}
+
+func validateDesktopDirectory(path string) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) == path {
+		return errors.New("desktop diagnostic directory must be clean and absolute")
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || resolved != path {
+		return errors.New("desktop diagnostic directory must exist without symlinks")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
+		return errors.New("desktop diagnostic directory must be private")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Getuid()) {
+		return errors.New("desktop diagnostic directory must be user-owned")
+	}
+	return nil
 }
 
 func defaultCommandDeps() commandDeps {

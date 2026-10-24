@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,192 @@ import (
 )
 
 const testProbeID = "foundry-openai-stage0-0123456789abcdef0123456789abcdef"
+
+// Also run this test in a -trimpath compiled test binary from a non-source cwd.
+// Only the in-memory secret factory below is reachable; no native store is used.
+func TestDesktopProbePackagedCWD(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	deps := defaultCommandDeps()
+	fake := &commandSecrets{}
+	factories := 0
+	deps.generateID = func() (string, error) { return testProbeID, nil }
+	deps.newStore = func(string) (model.Secrets, error) { factories++; return fake, nil }
+	if err = runDesktopProbe(root, deps, io.Discard); err != nil {
+		t.Fatalf("packaged desktop diagnostic rejected: sourceRoot=%q: %v", deps.sourceRoot, err)
+	}
+	dir := filepath.Join(root, "openai-desktop-diagnostics")
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatal("missing exclusive journal", err)
+	}
+	record, err := readJournal(filepath.Join(dir, entries[0].Name()))
+	if err != nil || record.State != "passed" || record.Cleanup != "confirmed" || factories != 1 || fake.setCalls != 2 || fake.getCalls != 3 || fake.deleteCalls != 1 {
+		t.Fatalf("unconfirmed memory-only diagnostic: %+v %v", record, err)
+	}
+	// The new trusted desktop entry must not relax the separate CLI policy.
+	deps.sourceRoot = filepath.Join(root, "absent-build-source")
+	if err = runCommand([]string{"--journal", filepath.Join(root, "cli.json")}, deps, io.Discard); err == nil || factories != 1 {
+		t.Fatal("CLI source-unavailable policy was bypassed")
+	}
+	t.Log("desktop diagnostic used only the replacement memory factory; CLI rejection made no additional factory call")
+}
+
+func TestDesktopProbeRejectsUnsafeDirectoriesAndRetainedJournals(t *testing.T) {
+	for _, kind := range []string{"relative-root", "unclean-root", "root-link", "root-public", "directory-link", "directory-public", "journal-link", "journal-public", "pending", "malformed", "locked"} {
+		t.Run(kind, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.Chmod(root, 0700); err != nil {
+				t.Fatal(err)
+			}
+			outside, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(root, "openai-desktop-diagnostics")
+			if err = os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			journal := filepath.Join(dir, "retained.json")
+			pending := journalRecord{Version: journalVersion, ProbeID: testProbeID, State: "pending", Cleanup: "unconfirmed"}
+			switch kind {
+			case "relative-root":
+				root = "relative"
+			case "unclean-root":
+				root += "/."
+			case "root-link":
+				alias := filepath.Join(outside, "alias")
+				if err = os.Symlink(root, alias); err != nil {
+					t.Fatal(err)
+				}
+				root = alias
+			case "root-public":
+				if err = os.Chmod(root, 0755); err != nil {
+					t.Fatal(err)
+				}
+			case "directory-link":
+				if err = os.Remove(dir); err != nil {
+					t.Fatal(err)
+				}
+				if err = os.Symlink(outside, dir); err != nil {
+					t.Fatal(err)
+				}
+			case "directory-public":
+				if err = os.Chmod(dir, 0755); err != nil {
+					t.Fatal(err)
+				}
+			case "journal-link":
+				target := filepath.Join(outside, "retained.json")
+				writeTestJournal(t, target, pending)
+				if err = os.Symlink(target, journal); err != nil {
+					t.Fatal(err)
+				}
+			case "journal-public":
+				writeTestJournal(t, journal, pending)
+				if err = os.Chmod(journal, 0644); err != nil {
+					t.Fatal(err)
+				}
+			case "pending":
+				writeTestJournal(t, journal, pending)
+			case "malformed":
+				if err = os.WriteFile(journal, []byte(`{"cleanup":"confirmed"}`), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "locked":
+				if err = os.WriteFile(journal+".lock", []byte("retained lock\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, _ := os.ReadFile(journal)
+			outsideBefore, err := os.ReadDir(outside)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deps := defaultCommandDeps()
+			deps.newStore = func(string) (model.Secrets, error) {
+				t.Fatal("unsafe path crossed native factory boundary")
+				return nil, errors.New("forbidden")
+			}
+			if err = runDesktopProbe(root, deps, io.Discard); err == nil {
+				t.Fatal("unsafe desktop diagnostic admitted")
+			}
+			after, _ := os.ReadFile(journal)
+			if !bytes.Equal(before, after) {
+				t.Fatal("retained journal modified by failure")
+			}
+			outsideAfter, err := os.ReadDir(outside)
+			if err != nil || len(outsideAfter) != len(outsideBefore) {
+				t.Fatal("unsafe directory caused external file creation", err)
+			}
+			if kind == "root-public" {
+				info, _ := os.Stat(root)
+				if info.Mode().Perm() != 0755 {
+					t.Fatal("existing root chmodded")
+				}
+			}
+			if kind == "directory-public" {
+				info, _ := os.Stat(dir)
+				if info.Mode().Perm() != 0755 {
+					t.Fatal("existing directory chmodded")
+				}
+			}
+		})
+	}
+}
+
+func TestDesktopProbeFailureRetainsJournalForExactCleanup(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	deps := defaultCommandDeps()
+	fake := &commandSecrets{}
+	factories := 0
+	deps.generateID = func() (string, error) { return testProbeID, nil }
+	deps.newStore = func(string) (model.Secrets, error) { factories++; return fake, nil }
+	deps.writeTerminal = func(string, []byte) error { return errors.New("synthetic disk failure") }
+	if runDesktopProbe(root, deps, io.Discard) == nil {
+		t.Fatal("terminal failure passed")
+	}
+	dir := filepath.Join(root, "openai-desktop-diagnostics")
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatal("pending journal lost", err)
+	}
+	path := filepath.Join(dir, entries[0].Name())
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps.writeTerminal = nil
+	if runDesktopProbe(root, deps, io.Discard) == nil || factories != 1 {
+		t.Fatal("unconfirmed cleanup retried diagnostic")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("blocked preparation changed pending journal", err)
+	}
+	deps.sourceRoot = "absent-build-source"
+	if err = runCommand([]string{"--cleanup", path}, deps, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	record, err := readJournal(path)
+	if err != nil || record.State != "failed" || record.Cleanup != "confirmed" || fake.setCalls != 2 || factories != 2 {
+		t.Fatal("exact cleanup replayed probe or lost journal", err)
+	}
+}
 
 type commandSecrets struct {
 	value       string

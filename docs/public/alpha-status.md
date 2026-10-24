@@ -90,7 +90,7 @@ The [independent single-inference gate](openai-inference-gate.md) adds a mutuall
 - Multi-worker scheduling or autonomous background execution.
 - Generic external MCP `tools/call`, MCP stdio/OAuth, Skill/script execution, hook scripts/webhooks, or Git hooks.
 - Automatic provider fallback, paid fallback, retry/replay of unknown remote outcomes, or automatic Docker image pulls.
-- A browser-triggered native Keychain test or ordinary-startup real-login, live catalog or live-inference action. Only separately confirmed operator activation can prepare the corresponding independent approval workflow; the connection mode's native check is never triggered by a web request. Coding task inference has a separate claimed-invocation capability; it does not open login, catalog or single-inference operator gates.
+- Ordinary-browser, normal-desktop, Windows or default-CLI native Keychain probing, and ordinary-startup real-login, live catalog or live-inference actions. Explicit Mac coding-workbench preparation may initiate the host-owned Foundry-only diagnostic through desktop-capability and same-origin protected requests; its private journals are anchored to the installed data directory, not the build checkout. The separate operator CLI retains its source-checkout path safeguards. Preparation does not start login or catalog discovery: each still requires its independent approval. Coding task inference has a separate claimed-invocation capability; it does not open login, catalog or single-inference operator gates.
 - A production code-signing/notarization service, automatic updater, package
   manager formula, or GitHub Release. Installers are versioned CI artifacts with
   finite retention, not a permanent release channel.
