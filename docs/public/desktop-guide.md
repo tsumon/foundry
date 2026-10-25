@@ -7,21 +7,23 @@ local-workflow Alpha, not a production-ready autonomous coding service.
 
 ## Get the right artifact
 
-Use the **Desktop packages** workflow in
-[GitHub Actions](https://github.com/tsumon/foundry/actions/workflows/desktop.yml).
-Select a platform job that passed every gate for the source revision you intend
-to install; a successful Mac job does not certify Windows. Download
-the matching platform artifact, its `SHA256SUMS` and the accompanying runtime
-source material, including `sandbox-sources`. GitHub may require sign-in to download workflow artifacts;
-these artifacts expire and are not a GitHub Release or an update channel.
+Use the [v0.1.0-alpha.3 prerelease](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3)
+for versioned downloads. Both installers are unchanged CI outputs from public
+commit `5237fc49bafe4c5d33d3d6fa117ac59c467ace16`, not rolling builds of `main`.
+Download the matching installer and `SHA256SUMS`; retain its platform source
+archive containing `runtime-sources` and `sandbox-sources` when redistributing.
+The release includes the clean Foundry source and public CI receipts. Actions
+artifacts remain build evidence, may require sign-in and expire. Neither channel
+enables automatic updates or makes this Alpha a stable release.
 
-The [verified-build table](../../README.en.md#verified-builds--2026-10-24)
-links the accepted Mac `46e1247` and Windows `0c87188` artifacts. Mac evidence
-includes local install/UI/restart and a physical bundled-VM failure/repair/recheck.
-Windows native CI includes Unicode-path install, cross-drive user data, actual
-WHPX failure/repair/recheck, UI automation/screenshots, restart and uninstall with
-evidence retained. Model responses remain local protocol fixtures, not real-account
-calls. Later builds need their own evidence; compilation alone is not acceptance.
+The [release acceptance table](../../README.en.md#release-acceptance--2026-10-26)
+links the exact successful Verify and Desktop runs. This Mac CI DMG passed
+installed-backend contracts and persistence, not a physical-Mac VM rerun. Existing
+same-source-tree hardware evidence is not acceptance of that exact installer.
+This Windows EXE passed Unicode-path install, cross-drive data, native UI, restart,
+evidence-preserving uninstall and a real WHPX failure/repair/recheck loop.
+Model responses remain local protocol fixtures, not real-account calls. Historical
+builds remain listed separately; compilation alone is not acceptance.
 
 | Target | Package | Trust status |
 | --- | --- | --- |

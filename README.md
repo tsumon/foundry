@@ -15,6 +15,11 @@
 
 [简体中文](README.md) · [English](README.en.md) · [安装与使用](docs/public/desktop-guide.md) · [架构](docs/public/architecture.md) · [安全边界](docs/public/safety.md)
 
+[![下载 Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-下载_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-arm64.dmg)
+[![下载 Windows EXE](https://img.shields.io/badge/Windows_x64-下载_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe)
+
+[v0.1.0-alpha.3 · 预发布说明与全部文件](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3) · [SHA-256 校验值](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/SHA256SUMS)
+
 </div>
 
 <p align="center">
@@ -35,9 +40,25 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 
 ## 安装桌面版
 
-从 [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml) 中对应平台通过全部门禁的任务下载 artifact；一个平台通过不代表另一个平台通过。核对其提交与 `SHA256SUMS`；保留随包提供的 runtime source 和 `sandbox-sources` 材料。**这里只使用 CI artifacts，不创建 GitHub Release；不要把旧版产物当成当前版本。**
+从 [v0.1.0-alpha.3 Release](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3) 下载。**这是预发布版本，不是稳定正式版。** 两个安装包固定来自同一次成功 CI 的公开提交 [`5237fc4`](https://github.com/tsumon/foundry/commit/5237fc49bafe4c5d33d3d6fa117ac59c467ace16)，未重新打包或替换；不是默认分支的滚动构建，也不表示草稿 PR 已合并。
 
-**要使用本页的双端订阅与升级兼容功能，请选当前提交的成功构建**：Mac artifact 名为 `foundry-macos-arm64`，Windows 为 `foundry-windows-x64`。下面是保留的历史原生闭环证据，不是最新版下载索引。
+| 平台 | 安装包 | 对应第三方源码 |
+| :--- | :--- | :--- |
+| Apple Silicon Mac | [DMG · 220 MiB](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-arm64.dmg) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-macos-sources.tar.gz) |
+| Windows x64 | [EXE · 193 MiB](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-windows-sources.tar.gz) |
+
+下载后核对 [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/SHA256SUMS)。Release 同时提供干净的 Foundry 源码快照和公开 CI 回执；再分发安装包时须一并保留对应源码及第三方声明。源码与安装包的许可不同，不能把 Linux、QEMU 或 Electron 统称为 Apache-2.0。
+
+### 本次验收 · 2026-10-26
+
+| 验收对象 | 已验证 | 不代表 |
+| :--- | :--- | :--- |
+| 本次 Mac DMG | CI 安装后端契约、重启与数据保持、完整性签名和 DMG 校验 | 未对这个 CI DMG 重跑本机硬件 VM；同源码树的既有本机 VM 结果不是同一安装包的验收 |
+| 本次 Windows EXE | 中文路径安装、跨盘数据目录、原生 UI、重启、卸载后保留证据；真实 WHPX 基线通过 → 候选失败 → 修复后通过 | 模型角色使用本地协议 fixture，不是真实 OpenAI 调用 |
+| 同一源码提交 | [Verify](https://github.com/tsumon/foundry/actions/runs/40213498354) 与 [Desktop packages](https://github.com/tsumon/foundry/actions/runs/40213498361) 全绿，安全检查未跳过 | 不等于任意项目、真实账号或生产级认证 |
+
+<details>
+<summary>历史原生验收记录（不是当前下载入口）</summary>
 
 ### 已验收构建 · 2026-10-24
 
@@ -48,9 +69,11 @@ Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git �
 
 核对 [Mac Verify](https://github.com/tsumon/foundry/actions/runs/39964561514)、[Windows Verify](https://github.com/tsumon/foundry/actions/runs/39983328874) 和[Windows 原生安装验收](https://github.com/tsumon/foundry/actions/runs/39983328865/job/120516374476)。以上证据只覆盖表中提交，**不是后续构建自动通过的保证**。两个平台均由真实虚拟机执行测试；角色响应为本地协议测试数据，未调用真实模型账号。
 
+</details>
+
 Mac 包使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Windows 是未签名的当前用户安装包。Windows 需要硬件虚拟化和已启用的 Windows Hypervisor Platform，不会自动安装或启用这些系统功能。
 
-应用内置前端、控制器、Linux 客户系统和 Go 工具链，不需要另装 Go、Node.js、npm、MSYS2 或 Docker。仓库功能仍需要受支持的本机 Git。虚拟化不可用时明确阻断，不启用系统功能、不自动重启，不降级到主机、软件模拟或 Docker。GitHub artifact 可能要求登录且会过期；不是永久下载地址。不要关闭系统安全保护来绕过未签名提示。平台限制、数据位置与卸载说明见[桌面使用指南](docs/public/desktop-guide.md)。
+应用内置前端、控制器、Linux 客户系统和 Go 工具链，不需要另装 Go、Node.js、npm、MSYS2 或 Docker。仓库功能仍需要受支持的本机 Git。虚拟化不可用时明确阻断，不启用系统功能、不自动重启，不降级到主机、软件模拟或 Docker。Release 是版本化下载入口；Actions artifact 仅作构建证据，可能要求登录且会过期。不要关闭系统安全保护来绕过未签名提示。平台限制、数据位置与卸载说明见[桌面使用指南](docs/public/desktop-guide.md)。
 
 ## 从需求到可审阅补丁
 
@@ -116,7 +139,7 @@ Mac / Windows 受控桌面支持[独立会话续期](docs/public/session-renewal
 Mac 开发基线：Go **1.27.3**、Node.js **22.23.2**、npm **10.9.8**、cgo/C 编译器。系统 `/usr/bin/git --no-lazy-fetch --version` 必须成功。
 
 ```sh
-git clone https://github.com/tsumon/foundry.git
+git clone --branch v0.1.0-alpha.3 --depth 1 https://github.com/tsumon/foundry.git
 cd foundry
 npm ci --prefix web
 ./scripts/build.sh

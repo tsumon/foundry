@@ -15,6 +15,11 @@ Plans · Isolated candidates · Built-in sandbox · Repairs · Approvals · Loca
 
 [简体中文](README.md) · [English](README.en.md) · [Install & use](docs/public/desktop-guide.md) · [Architecture](docs/public/architecture.md) · [Safety](docs/public/safety.md)
 
+[![Download Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-Download_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-arm64.dmg)
+[![Download Windows EXE](https://img.shields.io/badge/Windows_x64-Download_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe)
+
+[v0.1.0-alpha.3 · Release notes & all files](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3) · [SHA-256 checksums](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/SHA256SUMS)
+
 </div>
 
 <p align="center">
@@ -35,9 +40,25 @@ Foundry is a software-delivery workbench for a one-person team. It reads a commi
 
 ## Install the desktop app
 
-Download the artifact only from a platform job that passed all its gates in [Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml); one platform's success does not certify another. Check its source revision and `SHA256SUMS`; retain both runtime sources and `sandbox-sources`. **Distribution uses CI artifacts, not a GitHub Release. Older artifacts do not represent the current version.**
+Download from the [v0.1.0-alpha.3 Release](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3). **This is a prerelease, not a stable release.** Both installers come unchanged from the same successful CI run at public commit [`5237fc4`](https://github.com/tsumon/foundry/commit/5237fc49bafe4c5d33d3d6fa117ac59c467ace16). These are pinned binaries, not rolling builds of the default branch; publication does not mean the draft PR was merged.
 
-**For the cross-platform subscription and upgrade features described here, select the successful build for the current commit**: `foundry-macos-arm64` for Mac or `foundry-windows-x64` for Windows. The table below retains historical native-loop evidence, not a latest-download index.
+| Platform | Installer | Corresponding third-party sources |
+| :--- | :--- | :--- |
+| Apple Silicon Mac | [DMG · 220 MiB](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-arm64.dmg) | [Runtime & sandbox sources](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-macos-sources.tar.gz) |
+| Windows x64 | [EXE · 193 MiB](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe) | [Runtime & sandbox sources](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-windows-sources.tar.gz) |
+
+Verify downloads against [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/SHA256SUMS). The release also includes a clean Foundry source snapshot and public CI receipts. Keep the corresponding sources and notices when redistributing installers. Linux, QEMU and Electron retain their own licenses; they are not all Apache-2.0.
+
+### Release acceptance · 2026-10-26
+
+| Subject | Verified | Not claimed |
+| :--- | :--- | :--- |
+| This Mac DMG | CI installed-backend contracts, restart/persistence, integrity signing and DMG verification | No physical-Mac VM rerun of this CI DMG; existing same-source-tree hardware evidence is not acceptance of this exact installer |
+| This Windows EXE | Unicode-path install, cross-drive data, native UI, restart, evidence-preserving uninstall; real WHPX passing baseline → failing candidate → passing repair | Role responses use local protocol fixtures, not real OpenAI calls |
+| Same source commit | Green [Verify](https://github.com/tsumon/foundry/actions/runs/40213498354) and [Desktop packages](https://github.com/tsumon/foundry/actions/runs/40213498361), without skipping security gates | Not arbitrary-project, real-account or production certification |
+
+<details>
+<summary>Historical native acceptance (not current downloads)</summary>
 
 ### Verified builds · 2026-10-24
 
@@ -48,9 +69,11 @@ Download the artifact only from a platform job that passed all its gates in [Des
 
 Check [Mac Verify](https://github.com/tsumon/foundry/actions/runs/39964561514), [Windows Verify](https://github.com/tsumon/foundry/actions/runs/39983328874), and [native Windows installation acceptance](https://github.com/tsumon/foundry/actions/runs/39983328865/job/120516374476). Evidence is bound to the revisions above—**it does not automatically certify later builds**. Both platforms execute tests in real VMs; role responses are local protocol fixtures. No real model accounts were called.
 
+</details>
+
 The Mac package has an ad-hoc integrity signature, not Developer ID signing or notarization. Windows uses an unsigned per-user installer. Hardware virtualization and Windows Hypervisor Platform must already be enabled; Foundry does not install or enable those system features.
 
-The app bundles its frontend, controller, Linux guest and Go toolchain. No separate Go, Node.js, npm, MSYS2 or Docker installation is needed. Repository operations still require supported local Git. Missing virtualization blocks execution: no automatic OS feature enablement, reboot, host execution, software emulation or Docker fallback. GitHub artifacts may require sign-in and expire; this is not a permanent download channel. Do not disable OS security protections to bypass unsigned-app warnings. See the [desktop guide](docs/public/desktop-guide.md) for prerequisites, storage and uninstall behavior.
+The app bundles its frontend, controller, Linux guest and Go toolchain. No separate Go, Node.js, npm, MSYS2 or Docker installation is needed. Repository operations still require supported local Git. Missing virtualization blocks execution: no automatic OS feature enablement, reboot, host execution, software emulation or Docker fallback. Releases provide versioned downloads; Actions artifacts remain build evidence and may require sign-in or expire. Do not disable OS security protections to bypass unsigned-app warnings. See the [desktop guide](docs/public/desktop-guide.md) for prerequisites, storage and uninstall behavior.
 
 ## From a request to a reviewable patch
 
@@ -124,7 +147,7 @@ Roles assign responsibilities, not permissions. Model reviews are not test evide
 Mac development baseline: Go **1.27.3**, Node.js **22.23.2**, npm **10.9.8**, cgo/a C compiler. The system `/usr/bin/git --no-lazy-fetch --version` must succeed.
 
 ```sh
-git clone https://github.com/tsumon/foundry.git
+git clone --branch v0.1.0-alpha.3 --depth 1 https://github.com/tsumon/foundry.git
 cd foundry
 npm ci --prefix web
 ./scripts/build.sh
