@@ -135,9 +135,24 @@ func validInferenceEvidence(state, certainty, code string, e domain.InferenceEvi
 	return e.OutputMatched == nil && e.OutputDigest == "" && e.ResolvedModel == "" && ((state == "failed" && (certainty == "rejected" || certainty == "not_sent")) || state == "unknown" && certainty == "unknown") && code != ""
 }
 
-func (s *Store) FinishProductionInference(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, state, certainty, code string, evidence domain.InferenceEvidence, input, output int64, usage bool, now time.Time) (domain.ModelAcceptanceOperation, error) {
+type inferenceReceipt struct {
+	evidence   domain.InferenceEvidence
+	diagnostic *domain.InferenceDiagnostic
+}
+
+func (s *Store) FinishProductionInference(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, state, certainty, code string, evidence domain.InferenceEvidence, input, output int64, usage bool, now time.Time, diagnostics ...domain.InferenceDiagnostic) (domain.ModelAcceptanceOperation, error) {
+	if claim.Material.InferenceBudget == nil {
+		return domain.ModelAcceptanceOperation{}, ErrConflict
+	}
 	if !admission.Valid() || admission.Profile != "openai_siwc_inference_v1" || claim.Source != "production_inference" || !validAcceptanceMaterial(claim) || claim.Material.ProductionAdmission == nil || *claim.Material.ProductionAdmission != admission {
 		return domain.ModelAcceptanceOperation{}, ErrConflict
 	}
-	return s.finishModelAcceptance(claim.AccountID, claim.ID, claim.Revision, state, certainty, code, nil, input, output, usage, nil, now, &claim, evidence)
+	receipt := inferenceReceipt{evidence: evidence}
+	if len(diagnostics) > 1 {
+		return domain.ModelAcceptanceOperation{}, ErrConflict
+	}
+	if len(diagnostics) == 1 {
+		receipt.diagnostic = &diagnostics[0]
+	}
+	return s.finishModelAcceptance(claim.AccountID, claim.ID, claim.Revision, state, certainty, code, nil, input, output, usage, nil, now, &claim, receipt)
 }

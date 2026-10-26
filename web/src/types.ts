@@ -166,7 +166,17 @@ export interface ModelAcceptanceAuthorization {
   generation: number;
   expires_at: string;
 }
+export interface InferenceBudgetBinding {
+  schema_version: number;
+  mission_id: string;
+  revision: number;
+  epoch: number;
+  snapshot_digest: string;
+  used_calls: number;
+  max_calls: number;
+}
 export interface ModelAcceptanceMaterial {
+  inference_budget?: InferenceBudgetBinding;
   production_admission?: ModelProductionAdmission;
   request_method?: "GET" | "POST";
   request_url?:
@@ -261,6 +271,10 @@ export interface ModelConnectionDiagnostic {
   cleanup: "not_required" | "completed" | "pending" | "unknown";
 }
 export interface ModelAcceptanceOperation {
+  inference_diagnostic?: {
+    exchange: ModelExchangeDiagnostic;
+    response?: ModelResponseDiagnostic;
+  };
   id: string;
   account_id: string;
   revision: number;
@@ -345,6 +359,8 @@ export interface ModelAcceptanceOperationResponse {
   connection_session?: ConnectionSession;
 }
 export interface ModelAcceptanceProposal {
+  budget_mission_id?: string;
+  expected_mission_revision?: number;
   phase: ModelAcceptancePhase;
   connection_purpose?: "identity_only" | "subscription_only";
   route_id: string;

@@ -4,6 +4,25 @@ export const inferenceModel = "gpt-6.1-sol";
 export const inferencePrompt = "Reply exactly: FOUNDRY_INFERENCE_OK";
 export const inferenceProfile = "openai_siwc_inference_v1";
 const digest = /^[a-f0-9]{64}$/;
+
+export function validInferenceBudget(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const b = value as Record<string, unknown>;
+  return (
+    Object.keys(b).length === 7 &&
+    b.schema_version === 1 &&
+    typeof b.mission_id === "string" &&
+    /^[A-Za-z0-9_-]{1,256}$/.test(b.mission_id) &&
+    typeof b.snapshot_digest === "string" &&
+    digest.test(b.snapshot_digest) &&
+    [b.revision, b.epoch, b.used_calls, b.max_calls].every(
+      (n) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0,
+    ) &&
+    (b.revision as number) > 0 &&
+    (b.revision as number) < Number.MAX_SAFE_INTEGER &&
+    (b.used_calls as number) < (b.max_calls as number)
+  );
+}
 const providerCodes = new Set(
   "invalid_api_key authentication_error permission_error insufficient_quota rate_limit_exceeded rate_limit_error overloaded_error invalid_request_error model_not_found insufficient_balance exceeded_current_quota_error usage_limit_reached subscription_sharing_user_not_eligible subscription_sharing_usage_limit_exceeded subscription_sharing_usage_unavailable subscription_sharing_unsupported_capability subscription_sharing_route_not_supported subscription_sharing_invalid_user chatpass_v2_scope_not_authorized chatpass_v2_invalid_authorization_context subscription_sharing_user_unavailable".split(
     " ",
@@ -27,10 +46,13 @@ export function validInferenceMaterial(
     prompt_digest,
     catalog_digest,
     response_byte_limit,
+    inference_budget,
     ...base
   } = o.material;
   return (
     o.phase === "inference" &&
+    (inference_budget === undefined ||
+      validInferenceBudget(inference_budget)) &&
     model === inferenceModel &&
     inference_prompt === inferencePrompt &&
     prompt_digest ===
@@ -66,6 +88,9 @@ export function validInferenceReceipt(o: ModelAcceptanceOperation): boolean {
   const unknown = o.state === "unknown";
   if (
     o.catalog.length !== 0 ||
+    (o.inference_diagnostic !== undefined &&
+      (o.attempts !== 1 ||
+        !["succeeded", "failed", "unknown"].includes(o.state))) ||
     o.connection_diagnostic !== undefined ||
     (o.attempts === 0 ? o.claim_sequence !== 0 : o.claim_sequence <= 0) ||
     typeof o.usage_known !== "boolean" ||

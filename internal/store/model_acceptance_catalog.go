@@ -104,6 +104,11 @@ func validateSingleRequestClaim(tx *sql.Tx, claim domain.ModelAcceptanceOperatio
 	if acceptanceSnapshotDigest(current) != acceptanceSnapshotDigest(o.Material) {
 		return ErrConflict
 	}
+	if o.Source == "production_inference" {
+		if e = validateInferenceBudget(tx, o, true); e != nil {
+			return e
+		}
+	}
 	return acceptancePrerequisite(tx, o.Material)
 }
 

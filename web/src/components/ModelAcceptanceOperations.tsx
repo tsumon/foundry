@@ -17,12 +17,14 @@ import {
   validConnectionSession,
 } from "./ModelConnectionSession";
 import { ConnectionDiagnostic } from "./ConnectionDiagnostic";
+import { InferenceDiagnostic } from "./InferenceDiagnostic";
 import {
   inferenceModel,
   inferencePrompt,
   inferenceProfile,
   validInferenceMaterial,
   validInferenceReceipt,
+  validInferenceBudget,
 } from "./inferenceReview";
 
 const phaseLabels: Record<ModelAcceptancePhase, string> = {
@@ -915,6 +917,13 @@ function AcceptanceOperations({
     useState<ConnectionSession>();
   const [routeID, setRouteID] = useState("");
   const [model, setModel] = useState("");
+  const [budgetMissionID, setBudgetMissionID] = useState("");
+  const [budgetRevision, setBudgetRevision] = useState("");
+  const validBudgetInput =
+    identifier.test(budgetMissionID) &&
+    /^[1-9][0-9]*$/.test(budgetRevision) &&
+    Number.isSafeInteger(Number(budgetRevision)) &&
+    Number(budgetRevision) < Number.MAX_SAFE_INTEGER;
   const [selected, setSelected] = useState<
     Partial<Record<ModelAcceptancePhase, string>>
   >({});
@@ -929,6 +938,8 @@ function AcceptanceOperations({
     setSelected({});
     setRouteID("");
     setModel("");
+    setBudgetMissionID("");
+    setBudgetRevision("");
     setConnectionSession(undefined);
   };
   const acceptHistory = (value: unknown) => {
@@ -1404,6 +1415,7 @@ function AcceptanceOperations({
     connection?.result_account_revision ?? account.revision,
   );
   const propose = (phase: ModelAcceptancePhase) => {
+    if (productionInference && !validBudgetInput) return;
     const prerequisite =
       phase === "catalog"
         ? connection?.id
@@ -1424,6 +1436,12 @@ function AcceptanceOperations({
           : {}),
         ...(prerequisite ? { prerequisite_id: prerequisite } : {}),
         ...(phase === "inference" ? { model } : {}),
+        ...(productionInference
+          ? {
+              budget_mission_id: budgetMissionID,
+              expected_mission_revision: Number(budgetRevision),
+            }
+          : {}),
       }),
     );
   };
@@ -1607,7 +1625,10 @@ function AcceptanceOperations({
           const operation = chosen(phase);
           const prerequisiteMissing =
             (phase === "catalog" && !connection) ||
-            (phase === "inference" && (!catalog || !model));
+            (phase === "inference" &&
+              (!catalog ||
+                !model ||
+                (productionInference && !validBudgetInput)));
           const identityClosedPhase = identityOnly && phase !== "connection";
           const historicalPhase =
             (historicalInference && phase === "inference") ||
@@ -1649,28 +1670,61 @@ function AcceptanceOperations({
                 </p>
               )}
               {phase === "inference" && !historicalInference && (
-                <label>
-                  推理模型
-                  <select
-                    aria-label="推理模型"
-                    value={model}
-                    disabled={
-                      productionInference || mutationDisabled || !catalog
-                    }
-                    onChange={(event) => setModel(event.target.value)}
-                  >
-                    {(catalog?.catalog ?? [])
-                      .filter(
-                        (entry) =>
-                          !productionInference || entry.id === inferenceModel,
-                      )
-                      .map((entry) => (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.display_name} · {entry.id}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <>
+                  {productionInference && (
+                    <>
+                      <label>
+                        预算任务 ID
+                        <input
+                          aria-label="预算任务 ID"
+                          value={budgetMissionID}
+                          onChange={(event) =>
+                            setBudgetMissionID(event.target.value)
+                          }
+                          disabled={mutationDisabled}
+                        />
+                      </label>
+                      <label>
+                        预期任务版本
+                        <input
+                          aria-label="预期任务版本"
+                          inputMode="numeric"
+                          value={budgetRevision}
+                          onChange={(event) =>
+                            setBudgetRevision(event.target.value)
+                          }
+                          disabled={mutationDisabled}
+                        />
+                      </label>
+                      <p className="field-help">
+                        从任务详情核对 ID
+                        和当前版本；准备后显示服务器绑定的已用/上限预算。仅限暂停或阻塞任务；执行扣除原任务一次调用，不继续任务，不退款或重试。
+                      </p>
+                    </>
+                  )}
+                  <label>
+                    推理模型
+                    <select
+                      aria-label="推理模型"
+                      value={model}
+                      disabled={
+                        productionInference || mutationDisabled || !catalog
+                      }
+                      onChange={(event) => setModel(event.target.value)}
+                    >
+                      {(catalog?.catalog ?? [])
+                        .filter(
+                          (entry) =>
+                            !productionInference || entry.id === inferenceModel,
+                        )
+                        .map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.display_name} · {entry.id}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </>
               )}
               <label>
                 {phaseLabels[phase]}已保存材料
@@ -1864,6 +1918,7 @@ function OperationReview({
   }, [operation.id, operation.state, material.expires_at, production]);
   const reviewDisabled =
     disabled ||
+    (inference && !validInferenceBudget(material.inference_budget)) ||
     (production &&
       (deadlineExpired || Date.parse(material.expires_at) <= Date.now()));
   return (
@@ -1925,6 +1980,20 @@ function OperationReview({
         )}
         {inference && (
           <>
+            <dt>原任务调用预算</dt>
+            <dd>
+              {material.inference_budget
+                ? `${material.inference_budget.mission_id} · r${material.inference_budget.revision} · epoch ${material.inference_budget.epoch} · 已用 ${material.inference_budget.used_calls}/${material.inference_budget.max_calls} · 执行扣除 1 次`
+                : "历史未绑定材料：只读，不可执行"}
+            </dd>
+            {material.inference_budget && (
+              <>
+                <dt>有效模型快照</dt>
+                <dd>
+                  <code>{material.inference_budget.snapshot_digest}</code>
+                </dd>
+              </>
+            )}
             <dt>完整固定提示词</dt>
             <dd>{inferencePrompt}</dd>
             <dt>目录前提</dt>
@@ -2039,6 +2108,14 @@ function OperationReview({
       )}
       {inference && operation.attempts > 0 && (
         <div aria-label="推理回执">
+          <InferenceDiagnostic value={operation.inference_diagnostic} />
+          {material.inference_budget && (
+            <p>
+              已扣除原任务 1 次调用：{material.inference_budget.used_calls + 1}/
+              {material.inference_budget.max_calls}
+              ；本回执之后的任务预算可能变化。
+            </p>
+          )}
           <p>
             {operation.certainty === "completed"
               ? "传输：已完成"

@@ -97,17 +97,31 @@ func TestProductionInferenceReopenMarksAbandonedClaimUnknown(t *testing.T) {
 	if e != nil || got.State != "unknown" || got.Certainty != "unknown" || got.Attempts != 1 || got.ClaimSequence != running.ClaimSequence {
 		t.Fatalf("restart: %+v %v", got, e)
 	}
+	m, err := reopened.GetMission("inference-budget-task")
+	if err != nil || m.Budget.UsedCalls != 4 || m.Budget.MaxCalls != 7 || m.State != "blocked" {
+		t.Fatal("restart lost debit", m.Budget, err)
+	}
 	if _, e = fresh.Execute(context.Background(), a.ID, o.ID, o.Revision, o.MaterialDigest); e == nil || calls.Load() != 0 || resolver.reads.Load() != 0 {
 		t.Fatal("restart replayed")
 	}
 }
 
 func TestProductionInferenceNoDispatchAfterLeaseChange(t *testing.T) {
-	for _, kind := range []string{"generation", "account", "expiry", "secret failure", "authorization generation", "authorization expiry", "authorization binding"} {
+	for _, kind := range []string{"task revision", "generation", "account", "expiry", "secret failure", "authorization generation", "authorization expiry", "authorization binding"} {
 		t.Run(kind, func(t *testing.T) {
 			s, db, a, r, c, resolver, calls, _ := inferenceController(t)
 			o := approveCatalog(t, s, proposeInference(t, s, a, r, c))
 			switch kind {
+			case "task revision":
+				resolver.after = func() {
+					m, err := db.GetMission("inference-budget-task")
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err = db.UpdateMission(m.ID, m.Revision, "fixture.concurrent", func(m *domain.Mission) error { return nil }); err != nil {
+						t.Fatal(err)
+					}
+				}
 			case "generation":
 				resolver.generation++
 			case "account":
@@ -147,6 +161,10 @@ func TestProductionInferenceNoDispatchAfterLeaseChange(t *testing.T) {
 			if e != nil || got.State != "failed" || got.Certainty != "not_sent" || calls.Load() != 0 || resolver.reads.Load() != 1 {
 				t.Fatalf("unsafe lease change: %+v %v calls=%d", got, e, calls.Load())
 			}
+			m, err := db.GetMission("inference-budget-task")
+			if err != nil || m.Budget.UsedCalls != 4 || m.Budget.MaxCalls != 7 {
+				t.Fatal("pre-send denial refunded", m.Budget, err)
+			}
 		})
 	}
 }
@@ -167,6 +185,10 @@ func TestProductionInferenceReceiptFailureClosesAdmission(t *testing.T) {
 	}
 	if s.ProductionInferenceStatus(a.ID).Enabled || calls.Load() != 1 || resolver.reads.Load() != 1 {
 		t.Fatal("unsafe receipt failure")
+	}
+	m, err := s.store.GetMission("inference-budget-task")
+	if err != nil || m.Budget.UsedCalls != 4 || m.Budget.MaxCalls != 7 {
+		t.Fatal("persistence failure refunded", m.Budget, err)
 	}
 	if _, e = sqlDB.Exec(`DROP TRIGGER catalog_receipt_fault`); e != nil {
 		t.Fatal(e)

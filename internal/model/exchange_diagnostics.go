@@ -32,6 +32,14 @@ type exchangeObserver struct {
 	d      domain.HTTPExchangeDiagnostic
 }
 
+// ObserveInferenceRequest attaches bounded observations only. It performs no
+// dispatch, credential access, retry or body read. Call finish immediately after Do.
+func ObserveInferenceRequest(req *http.Request, transport http.RoundTripper) (*http.Request, func(*http.Response) domain.HTTPExchangeDiagnostic) {
+	o := newExchangeObserver(transport)
+	req.Header.Set("X-Client-Request-Id", o.d.ClientRequestID)
+	return req.WithContext(httptrace.WithClientTrace(req.Context(), o.trace())), o.finish
+}
+
 func newExchangeObserver(transport http.RoundTripper) *exchangeObserver {
 	var id [16]byte
 	// crypto/rand.Read is fail-stop on entropy failure; never send a predictable ID.

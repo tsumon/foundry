@@ -27,6 +27,8 @@ func (p ProductionAdmission) Valid() bool {
 }
 
 type ModelAcceptanceProposal struct {
+	BudgetMissionID         string `json:"budget_mission_id,omitempty"`
+	ExpectedMissionRevision int64  `json:"expected_mission_revision,omitempty"`
 	Phase                   string `json:"phase"`
 	ConnectionPurpose       string `json:"connection_purpose,omitempty"`
 	RouteID                 string `json:"route_id"`
@@ -35,37 +37,38 @@ type ModelAcceptanceProposal struct {
 	PrerequisiteID          string `json:"prerequisite_id,omitempty"`
 }
 type ModelAcceptanceMaterial struct {
-	InferencePrompt     string               `json:"inference_prompt,omitempty"`
-	ResponseByteLimit   int                  `json:"response_byte_limit,omitempty"`
-	CatalogDigest       string               `json:"catalog_digest,omitempty"`
-	RequestMethod       string               `json:"request_method,omitempty"`
-	RequestURL          string               `json:"request_url,omitempty"`
-	ProductionAdmission *ProductionAdmission `json:"production_admission,omitempty"`
-	Phase               string               `json:"phase"`
-	ConnectionPurpose   string               `json:"connection_purpose,omitempty"`
-	ConnectionMode      string               `json:"connection_mode,omitempty"`
-	LoginTimeoutSeconds int                  `json:"login_timeout_seconds,omitempty"`
-	RequestedScopes     []string             `json:"requested_scopes,omitempty"`
-	RequestedResource   string               `json:"requested_resource,omitempty"`
-	Account             ModelAccount         `json:"account"`
-	Route               ModelRoute           `json:"route"`
-	CredentialVersion   int64                `json:"credential_version"`
-	Authorization       *ModelAuthorization  `json:"authorization,omitempty"`
-	PrerequisiteID      string               `json:"prerequisite_id,omitempty"`
-	ConnectionID        string               `json:"connection_id,omitempty"`
-	Model               string               `json:"model,omitempty"`
-	PromptDigest        string               `json:"prompt_digest,omitempty"`
-	DataSummary         string               `json:"data_summary"`
-	CreatedAt           string               `json:"created_at"`
-	ExpiresAt           string               `json:"expires_at"`
-	DeadlineSeconds     int                  `json:"deadline_seconds"`
-	MaxAttempts         int                  `json:"max_attempts"`
+	InferenceBudget     *InferenceBudgetBinding `json:"inference_budget,omitempty"`
+	InferencePrompt     string                  `json:"inference_prompt,omitempty"`
+	ResponseByteLimit   int                     `json:"response_byte_limit,omitempty"`
+	CatalogDigest       string                  `json:"catalog_digest,omitempty"`
+	RequestMethod       string                  `json:"request_method,omitempty"`
+	RequestURL          string                  `json:"request_url,omitempty"`
+	ProductionAdmission *ProductionAdmission    `json:"production_admission,omitempty"`
+	Phase               string                  `json:"phase"`
+	ConnectionPurpose   string                  `json:"connection_purpose,omitempty"`
+	ConnectionMode      string                  `json:"connection_mode,omitempty"`
+	LoginTimeoutSeconds int                     `json:"login_timeout_seconds,omitempty"`
+	RequestedScopes     []string                `json:"requested_scopes,omitempty"`
+	RequestedResource   string                  `json:"requested_resource,omitempty"`
+	Account             ModelAccount            `json:"account"`
+	Route               ModelRoute              `json:"route"`
+	CredentialVersion   int64                   `json:"credential_version"`
+	Authorization       *ModelAuthorization     `json:"authorization,omitempty"`
+	PrerequisiteID      string                  `json:"prerequisite_id,omitempty"`
+	ConnectionID        string                  `json:"connection_id,omitempty"`
+	Model               string                  `json:"model,omitempty"`
+	PromptDigest        string                  `json:"prompt_digest,omitempty"`
+	DataSummary         string                  `json:"data_summary"`
+	CreatedAt           string                  `json:"created_at"`
+	ExpiresAt           string                  `json:"expires_at"`
+	DeadlineSeconds     int                     `json:"deadline_seconds"`
+	MaxAttempts         int                     `json:"max_attempts"`
 }
 
 // Explicit connection policies are narrower than the route's subscription
 // billing metadata. Empty permission fields preserve historical material.
 func (m ModelAcceptanceMaterial) ValidConnectionPurpose() bool {
-	if m.InferencePrompt != "" || m.ResponseByteLimit != 0 || m.CatalogDigest != "" {
+	if m.InferenceBudget != nil || m.InferencePrompt != "" || m.ResponseByteLimit != 0 || m.CatalogDigest != "" {
 		return false
 	}
 	if m.ProductionAdmission != nil && m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" {
@@ -113,7 +116,7 @@ func (m ModelAcceptanceMaterial) ValidAcceptancePurpose() bool {
 }
 
 func (m ModelAcceptanceMaterial) ValidProductionCatalog() bool {
-	if m.InferencePrompt != "" || m.ResponseByteLimit != 0 || m.CatalogDigest != "" {
+	if m.InferenceBudget != nil || m.InferencePrompt != "" || m.ResponseByteLimit != 0 || m.CatalogDigest != "" {
 		return false
 	}
 	return m.ProductionAdmission != nil && m.ProductionAdmission.Valid() && m.ProductionAdmission.Profile == "openai_siwc_catalog_v1" &&
@@ -145,6 +148,7 @@ type ModelAcceptanceCatalogEntry struct {
 }
 type ModelAcceptanceOperation struct {
 	InferenceEvidence
+	InferenceDiagnostic   *InferenceDiagnostic          `json:"inference_diagnostic,omitempty"`
 	ID                    string                        `json:"id"`
 	AccountID             string                        `json:"account_id"`
 	Revision              int64                         `json:"revision"`

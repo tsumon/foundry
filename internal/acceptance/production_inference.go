@@ -86,7 +86,7 @@ func (s *Service) ownedInference(account, id string) (domain.ModelAcceptanceOper
 		return s.mutationResult(o, e)
 	}
 	m := o.Material
-	if o.Source != "production_inference" || o.LiveAccess != "inference_once" || o.Phase != "inference" || m.ProductionAdmission == nil || *m.ProductionAdmission != s.inference.admission || !m.ValidProductionInference() || m.Route != s.inference.route {
+	if o.Source != "production_inference" || o.LiveAccess != "inference_once" || o.Phase != "inference" || m.InferenceBudget == nil || m.ProductionAdmission == nil || *m.ProductionAdmission != s.inference.admission || !m.ValidProductionInference() || m.Route != s.inference.route {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
 	return o, nil
@@ -109,7 +109,21 @@ func (s *Service) executeInference(ctx context.Context, o domain.ModelAcceptance
 	}
 	return s.finishInference(o, result, e)
 }
-func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptanceOperation) (model.Result, error) {
+func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptanceOperation) (result model.Result, cause error) {
+	var exchange domain.HTTPExchangeDiagnostic
+	defer func() {
+		if !exchange.Valid() {
+			return
+		}
+		result.ExchangeDiagnostic = exchange
+		var pe *model.ProviderError
+		if errors.As(cause, &pe) {
+			pe.ExchangeDiagnostic = exchange
+			if pe.ResponseDiagnostic.Valid() {
+				pe.ResponseDiagnostic.Transport = exchange.Transport
+			}
+		}
+	}()
 	fail := func(code, certainty string) (model.Result, error) {
 		return model.Result{}, catalogFailure(code, certainty)
 	}
@@ -136,7 +150,9 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 	if !validate() {
 		return fail("auth_invalid", "not_sent")
 	}
+	req, finishObservation := model.ObserveInferenceRequest(req, s.inference.http.Transport)
 	response, e := s.inference.http.Do(req)
+	exchange = finishObservation(response)
 	if e != nil {
 		return fail("transport_unknown", "unknown")
 	}
@@ -153,9 +169,19 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 	}
 	media, _, e := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if e != nil || media != "text/event-stream" {
-		return fail("response_incomplete", "unknown")
+		d := domain.ResponseDiagnostic{Version: 1, Stage: "http_media", Reason: "unexpected_media_type", MediaType: "other"}
+		if media == "application/json" {
+			d.MediaType = "json"
+		}
+		if e != nil {
+			d.Reason, d.MediaType = "invalid_media_type", "invalid"
+		}
+		if response.Header.Get("Content-Type") == "" {
+			d.Reason, d.MediaType = "missing_media_type", "missing"
+		}
+		return model.Result{}, &model.ProviderError{Code: "response_incomplete", Certainty: "unknown", ResponseDiagnostic: d}
 	}
-	result, e := model.DecodeSubscriptionInference(response.Body, lease.Secret)
+	result, e = model.DecodeSubscriptionInference(response.Body, lease.Secret)
 	id := response.Header.Get("X-Request-ID")
 	if domain.ValidModelCatalogIdentifier(id) && !strings.Contains(id, lease.Secret) {
 		if e == nil {
@@ -170,6 +196,21 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 	return result, e
 }
 func (s *Service) finishInference(o domain.ModelAcceptanceOperation, result model.Result, cause error) (domain.ModelAcceptanceOperation, error) {
+	var diagnostics []domain.InferenceDiagnostic
+	diagnostic := domain.InferenceDiagnostic{Exchange: result.ExchangeDiagnostic}
+	var observed *model.ProviderError
+	if errors.As(cause, &observed) {
+		if observed.ExchangeDiagnostic.Valid() {
+			diagnostic.Exchange = observed.ExchangeDiagnostic
+		}
+		if observed.ResponseDiagnostic.Valid() {
+			copy := observed.ResponseDiagnostic
+			diagnostic.Response = &copy
+		}
+	}
+	if diagnostic.Valid() {
+		diagnostics = append(diagnostics, diagnostic)
+	}
 	state, certainty, code := "succeeded", "completed", ""
 	evidence := domain.InferenceEvidence{}
 	if cause == nil {
@@ -198,7 +239,7 @@ func (s *Service) finishInference(o domain.ModelAcceptanceOperation, result mode
 			result.UsageKnown = streamFailure.UsageKnown
 		}
 	}
-	saved, e := s.store.FinishProductionInference(o, s.inference.admission, state, certainty, code, evidence, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now())
+	saved, e := s.store.FinishProductionInference(o, s.inference.admission, state, certainty, code, evidence, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now(), diagnostics...)
 	if e != nil {
 		s.ready.Store(false)
 		_, _ = s.store.FinishProductionInference(o, s.inference.admission, "unknown", "unknown", "transport_unknown", domain.InferenceEvidence{}, 0, 0, false, s.now())

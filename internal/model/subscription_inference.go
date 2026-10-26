@@ -49,15 +49,28 @@ func SubscriptionInferenceHTTPFailure(status int, header http.Header, body []byt
 // DecodeSubscriptionInference requires a real completed terminal event. Deltas
 // remain untrusted data and are never retained, including on a later failure.
 func DecodeSubscriptionInference(reader io.Reader, secret string) (Result, error) {
-	fail := func() (Result, error) { return Result{}, providerFailure("response_incomplete", "unknown") }
 	limited := &io.LimitedReader{R: reader, N: (1 << 20) + 1}
+	events := 0
+	fail := func(observation ...string) (Result, error) {
+		p := providerFailure("response_incomplete", "unknown")
+		if len(observation) >= 2 {
+			d := domain.ResponseDiagnostic{Version: 1, Stage: observation[0], Reason: observation[1], MediaType: "sse", EventsSeen: events, BytesRead: (1 << 20) + 1 - limited.N}
+			if len(observation) == 3 {
+				d.TerminalEvent = observation[2]
+			}
+			if d.Valid() {
+				p.ResponseDiagnostic = d
+			}
+		}
+		return Result{}, p
+	}
 	scanner := bufio.NewScanner(limited)
 	scanner.Buffer(make([]byte, 4096), 1<<20)
 	var data strings.Builder
 	eventName := ""
 	for scanner.Scan() {
 		if limited.N <= 0 {
-			return fail()
+			return fail("stream_read", "body_limit")
 		}
 		line := scanner.Text()
 		if line != "" {
@@ -76,8 +89,9 @@ func DecodeSubscriptionInference(reader io.Reader, secret string) (Result, error
 			continue
 		}
 		raw := []byte(data.String())
+		events++
 		if !jsontext.Lossless(raw) {
-			return fail()
+			return fail("sse_decode", "invalid_json")
 		}
 		if containsCredentialJSON(raw, secret) {
 			return fail()
@@ -156,7 +170,16 @@ func DecodeSubscriptionInference(reader io.Reader, secret string) (Result, error
 			return fail()
 		}
 	}
-	return fail()
+	if limited.N <= 0 {
+		return fail("stream_read", "body_limit")
+	}
+	if scanner.Err() != nil {
+		return fail("stream_read", "read_error")
+	}
+	if data.Len() > 0 {
+		return fail("stream_read", "unterminated_frame")
+	}
+	return fail("stream_read", "missing_terminal")
 }
 
 // An event name is not evidence of a provider rejection. Require an actual

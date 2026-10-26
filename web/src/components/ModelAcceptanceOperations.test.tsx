@@ -119,6 +119,15 @@ function inferenceFixture() {
       catalog_digest: "a".repeat(64),
       prerequisite_id: catalog.id,
       response_byte_limit: 1048576,
+      inference_budget: {
+        schema_version: 1,
+        mission_id: "synthetic-task",
+        revision: 1,
+        epoch: 1,
+        snapshot_digest: digest,
+        used_calls: 3,
+        max_calls: 7,
+      },
     },
   };
   return {
@@ -140,6 +149,156 @@ async function selectInference() {
     target: { value: "synthetic-inference" },
   });
 }
+
+it("requires an explicit task revision before preparing a charged diagnostic", async () => {
+  const f = inferenceFixture();
+  const fetcher = vi.fn(async () =>
+    response({ ...f.history, operations: [f.connection, f.catalog] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  const create = await screen.findByRole("button", {
+    name: "创建真实推理材料",
+  });
+  await waitFor(() =>
+    expect(screen.getByLabelText("推理模型")).toBeInTheDocument(),
+  );
+  expect(create).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("预算任务 ID"), {
+    target: { value: "synthetic-task" },
+  });
+  expect(create).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("预期任务版本"), {
+    target: { value: "1" },
+  });
+  expect(create).toBeEnabled();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  null,
+  "unsafe",
+  { schema_version: 2 },
+  { revision: 0 },
+  { used_calls: 7 },
+  { snapshot_digest: "unsafe" },
+  { epoch: -1 },
+])(
+  "rejects malformed task budget material without mutations: %j",
+  async (change) => {
+    const f = inferenceFixture();
+    const material = {
+      ...f.pending.material,
+      inference_budget:
+        typeof change === "object" && change !== null
+          ? { ...f.pending.material.inference_budget, ...change }
+          : change,
+    };
+    const fetcher = vi.fn(async () =>
+      response({
+        ...f.history,
+        operations: [f.connection, f.catalog, { ...f.pending, material }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    expect(await screen.findByText("invalid_receipt")).toBeVisible();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("keeps historical unbound inference readable but cannot approve or execute it", async () => {
+  const f = inferenceFixture();
+  delete (f.pending.material as Record<string, unknown>).inference_budget;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response(f.history)),
+  );
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await selectInference();
+  expect(screen.getByRole("button", { name: "批准推理材料" })).toBeDisabled();
+});
+
+it("shows bounded missing-media diagnostics without promoting unknown to success", async () => {
+  const f = inferenceFixture();
+  const unknown = {
+    ...f.pending,
+    state: "unknown",
+    attempts: 1,
+    claim_sequence: 3,
+    certainty: "unknown",
+    code: "response_incomplete",
+    inference_diagnostic: {
+      exchange: {
+        version: 1,
+        client_request_id: "fdy_" + "a".repeat(32),
+        dns: { attempts: 0, millis: 0 },
+        connect: { attempts: 0, millis: 0 },
+        tls: { attempts: 0, millis: 0 },
+        headers: { state: "completed", attempts: 1, millis: 1 },
+        first_byte_millis: 1,
+        request_writes: 1,
+        write_failed: false,
+        reused_connection: false,
+        proxy_mode: "disabled",
+        peer_class: "loopback",
+        tls_verified: false,
+        final_status: 200,
+        header_fields: 0,
+        transport: {
+          version: 1,
+          content_type: "absent",
+          protocol: "http1_1",
+          body_length: "unknown",
+        },
+      },
+      response: {
+        version: 1,
+        stage: "http_media",
+        reason: "missing_media_type",
+        media_type: "missing",
+        bytes_read: 0,
+        events_seen: 0,
+        transport: {
+          version: 1,
+          content_type: "absent",
+          protocol: "http1_1",
+          body_length: "unknown",
+        },
+      },
+    },
+  };
+  const fetcher = vi.fn(async () =>
+    response({ ...f.history, operations: [f.connection, f.catalog, unknown] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <ModelAcceptanceOperations
+      account={f.account}
+      refreshAccount={async () => {}}
+    />,
+  );
+  await selectInference();
+  expect(screen.getByText(/响应缺少内容类型/)).toBeVisible();
+  expect(screen.getByText(/已扣除原任务 1 次调用：4\/7/)).toBeVisible();
+  expect(screen.getByText("传输：结果未知")).toBeVisible();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
 
 it("reads a legitimate running inference claim as consumed and unknown without polling or mutation", async () => {
   vi.useFakeTimers();
@@ -614,6 +773,12 @@ it("independently creates, approves and executes fixed production inference with
   const create = await screen.findByRole("button", {
     name: "创建真实推理材料",
   });
+  fireEvent.change(screen.getByLabelText("预算任务 ID"), {
+    target: { value: "synthetic-task" },
+  });
+  fireEvent.change(screen.getByLabelText("预期任务版本"), {
+    target: { value: "1" },
+  });
   await waitFor(() => expect(create).toBeEnabled());
   expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
   expect(
@@ -627,6 +792,8 @@ it("independently creates, approves and executes fixed production inference with
     expected_account_revision: 2,
     model: "gpt-6.1-sol",
     prerequisite_id: f.catalog.id,
+    budget_mission_id: "synthetic-task",
+    expected_mission_revision: 1,
   });
   expect(screen.getByText("Reply exactly: FOUNDRY_INFERENCE_OK")).toBeVisible();
   expect(screen.getByText(/未设置 max_output_tokens/)).toBeVisible();

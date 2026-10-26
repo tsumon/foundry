@@ -24,6 +24,9 @@ func (s *Store) initializeModelAcceptanceOperations() error {
 	if err = s.initializeProductionConnectionDispatch(); err != nil {
 		return err
 	}
+	if err = s.initializeInferenceBudgets(); err != nil {
+		return err
+	}
 	return s.initializeConnectionOrigins()
 }
 func acceptanceRead(row modelRowScanner) (domain.ModelAcceptanceOperation, error) {
@@ -37,6 +40,7 @@ func acceptanceRead(row modelRowScanner) (domain.ModelAcceptanceOperation, error
 	projection := struct {
 		*domain.ModelAcceptanceOperation
 		ConnectionDiagnostic json.RawMessage `json:"connection_diagnostic"`
+		InferenceDiagnostic  json.RawMessage `json:"inference_diagnostic"`
 	}{ModelAcceptanceOperation: &o}
 	if e := json.Unmarshal(raw, &projection); e != nil {
 		return o, e
@@ -44,6 +48,10 @@ func acceptanceRead(row modelRowScanner) (domain.ModelAcceptanceOperation, error
 	var diagnostic domain.ConnectionDiagnostic
 	if json.Unmarshal(projection.ConnectionDiagnostic, &diagnostic) == nil && validStoredConnectionDiagnostic(o, &diagnostic) {
 		o.ConnectionDiagnostic = &diagnostic
+	}
+	var inference domain.InferenceDiagnostic
+	if json.Unmarshal(projection.InferenceDiagnostic, &inference) == nil && inference.Valid() && o.Source == "production_inference" && o.Attempts == 1 && (o.State == "succeeded" || o.State == "failed" || o.State == "unknown") {
+		o.InferenceDiagnostic = &inference
 	}
 	return o, nil
 }
@@ -288,6 +296,10 @@ func (s *Store) ProposeModelAcceptanceWithConnectionMode(account string, q domai
 
 func (s *Store) proposeModelAcceptance(account string, q domain.ModelAcceptanceProposal, mode string, admission *domain.ProductionAdmission, now time.Time) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
+	productionInference := admission != nil && admission.Profile == "openai_siwc_inference_v1"
+	if !productionInference && (q.BudgetMissionID != "" || q.ExpectedMissionRevision != 0) {
+		return o, ErrConflict
+	}
 	if !acceptanceIdentifierPattern.MatchString(account) || !acceptanceIdentifierPattern.MatchString(q.RouteID) || q.ExpectedAccountRevision < 1 || (q.Phase != "connection" && q.Phase != "catalog" && q.Phase != "inference") {
 		return o, ErrConflict
 	}
@@ -328,6 +340,11 @@ func (s *Store) proposeModelAcceptance(account string, q domain.ModelAcceptanceP
 	}
 	if e = acceptancePrerequisite(tx, m); e != nil {
 		return o, e
+	}
+	if productionInference {
+		if e = freezeInferenceBudget(tx, &m, q); e != nil {
+			return o, e
+		}
 	}
 	m.CreatedAt = now.UTC().Format(time.RFC3339Nano)
 	m.ExpiresAt = now.Add(10 * time.Minute).UTC().Format(time.RFC3339Nano)
@@ -395,6 +412,9 @@ func (s *Store) transitionModelAcceptance(account, id string, revision int64, di
 	if o.Revision != revision || o.MaterialDigest != digest || domain.AcceptanceDigest(o.Material) != digest || !validAcceptanceMaterial(o) {
 		return o, ErrConflict
 	}
+	if o.Source == "production_inference" && o.Material.InferenceBudget == nil {
+		return o, ErrConflict
+	}
 	if action == "execute" {
 		if o.State != "approved" || o.Attempts != 0 {
 			return o, ErrConflict
@@ -429,6 +449,8 @@ func (s *Store) transitionModelAcceptance(account, id string, revision int64, di
 			invalid = "invalidated"
 		} else if e = acceptancePrerequisite(tx, o.Material); e != nil {
 			invalid = "invalidated"
+		} else if o.Source == "production_inference" && validateInferenceBudget(tx, o, false) != nil {
+			invalid = "invalidated"
 		}
 	}
 	if invalid != "" {
@@ -456,6 +478,11 @@ func (s *Store) transitionModelAcceptance(account, id string, revision int64, di
 		o.ClaimSequence, e = claim.LastInsertId()
 		if e != nil {
 			return o, e
+		}
+		if o.Source == "production_inference" {
+			if e = debitInferenceBudget(tx, o); e != nil {
+				return o, e
+			}
 		}
 		o.State = "running"
 		o.Attempts = 1
@@ -485,7 +512,7 @@ func (s *Store) FinishModelAcceptanceWithDiagnostic(account, id string, revision
 	return s.finishModelAcceptance(account, id, revision, state, certainty, code, catalog, input, output, usage, diagnostic, now, nil)
 }
 
-func (s *Store) finishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, diagnostic *domain.ConnectionDiagnostic, now time.Time, expected *domain.ModelAcceptanceOperation, inference ...domain.InferenceEvidence) (domain.ModelAcceptanceOperation, error) {
+func (s *Store) finishModelAcceptance(account, id string, revision int64, state, certainty, code string, catalog []domain.ModelAcceptanceCatalogEntry, input, output int64, usage bool, diagnostic *domain.ConnectionDiagnostic, now time.Time, expected *domain.ModelAcceptanceOperation, inference ...inferenceReceipt) (domain.ModelAcceptanceOperation, error) {
 	var o domain.ModelAcceptanceOperation
 	if state != "succeeded" && state != "failed" && state != "unknown" {
 		return o, ErrConflict
@@ -531,10 +558,14 @@ func (s *Store) finishModelAcceptance(account, id string, revision int64, state,
 		return o, ErrConflict
 	}
 	if o.Source == "production_inference" {
-		if len(inference) != 1 || len(catalog) != 0 || diagnostic != nil || !validInferenceEvidence(state, certainty, code, inference[0], input, output, usage) {
+		if len(inference) != 1 || len(catalog) != 0 || diagnostic != nil || !validInferenceEvidence(state, certainty, code, inference[0].evidence, input, output, usage) {
 			return o, ErrConflict
 		}
-		o.InferenceEvidence = inference[0]
+		if inference[0].diagnostic != nil && !inference[0].diagnostic.Valid() {
+			return o, ErrConflict
+		}
+		o.InferenceEvidence = inference[0].evidence
+		o.InferenceDiagnostic = inference[0].diagnostic
 		if certainty == "rejected" {
 			var sequence int64
 			if e = tx.QueryRow(`SELECT claim_sequence FROM model_acceptance_dispatches WHERE operation_id=?`, o.ID).Scan(&sequence); e != nil || sequence != o.ClaimSequence {
@@ -669,6 +700,11 @@ func (s *Store) RecoverModelAcceptance(now time.Time) error {
 		return e
 	}
 	for _, o := range items {
+		// Legacy unbound inference never gains a debit or new execution/recovery
+		// authority. A running row remains an unresolved account-effect fence.
+		if o.Source == "production_inference" && o.Material.InferenceBudget == nil {
+			continue
+		}
 		if !validAcceptanceMaterial(o) || domain.AcceptanceDigest(o.Material) != o.MaterialDigest {
 			return ErrConflict
 		}
