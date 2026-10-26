@@ -20,7 +20,7 @@ func TestOwnedHandoffWaitJoinsExpiryAndRejectsLateCallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	flow, stop, err := s.BeginOwnedSubscriptionConnectionSimulation(ctx, account.ID, account.Revision)
 	if err != nil {
@@ -28,6 +28,9 @@ func TestOwnedHandoffWaitJoinsExpiryAndRejectsLateCallback(t *testing.T) {
 	}
 	defer stop()
 	query := openHandoff(t, flow)
+	// Expire only after observing the handoff; CI scheduling must not close the
+	// listener before this test reaches the late-callback boundary it exercises.
+	cancel()
 	terminal, err := s.Wait(flow.OperationID)
 	if err != nil || terminal.State != "expired" || terminal.HandoffURL != "" || terminal.ConnectionDiagnostic == nil || terminal.ConnectionDiagnostic.Stage != "session" || terminal.ConnectionDiagnostic.Code != "expired" || terminal.ConnectionDiagnostic.CredentialCommit != "not_committed" || terminal.ConnectionDiagnostic.Cleanup != "not_required" {
 		t.Fatalf("terminal=%+v %v", terminal, err)
