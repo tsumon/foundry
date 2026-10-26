@@ -78,6 +78,37 @@ Offline implementation/verification sequence for this bounded fix:
 
 ## Offline implementation and acceptance plan
 
+### Explicit protocol policy correction
+
+An actual-constructor loopback TLS regression found that the catalog and fixed
+diagnostic transports could negotiate HTTP/2 despite `ForceAttemptHTTP2: false`.
+That flag is not an HTTP/2 prohibition: with default dialing and TLS settings,
+Go can enable HTTP/2 automatically. Earlier TLS fixtures substituted a client
+with custom dial/TLS settings, unintentionally masking this difference. The
+task router had such a custom dialer and relied on its implicit HTTP/1 policy.
+
+All three constructors now explicitly select HTTP/1 using `http.Protocols`.
+They retain certificate verification, no environment proxy, fresh connections,
+redirect denial, existing deadlines, and exact request bodies. This also avoids
+HTTP/2's bodyless-request replay paths; disabling keep-alives alone was not
+sufficient to express that catalog contract. It is not a protocol fallback or a
+second request. No setting exposes an alternative endpoint or paid API.
+
+The regression uses the actual constructors and a loopback server advertising
+both HTTP/1.1 and h2. A separate test process trusts the synthetic certificate
+through Go's fallback-root facility; it never disables verification or changes
+system trust. Budget integration tests retain the production transport policy
+and cover successful completion, missing Content-Type and interrupted streams.
+Missing media still fails before body parsing, consumes the one reserved call,
+and cannot be replayed. Historical evidence is not rewritten.
+
+This fixes a demonstrated local protocol-policy mismatch. It does **not** prove
+why an upstream response omitted Content-Type, nor that changing protocol will
+restore it. Official [subscription inference requirements](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)
+still require the public Responses endpoint, `store:false`, `stream:true`, and
+completed-stream handling; the payload and strict success boundary are unchanged.
+Offline/CI acceptance is not a claim of successful real model inference.
+
 ### Request correlation and connection observation (offline-only validation)
 
 Subscription task POSTs now attach a fresh random `X-Client-Request-Id` and

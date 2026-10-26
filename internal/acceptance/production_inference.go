@@ -48,7 +48,10 @@ func NewProductionInference(ledger *store.Store, options ProductionInferenceOpti
 	}
 	s.inference.admission = domain.ProductionAdmission{Generation: hex.EncodeToString(nonce), Profile: "openai_siwc_inference_v1"}
 	// Exclusive fresh connection: never proxy, redirect, retry, or reuse HTTP/2.
-	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, ForceAttemptHTTP2: false, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second}
+	// ForceAttemptHTTP2=false alone still permits HTTP/2 with default dialing.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	transport := &http.Transport{Protocols: protocols, Proxy: nil, DisableKeepAlives: true, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second}
 	s.inference.http = &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	s.routes[saved.ID] = saved
 	return s

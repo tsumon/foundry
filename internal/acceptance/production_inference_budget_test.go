@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"foundry/internal/domain"
@@ -21,7 +22,7 @@ func TestInferenceBudgetLoopbackTransport(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			s, db, a, r, c, _, _, _ := inferenceController(t)
 			var dispatches atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				dispatches.Add(1)
 				body, err := io.ReadAll(req.Body)
 				if err != nil || string(body) != domain.OpenAIInferenceBody || req.Header.Get("X-Client-Request-Id") == "" {
@@ -39,11 +40,15 @@ func TestInferenceBudgetLoopbackTransport(t *testing.T) {
 				}
 				io.WriteString(w, inferenceCompletion)
 			}))
+			server.EnableHTTP2 = true
+			server.TLS = &tls.Config{NextProtos: []string{"h2", "http/1.1"}}
+			server.StartTLS()
 			defer server.Close()
-			transport := server.Client().Transport.(*http.Transport).Clone()
-			transport.DisableKeepAlives = true
-			transport.ForceAttemptHTTP2 = false
-			transport.Proxy = nil
+			production := NewProductionInference(db, ProductionInferenceOptions{Route: r, Resolver: s.inference.resolver})
+			transport := production.inference.http.Transport.(*http.Transport).Clone()
+			// Change only the trust root and destination to the owned TLS fixture;
+			// retain the production constructor's protocol and replay policy.
+			transport.TLSClientConfig = server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
 			transport.TLSClientConfig.ServerName = server.Certificate().DNSNames[0]
 			transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 				return (&net.Dialer{}).DialContext(ctx, "tcp", server.Listener.Addr().String())
