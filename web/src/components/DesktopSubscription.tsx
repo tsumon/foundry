@@ -13,7 +13,7 @@ const blockers: Record<string, string> = {
   authorization_expired:
     "授权已过期；目录与新任务选择关闭，不会刷新或重新登录。",
   authorization_unavailable: "缺少可用授权；先完成独立连接审批。",
-  prerequisite_unavailable: "缺少当前成功连接证据；目录仍关闭。",
+  prerequisite_unavailable: "缺少当前阶段所需的有效前置证据；操作仍关闭。",
   admission_unavailable: "本进程准入不可用；操作关闭。",
 };
 export function DesktopSubscription({
@@ -47,11 +47,15 @@ export function DesktopSubscription({
   const accept = (next: DesktopPreparation) => {
     if (
       !next?.preparation ||
-      !["unprepared", "connection", "catalog"].includes(
+      !["unprepared", "connection", "catalog", "inference"].includes(
         next.preparation.phase,
       ) ||
       typeof next.preparation.connection_ready !== "boolean" ||
       typeof next.preparation.catalog_ready !== "boolean" ||
+      (next.preparation.inference_ready !== undefined &&
+        typeof next.preparation.inference_ready !== "boolean") ||
+      (next.preparation.phase === "inference" &&
+        typeof next.preparation.inference_ready !== "boolean") ||
       !Array.isArray(next.catalog_choices)
     )
       throw Error("invalid metadata");
@@ -103,7 +107,7 @@ export function DesktopSubscription({
       const next = await desktopSubscriptionApi.read(account.id);
       if (current === epoch.current) accept(next);
     });
-  const prepare = (phase: "connection" | "catalog") =>
+  const prepare = (phase: "connection" | "catalog" | "inference") =>
     run(async () => {
       const current = epoch.current;
       const next = await desktopSubscriptionApi.prepare(
@@ -141,20 +145,25 @@ export function DesktopSubscription({
         写入、读取和精确删除检查；只有确认清理成功才获得十分钟本进程准备权限。不会登录、打开浏览器或自动批准材料。
       </p>
       <p>
-        连接、目录与未来任务选择互相独立；这些准备操作不查询模型、不刷新或重试，也不切换付费
+        连接、目录、单次诊断与未来任务选择互相独立；这些准备操作不查询模型、不调用模型、不刷新或重试，也不切换付费
         API。保持登录需要在下方单独审批会话续期。
       </p>
       {message && <p role="alert">{message}</p>}
       {state && (
         <p>
           {state.blocker
-            ? (blockers[state.blocker] ??
-              "准备不可用；状态未知，操作保持关闭。")
+            ? state.blocker === "prerequisite_unavailable" &&
+              state.phase === "inference"
+              ? "缺少当前有效目录中的指定模型证据；单次诊断仍关闭，不会重新登录或自动查询。"
+              : (blockers[state.blocker] ??
+                "准备不可用；状态未知，操作保持关闭。")
             : state.connection_ready
               ? "连接准备就绪；下一步生成并独立审批连接材料。"
               : state.catalog_ready
                 ? "目录准备就绪；下一步生成并独立审批目录材料。"
-                : "尚未准备；真实登录与模型查询均未开始。"}
+                : state.inference_ready
+                  ? "单次诊断准备就绪；下一步绑定原任务预算并独立审批诊断材料，不会自动调用。"
+                  : "尚未准备；真实登录与模型查询均未开始。"}
         </p>
       )}
       <label>
@@ -199,6 +208,18 @@ export function DesktopSubscription({
           onClick={() => void prepare("catalog")}
         >
           独立准备目录
+        </button>
+        <button
+          disabled={
+            busy ||
+            unknown ||
+            !snapshot ||
+            !eligible.some((r) => r.id === route) ||
+            stopped
+          }
+          onClick={() => void prepare("inference")}
+        >
+          独立准备单次诊断
         </button>
         <button disabled={busy} onClick={() => void read()}>
           读取准备与本地目录证据

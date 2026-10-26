@@ -5,6 +5,7 @@ package acceptance
 import (
 	"context"
 	"foundry/internal/domain"
+	"foundry/internal/model"
 	"foundry/internal/store"
 	"io"
 	"net/http"
@@ -14,11 +15,13 @@ import (
 )
 
 type InferenceBrowserFixture struct {
-	Service   *Service
-	Store     *store.Store
-	Account   domain.ModelAccount
-	Operation domain.ModelAcceptanceOperation
-	Counters  func() (int32, int32)
+	Service          *Service
+	Store            *store.Store
+	Account          domain.ModelAccount
+	Operation        domain.ModelAcceptanceOperation
+	Counters         func() (int32, int32)
+	Desktop          *DesktopCoordinator
+	PrepareTransport func()
 }
 
 func NewInferenceBrowserFixture(t *testing.T, scenario string) InferenceBrowserFixture {
@@ -26,7 +29,7 @@ func NewInferenceBrowserFixture(t *testing.T, scenario string) InferenceBrowserF
 	s, db, a, r, c, resolver, calls, _ := inferenceController(t)
 	body := inferenceCompletion
 	switch scenario {
-	case "pending", "approved", "success", "expired", "default-closed":
+	case "pending", "approved", "success", "expired", "default-closed", "desktop":
 	case "quota":
 		body = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"FOUNDRY_INFERENCE_OK\"}\n\ndata: {\"type\":\"response.failed\",\"response\":{\"object\":\"response\",\"status\":\"failed\",\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n"
 	case "interrupted":
@@ -43,7 +46,7 @@ func NewInferenceBrowserFixture(t *testing.T, scenario string) InferenceBrowserF
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}, "X-Request-Id": {"req_local_simulation"}}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
 	o := proposeInference(t, s, a, r, c)
-	if scenario != "pending" {
+	if scenario != "pending" && scenario != "desktop" {
 		o = approveCatalog(t, s, o)
 	}
 	if scenario == "expired" {
@@ -58,7 +61,19 @@ func NewInferenceBrowserFixture(t *testing.T, scenario string) InferenceBrowserF
 		}
 		t.Cleanup(func() { _ = s.Close() })
 	}
-	return InferenceBrowserFixture{Service: s, Store: db, Account: a, Operation: o, Counters: func() (int32, int32) { return resolver.reads.Load(), calls.Load() }}
+	f := InferenceBrowserFixture{Service: s, Store: db, Account: a, Operation: o, Counters: func() (int32, int32) { return resolver.reads.Load(), calls.Load() }}
+	if scenario == "desktop" {
+		f.Desktop = NewDesktopCoordinator(db, DesktopOptions{Resolver: resolver, Probe: func() error { t.Error("diagnostic UI invoked native probe"); return model.ErrSecretStoreUnavailable }})
+		t.Cleanup(func() { _ = f.Desktop.Close() })
+		f.PrepareTransport = func() {
+			f.Desktop.WithService(func(gate *Service) {
+				if gate.inference != nil {
+					gate.inference.http.Transport = s.inference.http.Transport
+				}
+			})
+		}
+	}
+	return f
 }
 
 func TestInferenceBrowserFixtureOutcomes(t *testing.T) {

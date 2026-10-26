@@ -32,7 +32,7 @@ func (s *server) desktopPreparation(w http.ResponseWriter, r *http.Request, acco
 			writeDecodeError(w, e)
 			return
 		}
-		if q.Revision < 1 || domain.ValidateModelCredentialOperation(q.RouteID) != nil || (q.Phase != "connection" && q.Phase != "catalog") {
+		if q.Revision < 1 || domain.ValidateModelCredentialOperation(q.RouteID) != nil || (q.Phase != "connection" && q.Phase != "catalog" && q.Phase != "inference") {
 			writeError(w, 400, "validation", "invalid preparation")
 			return
 		}

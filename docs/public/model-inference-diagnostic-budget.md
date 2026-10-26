@@ -94,3 +94,30 @@ valid credential, valid prerequisite evidence, a current task binding and an
 independent execution approval. Correlation can support a separately authorized
 provider inquiry; a client-side trace alone cannot establish which remote
 gateway omitted a response header.
+
+## Desktop activation correction
+
+The desktop coordinator must explicitly prepare the `inference` phase before
+the existing single-call form can propose material. Operator startup flags are
+not a substitute: desktop mode rejects operator flags, and the non-desktop
+recovery path rejects coding-task databases. Neither restriction is relaxed.
+
+Add a metadata-only "independent diagnostic preparation" action beside the
+existing connection and catalog actions. It constructs the same production
+inference service with the host-provided credential resolver, retires previous
+in-process authority, and preserves active-session and concurrent-preparation
+exclusion. Preparation does not lease credentials, probe Keychain, query the
+catalog, dispatch inference, resume a task or start a VM. No authority survives
+a process restart. The separate proposal, approval, one-call budget debit and
+execution checks remain unchanged.
+
+Implementation and acceptance order:
+
+1. Reproduce the missing coordinator, HTTP and UI wiring in offline regressions.
+2. Add the inference phase, explicit readiness metadata and preparation button;
+   keep unsupported phases, stale account revisions and foreign routes denied.
+3. Test pending denial, independent approval, one dispatch, 3/7 to 4/7 debit,
+   duplicate rejection, phase replacement, restart and missing-media failure.
+4. Run Go/race/vet, frontend and desktop tests and synthetic interface acceptance.
+   Publish only reviewed source and use the verified installer. A real diagnostic
+   still needs current prerequisite evidence and its own user authorization.

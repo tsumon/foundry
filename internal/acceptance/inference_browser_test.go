@@ -48,7 +48,7 @@ func startInferenceBrowser(t *testing.T, scenario, webDir string) browserRuntime
 	client := model.NewClient(browserSecrets{})
 	e := engine.New(f.Store, client, engine.Options{DataDir: root})
 	t.Cleanup(func() { _ = e.Close() })
-	base := httpapi.New(f.Store, e, client, browserSecrets{}, httpapi.Options{Acceptance: f.Service, Address: listener.Addr().String(), WebDir: webDir})
+	base := httpapi.New(f.Store, e, client, browserSecrets{}, httpapi.Options{Acceptance: f.Service, DesktopAccounts: f.Desktop, CodingWorkbench: f.Desktop != nil, Address: listener.Addr().String(), WebDir: webDir})
 	r := browserRuntime{fixture: f, url: "http://" + listener.Addr().String(), evidence: filepath.Join(root, "local-evidence.json"), stop: filepath.Join(root, "stop")}
 	var evidenceMu sync.Mutex
 	writeEvidence := func() {
@@ -67,7 +67,8 @@ func startInferenceBrowser(t *testing.T, scenario, webDir string) browserRuntime
 			http.Error(w, "local fixture host only", http.StatusForbidden)
 			return
 		}
-		if req.Method != "GET" && req.Method != "HEAD" && req.URL.Path != "/api/session" && !strings.HasPrefix(req.URL.Path, "/api/model-accounts/"+f.Account.ID+"/acceptance-operations") {
+		preparation := f.Desktop != nil && req.URL.Path == "/api/model-accounts/"+f.Account.ID+"/desktop-preparation"
+		if req.Method != "GET" && req.Method != "HEAD" && req.URL.Path != "/api/session" && !strings.HasPrefix(req.URL.Path, "/api/model-accounts/"+f.Account.ID+"/acceptance-operations") && !preparation {
 			http.Error(w, "local fixture permits acceptance operations only", http.StatusForbidden)
 			return
 		}
@@ -83,6 +84,9 @@ func startInferenceBrowser(t *testing.T, scenario, webDir string) browserRuntime
 			return
 		}
 		defer writeEvidence()
+		if preparation && req.Method == "POST" {
+			defer f.PrepareTransport()
+		}
 		base.ServeHTTP(w, req)
 	})
 	r.server = &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute}

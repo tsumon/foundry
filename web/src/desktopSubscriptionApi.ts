@@ -6,6 +6,7 @@ export interface DesktopPreparation {
     blocker?: string;
     connection_ready: boolean;
     catalog_ready: boolean;
+    inference_ready?: boolean;
   };
   catalog_choices: {
     operation_id: string;
@@ -21,7 +22,7 @@ export const desktopSubscriptionApi = {
   read: (id: string) => request<DesktopPreparation>(path(id)),
   prepare: (
     id: string,
-    phase: "connection" | "catalog",
+    phase: "connection" | "catalog" | "inference",
     route_id: string,
     expected_account_revision: number,
   ) =>

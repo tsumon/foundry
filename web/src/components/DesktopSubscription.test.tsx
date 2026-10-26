@@ -42,6 +42,41 @@ const closed = {
 };
 afterEach(() => vi.resetAllMocks());
 describe("desktop subscription preparation", () => {
+  it("explicitly prepares the independent diagnostic gate without dispatch", async () => {
+    vi.mocked(desktopSubscriptionApi.read).mockResolvedValue(closed);
+    vi.mocked(desktopSubscriptionApi.prepare).mockResolvedValue({
+      ...closed,
+      preparation: {
+        ...closed.preparation,
+        phase: "inference",
+        route_id: "r",
+        inference_ready: true,
+      },
+    } as never);
+    const prepared = vi.fn();
+    render(
+      <DesktopSubscription
+        account={account}
+        routes={[route]}
+        onPrepared={prepared}
+        onProfileSaved={() => {}}
+      />,
+    );
+    await screen.findByText(/尚未准备/);
+    fireEvent.change(screen.getByLabelText("订阅准备路由"), {
+      target: { value: "r" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "独立准备单次诊断" }));
+    await screen.findByText(/单次诊断准备就绪/);
+    expect(desktopSubscriptionApi.prepare).toHaveBeenCalledExactlyOnceWith(
+      "a",
+      "inference",
+      "r",
+      1,
+    );
+    expect(prepared).toHaveBeenCalledOnce();
+    expect(api.saveProfile).not.toHaveBeenCalled();
+  });
   it("reads metadata only; preparation does not approve, execute or open a browser", async () => {
     vi.mocked(desktopSubscriptionApi.read).mockResolvedValue(closed);
     vi.mocked(desktopSubscriptionApi.prepare).mockResolvedValue({
