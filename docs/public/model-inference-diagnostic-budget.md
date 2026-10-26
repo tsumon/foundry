@@ -121,3 +121,13 @@ Implementation and acceptance order:
 4. Run Go/race/vet, frontend and desktop tests and synthetic interface acceptance.
    Publish only reviewed source and use the verified installer. A real diagnostic
    still needs current prerequisite evidence and its own user authorization.
+
+When a pinned upstream source host rate-limits packaging, the desktop workflow
+can be manually dispatched with `runtime_sources_run_id` naming a previously
+verified same-repository `foundry-runtime-sources` artifact. This is an explicit
+input selection, not an automatic retry or network fallback. GitHub archive
+digest mismatch is fatal. Both runtime and installer inputs are then reverified
+using this checkout's pinned manifests, byte limits, hashes and canonical
+archive checks before a fresh sidecar is produced. Artifact-supplied manifests
+do not set expected hashes. Missing, expired or changed inputs stop packaging;
+all downstream build, installation and security checks remain required.

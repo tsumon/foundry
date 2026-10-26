@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      runtime_sources_run_id:
+        description: Optional same-repository run containing foundry-runtime-sources; every input is reverified against this checkout
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -11,6 +17,9 @@ permissions:
 jobs:
   runtime-sources:
     name: Pinned native runtime source sidecar
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -38,9 +47,29 @@ jobs:
               `macos_installer=Foundry-${version}-arm64.dmg\nwindows_installer=Foundry-${version}-x64.exe\n`);
           '
       - name: Fetch each immutable source once and check every digest
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.runtime_sources_run_id == '' }}
         run: |
           node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources"
           node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources/installer" installer
+      - name: Read explicitly selected source artifact from this repository
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime_sources_run_id != '' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: foundry-runtime-sources
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.runtime_sources_run_id }}
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: ${{ runner.temp }}/foundry-runtime-source-input
+      - name: Reverify every reused runtime and installer input with current pinned manifests
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime_sources_run_id != '' }}
+        env:
+          FOUNDRY_RUNTIME_SOURCES: ${{ runner.temp }}/foundry-runtime-source-input
+        run: |
+          set -eu
+          node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources"
+          FOUNDRY_RUNTIME_SOURCES="$FOUNDRY_RUNTIME_SOURCES/installer" \
+            node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources/installer" installer
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: foundry-runtime-sources
