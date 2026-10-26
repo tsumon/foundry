@@ -8,6 +8,7 @@ import (
 type routedHTTPResponse struct {
 	*http.Response
 	transport domain.HTTPTransportDiagnostic
+	exchange  domain.HTTPExchangeDiagnostic
 }
 
 // This observes net/http's parsed response, not the raw wire. In particular,

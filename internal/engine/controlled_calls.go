@@ -279,7 +279,7 @@ func (e *Engine) completeControlledModel(op *operation, v domain.Invocation, inp
 		usage = domain.CallUsage{UsageKnown: true, InputTokens: result.InputTokens, OutputTokens: result.OutputTokens}
 	}
 	if input.SnapshotSchema == 2 {
-		receipt := domain.SanitizeModelCallReceipt(domain.ModelCallReceipt{RequestID: result.RequestID, ResolvedModel: result.ResolvedModel, CredentialGeneration: result.CredentialGeneration, Certainty: "completed"})
+		receipt := domain.SanitizeModelCallReceipt(domain.ModelCallReceipt{RequestID: result.RequestID, ResolvedModel: result.ResolvedModel, CredentialGeneration: result.CredentialGeneration, Certainty: "completed", ExchangeDiagnostic: result.ExchangeDiagnostic})
 		usage.ModelReceipt = &receipt
 	}
 	v, err = e.s.FinishInvocation(v.ID, v.Epoch, "succeeded", &envelope, "", usage)

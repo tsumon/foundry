@@ -711,6 +711,7 @@ export interface ModelResponseDiagnostic {
 }
 
 export interface ModelCallReceipt {
+  exchange_diagnostic?: ModelExchangeDiagnostic;
   response_diagnostic?: ModelResponseDiagnostic;
   request_id?: string;
   resolved_model?: string;
@@ -721,6 +722,33 @@ export interface ModelCallReceipt {
   body_shape?: string;
   retry_after_seconds?: number;
   certainty: "completed" | "not_sent" | "rejected" | "unknown";
+}
+export interface ModelExchangeDiagnostic {
+  version: number;
+  client_request_id: string;
+  dns: ModelExchangePhase;
+  connect: ModelExchangePhase;
+  tls: ModelExchangePhase;
+  headers: ModelExchangePhase;
+  first_byte_millis: number;
+  request_writes: number;
+  write_failed: boolean;
+  reused_connection: boolean;
+  proxy_mode: string;
+  peer_class: string;
+  tls_version?: string;
+  alpn?: string;
+  tls_verified: boolean;
+  peer_certificate_sha256?: string;
+  issuer_sha256?: string;
+  final_status: number;
+  header_fields: number;
+  transport?: ModelResponseDiagnostic["transport"];
+}
+export interface ModelExchangePhase {
+  state?: string;
+  attempts: number;
+  millis: number;
 }
 export interface InvocationDetail {
   invocation: Invocation;

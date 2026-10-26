@@ -44,6 +44,7 @@ type Request struct {
 }
 
 type Result struct {
+	ExchangeDiagnostic   domain.HTTPExchangeDiagnostic `json:"exchange_diagnostic,omitzero"`
 	RequestID            string
 	ResolvedModel        string
 	CredentialGeneration int64

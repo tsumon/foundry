@@ -178,6 +178,10 @@ func (r *Router) Complete(ctx context.Context, request Request) (Result, error) 
 	}
 	defer response.Body.Close()
 	result, err := r.decodeResponse(response.Response, s.Route.Adapter)
+	result.ExchangeDiagnostic = response.exchange
+	if p, ok := err.(*ProviderError); ok && response.exchange.Valid() {
+		p.ExchangeDiagnostic = response.exchange
+	}
 	if p, ok := err.(*ProviderError); ok && p.ResponseDiagnostic.Valid() && response.transport.Valid() {
 		p.ResponseDiagnostic.Transport = response.transport
 	}
