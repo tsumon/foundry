@@ -131,3 +131,8 @@ using this checkout's pinned manifests, byte limits, hashes and canonical
 archive checks before a fresh sidecar is produced. Artifact-supplied manifests
 do not set expected hashes. Missing, expired or changed inputs stop packaging;
 all downstream build, installation and security checks remain required.
+
+Installed startup checks require connection, catalog and inference readiness to
+all be explicitly false before preparation. The installed smoke contract and its
+offline transport fixture include the inference field; an enabled or missing
+inference state fails the check rather than being ignored as an unknown field.
