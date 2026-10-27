@@ -69,6 +69,15 @@ The explicit task ID/revision fields do not choose a task automatically. The
 prepared material shows the server-validated used/max budget and snapshot; the
 receipt shows the charged budget at that operation, not a live budget refresh.
 
+The inference form's credential-expiry timer follows the current connection's
+selected successful catalog receipt, not the minimum expiry across historical
+diagnostics. A reconnected or renewed account can therefore prepare a new
+diagnostic even when an older diagnostic's credential has expired. Historical
+receipts stay visible and cannot be replayed; each selected material retains its
+own expiry, admission-generation, prerequisite and backend authorization checks.
+Offline regression coverage includes expired history from both an old connection
+and an older credential generation, plus current-credential expiry without polling.
+
 ## Implementation and offline acceptance
 
 1. Extend the versioned material/receipt contracts and task-bound validation;

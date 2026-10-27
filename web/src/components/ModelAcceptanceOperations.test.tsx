@@ -150,6 +150,63 @@ async function selectInference() {
   });
 }
 
+it.each(["old connection", "old generation"])(
+  "does not let expired %s diagnostic history disable a fresh inference gate",
+  async (kind) => {
+    const f = inferenceFixture();
+    const old = structuredClone(f.pending);
+    old.id = "historical-inference";
+    old.material.created_at = new Date(Date.now() - 700000).toISOString();
+    old.material.expires_at = new Date(Date.now() - 100000).toISOString();
+    old.material.authorization.expires_at = old.material.expires_at;
+    old.material.production_admission.generation = "f".repeat(32);
+    if (kind === "old connection") {
+      old.material.connection_id = "historical-connection";
+      old.material.authorization.binding.id = "historical-auth";
+    } else {
+      f.catalog.material.authorization.generation = 2;
+    }
+    const historical = {
+      ...old,
+      state: "unknown",
+      attempts: 1,
+      claim_sequence: 3,
+      certainty: "unknown",
+      code: "response_incomplete",
+    };
+    const fetcher = vi.fn(async () =>
+      response({
+        ...f.history,
+        operations: [f.connection, f.catalog, historical],
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    const budget = await screen.findByLabelText("预算任务 ID");
+    expect(budget).toBeEnabled();
+    fireEvent.change(budget, { target: { value: "synthetic-task" } });
+    fireEvent.change(screen.getByLabelText("预期任务版本"), {
+      target: { value: "53" },
+    });
+    expect(
+      screen.getByRole("button", { name: "创建真实推理材料" }),
+    ).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("推理已保存材料"), {
+      target: { value: historical.id },
+    });
+    expect(screen.getByText("response_incomplete")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "执行推理" }),
+    ).not.toBeInTheDocument();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+
 it("requires an explicit task revision before preparing a charged diagnostic", async () => {
   const f = inferenceFixture();
   const fetcher = vi.fn(async () =>

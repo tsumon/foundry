@@ -1112,15 +1112,16 @@ function AcceptanceOperations({
     );
   }, [catalog?.id, catalog?.revision, productionCatalog, productionInference]);
 
-  // No polling: the local timer only closes controls at the known credential expiry.
+  // No polling: only the current prerequisite controls the inference gate.
+  // Expired diagnostic history remains readable, but is not current authority.
+  // Each selected operation still checks its own expiry and frozen lineage.
   const catalogAuthorizationExpiry =
     productionCatalog || productionInference
       ? operations
           .filter(
             (operation) =>
               (productionInference
-                ? operation.source === "production_inference" ||
-                  operation.id === catalog?.id
+                ? operation.id === catalog?.id
                 : operation.source === "production_catalog" &&
                   operation.material.production_admission?.generation ===
                     snapshot?.production_admission?.generation) &&
