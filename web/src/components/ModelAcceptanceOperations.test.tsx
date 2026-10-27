@@ -150,6 +150,42 @@ async function selectInference() {
   });
 }
 
+it.each(["credential_access_failed", "credential_wait_expired"])(
+  "shows %s as a local unsent failure without login or replay",
+  async (code) => {
+    const f = inferenceFixture();
+    const failed = {
+      ...f.pending,
+      revision: 4,
+      state: "failed",
+      attempts: 1,
+      claim_sequence: 3,
+      certainty: "not_sent",
+      code,
+    };
+    const fetcher = vi.fn(async () =>
+      response({ ...f.history, operations: [f.connection, f.catalog, failed] }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <ModelAcceptanceOperations
+        account={f.account}
+        refreshAccount={async () => {}}
+      />,
+    );
+    await selectInference();
+    expect(screen.getByText("传输：未发送")).toBeVisible();
+    expect(
+      screen.getByText(/本机凭据阶段未完成；这不是服务端拒绝登录/),
+    ).toBeVisible();
+    expect(screen.getByText(/网络请求期限 30 秒/)).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "执行推理" }),
+    ).not.toBeInTheDocument();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+
 it.each(["old connection", "old generation"])(
   "does not let expired %s diagnostic history disable a fresh inference gate",
   async (kind) => {

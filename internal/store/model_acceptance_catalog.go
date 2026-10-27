@@ -90,7 +90,7 @@ func validateSingleRequestClaim(tx *sql.Tx, claim domain.ModelAcceptanceOperatio
 		return ErrConflict
 	}
 	started, e := time.Parse(time.RFC3339Nano, o.StartedAt)
-	if e != nil || now.Before(started) || !started.Add(30*time.Second).After(now) {
+	if e != nil || now.Before(started) || o.Source == "production_catalog" && !started.Add(30*time.Second).After(now) {
 		return ErrConflict
 	}
 	var sequence int64

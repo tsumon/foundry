@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -29,7 +30,7 @@ func NewInferenceBrowserFixture(t *testing.T, scenario string) InferenceBrowserF
 	s, db, a, r, c, resolver, calls, _ := inferenceController(t)
 	body := inferenceCompletion
 	switch scenario {
-	case "pending", "approved", "success", "expired", "default-closed", "desktop":
+	case "pending", "approved", "success", "expired", "default-closed", "desktop", "credential-denied":
 	case "quota":
 		body = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"FOUNDRY_INFERENCE_OK\"}\n\ndata: {\"type\":\"response.failed\",\"response\":{\"object\":\"response\",\"status\":\"failed\",\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n"
 	case "interrupted":
@@ -62,6 +63,11 @@ func NewInferenceBrowserFixture(t *testing.T, scenario string) InferenceBrowserF
 		t.Cleanup(func() { _ = s.Close() })
 	}
 	f := InferenceBrowserFixture{Service: s, Store: db, Account: a, Operation: o, Counters: func() (int32, int32) { return resolver.reads.Load(), calls.Load() }}
+	if scenario == "credential-denied" {
+		var reads atomic.Int32
+		installInferenceWaitSecrets(t, s, func() { reads.Add(1) }, &model.CredentialAccessError{})
+		f.Counters = func() (int32, int32) { return reads.Load(), calls.Load() }
+	}
 	if scenario == "desktop" {
 		f.Desktop = NewDesktopCoordinator(db, DesktopOptions{Resolver: resolver, Probe: func() error { t.Error("diagnostic UI invoked native probe"); return model.ErrSecretStoreUnavailable }})
 		t.Cleanup(func() { _ = f.Desktop.Close() })
@@ -77,7 +83,7 @@ func NewInferenceBrowserFixture(t *testing.T, scenario string) InferenceBrowserF
 }
 
 func TestInferenceBrowserFixtureOutcomes(t *testing.T) {
-	for _, scenario := range []string{"pending", "approved", "success", "quota", "interrupted", "expired", "default-closed"} {
+	for _, scenario := range []string{"pending", "approved", "success", "quota", "interrupted", "expired", "default-closed", "credential-denied"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := NewInferenceBrowserFixture(t, scenario)
 			if reads, sends := f.Counters(); reads != 0 || sends != 0 {
@@ -91,6 +97,13 @@ func TestInferenceBrowserFixtureOutcomes(t *testing.T) {
 				return
 			}
 			result, err := f.Service.Execute(context.Background(), o.AccountID, o.ID, o.Revision, o.MaterialDigest)
+			if scenario == "credential-denied" {
+				reads, sends := f.Counters()
+				if err != nil || result.State != "failed" || result.Code != "credential_access_failed" || reads != 1 || sends != 0 {
+					t.Fatal("local denial fixture escaped boundary", result.Code, err)
+				}
+				return
+			}
 			if scenario == "expired" || scenario == "default-closed" {
 				if err == nil {
 					t.Fatal("closed fixture executed")

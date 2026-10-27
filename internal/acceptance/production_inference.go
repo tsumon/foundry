@@ -98,13 +98,10 @@ func (s *Service) executeInference(ctx context.Context, o domain.ModelAcceptance
 	if e := s.store.ReserveProductionInferenceDispatch(o, s.inference.admission, s.now()); e != nil {
 		return s.finishInference(o, model.Result{}, catalogFailure("request_rejected", "not_sent"))
 	}
-	started, _ := time.Parse(time.RFC3339Nano, o.StartedAt)
 	expiry, _ := time.Parse(time.RFC3339Nano, o.Material.ExpiresAt)
-	deadline := started.Add(30 * time.Second)
-	if expiry.Before(deadline) {
-		deadline = expiry
-	}
-	ctx, cancel := context.WithDeadline(ctx, deadline)
+	// Native credential access may wait for the OS. It remains bounded by the
+	// approved material and caller cancellation, not by the HTTP window.
+	ctx, cancel := context.WithDeadline(ctx, expiry)
 	defer cancel()
 	result, e := s.requestInference(ctx, o)
 	if e == nil && ctx.Err() != nil {
@@ -137,9 +134,28 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 		return fail("request_rejected", "not_sent")
 	}
 	lease, e := s.inference.resolver.ResolveModelCredential(ctx, o.Material.Selection())
+	if ctx.Err() != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fail("credential_wait_expired", "not_sent")
+		}
+		return fail("request_rejected", "not_sent")
+	}
+	var localAccess *model.CredentialAccessError
+	if errors.As(e, &localAccess) {
+		return fail("credential_access_failed", "not_sent")
+	}
 	if e != nil || lease.Secret == "" || strings.ContainsAny(lease.Secret, "\r\n") || lease.Generation != o.Material.Authorization.Generation {
 		return fail("auth_invalid", "not_sent")
 	}
+	if !validate() {
+		return fail("request_rejected", "not_sent")
+	}
+	sendAt := s.now()
+	if e = s.store.BeginProductionInferenceSend(o, s.inference.admission, sendAt); e != nil {
+		return fail("request_rejected", "not_sent")
+	}
+	ctx, cancel := context.WithDeadline(ctx, sendAt.Add(30*time.Second))
+	defer cancel()
 	req, e := http.NewRequestWithContext(ctx, http.MethodPost, domain.OpenAIInferenceURL, strings.NewReader(domain.OpenAIInferenceBody))
 	if e != nil {
 		return fail("request_rejected", "not_sent")
@@ -185,6 +201,9 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 		return model.Result{}, &model.ProviderError{Code: "response_incomplete", Certainty: "unknown", ResponseDiagnostic: d}
 	}
 	result, e = model.DecodeSubscriptionInference(response.Body, lease.Secret)
+	if e == nil && ctx.Err() != nil {
+		return fail("transport_unknown", "unknown")
+	}
 	id := response.Header.Get("X-Request-ID")
 	if domain.ValidModelCatalogIdentifier(id) && !strings.Contains(id, lease.Secret) {
 		if e == nil {

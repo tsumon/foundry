@@ -87,6 +87,15 @@ export function validInferenceReceipt(o: ModelAcceptanceOperation): boolean {
   const completed = o.state === "succeeded";
   const unknown = o.state === "unknown";
   if (
+    ["credential_access_failed", "credential_wait_expired"].includes(
+      o.code ?? "",
+    ) &&
+    (o.state !== "failed" ||
+      o.certainty !== "not_sent" ||
+      o.inference_diagnostic !== undefined)
+  )
+    return false;
+  if (
     o.catalog.length !== 0 ||
     (o.inference_diagnostic !== undefined &&
       (o.attempts !== 1 ||

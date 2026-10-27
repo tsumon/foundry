@@ -96,6 +96,9 @@ func TestProductionInferenceExpiryAtEveryBoundary(t *testing.T) {
 				return
 			}
 			matched := true
+			if e = s.BeginProductionInferenceSend(o, admission, now); e != nil {
+				t.Fatal(e)
+			}
 			evidence := domain.InferenceEvidence{TerminalEvent: "response.completed", ResolvedModel: "gpt-6.1-sol", OutputMatched: &matched, OutputDigest: domain.AcceptanceDigest("FOUNDRY_INFERENCE_OK")}
 			if _, e = s.FinishProductionInference(o, admission, "succeeded", "completed", "", evidence, 0, 0, false, now.Add(31*time.Second)); e == nil {
 				t.Fatal("late success accepted")
@@ -198,6 +201,9 @@ func TestProductionInferenceReceiptAuthorityAndEvidence(t *testing.T) {
 			}
 			if change != "no reservation" && change != "rejected without reservation" {
 				if e = s.ReserveProductionInferenceDispatch(o, admission, now); e != nil {
+					t.Fatal(e)
+				}
+				if e = s.BeginProductionInferenceSend(o, admission, now); e != nil {
 					t.Fatal(e)
 				}
 			}

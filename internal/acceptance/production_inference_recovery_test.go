@@ -81,6 +81,9 @@ func TestProductionInferenceReopenMarksAbandonedClaimUnknown(t *testing.T) {
 	if e = db.ReserveProductionInferenceDispatch(running, s.inference.admission, time.Now()); e != nil {
 		t.Fatal(e)
 	}
+	if e = db.BeginProductionInferenceSend(running, s.inference.admission, time.Now()); e != nil {
+		t.Fatal(e)
+	}
 	s.Close()
 	db.Close()
 	reopened, e := store.Open(path)

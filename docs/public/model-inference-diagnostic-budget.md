@@ -56,6 +56,25 @@ Token usage remains unknown unless a validated provider receipt says
 otherwise; a short prompt, response byte limit or timeout is not a provider-side
 token or monetary cap.
 
+Native credential access is a separate local phase. The existing material expiry
+(at most ten minutes and never beyond the frozen credential expiry) and caller
+cancellation bound permission to use its result. Native OS calls may be
+uninterruptible while the OS is servicing them; a late result must not cause a
+send. There is no background read goroutine that sends after cancellation.
+The account, exact grant/generation, task budget and prerequisite are rechecked
+after access. An append-only send checkpoint starts the network's 30-second
+deadline; the HTTP client, context and durable success gate enforce that window.
+A missing or out-of-window checkpoint cannot produce success. Catalog timing
+and the original completion/Content-Type rules are unchanged.
+
+`credential_access_failed` means local secure-storage access did not yield a
+usable value; `credential_wait_expired` means the local wait's context expired.
+Both are unsent failures, not provider authentication responses. No native error
+text or secret is stored, and neither automatically revokes a grant, requests
+login, refreshes, refunds the reserved call or retries it. The current independent
+approval and budget rules still apply to any later attempt. Old receipts are not
+reclassified or backfilled from these new diagnostics.
+
 ## Workbench and approval boundaries
 
 Keep the current settings/workbench layout. The existing single-call form gains

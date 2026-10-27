@@ -45,6 +45,8 @@ const stateLabels: Record<ModelAcceptanceOperation["state"], string> = {
 };
 const phases: ModelAcceptancePhase[] = ["connection", "catalog", "inference"];
 const receiptCodes = new Set([
+  "credential_access_failed",
+  "credential_wait_expired",
   "auth_invalid",
   "entitlement_denied",
   "quota_exhausted",
@@ -580,6 +582,10 @@ function validOperation(
     value.material.account.id === accountID &&
     digest.test(value.material_digest) &&
     (value.code === undefined || receiptCodes.has(value.code)) &&
+    (!["credential_access_failed", "credential_wait_expired"].includes(
+      value.code ?? "",
+    ) ||
+      value.source === "production_inference") &&
     Array.isArray(value.catalog) &&
     (value.source === "production_inference"
       ? validInferenceReceipt(value)
@@ -2084,7 +2090,9 @@ function OperationReview({
             ? `批准有效期 10 分钟 · 人工登录窗口 ${material.login_timeout_seconds} 秒（执行后开始） · 网络操作期限 ${material.deadline_seconds} 秒 · 批准到期 ${material.expires_at}`
             : material.connection_purpose === "subscription_only"
               ? `批准有效期 10 分钟 · 执行期限 ${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`
-              : `${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`}
+              : inference
+                ? `网络请求期限 ${material.deadline_seconds} 秒（凭据读取后开始）· 本机凭据等待不超过材料到期 ${material.expires_at}`
+                : `${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`}
         </dd>
         <dt>尝试预算</dt>
         <dd>
@@ -2102,7 +2110,7 @@ function OperationReview({
             或金额上限。可能消耗套餐额度；额度未知、远端计费未验证。执行前请核对提供方设置并接受可能的套餐消耗。
           </p>
           <p>
-            30 秒本地超时与 1 MiB 接收限制不保证远端取消或退款。store:false
+            30 秒网络超时与 1 MiB 接收限制不保证远端取消或退款。store:false
             不承诺提供方不保留运营数据。这是连接测试，不是编码质量评估。
           </p>
         </div>
@@ -2143,6 +2151,13 @@ function OperationReview({
             <p>终止事件：{operation.terminal_event}</p>
           )}
           {operation.code && <p>错误分类：{operation.code}</p>}
+          {["credential_access_failed", "credential_wait_expired"].includes(
+            operation.code ?? "",
+          ) && (
+            <p>
+              本机凭据阶段未完成；这不是服务端拒绝登录。现有授权记录保留，不自动重新登录或重试；本次预算仍已计入。
+            </p>
+          )}
           {operation.provider_code && (
             <p>提供方代码：{operation.provider_code}</p>
           )}

@@ -15,6 +15,12 @@ type CredentialResolver interface {
 	ResolveModelCredential(context.Context, domain.RoleModelSelection) (CredentialLease, error)
 }
 
+// CredentialAccessError identifies local secure-storage access failure without
+// exposing the native error, item reference or secret. It does not revoke a grant.
+type CredentialAccessError struct{}
+
+func (*CredentialAccessError) Error() string { return "local credential access failed" }
+
 type SelectionPreflighter interface {
 	PreflightModelSelection(context.Context, int, domain.RoleModelSelection) error
 }
@@ -41,6 +47,11 @@ func (e *ProviderError) Error() string {
 	switch e.Code {
 	case "auth_invalid", "entitlement_denied", "quota_exhausted", "rate_limited", "request_rejected", "server_error", "transport_unknown", "response_incomplete", "live_provider_access_pending_confirmation":
 		return e.Code
+	case "credential_access_failed", "credential_wait_expired":
+		if e.Certainty == "not_sent" {
+			return e.Code
+		}
+		return "model_provider_error"
 	default:
 		return "model_provider_error"
 	}

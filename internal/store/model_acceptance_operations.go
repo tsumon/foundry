@@ -522,6 +522,10 @@ func (s *Store) finishModelAcceptance(account, id string, revision int64, state,
 	}
 	switch code {
 	case "", "auth_invalid", "entitlement_denied", "quota_exhausted", "rate_limited", "request_rejected", "server_error", "transport_unknown", "response_incomplete":
+	case "credential_access_failed", "credential_wait_expired":
+		if expected == nil || expected.Source != "production_inference" || state != "failed" || certainty != "not_sent" {
+			return o, ErrConflict
+		}
 	default:
 		return o, ErrConflict
 	}
@@ -558,6 +562,15 @@ func (s *Store) finishModelAcceptance(account, id string, revision int64, state,
 		return o, ErrConflict
 	}
 	if o.Source == "production_inference" {
+		if code == "credential_access_failed" || code == "credential_wait_expired" {
+			var sends int
+			if len(inference) != 1 || inference[0].diagnostic != nil {
+				return o, ErrConflict
+			}
+			if e = tx.QueryRow(`SELECT count(*) FROM model_acceptance_inference_sends WHERE operation_id=?`, o.ID).Scan(&sends); e != nil || sends != 0 {
+				return o, ErrConflict
+			}
+		}
 		if len(inference) != 1 || len(catalog) != 0 || diagnostic != nil || !validInferenceEvidence(state, certainty, code, inference[0].evidence, input, output, usage) {
 			return o, ErrConflict
 		}
@@ -576,6 +589,11 @@ func (s *Store) finishModelAcceptance(account, id string, revision int64, state,
 		return o, ErrConflict
 	}
 	if state == "succeeded" {
+		if o.Source == "production_inference" {
+			if e = validateInferenceSendWindow(tx, o, now); e != nil {
+				return o, e
+			}
+		}
 		if o.Source == "production_catalog" || o.Source == "production_inference" {
 			claim := o
 			if expected != nil {

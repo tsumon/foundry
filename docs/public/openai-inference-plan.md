@@ -12,11 +12,54 @@
 
 **Spec:** [openai-inference-gate.md](openai-inference-gate.md)
 
+## Credential-wait correction (2026-10-27)
+
+The single-inference adapter and its durable finish gate both counted native
+credential access inside the 30-second transport window. A local wait could
+therefore produce `auth_invalid / not_sent` despite an otherwise usable grant.
+Native storage errors and context expiry also collapsed into the same category.
+The correction is limited to this independently approved inference entry.
+
+- [x] Reproduce a 31-second synthetic credential-store wait through the actual
+  account resolver, acceptance controller and ledger; require one completed
+  local response, unchanged authorization and one retained budget debit.
+- [x] Bound credential access by cancellation and the existing material expiry.
+  After access, repeat account, grant/generation, task/budget and prerequisite
+  validation. Add an immutable per-operation send checkpoint; start the 30-second
+  HTTP window there, bounded by material expiry. A missing, duplicate, future or
+  expired send checkpoint must never permit a successful receipt.
+- [x] Distinguish local credential-access failure and local wait expiry with
+  finite codes; keep tokens, native error prose and account data out of evidence.
+  Cancellation and authority changes never reach HTTP. Do not revoke, refresh,
+  relogin, refund or retry as a side effect of local failure.
+- [x] Cover before/after-send cancellation, expiry, changed authority, a blocked
+  network call, missing Content-Type, duplicate sends, database reopen and forged
+  success. Preserve all original SSE, model and output-success checks.
+- [x] Keep the existing workbench layout; explain the separate credential and
+  transport phases and local-only failures. Check the local fixture visually.
+- [ ] Run offline Go/race/vet, frontend, desktop, export and security checks;
+  obtain independent review, push the exact commit, finish both CI workflows,
+  verify the Mac installer and install with the original app closed. User data,
+  task budget and prior receipts remain byte-for-byte unchanged during this work.
+
+Implementation touchpoints: `internal/acceptance/production_inference.go`,
+`internal/store/model_acceptance_{catalog,inference,operations,production}.go`,
+`internal/accounts/model_authorizations.go`, the model error contract, existing
+workbench receipt rendering and their focused tests. The timing table is additive;
+historical operation JSON and digests are not migrated or backfilled. Old process
+admission cannot authorize execution after restart. Catalog timing is unchanged.
+
+Verification starts with
+`go test ./internal/acceptance -run ProductionInferenceCredential -count=1`;
+the long-wait regression must fail before the correction and pass afterwards.
+Then run the full existing verification and installer workflows. All credential
+and model boundaries in local tests use disposable synthetic fixtures only.
+
 ## Global Constraints
 
 - Fixed model `gpt-6.1-sol`; fixed prompt `Reply exactly: FOUNDRY_INFERENCE_OK`; expected text `FOUNDRY_INFERENCE_OK`.
 - Only POST `https://api.openai.com/v1/responses`, `store:false`, `stream:true`; no extra instructions/history/tools or `max_output_tokens`.
-- Independent creation, approval and explicit execution; `max_attempts:1`, deadline 30 seconds, total response limit 1 MiB, material TTL min(10 minutes, credential expiry).
+- Independent creation, approval and explicit execution; `max_attempts:1`, network deadline 30 seconds after credential access, total response limit 1 MiB, material TTL min(10 minutes, credential expiry). Cancellation/material expiry still prevent using a late native credential result.
 - Default closed; no real login, Keychain access, catalog query or inference in implementation/verification; no refresh, retry, fallback, role/task changes, scripts or Git execution inside Foundry.
 - Keep the current workbench UI and all existing approval boundaries. Local fixtures never represent real acceptance.
 - No private operational records, identity metadata, tokens or internal analysis in public commits. Only reviewed clean source/documents; no Release.
