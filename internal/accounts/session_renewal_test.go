@@ -143,7 +143,7 @@ func TestSessionRenewalFailuresNeverReplay(t *testing.T) {
 			if issuer.tokenCalls.Load()-calls != expectedCalls {
 				t.Fatalf("requests=%d", issuer.tokenCalls.Load()-calls)
 			}
-			if name != "earliest" && name != "secret_delete" && after.State == "available" {
+			if name != "earliest" && name != "secret_delete" && name != "secret_get" && after.State == "available" {
 				t.Fatal("failure left credentials available")
 			}
 			receipt, _ := ledger.SessionRenewalReceipt(account.ID)

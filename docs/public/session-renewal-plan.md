@@ -19,6 +19,27 @@
 - Keep existing UI layout and independent operation approvals. Never publish secrets or private acceptance records.
 - Mac and Windows share behavior and preserve their existing native secret backends.
 
+## Native credential wait correction (2026-10-27)
+
+- [ ] Reproduce both credential reads waiting longer than 30 seconds using the
+  existing signed loopback issuer and a credential latency wrapper; assert one
+  refresh, confirmed rotation, no resource/model call and no second tick replay.
+- [ ] Remove the network deadline from the desktop-owned local wait. Start a
+  fresh 30-second exchange deadline in `siwc_operations.go` after credential
+  reads and consent checks, preserving cancellation and strict response checks.
+- [ ] Mark only failures before the durable rotation intent as
+  `credential_preflight/not_sent`; the store verifies no later intent exists
+  before retaining the grant. Keep unknown/after-intent failures conservative,
+  with no automatic retries, history reclassification or token replay.
+- [ ] Cover canceled/denied preflight, consent withdrawal during either read,
+  canceled network requests, restart and unsafe certainty claims. Add UI tests
+  and synthetic browser acceptance for the local-unsent explanation.
+- [ ] Run full offline Go/race/vet, frontend and desktop contracts, independent
+  review, then unchanged security CI and native packaging. Update installed Mac
+  only after exact-commit CI and artifact verification; use isolated acceptance
+  data and keep the real application closed. Verify original 4/7 task data and
+  source/evidence hashes unchanged. Real refresh/model validation is separate.
+
 ## Task 1: Complete the controlled renewal vertical slice
 
 **Files and responsibilities:**

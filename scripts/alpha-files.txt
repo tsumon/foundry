@@ -10,6 +10,7 @@ internal/store/session_renewal.go
 internal/store/session_renewal_test.go
 internal/accounts/session_renewal.go
 internal/accounts/session_renewal_test.go
+internal/accounts/session_renewal_wait_test.go
 internal/httpapi/session_renewal.go
 internal/httpapi/session_renewal_test.go
 internal/httpapi/session_renewal_browser_fixture_test.go

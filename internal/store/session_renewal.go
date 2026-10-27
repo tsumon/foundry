@@ -249,7 +249,7 @@ func (s *Store) FinishSessionRenewal(id string, generation, newGeneration int64,
 	if stage != "succeeded" && stage != "recovery_required" && stage != "login_required" && stage != "waiting" {
 		return domain.ErrSessionRenewal
 	}
-	if category != "" && category != "renewal_failed" && category != "auth_invalid" && category != "refresh_not_ready" {
+	if category != "" && category != "renewal_failed" && category != "auth_invalid" && category != "refresh_not_ready" && category != "credential_preflight" {
 		return domain.ErrSessionRenewal
 	}
 	if certainty != "confirmed" && certainty != "unknown" && certainty != "not_sent" && certainty != "rejected" {
@@ -263,7 +263,21 @@ func (s *Store) FinishSessionRenewal(id string, generation, newGeneration int64,
 		return err
 	}
 	defer tx.Rollback()
-	if stage == "recovery_required" {
+	localUnsent := category == "credential_preflight"
+	if localUnsent {
+		// Only a proven pre-intent failure may retain the old generation. This
+		// receipt still blocks dispatch; it does not authorize any retry.
+		if stage != "recovery_required" || certainty != "not_sent" || newGeneration != 0 {
+			return domain.ErrSessionRenewal
+		}
+		var valid int
+		err = tx.QueryRow(`SELECT COUNT(*) FROM model_authorizations a WHERE a.id=? AND a.generation=? AND a.state='available'
+		 AND NOT EXISTS(SELECT 1 FROM model_authorization_operations o WHERE o.authorization_id=a.id AND (o.generation>a.generation OR o.state='pending' OR o.cleanup_pending=1))`, id, generation).Scan(&valid)
+		if err != nil || valid != 1 {
+			return domain.ErrSessionRenewal
+		}
+	}
+	if stage == "recovery_required" && !localUnsent {
 		_, err = tx.Exec(`UPDATE model_authorizations SET state='refresh_unknown' WHERE id=? AND generation=? AND state='available'`, id, generation)
 		if err != nil {
 			return err

@@ -113,7 +113,13 @@ export function SessionRenewal({ account }: { account: ModelAccount }) {
             </p>
           )}
           {status.state === "recovery_required" && (
-            <p>续期需要显式恢复或重新登录；不会重放旧令牌。</p>
+            <p>
+              {status.registration_retained &&
+              status.receipt?.category === "credential_preflight" &&
+              status.receipt?.certainty === "not_sent"
+                ? "本地凭据检查未完成，未发送续期请求；注册保留，续期已暂停。请先处理系统凭据访问问题；不会自动重试或重放令牌。"
+                : "续期需要显式恢复或重新登录；不会重放旧令牌。"}
+            </p>
           )}
           {status.state === "login_required" && (
             <p>注册需要重新登录；不会自动打开浏览器。</p>

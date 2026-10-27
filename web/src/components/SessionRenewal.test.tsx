@@ -18,6 +18,17 @@ const disabled = {
 };
 afterEach(() => vi.resetAllMocks());
 describe("independent session renewal", () => {
+  it("distinguishes unsent local credential failure without requesting another login or retry", async () => {
+    vi.mocked(sessionRenewalApi.read).mockResolvedValue({
+      ...disabled, enabled: true, state: "recovery_required",
+      receipt: { old_generation: 1, new_generation: 0,
+        stage: "recovery_required", category: "credential_preflight", certainty: "not_sent" },
+    });
+    render(<SessionRenewal account={account} />);
+    await screen.findByText(/本地凭据检查未完成.*未发送/);
+    expect(screen.queryByText(/需要显式恢复或重新登录/)).not.toBeInTheDocument();
+    expect(sessionRenewalApi.mutate).not.toHaveBeenCalled();
+  });
   it("closes mutations after failed explicit reread until a successful reread", async () => {
     vi.mocked(sessionRenewalApi.read)
       .mockResolvedValueOnce(disabled)

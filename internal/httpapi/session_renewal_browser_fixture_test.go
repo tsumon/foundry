@@ -282,6 +282,24 @@ func TestSessionRenewalBrowserFixture(t *testing.T) {
 		fmt.Printf("SESSION_RENEWAL_CATALOG_BROWSER_FIXTURE task=%s (original unknown 2/7; generation 2; prepare catalog then inspect independent pending approval only)\n", mission.ID)
 	} else {
 		f, a = sessionRenewalBrowserFixture(t)
+		if os.Getenv("FOUNDRY_TEST_SESSION_RENEWAL_UNSENT") == "1" {
+			c := f.handler.(*server).sessionRenewal
+			m, e := c.Prepare(a.ID, a.Revision)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = c.Approve(a.ID, m.ID, m.Revision); e != nil {
+				t.Fatal(e)
+			}
+			p, _ := f.store.SessionRenewalPolicy(a.ID)
+			b, _ := f.store.CurrentModelAuthorization(a.ID)
+			if e = f.store.ClaimSessionRenewal(p, b.Generation, time.Now()); e != nil {
+				t.Fatal(e)
+			}
+			if e = f.store.FinishSessionRenewal(b.Binding.ID, b.Generation, 0, "recovery_required", "credential_preflight", "not_sent", time.Now()); e != nil {
+				t.Fatal(e)
+			}
+		}
 	}
 	s := f.handler.(*server)
 	var err error
