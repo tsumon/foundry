@@ -52,6 +52,11 @@ there is no body sniffing or accepting partial SSE. Existing completed-response,
 model, assistant-content, credential-echo and output-match semantics remain
 unchanged. A valid completed response with nonmatching output retains the existing
 transport-success receipt and a separate `output_matched:false`; it is not retried.
+The subscription task and fixed-text diagnostic paths reject multiple Content-Type
+field values before reading a body, even when the first value is SSE or all values
+agree. `Header.Get` alone is insufficient because it hides later values. Duplicate
+fields are classified as `invalid_media_type`; absence remains `missing_media_type`.
+Existing stored receipts are not rewritten by this stricter check.
 Token usage remains unknown unless a validated provider receipt says
 otherwise; a short prompt, response byte limit or timeout is not a provider-side
 token or monetary cap.
@@ -122,6 +127,25 @@ valid credential, valid prerequisite evidence, a current task binding and an
 independent execution approval. Correlation can support a separately authorized
 provider inquiry; a client-side trace alone cannot establish which remote
 gateway omitted a response header.
+
+## Offline media-boundary verification
+
+The parser observes headers immediately after the Go HTTP client returns, before
+body parsing or application-level header handling. Loopback TLS regressions use
+hand-written HTTP/1 responses through the production inference constructor and
+synthetic account/approval/budget records. They verify that case-insensitive field
+names, gzip decoding and chunked framing retain a valid final Content-Type.
+An informational response header or a body trailer cannot repair a missing final
+header. Missing media type rejects even a fully formed completed SSE body without
+reading it. Each fixture sends once and debits only its temporary task once.
+
+These tests distinguish a local parsing regression from an upstream omission;
+they do not prove the cause of an individual production response. A historical
+`content_type:absent` receipt records what the client received, not a raw wire
+capture or provider log. Matching previously verified TLS fingerprints does not
+identify which remote service or gateway produced an incomplete HTTP response.
+Do not invent a response Content-Type, sniff the body, change billing routes or
+replay a real request to turn an unknown result into success.
 
 ## Desktop activation correction
 

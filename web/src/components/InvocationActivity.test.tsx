@@ -56,6 +56,23 @@ it.each([
     {
       version: 1,
       stage: "http_media",
+      reason: "invalid_media_type",
+      media_type: "invalid",
+      events_seen: 0,
+      bytes_read: 0,
+      transport: {
+        version: 1,
+        content_type: "multiple",
+        protocol: "http1_1",
+        body_length: "positive",
+      },
+    },
+    "HTTP 客户端返回时：Content-Type 多个值",
+  ],
+  [
+    {
+      version: 1,
+      stage: "http_media",
       reason: "missing_media_type",
       media_type: "missing",
       events_seen: 0,

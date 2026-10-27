@@ -187,15 +187,17 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 		return model.Result{}, model.SubscriptionInferenceHTTPFailure(response.StatusCode, response.Header, body, lease.Secret)
 	}
 	media, _, e := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if e != nil || media != "text/event-stream" {
+	// Do not trust just the first of multiple singleton Content-Type fields.
+	multipleMedia := len(response.Header.Values("Content-Type")) > 1
+	if e != nil || media != "text/event-stream" || multipleMedia {
 		d := domain.ResponseDiagnostic{Version: 1, Stage: "http_media", Reason: "unexpected_media_type", MediaType: "other"}
 		if media == "application/json" {
 			d.MediaType = "json"
 		}
-		if e != nil {
+		if e != nil || multipleMedia {
 			d.Reason, d.MediaType = "invalid_media_type", "invalid"
 		}
-		if response.Header.Get("Content-Type") == "" {
+		if !multipleMedia && response.Header.Get("Content-Type") == "" {
 			d.Reason, d.MediaType = "missing_media_type", "missing"
 		}
 		return model.Result{}, &model.ProviderError{Code: "response_incomplete", Certainty: "unknown", ResponseDiagnostic: d}
