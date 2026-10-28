@@ -52,9 +52,11 @@ for n in ['node.cjs','python.py','typescript.cjs']:
     const validation = buildGuestV2({...common,validateOnly:true,sources:true});
     assert.equal(validation.status,'static-input-validation-only');
     assert.equal(validation.sources_hashed,1);
-    const options = {...common,guest:path.join(root,'guest'),runners:path.join(root,'runners.json'),output:path.join(root,'image.gz'),receipt:path.join(root,'receipt.json')};
+    const options = {...common,guest:path.join(root,'guest'),runners:path.join(root,'runners.json'),output:path.join(root,'image.gz'),receipt:path.join(root,'receipt.json'),inventory:path.join(root,'runtime-inventory-v2.json')};
     const receipt = buildGuestV2(options);
     assert.equal(receipt.status,'assembled-build-only');
+    assert.deepEqual(JSON.parse(fs.readFileSync(options.inventory)),receipt.runtime_inventory);
+    assert.equal(fs.readFileSync(options.inventory).at(-1),125);
     assert.deepEqual(receipt,JSON.parse(fs.readFileSync(options.receipt)));
     assert.equal(receipt.image.sha256,require('node:crypto').createHash('sha256').update(fs.readFileSync(options.output)).digest('hex'));
     assert.throws(() => buildGuestV2(options),/overwrite/);

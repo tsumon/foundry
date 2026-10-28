@@ -7,9 +7,9 @@ const { execFileSync, spawnSync } = require("node:child_process");
 const {
   validateOutput,
   writeManifest,
-  copySandboxBundle,
+  copyDesktopSandboxes,
 } = require("./build-support.cjs");
-const { verifySandboxBundle } = require("./runtime.cjs");
+const { verifySandboxBundle, verifySandboxBundleV2 } = require("./runtime.cjs");
 const {
   rejectToolsetOverrides,
   compilerArguments,
@@ -38,7 +38,9 @@ async function main() {
     throw Error("Native Windows x64 required");
   const output = validateOutput(process.env.FOUNDRY_DESKTOP_OUTPUT, source);
   const sandboxBundle = process.env.FOUNDRY_SANDBOX_BUNDLE;
+  const sandboxV2Bundle = process.env.FOUNDRY_SANDBOX_V2_BUNDLE;
   verifySandboxBundle(sandboxBundle, "windows/amd64");
+  verifySandboxBundleV2(sandboxV2Bundle, "windows/amd64");
   const go = process.env.FOUNDRY_GO || "go";
   const goVersion = execFileSync(go, ["version"], { encoding: "utf8" }).trim();
   if (
@@ -118,11 +120,12 @@ async function main() {
       git(["status", "--porcelain", "--untracked-files=normal"]) !== "";
   for (const name of ["bin", "legal"])
     fs.mkdirSync(path.join(inputs, name), { recursive: true });
-  copySandboxBundle(
-    sandboxBundle,
-    path.join(inputs, "sandbox"),
-    "windows/amd64",
-  );
+  copyDesktopSandboxes({
+    v1: sandboxBundle, v2: sandboxV2Bundle,
+    v1Sources: process.env.FOUNDRY_SANDBOX_SOURCES || path.join(path.dirname(sandboxBundle), "sandbox-sources"),
+    v2Sources: process.env.FOUNDRY_SANDBOX_V2_SOURCES || path.join(path.dirname(sandboxV2Bundle), "sandbox-v2-sources"),
+    inputs, output, host: "windows/amd64",
+  });
   run(process.execPath, [npmCLI, "run", "build"], path.join(source, "web"));
   const goBinaries = [];
   for (const name of [
@@ -232,6 +235,7 @@ async function main() {
     "coding-mode.cjs",
     "openai-handoff.cjs",
     "runtime.cjs",
+    "runtime-inventory-v2.cjs",
     "security.cjs",
     "downloads.cjs",
     "package.json",
@@ -417,6 +421,7 @@ async function main() {
       path.basename(installer) +
       "\n",
   );
+  require("./distribution.cjs").writeDistributionManifest({output, resources: path.join(output, "package/win-unpacked/resources"), installer: path.join(output, path.basename(installer)), host: "windows/amd64"});
   console.log("Built unsigned native Windows installer " + installer);
 }
 main().catch((e) => {

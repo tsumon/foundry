@@ -45,6 +45,7 @@ test("sandbox packaging requires explicit absolute verified input and preserves 
     () => copySandboxBundle(bundle, target, "darwin/arm64"),
     /exists|fresh/i,
   );
+  assert.throws(() => copySandboxBundle(bundle, target + "-unknown", "darwin/arm64", 3), /schema/i);
 });
 
 test("copy rejects a manifest changed after initial verification", (t) => {
@@ -154,8 +155,9 @@ test("desktop jobs build the verified sandbox before packaging and publish its s
       name,
     );
     assert.match(steps[sandbox].run, /node desktop\/sandbox\/build\.cjs/);
+    assert.match(steps[sandbox].run, /node desktop\/sandbox\/build-bundle-v2\.cjs/);
     assert.match(steps[packaging].run, /FOUNDRY_SANDBOX_BUNDLE/);
-    assert.match(steps[packaging].run, /sandbox-sources/);
+    assert.match(steps[packaging].run, /FOUNDRY_SANDBOX_V2_BUNDLE/);
     const installerOutput =
       name === "macos-installer" ? "macos_installer" : "windows_installer";
     assert.ok(
@@ -164,6 +166,8 @@ test("desktop jobs build the verified sandbox before packaging and publish its s
       ),
     );
     assert.match(steps[upload].with.path, /sandbox-sources\//);
+    assert.match(steps[upload].with.path, /sandbox-v2-sources\//);
+    assert.match(steps[upload].with.path, /distribution-manifest\.json/);
     for (const step of [
       steps[sandbox],
       steps[packaging],

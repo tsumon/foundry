@@ -98,4 +98,18 @@ function sandboxFixture(
   fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(manifest));
   return manifest;
 }
-module.exports = { sandboxFixture, loadDesktopFixtureModule };
+function v2Fixture(root,host='darwin/arm64') {
+  const m=sandboxFixture(root,host);m.schema_version=2;m.protocol='foundry-vm-v2';m.policy_version='multilang-vm-v2';
+  fs.renameSync(path.join(root,m.verifier),path.join(root,'foundry-vm-guest-v2'));m.assets.find(a=>a.path===m.verifier).path='foundry-vm-guest-v2';m.verifier='foundry-vm-guest-v2';
+  const d=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../../internal/vmruntime/testdata/runtime-inventory-v2.json')));d.guest_platform=m.guest_platform;
+  const raw=fs.readFileSync(path.join(root,m.verifier));d.supervisor={path:'/init',size:raw.length,sha256:crypto.createHash('sha256').update(raw).digest('hex')};
+  const descriptor=Buffer.from(require('../runtime-inventory-v2.cjs').canonicalInventory(d));
+  m.runtime_inventory='runtime-inventory-v2.json';m.runtime_inventory_digest=crypto.createHash('sha256').update('foundry:runtime-inventory:v2\n').update(descriptor).digest('hex');
+  fs.writeFileSync(path.join(root,m.runtime_inventory),descriptor);m.assets.push({path:m.runtime_inventory,size:descriptor.length,sha256:crypto.createHash('sha256').update(descriptor).digest('hex')});
+  const notice=Buffer.from(JSON.stringify({schema_version:1,sidecar:'sandbox-v2-sources',files:[]}));fs.writeFileSync(path.join(root,'legal/sources.json'),notice);m.assets.push({path:'legal/sources.json',size:notice.length,sha256:crypto.createHash('sha256').update(notice).digest('hex')});
+  const components=Buffer.from('{}');fs.writeFileSync(path.join(root,'legal/runtime-components.json'),components);m.assets.push({path:'legal/runtime-components.json',size:components.length,sha256:crypto.createHash('sha256').update(components).digest('hex')});
+  for(const n of ['Node-LICENSE','TypeScript-LICENSE.txt','TypeScript-ThirdPartyNoticeText.txt','Go-LICENSE','Go-PATENTS']){const raw=Buffer.from('inert legal text');fs.writeFileSync(path.join(root,'legal',n),raw);m.assets.push({path:'legal/'+n,size:raw.length,sha256:crypto.createHash('sha256').update(raw).digest('hex')});}
+  fs.writeFileSync(path.join(root,'manifest.json'),JSON.stringify(m));return m;
+}
+
+module.exports = { sandboxFixture, v2Fixture, loadDesktopFixtureModule };

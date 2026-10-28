@@ -82,7 +82,7 @@ function requestDecision(origin, capability, target, headers) {
   return { cancel: false, requestHeaders: clean };
 }
 
-function strictJSON(raw) {
+function strictJSON(raw, literalKeys = false) {
   const value = JSON.parse(raw);
   const stack = [];
   for (const token of raw.match(
@@ -94,6 +94,7 @@ function strictJSON(raw) {
     else if (token === "}" || token === "]") stack.pop();
     else if (token === "," && top?.keys) top.key = true;
     else if (top?.key && token.startsWith('"')) {
+      if (literalKeys && token.includes("\\")) throw Error("Escaped manifest key");
       const key = JSON.parse(token);
       if (top.keys.has(key)) throw Error("Duplicate manifest key");
       top.keys.add(key);
@@ -129,6 +130,7 @@ function verifySandboxBundle(
   host = process.platform === "win32"
     ? "windows/amd64"
     : `${process.platform}/${process.arch}`,
+  schema = 1,
 ) {
   if (
     typeof root !== "string" ||
@@ -145,7 +147,7 @@ function verifySandboxBundle(
   if (!info.isFile() || info.nlink !== 1 || info.size > 1024 * 1024)
     throw Error("Sandbox manifest must be bounded regular non-link file");
   const raw = fs.readFileSync(manifestFile, "utf8"),
-    manifest = strictJSON(raw);
+    manifest = strictJSON(raw, schema === 2);
   const guest =
     host === "darwin/arm64"
       ? "linux/arm64"
@@ -169,16 +171,18 @@ function verifySandboxBundle(
       "rootfs",
       "verifier",
       "assets",
+      ...(schema === 2 ? ["runtime_inventory", "runtime_inventory_digest"] : []),
     ]) ||
-    manifest.schema_version !== 1 ||
+    ![1, 2].includes(schema) ||
+    manifest.schema_version !== schema ||
     manifest.host_platform !== host ||
     manifest.guest_platform !== guest ||
-    manifest.protocol !== "foundry-vm-v1" ||
-    manifest.policy_version !== "go-vm-v1" ||
+    manifest.protocol !== (schema === 2 ? "foundry-vm-v2" : "foundry-vm-v1") ||
+    manifest.policy_version !== (schema === 2 ? "multilang-vm-v2" : "go-vm-v1") ||
     manifest.runtime !== runtime ||
     manifest.kernel !== "kernel" ||
     manifest.rootfs !== "initramfs.cpio.gz" ||
-    manifest.verifier !== "foundry-vm-guest" ||
+    manifest.verifier !== (schema === 2 ? "foundry-vm-guest-v2" : "foundry-vm-guest") ||
     !Array.isArray(manifest.assets) ||
     manifest.assets.length < 6 ||
     manifest.assets.length > 4096
@@ -231,7 +235,8 @@ function verifySandboxBundle(
     runtime,
     "kernel",
     "initramfs.cpio.gz",
-    "foundry-vm-guest",
+    schema === 2 ? "foundry-vm-guest-v2" : "foundry-vm-guest",
+    ...(schema === 2 ? ["runtime-inventory-v2.json", "legal/sources.json", "legal/runtime-components.json", "legal/Node-LICENSE", "legal/TypeScript-LICENSE.txt", "legal/TypeScript-ThirdPartyNoticeText.txt", "legal/Go-LICENSE", "legal/Go-PATENTS"] : []),
     "legal/NOTICE.md",
     "legal/GPL-2.0.txt",
   ])
@@ -247,7 +252,10 @@ function verifySandboxBundle(
     })) {
       if (++count > 8192) throw Error("Sandbox entry bound exceeded");
       const name = directory ? directory + "/" + entry.name : entry.name;
-      if (entry.isDirectory()) inspect(name);
+      if (entry.isDirectory()) {
+        if (schema === 2 && ![...names].some(asset => asset.startsWith(name + "/"))) throw Error("Unlisted sandbox directory rejected");
+        inspect(name);
+      }
       else if (!entry.isFile())
         throw Error("Sandbox symlink or special entry rejected");
       else if (name !== "manifest.json" && !names.has(name))
@@ -255,7 +263,21 @@ function verifySandboxBundle(
     }
   }
   inspect();
+  if (schema === 2) {
+    if (manifest.runtime_inventory !== "runtime-inventory-v2.json") throw Error("Invalid descriptor path");
+    const {parseRuntimeInventoryV2, inventoryDigest} = require("./runtime-inventory-v2.cjs");
+    if (manifest.assets.find(a => a.path === manifest.runtime_inventory).size > 65536) throw Error("Runtime inventory size bound");
+    const raw = fs.readFileSync(path.join(root, manifest.runtime_inventory));
+    const descriptor = parseRuntimeInventoryV2(raw);
+    const supervisor = manifest.assets.find(a => a.path === manifest.verifier);
+    if (descriptor.guest_platform !== guest || inventoryDigest(raw) !== manifest.runtime_inventory_digest) throw Error("Runtime inventory binding mismatch");
+    if (descriptor.supervisor.size !== supervisor.size || descriptor.supervisor.sha256 !== supervisor.sha256) throw Error("Runtime supervisor binding mismatch");
+  }
   return manifest;
+}
+
+function verifySandboxBundleV2(root, host) {
+  return verifySandboxBundle(root, host, 2);
 }
 
 function verifyResources(root, expectedManifestHash) {
@@ -291,7 +313,7 @@ function verifyResources(root, expectedManifestHash) {
       path.isAbsolute(name) ||
       /[\\:]/.test(name) ||
       name.split("/").some((part) => !part || part === "." || part === "..") ||
-      !["bin", "web", "legal", "sandbox"].includes(name.split("/")[0]) ||
+      !["bin", "web", "legal", "sandbox", "sandbox-v2"].includes(name.split("/")[0]) ||
       !/^[a-f0-9]{64}$/.test(hash)
     )
       throw Error("Invalid resource manifest");
@@ -312,13 +334,15 @@ function verifyResources(root, expectedManifestHash) {
         throw Error("Unlisted installed resource rejected");
     }
   }
-  for (const directory of ["bin", "web", "legal", "sandbox"]) {
+  for (const directory of ["bin", "web", "legal", "sandbox", "sandbox-v2"]) {
     if (fs.existsSync(path.join(root, directory))) {
       requireDirectoryChain(path.join(root, directory));
       inspect(directory);
     }
   }
-  verifySandboxBundle(path.join(root, "sandbox"));
+  const v1 = verifySandboxBundle(path.join(root, "sandbox"));
+  const hasV2 = fs.existsSync(path.join(root, "sandbox-v2")) || Object.keys(manifest.files).some(name => name.startsWith("sandbox-v2/"));
+  return {v1, v2: hasV2 ? verifySandboxBundleV2(path.join(root, "sandbox-v2")) : null};
 }
 
 function requireDirectoryChain(directory) {
@@ -364,7 +388,7 @@ async function startBackend({
   timeout = 30000,
   integrity,
 }) {
-  verifyResources(resources, integrity);
+  const catalog = verifyResources(resources, integrity);
   if (!["normal", "simulation", "coding"].includes(mode))
     throw Error("Unknown desktop mode");
   if (repository && (mode !== "simulation" || !path.isAbsolute(repository)))
@@ -410,6 +434,7 @@ async function startBackend({
   // Only a successfully verified installed resource root can supply this path.
   // Ambient FOUNDRY_VM_BUNDLE is never forwarded; metadata loading is not consent.
   env.FOUNDRY_VM_BUNDLE = path.join(resources, "sandbox");
+  if (catalog.v2) env.FOUNDRY_VM_V2_BUNDLE = path.join(resources, "sandbox-v2");
   const child = spawn(
     path.join(
       resources,
@@ -516,10 +541,12 @@ async function startBackend({
 module.exports = {
   executableName,
   parseReadiness,
+  strictJSON,
   childEnvironment,
   requestDecision,
   verifyResources,
   verifySandboxBundle,
+  verifySandboxBundleV2,
   resourceDigest,
   startBackend,
 };

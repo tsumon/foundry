@@ -137,14 +137,14 @@ class WindowsFS:
             return data
         finally:chain.close()
 
-    def publish(self,output,receipt,image,receipt_bytes):
-        paths=[windows_path(output),windows_path(receipt)]
-        if paths[0].casefold()==paths[1].casefold():raise ValueError('output and receipt must differ')
+    def publish(self,output,receipt,image,receipt_bytes,inventory=None):
+        paths=[windows_path(output),windows_path(receipt)]+([windows_path(inventory[0])] if inventory else [])
+        if len({p.casefold() for p in paths})!=len(paths):raise ValueError('output, receipt and inventory must differ')
         parents=[];owned=[]
         try:
             for path in paths:parents.append(self.open_chain(ntpath.dirname(path),True))
             for index,path in enumerate(paths):
-                data=image if index==0 else receipt_bytes()
+                data=image if index==0 else receipt_bytes() if index==1 else inventory[1]
                 # CREATE_NEW, no sharing, DELETE right for rollback on this
                 # exact still-open handle; no path-based deletion race.
                 h=self.raw_open(path,0xc0010000,0,1)

@@ -67,6 +67,11 @@ function assertWindowsCoverage(commands) {
   assert.ok(commands.some(({ command, args }) => command === "node" && args[0] === "--test"
     && args.includes("desktop/test/build-guest-v2.test.cjs")
     && !args.some((arg) => /^--test-(name|skip|only)/.test(arg))), "Checked must execute v2 assembler host tests");
+  for (const target of ["desktop/test/runtime-v2.test.cjs", "desktop/test/packaging-v2.test.cjs", "desktop/test/multilang-inputs.test.cjs", "desktop/test/runner-contracts-v2.test.cjs"]) {
+    assert.ok(commands.some(({command,args}) => command === "node" && args[0] === "--test" && args.includes(target)), "Windows must execute " + target);
+  }
+  assert.ok(commands.some(({command,args}) => command === "go" && args[0] === "test" && args.includes("./internal/vmruntime") && args.some(arg => arg.includes("RuntimeV2"))), "Windows executes v2 host runtime and manifest tests");
+  assert.ok(commands.some(({command,args}) => command === "go" && args[0] === "test" && args.includes("./internal/vmguest") && args.some(arg => arg.includes("ChildContractClosed"))), "Windows executes portable v2 child contracts");
   for (const pkg of ["./internal/dependencybundle", "./internal/frameworkreport", "./internal/domain"]) {
     assert.ok(commands.some(({ command, args }) => command === "go" && args[0] === "test"
       && args.includes("-count=1") && args.includes(pkg)
@@ -78,7 +83,7 @@ const windowsCommands = checkedCommands(fs.readFileSync(path.join(__dirname, "..
 test("Windows native gates execute assembler and new Go package tests", () => {
   assertWindowsCoverage(windowsCommands);
 });
-for (const target of ["desktop/test/build-guest-v2.test.cjs", "./internal/dependencybundle", "./internal/frameworkreport", "./internal/domain"]) {
+for (const target of ["desktop/test/runtime-v2.test.cjs", "desktop/test/packaging-v2.test.cjs", "desktop/test/multilang-inputs.test.cjs", "desktop/test/runner-contracts-v2.test.cjs", "desktop/test/build-guest-v2.test.cjs", "./internal/dependencybundle", "./internal/frameworkreport", "./internal/domain"]) {
   test(`Windows coverage policy rejects omitted ${target}`, () => {
     assertWindowsCoverage(windowsCommands);
     const changed = windowsCommands.map(({ command, args }) => ({ command, args: args.filter((arg) => arg !== target) }));

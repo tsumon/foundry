@@ -32,6 +32,8 @@ $install = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$install
 if ($install.ExitCode -ne 0) { throw "Candidate over-install failed: $($install.ExitCode)" }
 if (-not (Test-Path $app) -or -not (Test-Path (Join-Path $resources 'app.asar'))) { throw 'Candidate installed native app missing' }
 $candidateAsarHash = (Get-FileHash (Join-Path $resources 'app.asar') -Algorithm SHA256).Hash
+& $node (Join-Path $PSScriptRoot 'distribution.cjs') --verify $Output $resources windows/amd64
+if ($LASTEXITCODE -ne 0) { throw 'Dual runtime installed distribution/source linkage failed' }
 if ($candidateAsarHash -ceq $oldAsarHash) { throw 'Candidate did not replace old installed app bytes' }
 $shipping = & $node (Join-Path $PSScriptRoot 'windows-provenance.cjs') (Join-Path $Output 'runtime-sources') (Join-Path $resources 'legal')
 if ($LASTEXITCODE -ne 0) { throw 'Installed legal/source sidecar integrity failed' }
@@ -186,6 +188,7 @@ public static class FoundryWindow {
   $deadline = [DateTime]::UtcNow.AddSeconds(30)
   while ((Test-Path $app) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
   if (Test-Path $app) { throw 'Uninstall left installed executable' }
+  foreach ($runtimePath in @('sandbox','sandbox-v2')) { if (Test-Path (Join-Path $resources $runtimePath)) { throw 'Uninstall left installed runtime resources' } }
   if (-not (Test-Path $profileDB) -or -not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash -or -not (Test-Path $runtimeCodingDB) -or (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash -ne $runtimeCodingHash -or (Get-FileHash $evidenceDB -Algorithm SHA256).Hash -ne $evidenceHash) { throw 'Uninstall changed persistent evidence' }
   $freshInstalled = Join-Path $testRoot 'fresh-candidate-install'
   if (Test-Path $freshInstalled) { throw 'Fresh candidate install target occupied' }
@@ -203,6 +206,7 @@ public static class FoundryWindow {
   $freshDeadline = [DateTime]::UtcNow.AddSeconds(30)
   while ((Test-Path $freshApp) -and [DateTime]::UtcNow -lt $freshDeadline) { Start-Sleep -Milliseconds 200 }
   if (Test-Path $freshApp) { throw 'Fresh candidate uninstall left executable' }
+  foreach ($runtimePath in @('sandbox','sandbox-v2')) { if (Test-Path (Join-Path $freshResources $runtimePath)) { throw 'Fresh uninstall left installed runtime resources' } }
   if (-not (Test-Path $profileDB) -or -not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash -or -not (Test-Path $runtimeCodingDB) -or (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash -ne $runtimeCodingHash -or (Get-FileHash $evidenceDB -Algorithm SHA256).Hash -ne $evidenceHash) { throw 'Fresh install or uninstall changed retained evidence' }
   @{ result='PASS'; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; upgrade=$upgrade; freshInstall=$fresh; nativeUI='OS UI Automation opened the fixed native coding menu and confirmation, observed configurable VM metadata with opt-in unchecked and independent approvals, returned to persistent mode, and captured painted clients; no manual interactive acceptance claimed'; firstUI=$firstReady; codingAction=$codingAction; codingUI=$codingReady; persistentAction=$persistentAction; switchedUI=$switchedReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS; defaulted to persistent mode and retained coding data'; uninstall='PASS; persistent, coding, and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
 } finally { $env:PATH=$oldPath }

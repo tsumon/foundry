@@ -7,11 +7,11 @@ const crypto = require("node:crypto");
 const {
   validateOutput,
   writeManifest,
-  copySandboxBundle,
+  copyDesktopSandboxes,
   verifyMacSandboxSignature,
   macSigningTargets,
 } = require("./build-support.cjs");
-const { verifySandboxBundle } = require("./runtime.cjs");
+const { verifySandboxBundle, verifySandboxBundleV2 } = require("./runtime.cjs");
 const source = path.dirname(__dirname);
 function run(command, args, cwd = source, extra = {}) {
   return execFileSync(command, args, {
@@ -26,8 +26,11 @@ async function main() {
   process.umask(0o022);
   const output = validateOutput(process.env.FOUNDRY_DESKTOP_OUTPUT, source);
   const sandboxBundle = process.env.FOUNDRY_SANDBOX_BUNDLE;
+  const sandboxV2Bundle = process.env.FOUNDRY_SANDBOX_V2_BUNDLE;
   verifySandboxBundle(sandboxBundle, "darwin/arm64");
+  verifySandboxBundleV2(sandboxV2Bundle, "darwin/arm64");
   verifyMacSandboxSignature(sandboxBundle);
+  verifyMacSandboxSignature(sandboxV2Bundle);
   const go = process.env.FOUNDRY_GO || "go";
   const goVersion = execFileSync(go, ["version"], { encoding: "utf8" }).trim();
   if (!goVersion.startsWith("go version go1.27.3 "))
@@ -51,11 +54,12 @@ async function main() {
   const inputs = path.join(output, "inputs");
   fs.mkdirSync(path.join(inputs, "bin"), { recursive: true });
   fs.mkdirSync(path.join(inputs, "legal"), { recursive: true });
-  copySandboxBundle(
-    sandboxBundle,
-    path.join(inputs, "sandbox"),
-    "darwin/arm64",
-  );
+  copyDesktopSandboxes({
+    v1: sandboxBundle, v2: sandboxV2Bundle,
+    v1Sources: process.env.FOUNDRY_SANDBOX_SOURCES || path.join(path.dirname(sandboxBundle), "sandbox-sources"),
+    v2Sources: process.env.FOUNDRY_SANDBOX_V2_SOURCES || path.join(path.dirname(sandboxV2Bundle), "sandbox-v2-sources"),
+    inputs, output, host: "darwin/arm64",
+  });
   run(npm, ["run", "build"], path.join(source, "web"));
   for (const name of [
     "foundry",
@@ -116,6 +120,7 @@ async function main() {
     "coding-mode.cjs",
     "openai-handoff.cjs",
     "runtime.cjs",
+    "runtime-inventory-v2.cjs",
     "security.cjs",
     "downloads.cjs",
     "package.json",
@@ -175,6 +180,7 @@ async function main() {
         "coding-mode.cjs",
         "openai-handoff.cjs",
         "runtime.cjs",
+        "runtime-inventory-v2.cjs",
         "security.cjs",
         "downloads.cjs",
         "package.json",
@@ -211,6 +217,7 @@ async function main() {
     ]);
   run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
   verifyMacSandboxSignature(path.join(app, "Contents/Resources/sandbox"));
+  verifyMacSandboxSignature(path.join(app, "Contents/Resources/sandbox-v2"));
   require("./runtime.cjs").verifyResources(
     path.join(app, "Contents/Resources"),
   );
@@ -240,6 +247,7 @@ async function main() {
       path.basename(dmg) +
       "\n",
   );
+  require("./distribution.cjs").writeDistributionManifest({output, resources: path.join(app, "Contents/Resources"), installer: dmg, host: "darwin/arm64"});
   console.log("Packaged " + app + "\nDMG " + dmg);
 }
 main().catch((error) => {

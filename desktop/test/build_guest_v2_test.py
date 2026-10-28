@@ -161,7 +161,7 @@ class BoundaryTests(unittest.TestCase):
     def fixture(self, root):
         runtime = ar(tar([('usr/bin/python3.13', elf(), 'file', 0o755), ('usr/lib/python3.13/unittest/__init__.py', b'# stdlib', 'file', 0o644), ('usr/share/doc/python/copyright', b'license', 'file', 0o644), ('usr/bin/python3','python3.13','link',0o777)]))
         node = lzma.compress(tar([('node-v/bin/node', elf(), 'file', 0o755), ('node-v/LICENSE', b'node license', 'file', 0o644), ('node-v/npm', b'NEVER INCLUDED', 'file', 0o755)]))
-        ts = gzip.compress(tar([('package/lib/tsc.js', b'compiler', 'file', 0o644), ('package/package.json', b'{}', 'file', 0o644), ('package/LICENSE.txt', b'ts license', 'file', 0o644), ('package/ThirdPartyNoticeText.txt', b'notices', 'file', 0o644)]))
+        ts = gzip.compress(tar([('package/lib/typescript.js', b'compiler', 'file', 0o644), ('package/package.json', b'{}', 'file', 0o644), ('package/LICENSE.txt', b'ts license', 'file', 0o644), ('package/ThirdPartyNoticeText.txt', b'notices', 'file', 0o644)]))
         artifacts = []
         for name, value, kind in [('py.deb', runtime, 'debian-runtime-package'), ('node.tar.xz', node, 'node-runtime'), ('ts.tgz', ts, 'typescript-compiler'), ('source.tar', b'NOT AN ARCHIVE, HASH ONLY', 'node-source')]:
             (root/name).write_bytes(value)
@@ -169,13 +169,13 @@ class BoundaryTests(unittest.TestCase):
         projected = {
           'usr/bin/python3.13': ('0555', elf()), 'usr/lib/python3.13/unittest/__init__.py': ('0444', b'# stdlib'), 'usr/share/doc/python/copyright': ('0444', b'license'),
           'opt/foundry/node/bin/node': ('0555', elf()), 'opt/foundry/node/LICENSE': ('0444', b'node license'),
-          'opt/foundry/typescript/lib/tsc.js': ('0444', b'compiler'), 'opt/foundry/typescript/package.json': ('0444', b'{}'),
+          'opt/foundry/typescript/lib/typescript.js': ('0444', b'compiler'), 'opt/foundry/typescript/package.json': ('0444', b'{}'),
           'opt/foundry/typescript/LICENSE.txt': ('0444', b'ts license'), 'opt/foundry/typescript/ThirdPartyNoticeText.txt': ('0444', b'notices')}
         inventory = [{'path': n, 'type': 'file', 'mode': mode, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for n, (mode, data) in sorted(projected.items())]
         inventory += [{'path':'lib','type':'symlink','mode':'0777','target':'usr/lib'}, {'path':'usr/bin/python3','type':'symlink','mode':'0777','target':'python3.13'}]
         inventory.sort(key=lambda x:x['path'])
         expected = {'sha256': hashlib.sha256(json.dumps(inventory, sort_keys=True, separators=(',', ':')).encode()).hexdigest(), 'entries': 11, 'regular_bytes': sum(len(x[1]) for x in projected.values())}
-        return {'schema_version': 2, 'artifacts': artifacts, 'architectures': {'amd64': {'expected': expected, 'links': {'lib':'usr/lib','usr/bin/python3':'python3.13'}, 'case_exceptions': [], 'archive_case_exceptions': [], 'elf': {'search_dirs': [], 'origin_rpaths': {}}, 'required': list(projected)}}, 'projection_policy': 'foundry-runtime-projection-v2'}
+        return {'schema_version': 2, 'versions':{'python_command':'/usr/bin/python3.13','python_upstream_version':'3.13.5','python_distribution':'Debian trixie','python_package_version':'3.13.5-2+deb13u5','python_stdlib':'/usr/lib/python3.13','python_options':['-I','-S','-B'],'node_command':'/opt/foundry/node/bin/node','node_version':'24.22.1','typescript_command':['/opt/foundry/node/bin/node','/opt/foundry/typescript/lib/tsc.js'],'typescript_version':'5.9.3'}, 'artifacts': artifacts, 'architectures': {'amd64': {'expected': expected, 'links': {'lib':'usr/lib','usr/bin/python3':'python3.13'}, 'case_exceptions': [], 'archive_case_exceptions': [], 'elf': {'search_dirs': [], 'origin_rpaths': {}}, 'required': list(projected)}}, 'projection_policy': 'foundry-runtime-projection-v2'}
 
     def test_full_offline_build_is_deterministic_and_newc_independently_parses(self):
         m = self.m
@@ -198,7 +198,7 @@ class BoundaryTests(unittest.TestCase):
                 self.assertEqual(fields[2:4], [0, 0]); self.assertEqual(fields[5], 0)
                 if name == 'TRAILER!!!': break
                 parsed[name] = (fields[1], value)
-            self.assertEqual(len(parsed),39)
+            self.assertEqual(len(parsed),40)
             self.assertEqual(parsed['lib'],(0o120777,b'usr/lib'))
             self.assertEqual(parsed['usr/bin/python3'],(0o120777,b'python3.13'))
             self.assertEqual(parsed['init'], (0o100555, elf()))
@@ -208,6 +208,55 @@ class BoundaryTests(unittest.TestCase):
             self.assertEqual(receipt['image']['sha256'], hashlib.sha256(a).hexdigest())
             for badguest, badrunners in [(elf('arm64'), runners), (elf(interp='/bad'), runners), (elf(), {}), (elf(), {**runners, 'etc/control': {'data': b'x', 'sha256': '0'*64}})]:
                 with self.assertRaises(ValueError): m.assemble(lock, root, 'amd64', badguest, badrunners)
+
+    def test_descriptor_binds_actual_selected_files_and_embeds_exact_canonical_bytes(self):
+        m = self.m
+        fixture = Path(__file__).parents[2]/'internal/vmruntime/testdata/runtime-inventory-v2.json'
+        raw = fixture.read_bytes()
+        self.assertEqual(m.canonical(json.loads(raw)), raw)
+        self.assertEqual(m.inventory_digest(raw), fixture.with_suffix('.sha256').read_text().strip())
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();lock=self.fixture(root)
+            runners={n:{'data':b'owned '+n.encode(),'sha256':hashlib.sha256(b'owned '+n.encode()).hexdigest()} for n in m.RUNNERS}
+            image,receipt=m.assemble(lock,root,'amd64',elf(),runners)
+            descriptor=receipt['runtime_inventory']; encoded=m.canonical(descriptor)
+            self.assertEqual(descriptor['projected_runtime'], receipt['runtime'])
+            self.assertEqual(descriptor['supervisor'], {'path':'/init','size':1024,'sha256':hashlib.sha256(elf()).hexdigest()})
+            self.assertEqual(descriptor['typescript']['compiler']['sha256'],hashlib.sha256(b'compiler').hexdigest())
+            self.assertEqual(descriptor['python']['executable']['sha256'],hashlib.sha256(elf()).hexdigest())
+            self.assertEqual(descriptor['runners'][1]['file']['sha256'],runners[m.RUNNERS[1]]['sha256'])
+            self.assertIn(encoded,gzip.decompress(image))
+            self.assertEqual(receipt['descriptor'],{'path':'runtime-inventory-v2.json','size':len(encoded),'sha256':hashlib.sha256(encoded).hexdigest(),'digest':m.inventory_digest(encoded)})
+            self.assertNotIn('rootfs',descriptor);self.assertNotIn('manifest',descriptor)
+            entries,_=m.project(lock,root,'amd64')
+            for name,change in [('usr/bin/python3.13','missing'),('opt/foundry/node/bin/node','mode'),('opt/foundry/typescript/lib/typescript.js','type')]:
+                bad=dict(entries)
+                if change=='missing':del bad[name]
+                else:bad[name]={**bad[name],change:'symlink' if change=='type' else '0444','target':'/usr/bin/python3.13'}
+                with self.subTest(name=name),self.assertRaises(ValueError):m.runtime_descriptor(bad,'amd64',receipt['runtime'],elf(),runners)
+
+    def test_runtime_notices_require_each_component_source_and_resolve_owned_copyright_links(self):
+        entries={n:{'type':'file','mode':'0444','data':b'notice'} for n in ['usr/share/doc/shared/copyright','opt/foundry/node/LICENSE','opt/foundry/typescript/LICENSE.txt','opt/foundry/typescript/ThirdPartyNoticeText.txt']}
+        entries['usr/share/doc/py/copyright']={'type':'symlink','mode':'0777','target':'../shared/copyright'}
+        def row(kind,**kw):return {'kind':kind,'file':kind+'.data','size':1,'sha256':'1'*64,**kw}
+        lock={'artifacts':[row('debian-runtime-package',package='py',source='python3.13',source_version='3.13.5',target_architectures=['amd64']),row('node-runtime',version='24.22.1',target_architectures=['amd64']),row('typescript-compiler',version='5.9.3',target_architectures=['amd64']),row('debian-corresponding-source',source='python3.13',source_version='3.13.5'),row('node-source',version='24.22.1'),row('typescript-source',version='5.9.3')]}
+        notices,components=self.m.runtime_notices(entries,lock,'amd64')
+        self.assertEqual(notices['debian/py/copyright'],b'notice');self.assertEqual(len(components),3)
+        self.assertEqual(components[0]['sources'][0]['file'],'debian-corresponding-source.data')
+        bad=json.loads(json.dumps(lock));bad['artifacts']=[r for r in bad['artifacts'] if r['kind']!='node-source']
+        with self.assertRaisesRegex(ValueError,'source'):self.m.runtime_notices(entries,bad,'amd64')
+        del entries['opt/foundry/typescript/ThirdPartyNoticeText.txt']
+        with self.assertRaises(ValueError):self.m.runtime_notices(entries,lock,'amd64')
+
+    def test_source_notice_export_reads_pinned_archive_license_bytes_without_extracting_programs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();raw=gzip.compress(tar([('source/LICENSE',b'license text','file',0o644),('source/COPYING3.LIB',b'LGPL text','file',0o644),('source/build/LICENSE',b'','file',0o644),('source/program',b'NEVER EXECUTE','file',0o755)]));(root/'source.tar.gz').write_bytes(raw)
+            lock={'artifacts':[{'kind':'node-source','file':'source.tar.gz','size':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}]}
+            values,proof=self.m.source_notices(lock,root)
+            self.assertEqual(values,{'source.tar.gz/source/LICENSE':b'license text','source.tar.gz/source/COPYING3.LIB':b'LGPL text'})
+            self.assertEqual([(r['archive'],r['member']) for r in proof],[('source.tar.gz','source/COPYING3.LIB'),('source.tar.gz','source/LICENSE')])
+            (root/'source.tar.gz').write_bytes(raw+b'!')
+            with self.assertRaises(ValueError):self.m.source_notices(lock,root)
 
     def test_projection_rejects_control_roots_and_unlisted_links(self):
         m = self.m
@@ -221,7 +270,7 @@ class BoundaryTests(unittest.TestCase):
             # Other two archives remain selected; use their known normalized rows.
             node_ts = [
               ('opt/foundry/node/bin/node','0555',elf()), ('opt/foundry/node/LICENSE','0444',b'node license'),
-              ('opt/foundry/typescript/lib/tsc.js','0444',b'compiler'), ('opt/foundry/typescript/package.json','0444',b'{}'),
+              ('opt/foundry/typescript/lib/typescript.js','0444',b'compiler'), ('opt/foundry/typescript/package.json','0444',b'{}'),
               ('opt/foundry/typescript/LICENSE.txt','0444',b'ts license'), ('opt/foundry/typescript/ThirdPartyNoticeText.txt','0444',b'notices')]
             inv += [{'path':n,'type':'file','mode':mode,'size':len(d),'sha256':hashlib.sha256(d).hexdigest()} for n,mode,d in node_ts]
             lock['architectures']['amd64']['required'] = []
@@ -271,8 +320,9 @@ class BoundaryTests(unittest.TestCase):
         m = self.m
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve(); lock = self.fixture(root)
-            for change in ['schema', 'arch', 'size', 'hash', 'missing', 'symlink', 'digest', 'unknown', 'filename']:
+            for change in ['schema', 'arch', 'size', 'hash', 'missing', 'symlink', 'digest', 'unknown', 'filename', 'metadata']:
                 bad = json.loads(json.dumps(lock)); arch = 'amd64'; path = root/'node.tar.xz'; saved = path.read_bytes()
+                if change == 'metadata': bad['versions']['node_version']='24.0.0'
                 if change == 'schema': bad['schema_version'] = 1
                 if change == 'arch': arch = 'arm64'
                 if change == 'size': bad['artifacts'][0]['size'] += 1

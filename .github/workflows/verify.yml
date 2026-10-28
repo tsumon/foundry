@@ -41,11 +41,17 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14.8'
+      - name: Prepare exact compiler fixture input (build only)
+        run: node desktop/sandbox/multilang-inputs.cjs "$RUNNER_TEMP/foundry-compiler-fixture" compiler
       - name: Run shared verification
+        env:
+          FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
+          FOUNDRY_MULTILANG_INPUTS: ${{ runner.temp }}/foundry-compiler-fixture
         run: ./scripts/verify.sh
       - name: Verify desktop source contracts without installing Electron
         env:
           FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
+          FOUNDRY_MULTILANG_INPUTS: ${{ runner.temp }}/foundry-compiler-fixture
         run: |
           set -eu
           npm ci --prefix desktop --ignore-scripts
@@ -72,7 +78,17 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
+      - name: Set up trusted build Python
+        id: build-python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14.8'
+      - name: Prepare exact compiler fixture input (build only)
+        run: node desktop/sandbox/multilang-inputs.cjs "$RUNNER_TEMP/foundry-compiler-fixture" compiler
       - name: Run shared verification
+        env:
+          FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
+          FOUNDRY_MULTILANG_INPUTS: ${{ runner.temp }}/foundry-compiler-fixture
         run: ./scripts/verify.sh
 
   security:

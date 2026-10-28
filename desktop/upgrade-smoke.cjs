@@ -43,7 +43,7 @@ function packagedRuntime(resources, output) {
   const archive = path.join(resources, "app.asar");
   const header = JSON.parse(asar.getRawHeader(archive).headerString);
   fs.mkdirSync(output, { recursive: false, mode: 0o700 });
-  for (const name of ["runtime.cjs", "resource-integrity.json"]) {
+  for (const name of ["runtime.cjs", "resource-integrity.json", ...(header.files?.["runtime-inventory-v2.cjs"] ? ["runtime-inventory-v2.cjs"] : [])]) {
     const entry = header.files?.[name];
     assert(entry && !entry.unpacked && !entry.link && entry.size < 1_000_000,
       `Missing sealed ${name}`);

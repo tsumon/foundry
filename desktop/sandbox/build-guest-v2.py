@@ -342,6 +342,8 @@ def inventory(entries):
 
 def project(lock, input_dir, arch, sources=False):
     if lock.get('schema_version') != 2 or lock.get('projection_policy') != 'foundry-runtime-projection-v2': fail('unknown lock schema/policy')
+    expected_versions={'python_command':'/usr/bin/python3.13','python_upstream_version':'3.13.5','python_distribution':'Debian trixie','python_package_version':'3.13.5-2+deb13u5','python_stdlib':'/usr/lib/python3.13','python_options':['-I','-S','-B'],'node_command':'/opt/foundry/node/bin/node','node_version':'24.22.1','typescript_command':['/opt/foundry/node/bin/node','/opt/foundry/typescript/lib/tsc.js'],'typescript_version':'5.9.3'}
+    if any(lock.get('versions',{}).get(k)!=v for k,v in expected_versions.items()): fail('runtime version metadata mismatch')
     if arch not in ('amd64','arm64') or arch not in lock['architectures']: fail('unsupported lock architecture')
     root = host_path(input_dir, directory=True); policy = lock['architectures'][arch]
     entries = {}; identities = []; seen = set(); source_count = 0
@@ -405,7 +407,104 @@ def newc(entries):
         if out.tell()>MAX_FINAL: fail('final cpio bound')
     return out.getvalue()
 
-def assemble(lock, input_dir, arch, guest, runners):
+def runtime_notices(entries, lock, arch):
+    notices={}; components=[]
+    for row in lock['artifacts']:
+        if row['kind'] not in RUNTIME_KINDS or arch not in row['target_architectures']: continue
+        if row['kind']=='debian-runtime-package':
+            sources=[r for r in lock['artifacts'] if r['kind']=='debian-corresponding-source' and (r['source'],r['source_version'])==(row['source'],row['source_version'])]
+            paths=[('debian/'+row['package']+'/copyright','usr/share/doc/'+row['package']+'/copyright')]
+        elif row['kind']=='node-runtime':
+            sources=[r for r in lock['artifacts'] if r['kind']=='node-source' and r['version']==row['version']]
+            paths=[('Node-LICENSE','opt/foundry/node/LICENSE')]
+        else:
+            sources=[r for r in lock['artifacts'] if r['kind']=='typescript-source' and r['version']==row['version']]
+            paths=[('TypeScript-'+n,'opt/foundry/typescript/'+n) for n in ('LICENSE.txt','ThirdPartyNoticeText.txt')]
+        if not sources: fail('missing corresponding source for '+row['file'])
+        for name,source in paths:
+            target=entries[resolve(entries,source)]
+            if target['type']!='file' or not 0<len(target['data'])<=MAX_FILE: fail('missing runtime notice')
+            notices[name]=target['data']
+        identity=lambda r:{k:r[k] for k in ('file','size','sha256')}
+        components.append({'input':identity(row),'sources':[identity(r) for r in sources],'notices':[n for n,_ in paths]})
+    return notices, components
+
+def source_notices(lock, input_dir):
+    # Inspect only license members as data. Never extract or execute source code.
+    notices={}; proof=[]
+    def scan(data, archive, prefix='', nested=False):
+        total=0; count=0
+        with tarfile.open(fileobj=io.BytesIO(data),mode='r|*') as stream:
+            for member in stream:
+                count+=1; total+=member.size
+                if count>200000 or total>4*1024**3: fail('source archive scan bound')
+                name=member.name.removeprefix('./')
+                if not member.isfile(): continue
+                if not nested and name.endswith('/gcc-14.2.0-dfsg.tar.xz'):
+                    if member.size>MAX_FILE: fail('nested source bound')
+                    scan(stream.extractfile(member).read(MAX_FILE+1),archive,name+'/',True)
+                elif len(name.split('/'))<=3 and re.fullmatch(r'(?:COPYING[0-9]*|COPYRIGHT|LICENSE|LICENSES|LICENCE)(?:[.-][A-Za-z0-9_-]+)*',name.split('/')[-1],re.IGNORECASE):
+                    path_name(name)
+                    if member.size==0: continue  # Empty upstream placeholders carry no license text.
+                    if not 0<member.size<=1024*1024: fail('source notice bound: '+name)
+                    value=stream.extractfile(member).read(1024*1024+1)
+                    if len(value)!=member.size: fail('source notice truncated')
+                    dest=archive+'/'+prefix+name
+                    if dest in notices: fail('duplicate source notice')
+                    notices[dest]=value;proof.append({'path':dest,'archive':archive,'member':prefix+name,'size':len(value),'sha256':sha(value)})
+    for row in lock['artifacts']:
+        if row['kind'] not in SOURCE_KINDS or not re.search(r'\.tar\.(?:gz|xz|bz2)$',row['file']): continue
+        data=read_regular(Path(input_dir)/row['file'],MAX_ARCHIVE,row['size'],row['sha256'])
+        scan(data,row['file'])
+    return notices, sorted(proof,key=lambda r:r['path'])
+
+def export_notices(directory, entries, lock, arch, input_dir):
+    output=Path(directory)
+    host_path(output.parent,directory=True)
+    if output.exists(): fail('refusing notices overwrite')
+    notices,components=runtime_notices(entries,lock,arch)
+    licenses,proof=source_notices(lock,input_dir)
+    notices.update({'source-licenses/'+n:v for n,v in licenses.items()})
+    notices['runtime-components.json']=canonical({'schema_version':1,'guest_platform':'linux/'+arch,'components':components,'source_license_members':proof})+b'\n'
+    output.mkdir()
+    for name,value in sorted(notices.items()):
+        path_name(name);target=output/name;target.parent.mkdir(parents=True,exist_ok=True)
+        # The fresh output owns all ancestors and members. No archive path is extracted.
+        with target.open('xb') as stream: stream.write(value)
+    return [{'path':n,'size':len(v),'sha256':sha(v)} for n,v in sorted(notices.items())]
+
+INVENTORY_PATH = 'opt/foundry/runtime-inventory-v2.json'
+
+def inventory_digest(raw):
+    return sha(b'foundry:runtime-inventory:v2\n' + raw)
+
+def runtime_descriptor(entries, arch, projected, guest, runners):
+    # Hash completed bytes before embedding the descriptor; no image/self hash.
+    elf_info(guest, arch, static=True)
+    if not 0 < len(guest) <= 64*1024*1024 or projected != inventory(entries): fail('invalid measured runtime/guest')
+    def file(name, mode, limit=MAX_FILE):
+        e=entries.get(name)
+        if not e or e['type']!='file' or e['mode']!=mode or not 0<len(e['data'])<=limit: fail('selected runtime file mismatch: '+name)
+        return {'path':'/'+name,'size':len(e['data']),'sha256':sha(e['data'])}
+    if set(runners)!=set(RUNNERS): fail('exact owned runner inventory required')
+    owned=[]
+    for name,profile,runner in zip(RUNNERS,('c4_node_model_v2','c4_python_model_v2','c4_typescript_model_v2'),('node-test-v2','python-unittest-v2','typescript-node-test-v2')):
+        row=runners[name]
+        if not isinstance(row['data'],bytes) or not 0<len(row['data'])<=1024*1024 or sha(row['data'])!=row['sha256']: fail('runner hash/size mismatch')
+        owned.append({'profile_id':profile,'runner_id':runner,'file':{'path':'/'+name,'size':len(row['data']),'sha256':sha(row['data'])}})
+    value={'schema_version':2,'guest_platform':'linux/'+arch,'projection_policy':'foundry-runtime-projection-v2',
+        'projected_runtime':projected,'supervisor':{'path':'/init','size':len(guest),'sha256':sha(guest)},
+        'node':{'version':'24.22.1','executable':file('opt/foundry/node/bin/node','0555')},
+        'python':{'version':'3.13.5','distribution':'Debian trixie','package_version':'3.13.5-2+deb13u5','executable':file('usr/bin/python3.13','0555'),'stdlib':'/usr/lib/python3.13','options':['-I','-S','-B']},
+        'typescript':{'version':'5.9.3','compiler':file('opt/foundry/typescript/lib/typescript.js','0444')},
+        'runners':owned,'framework_report':{'schema_version':1,'node_runner':'node-test-v2','python_runner':'python-unittest-v2','max_bytes':2097152,'max_cases':4096},
+        'child_contract_version':1,'compiler_contract':{'schema_version':1,'config_path':'tsconfig.json','root_dir':'/workspace','out_dir':'/foundry-build/compiled',
+            'compiler_options':{'target':'ES2022','module':'NodeNext','module_resolution':'NodeNext','strict':True,'no_emit_on_error':True,'allow_js':False,'skip_lib_check':False},
+            'max_files':1000,'max_bytes':67108864,'max_file_bytes':8388608}}
+    if len(canonical(value))>65536: fail('descriptor size bound')
+    return value
+
+def assemble(lock, input_dir, arch, guest, runners, notices=None):
     if len(guest)>64*1024*1024: fail('guest size bound')
     elf_info(guest, arch, static=True)
     if set(runners)!=set(RUNNERS): fail('exact owned runner inventory required')
@@ -414,8 +513,12 @@ def assemble(lock, input_dir, arch, guest, runners):
         if not isinstance(row['data'],bytes) or not 0 < len(row['data']) <= 1024*1024 or sha(row['data'])!=row['sha256']: fail('runner hash/size mismatch')
         owned.append({'path':name, 'sha256':sha(row['data']), 'size':len(row['data'])})
     entries, receipt=project(lock, input_dir, arch)
-    for name in ['init','opt/foundry/runners',*RUNNERS,'dev','proc','sys','workspace','tmp','foundry-build','foundry-deps']:
+    for name in ['init',INVENTORY_PATH,'opt/foundry/runners',*RUNNERS,'dev','proc','sys','workspace','tmp','foundry-build','foundry-deps']:
         if name in entries or any(n.startswith(name+'/') for n in entries): fail('runtime/control overlap')
+    if notices: receipt['notices']=export_notices(notices,entries,lock,arch,input_dir)
+    descriptor=runtime_descriptor(entries,arch,receipt['runtime'],guest,runners)
+    descriptor_raw=canonical(descriptor)
+    entries[INVENTORY_PATH]={'type':'file','mode':'0444','data':descriptor_raw}
     entries['init']={'type':'file','mode':'0555','data':guest}
     for name,row in runners.items(): entries[name]={'type':'file','mode':'0444','data':row['data']}
     for name in ['dev','proc','sys','sys/fs','sys/fs/cgroup','workspace','tmp','foundry-build','foundry-deps','opt/foundry']:
@@ -431,12 +534,13 @@ def assemble(lock, input_dir, arch, guest, runners):
     output=io.BytesIO()
     with gzip.GzipFile(filename='',fileobj=output, mode='wb', compresslevel=9, mtime=0) as stream: stream.write(raw)
     image=output.getvalue(); receipt.update(status='assembled-build-only', guest={'sha256':sha(guest),'size':len(guest)}, runners=sorted(owned,key=lambda x:x['path']), image={'sha256':sha(image),'size':len(image)})
+    receipt.update(runtime_inventory=descriptor, descriptor={'path':'runtime-inventory-v2.json','size':len(descriptor_raw),'sha256':sha(descriptor_raw),'digest':inventory_digest(descriptor_raw)})
     return image, receipt
 
-def publish(output, receipt_path, image, receipt):
-    if os.name=='nt':return windows_backend().publish(output,receipt_path,image,lambda:canonical(receipt)+b'\n')
-    paths=[Path(output),Path(receipt_path)]
-    if paths[0]==paths[1]: fail('output and receipt must differ')
+def publish(output, receipt_path, image, receipt, inventory_path=None):
+    if os.name=='nt':return windows_backend().publish(output,receipt_path,image,lambda:canonical(receipt)+b'\n', (inventory_path,canonical(receipt['runtime_inventory'])) if inventory_path else None)
+    paths=[Path(output),Path(receipt_path)]+([Path(inventory_path)] if inventory_path else [])
+    if len(set(paths))!=len(paths): fail('output, receipt and inventory must differ')
     parents=[]; owned=[]
     try:
         for p in paths:
@@ -446,7 +550,7 @@ def publish(output, receipt_path, image, receipt):
             except FileNotFoundError: pass
             else: fail('refusing output overwrite')
         for index,(p,parent) in enumerate(zip(paths,parents)):
-            data=image if index==0 else canonical(receipt)+b'\n'
+            data=image if index==0 else canonical(receipt)+b'\n' if index==1 else canonical(receipt['runtime_inventory'])
             fd=os.open(p.name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o644,dir_fd=parent)
             identity=os.fstat(fd); owned.append((p.name,parent,identity.st_dev,identity.st_ino))
             with os.fdopen(fd,'wb') as stream: stream.write(data); stream.flush(); os.fsync(stream.fileno())
@@ -466,19 +570,19 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--lock',required=True); parser.add_argument('--inputs',required=True); parser.add_argument('--arch',required=True,choices=['amd64','arm64'])
     parser.add_argument('--validate-only',action='store_true'); parser.add_argument('--sources',action='store_true')
-    parser.add_argument('--guest'); parser.add_argument('--runners'); parser.add_argument('--output'); parser.add_argument('--receipt')
+    parser.add_argument('--guest'); parser.add_argument('--runners'); parser.add_argument('--output'); parser.add_argument('--receipt'); parser.add_argument('--inventory'); parser.add_argument('--notices')
     args=parser.parse_args(); lock=json.loads(read_regular(Path(args.lock),2*1024*1024))
     if args.validate_only:
-        if any([args.guest,args.runners,args.output,args.receipt]): fail('validate-only cannot publish an image')
+        if any([args.guest,args.runners,args.output,args.receipt,args.inventory,args.notices]): fail('validate-only cannot publish an image')
         print(json.dumps(validate(lock,Path(args.inputs),args.arch,args.sources),sort_keys=True)); return
-    if args.sources or not all([args.guest,args.runners,args.output,args.receipt]): fail('explicit guest/runners/output/receipt required')
+    if args.sources or not all([args.guest,args.runners,args.output,args.receipt,args.inventory]): fail('explicit guest/runners/output/receipt/inventory required')
     runner_rows=json.loads(read_regular(Path(args.runners),64*1024)); runners={}
     if not isinstance(runner_rows,list) or len(runner_rows)!=len(RUNNERS): fail('exact runner manifest required')
     for row in runner_rows:
         if set(row)!={'path','source','sha256'} or row['path'] in runners: fail('invalid runner manifest')
         runners[row['path']]={'data':read_regular(Path(row['source']),1024*1024,digest=row['sha256']),'sha256':row['sha256']}
-    image,receipt=assemble(lock,Path(args.inputs),args.arch,read_regular(Path(args.guest),64*1024*1024),runners)
-    publish(args.output,args.receipt,image,receipt); print(json.dumps(receipt,sort_keys=True))
+    image,receipt=assemble(lock,Path(args.inputs),args.arch,read_regular(Path(args.guest),64*1024*1024),runners,args.notices)
+    publish(args.output,args.receipt,image,receipt,args.inventory); print(json.dumps(receipt,sort_keys=True))
 
 if __name__=='__main__':
     try: main()

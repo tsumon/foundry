@@ -19,6 +19,12 @@ func compilerFixtureV2(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	p := "../../../build/multilang-inputs/typescript-5.9.3.tgz"
+	if inputs := os.Getenv("FOUNDRY_MULTILANG_INPUTS"); inputs != "" {
+		if !filepath.IsAbs(inputs) {
+			t.Fatal("absolute pinned compiler fixture input directory required")
+		}
+		p = filepath.Join(inputs, "typescript-5.9.3.tgz")
+	}
 	b, e := os.ReadFile(p)
 	if e != nil {
 		t.Fatal(e)

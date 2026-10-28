@@ -45,10 +45,14 @@ func adapterRunV2(t *testing.T, python bool, root, file string) (frameworkreport
 	cmd := exec.Command("node", bridge, runnerAssetV2(t, "node.cjs"), string(raw))
 	if python {
 		name = frameworkreport.PythonUnittestV2
-		cmd = exec.Command("/opt/anaconda3/bin/python3", "-I", "-S", "-B", "-c", `import runpy,sys,json; m=runpy.run_path(sys.argv[1]); sys.exit(m['run_tests'](json.loads(sys.argv[2]),3))`, runnerAssetV2(t, "python.py"), string(raw))
+		pythonPath := os.Getenv("FOUNDRY_BUILD_PYTHON")
+		if !filepath.IsAbs(pythonPath) {
+			t.Fatal("FOUNDRY_BUILD_PYTHON must name the absolute trusted host Python >=3.13")
+		}
+		cmd = exec.Command(pythonPath, "-I", "-S", "-B", "-c", `import runpy,sys,json; m=runpy.run_path(sys.argv[1]); sys.exit(m['run_tests'](json.loads(sys.argv[2]),3))`, runnerAssetV2(t, "python.py"), string(raw))
 	}
 	cmd.Dir = root
-	cmd.Env = []string{"PATH=/opt/anaconda3/bin:/usr/bin:/bin", "LANG=C.UTF-8", "TZ=UTC", "TMPDIR=" + t.TempDir()}
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "LANG=C.UTF-8", "TZ=UTC", "TMPDIR=" + t.TempDir()}
 	cmd.ExtraFiles = []*os.File{reportW, contract}
 	var diagnostics bytes.Buffer
 	cmd.Stdout = &diagnostics

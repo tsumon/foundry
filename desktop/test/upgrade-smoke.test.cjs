@@ -116,3 +116,15 @@ test("native Windows workflow pins public source and installer, then over-instal
   assert.match(seed, /platformfs\.PrivateDirectory\(root\)/);
   assert.match(seed, /platformfs\.PrivateDirectory\(p\)/);
 });
+
+test('sealed upgrade resource verification loads the descriptor module for dual resources',async t=>{
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'foundry-upgrade-v2-')));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const resources=path.join(root,'resources'),app=path.join(root,'app');fs.mkdirSync(resources);fs.mkdirSync(app);
+  const {sandboxFixture,v2Fixture}=require('./sandbox-fixture.cjs');sandboxFixture(path.join(resources,'sandbox'));v2Fixture(path.join(resources,'sandbox-v2'));
+  for(const n of ['bin/foundry'+(process.platform==='win32'?'.exe':''),'bin/foundry-acceptance'+(process.platform==='win32'?'.exe':''),'bin/foundry-vm-acceptance'+(process.platform==='win32'?'.exe':''),'web/index.html']){fs.mkdirSync(path.dirname(path.join(resources,n)),{recursive:true});fs.writeFileSync(path.join(resources,n),'inert');}
+  require('../build-support.cjs').writeManifest(resources);
+  for(const n of ['runtime.cjs','runtime-inventory-v2.cjs'])fs.copyFileSync(path.join(__dirname,'..',n),path.join(app,n));
+  fs.writeFileSync(path.join(app,'resource-integrity.json'),JSON.stringify({manifestSHA256:require('../runtime.cjs').resourceDigest(path.join(resources,'resources-manifest.json'))}));
+  await require('@electron/asar').createPackage(app,path.join(resources,'app.asar'));
+  const loaded=require('../upgrade-smoke.cjs').packagedRuntime(resources,path.join(root,'extracted'));
+  assert.equal(loaded.runtime.verifyResources(resources,loaded.integrity).v2.schema_version,2);
+});

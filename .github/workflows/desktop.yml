@@ -75,6 +75,13 @@ jobs:
           node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources"
           FOUNDRY_RUNTIME_SOURCES="$FOUNDRY_RUNTIME_SOURCES/installer" \
             node desktop/runtime-sources.cjs "$RUNNER_TEMP/foundry-runtime-sources/installer" installer
+      - name: Acquire the exact locked multilang runtime and source inputs once (build only)
+        run: node desktop/sandbox/multilang-inputs.cjs "$RUNNER_TEMP/foundry-multilang-inputs" all
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: foundry-multilang-inputs
+          if-no-files-found: error
+          path: ${{ runner.temp }}/foundry-multilang-inputs/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: foundry-runtime-sources
@@ -108,6 +115,10 @@ jobs:
         with:
           name: foundry-runtime-sources
           path: ${{ runner.temp }}/foundry-runtime-sources
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: foundry-multilang-inputs
+          path: ${{ runner.temp }}/foundry-multilang-inputs
       - name: Set up trusted build Python
         id: build-python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -124,6 +135,7 @@ jobs:
       - name: Desktop boundaries and real Electron download contract
         env:
           FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
+          FOUNDRY_MULTILANG_INPUTS: ${{ runner.temp }}/foundry-multilang-inputs
         run: |
           set -eu
           npm test --prefix desktop
@@ -131,19 +143,27 @@ jobs:
           desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/download-contract.cjs report
       - name: Assemble pinned sandbox and corresponding-source sidecar (no VM boot)
         id: sandbox-bundle
+        env:
+          FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
+          FOUNDRY_MULTILANG_INPUTS: ${{ runner.temp }}/foundry-multilang-inputs
         run: |
           set -eu
           export FOUNDRY_GO="$(command -v go)"
           node desktop/sandbox/build.cjs "$RUNNER_TEMP/foundry-macos-sandbox"
+          export FOUNDRY_SANDBOX_BUNDLE="$RUNNER_TEMP/foundry-macos-sandbox/bundle"
+          export FOUNDRY_SANDBOX_SOURCES="$RUNNER_TEMP/foundry-macos-sandbox/sandbox-sources"
+          export FOUNDRY_SANDBOX_INPUTS="$RUNNER_TEMP/foundry-macos-sandbox/inputs"
+          node desktop/sandbox/build-bundle-v2.cjs "$RUNNER_TEMP/foundry-macos-sandbox-v2"
       - name: Build native ad-hoc app and DMG without signing-account discovery
         id: desktop-package
         run: |
           set -eu
           export FOUNDRY_DESKTOP_OUTPUT="$RUNNER_TEMP/foundry-macos-output"
           export FOUNDRY_SANDBOX_BUNDLE="$RUNNER_TEMP/foundry-macos-sandbox/bundle"
+          export FOUNDRY_SANDBOX_V2_BUNDLE="$RUNNER_TEMP/foundry-macos-sandbox-v2/bundle"
           node desktop/build.cjs
           cp -R "$RUNNER_TEMP/foundry-runtime-sources" "$FOUNDRY_DESKTOP_OUTPUT/runtime-sources"
-          cp -R "$RUNNER_TEMP/foundry-macos-sandbox/sandbox-sources" "$FOUNDRY_DESKTOP_OUTPUT/sandbox-sources"
+
       - name: Installed backend contracts and persistence (no hardware VM acceptance)
         id: installed-contract
         env:
@@ -160,6 +180,7 @@ jobs:
           codesign --verify --deep --strict "$install/Foundry.app"
           export FOUNDRY_INSTALLED_RESOURCES="$install/Foundry.app/Contents/Resources"
           export FOUNDRY_SMOKE_DATA="$RUNNER_TEMP/foundry-installed-data"
+          node desktop/distribution.cjs --verify "$output" "$FOUNDRY_INSTALLED_RESOURCES" darwin/arm64
           node desktop/installed-smoke.cjs > "$output/native-smoke.json"
       - name: Upload after package contracts; physical Mac VM acceptance remains separate
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -173,6 +194,8 @@ jobs:
             ${{ runner.temp }}/foundry-macos-output/native-smoke.json
             ${{ runner.temp }}/foundry-macos-output/runtime-sources/
             ${{ runner.temp }}/foundry-macos-output/sandbox-sources/
+            ${{ runner.temp }}/foundry-macos-output/sandbox-v2-sources/
+            ${{ runner.temp }}/foundry-macos-output/distribution-manifest.json
 
   windows-installer:
     name: Native Windows x64 installer and acceptance
@@ -205,6 +228,10 @@ jobs:
         with:
           name: foundry-runtime-sources
           path: ${{ runner.temp }}/foundry-runtime-sources
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: foundry-multilang-inputs
+          path: ${{ runner.temp }}/foundry-multilang-inputs
       - name: Set up trusted build Python
         id: build-python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -262,6 +289,7 @@ jobs:
       - name: Native CGO commands and Windows boundary/integration gates
         env:
           FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
+          FOUNDRY_MULTILANG_INPUTS: ${{ runner.temp }}/foundry-multilang-inputs
         run: ./desktop/windows-test.ps1
       - name: Isolated Windows Credential Manager diagnostic lifecycle
         run: |
@@ -300,21 +328,30 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Minimal WHPX runtime source build failed' }
       - name: Assemble pinned Windows sandbox and corresponding-source sidecar
         id: sandbox-bundle
+        env:
+          FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
+          FOUNDRY_MULTILANG_INPUTS: ${{ runner.temp }}/foundry-multilang-inputs
         run: |
           $ErrorActionPreference = 'Stop'
           $env:FOUNDRY_GO = (Get-Command go).Source
           $env:FOUNDRY_WINDOWS_VM_RUNTIME = Join-Path $env:RUNNER_TEMP 'foundry-windows-vm-runtime'
           node desktop/sandbox/build.cjs (Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox')
           if ($LASTEXITCODE -ne 0) { throw 'Windows sandbox assembly failed' }
+          $env:FOUNDRY_SANDBOX_BUNDLE = Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox/bundle'
+          $env:FOUNDRY_SANDBOX_SOURCES = Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox/sandbox-sources'
+          $env:FOUNDRY_SANDBOX_INPUTS = Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox/inputs'
+          node desktop/sandbox/build-bundle-v2.cjs (Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox-v2')
+          if ($LASTEXITCODE -ne 0) { throw 'Windows v2 offline sandbox assembly failed' }
       - name: Build per-user unsigned NSIS installer
         id: desktop-package
         run: |
           $env:FOUNDRY_DESKTOP_OUTPUT = Join-Path $env:RUNNER_TEMP 'foundry-windows-output'
           $env:FOUNDRY_SANDBOX_BUNDLE = Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox/bundle'
+          $env:FOUNDRY_SANDBOX_V2_BUNDLE = Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox-v2/bundle'
           node desktop/build-windows.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed' }
           Copy-Item (Join-Path $env:RUNNER_TEMP 'foundry-runtime-sources') (Join-Path $env:FOUNDRY_DESKTOP_OUTPUT 'runtime-sources') -Recurse
-          Copy-Item (Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox/sandbox-sources') (Join-Path $env:FOUNDRY_DESKTOP_OUTPUT 'sandbox-sources') -Recurse
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 5237fc49bafe4c5d33d3d6fa117ac59c467ace16
@@ -367,3 +404,5 @@ jobs:
             ${{ runner.temp }}/foundry-windows-output/shipping-provenance.json
             ${{ runner.temp }}/foundry-windows-output/runtime-sources/
             ${{ runner.temp }}/foundry-windows-output/sandbox-sources/
+            ${{ runner.temp }}/foundry-windows-output/sandbox-v2-sources/
+            ${{ runner.temp }}/foundry-windows-output/distribution-manifest.json
