@@ -322,8 +322,10 @@ export async function parseRepositoryInspection(
         ])
       )
         return null;
-      const canonical = inputJSON(c),
-        p = await digest("foundry:c4:v2:protected-inputs\n", {
+      const canonical = inputJSON(c);
+      if (new TextEncoder().encode(goJSON(canonical)).length > 1048576)
+        return null;
+      const p = await digest("foundry:c4:v2:protected-inputs\n", {
           protected: canonical.protected,
           protected_prefixes: canonical.protected_prefixes,
         }),

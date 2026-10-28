@@ -254,7 +254,7 @@ it.each([
   "test alias",
   "source expands scope",
 ])("rejects a resealed receipt with %s", async (kind) => {
-  const r: any = receiptV2();
+  const r: any = structuredClone(receiptV2());
   if (kind === "private root")
     r.verification_v2.dependencies.store_root = "/private/store";
   if (kind === "unknown nested field")
@@ -275,3 +275,91 @@ it.each([
     }),
   ).rejects.toThrow();
 });
+
+import { parseRepositoryInspection } from "./repositoryImportValidation";
+import { sha } from "./test/codingV2Fixtures";
+
+// Exercise the independent input bound with valid seals and an outer receipt
+// below 2 MiB. Each long test path is present in both protected and test_files.
+function largeInputReceipt(boundary = false, extraByte = false) {
+  const r = receiptV2();
+  const c = r.verification_v2;
+  const paths = Array.from(
+    { length: 497 },
+    (_, i) =>
+      `tests/${("a".repeat(240) + "/").repeat(4)}${String(i).padStart(3, "0")}${"x".repeat(35)}.test.js`,
+  );
+  const serialize = (v: unknown) =>
+    JSON.stringify(v).replace(
+      /[<>&\u2028\u2029]/g,
+      (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
+  const size = () => new TextEncoder().encode(serialize(c)).length;
+  const populate = () => {
+    c.test_files = paths;
+    c.protected = [
+      ...c.protected.filter((f) => f.role !== "test"),
+      ...paths.map((path) => ({
+        path,
+        mode: 420,
+        bytes: 1,
+        sha256: "7".repeat(64),
+        role: "test",
+      })),
+    ];
+  };
+  populate();
+  if (boundary) {
+    let remaining = (size() - 1048576) / 2;
+    if (!Number.isInteger(remaining)) throw new Error("fixture parity changed");
+    for (let i = 0; remaining > 0 && i < paths.length; i++) {
+      const trim = Math.min(35, remaining);
+      paths[i] = paths[i].replace("x".repeat(35), "x".repeat(35 - trim));
+      remaining -= trim;
+    }
+    if (remaining) throw new Error("fixture cannot reach boundary");
+    populate();
+  }
+  if (extraByte) c.protected.find((f) => f.role === "test")!.bytes = 10;
+  c.protected_inputs_digest = "";
+  c.execution_contract_digest = "";
+  const protectedDigest = sha(
+    "foundry:c4:v2:protected-inputs\n" +
+      serialize({
+        protected: c.protected,
+        protected_prefixes: c.protected_prefixes,
+      }),
+  );
+  const executionDigest = sha(
+    "foundry:c4:v2:execution-contract\n" + serialize(c),
+  );
+  c.protected_inputs_digest = protectedDigest;
+  c.execution_contract_digest = executionDigest;
+  r.protected_inputs = c.protected.map((f) => f.path);
+  r.file_count = 500;
+  r.total_bytes = c.protected.reduce(
+    (bytes, f) => bytes + f.bytes,
+    r.context_bytes!,
+  );
+  const receipt = sealReceipt(r);
+  return {
+    receipt,
+    contractBytes: size(),
+    receiptBytes: new TextEncoder().encode(serialize(receipt)).length,
+  };
+}
+
+it.each([
+  { boundary: false, extraByte: false, accepted: false, bytes: 1073806 },
+  { boundary: true, extraByte: false, accepted: true, bytes: 1048576 },
+  { boundary: true, extraByte: true, accepted: false, bytes: 1048577 },
+])(
+  "enforces independent schema-2 input contract size $bytes bytes (accepted=$accepted)",
+  async ({ boundary, extraByte, accepted, bytes }) => {
+    const fixture = largeInputReceipt(boundary, extraByte);
+    expect(fixture.contractBytes).toBe(bytes);
+    expect(fixture.receiptBytes).toBeLessThan(2097152);
+    const parsed = await parseRepositoryInspection(fixture.receipt);
+    expect(parsed !== null).toBe(accepted);
+  },
+);
