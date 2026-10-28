@@ -69,6 +69,8 @@ type C4TestPolicyV2 struct {
 	DropCapabilities       []string  `json:"drop_capabilities"`
 	Ports                  []string  `json:"ports"`
 	Tmpfs                  []C4Tmpfs `json:"tmpfs"`
+	SourceMount            C4Tmpfs   `json:"source_mount"`
+	DependencyMount        C4Tmpfs   `json:"dependency_mount"`
 	RunnerID               string    `json:"runner_id"`
 	MaxReportBytes         int       `json:"max_report_bytes"`
 	MaxCases               int       `json:"max_cases"`
@@ -93,12 +95,18 @@ func FixedC4VMPolicyV2(profileID string) (C4VMPolicyV2, error) {
 	if err != nil {
 		return C4VMPolicyV2{}, err
 	}
+	dependencyPath := "/workspace/node_modules"
+	if profileID == "c4_python_model_v2" {
+		dependencyPath = "/foundry-deps/python"
+	}
 	return C4VMPolicyV2{Version: "multilang-vm-v2", GuestMemoryBytes: 2 << 30, LifetimeSeconds: 180,
 		Test: C4TestPolicyV2{CPUs: 1, MemoryBytes: 1 << 30, PidsLimit: 128, TimeoutSeconds: 120, OutputLimitBytes: 64 << 10, UID: 65534, GID: 65534,
 			ReadOnlyRoot: true, ReadOnlySource: true, ReadOnlyDependencies: true, NoNewPrivileges: true,
 			Network: "none", Pull: "never", Logging: "none", DisableHealthcheck: true, DropCapabilities: []string{"ALL"}, Ports: []string{},
-			Tmpfs:    []C4Tmpfs{{Path: "/tmp", SizeBytes: 64 << 20, Inodes: 16384, Nosuid: true, Nodev: true}, {Path: "/foundry-build", SizeBytes: 256 << 20, Inodes: 16384, Exec: true, Nosuid: true, Nodev: true}},
-			RunnerID: runner, MaxReportBytes: 2 << 20, MaxCases: 4096, MaxSourceFiles: 500, MaxSourceBytes: 10 << 20,
+			Tmpfs:           []C4Tmpfs{{Path: "/tmp", SizeBytes: 64 << 20, Inodes: 16384, Nosuid: true, Nodev: true}, {Path: "/foundry-build", SizeBytes: 256 << 20, Inodes: 16384, Exec: true, Nosuid: true, Nodev: true}},
+			SourceMount:     C4Tmpfs{Path: "/workspace", SizeBytes: 16 << 20, Inodes: 16384, Nosuid: true, Nodev: true},
+			DependencyMount: C4Tmpfs{Path: dependencyPath, SizeBytes: 80 << 20, Inodes: 32768, Nosuid: true, Nodev: true},
+			RunnerID:        runner, MaxReportBytes: 2 << 20, MaxCases: 4096, MaxSourceFiles: 500, MaxSourceBytes: 10 << 20,
 			MaxDependencyFiles: 10000, MaxDependencyBytes: 64 << 20, MaxDependencyFileBytes: 8 << 20,
 		},
 	}, nil
