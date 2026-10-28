@@ -441,7 +441,7 @@ it("boots the same-origin session first and shows an honest empty workspace", as
     /任务数据\s*已收到/,
   );
   expect(screen.getByLabelText("工作台状态")).toHaveTextContent(
-    /前端版本\s*0\.1\.0/,
+    /前端版本\s*0\.2\.0/,
   );
   expect(screen.getByLabelText("工作台状态")).toHaveTextContent(
     /构建时间\s*\d{4}-\d{2}-\d{2}/,
