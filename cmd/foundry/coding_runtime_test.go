@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"foundry/internal/accounts"
 	"foundry/internal/domain"
 	"foundry/internal/model"
 	"foundry/internal/store"
+	"foundry/internal/vmruntime"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync/atomic"
@@ -177,5 +182,86 @@ func TestCodingStartupAndRecoveryDoNotTouchNativeCredentials(t *testing.T) {
 	}
 	if secrets.calls != 0 {
 		t.Fatal("startup accessed native credentials", secrets.calls)
+	}
+}
+
+func TestCodingRuntimeMissingOptionalV2PreservesStartup(t *testing.T) {
+	t.Setenv("FOUNDRY_VM_V2_BUNDLE", filepath.Join(t.TempDir(), "missing"))
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	p, e, err := newCodingRuntime(s, t.TempDir(), &codingForbiddenSecrets{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	defer p.acceptance.Close()
+	defer p.siwc.Close()
+	for _, row := range e.CodingProfilesV2() {
+		if row.Available {
+			t.Fatal("missing optional assets available")
+		}
+	}
+}
+func TestCodingRuntimeLoadsInstalledV2WithoutBoot(t *testing.T) {
+	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
+		t.Skip("fixture installed platform")
+	}
+	bundle, _ := filepath.EvalSymlinks(t.TempDir())
+	data, _ := filepath.EvalSymlinks(t.TempDir())
+	os.Chmod(data, 0700)
+	raw, err := os.ReadFile("../../internal/vmruntime/testdata/runtime-inventory-v2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := vmruntime.ParseRuntimeInventoryV2(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("synthetic installed asset, never executable")
+	sum := func(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+	d.Supervisor.Size = int64(len(body))
+	d.Supervisor.SHA256 = sum(body)
+	raw, err = d.CanonicalBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := vmruntime.ManifestV2{SchemaVersion: 2, HostPlatform: "darwin/arm64", GuestPlatform: "linux/arm64", Protocol: "foundry-vm-v2", PolicyVersion: "multilang-vm-v2", Runtime: "runtime/foundry-vm-helper", Kernel: "kernel", RootFS: "initramfs.cpio.gz", Verifier: "foundry-vm-guest-v2", RuntimeInventory: vmruntime.RuntimeInventoryPathV2}
+	m.RuntimeInventoryDigest, _ = d.Digest()
+	for p, b := range map[string][]byte{m.Runtime: body, m.Kernel: body, m.RootFS: body, m.Verifier: body, m.RuntimeInventory: raw} {
+		name := filepath.Join(bundle, p)
+		os.MkdirAll(filepath.Dir(name), 0700)
+		os.WriteFile(name, b, 0600)
+		m.Assets = append(m.Assets, vmruntime.Asset{Path: p, Size: int64(len(b)), SHA256: sum(b)})
+	}
+	raw, _ = json.Marshal(m)
+	os.WriteFile(filepath.Join(bundle, "manifest.json"), raw, 0600)
+	t.Setenv("FOUNDRY_VM_BUNDLE", "")
+	t.Setenv("FOUNDRY_VM_V2_BUNDLE", bundle)
+	s, err := store.Open(filepath.Join(data, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	p, e, err := newCodingRuntime(s, data, &codingForbiddenSecrets{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	defer p.acceptance.Close()
+	defer p.siwc.Close()
+	for _, row := range e.CodingProfilesV2() {
+		if !row.Available || row.EmbeddedVM == nil {
+			t.Fatal("installed resource not composed", row)
+		}
+	}
+	entries, _ := os.ReadDir(filepath.Join(data, "vm-instances"))
+	if len(entries) != 0 {
+		t.Fatal("startup launched instance")
+	}
+	if _, ok := e.CodingVMProfile(); ok {
+		t.Fatal("v2 replaced v1 profile")
 	}
 }

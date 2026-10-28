@@ -64,9 +64,14 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 	if !errors.Is(err, store.ErrNotFound) {
 		return zero, domain.ImportStorageFailed
 	}
+
 	receipt, err := e.s.GetRepositoryInspection(r.ImportSelection.InspectionID)
 	if err != nil || domain.ValidateImportSelection(receipt, *r.ImportSelection) != nil {
 		return zero, domain.ImportInvalidRecord
+	}
+	spec, err = importSpecForReceipt(r.Spec, receipt)
+	if err != nil {
+		return zero, err
 	}
 	if domain.RepositoryImportSpecDigest(spec) != domain.RepositoryImportSpecDigest(receipt.Spec) {
 		return zero, domain.ImportSourceChanged
@@ -79,7 +84,7 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 		// Settings may change after preliminary admission. Validate the actual
 		// new-task snapshot before reserving or preparing any import effects.
 		validateProfiles := c4Profiles
-		if r.Spec.C4.ID == "c4_go_model_v1" {
+		if r.Spec.C4.IsModelBacked() {
 			validateProfiles = newModelC4Profiles
 		}
 		if err := validateProfiles(frozen, modelSnapshot); err != nil {
@@ -134,7 +139,19 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 	}
 	binding := domain.RepositoryImportBinding{SchemaVersion: 1, InspectionID: receipt.ID, InspectionDigest: receipt.Digest, ImportOperationID: op.ID, Root: receipt.Root, Commit: receipt.Commit, BaseDigest: digest, ImportSpecDigest: domain.RepositoryImportSpecDigest(receipt.Spec)}
 	r.Spec.ProfileID = resolved
-	r.Spec.Protected = append(append([]string{}, r.Spec.Protected...), receipt.ProtectedInputs...)
+	if receipt.SchemaVersion == 2 {
+		a, err := e.validateV2Inspection(ctx, receipt)
+		if err != nil {
+			return fail("source", domain.ImportSourceChanged)
+		}
+		p, protected, err := domain.DeriveV2MissionMaterial(receipt, a)
+		if err != nil || !reflect.DeepEqual(r.Spec.C4, &p) || !reflect.DeepEqual(facts.VerificationV2, receipt.VerificationV2) {
+			return fail("source", domain.ImportSourceChanged)
+		}
+		r.Spec.Protected = protected
+	} else {
+		r.Spec.Protected = append(append([]string{}, r.Spec.Protected...), receipt.ProtectedInputs...)
+	}
 	m := domain.Mission{ID: id, ImportVersion: 1, RepositoryImport: &binding, CodingVersion: 1, WorkspaceMode: r.WorkspaceMode, Title: r.Title, Goal: r.Goal, RepoPath: receipt.Root, BaseCommit: receipt.Commit, State: "draft", Stage: "brief", Spec: r.Spec, Profiles: frozen, ModelSnapshot: modelSnapshot, ModelPolicySnapshot: modelPolicy, ContextManifest: receipt.ContextManifest, Budget: domain.Budget{MaxCalls: r.Spec.MaxCalls}, CandidateDigest: digest, CandidateGeneration: &ref, Messages: []domain.Message{}, Changes: []domain.Change{}, Evidence: []domain.Verification{}, Reviews: []domain.Review{}, Approvals: []domain.Approval{}}
 	if e.options.C4Controlled != nil && !e.options.C4Controlled.modelBacked && digest != e.options.C4Controlled.config.BaseDigest {
 		return fail("prepare", domain.ImportSourceChanged)
@@ -162,6 +179,15 @@ func (e *Engine) createRepositoryImport(parent context.Context, r CreateRequest)
 	checkedSource, err := e.recheckImportSource(ctx, receipt, r.RepoPath)
 	if err != nil || checkedSource != source {
 		return fail("source", domain.ImportSourceChanged)
+	}
+	if receipt.SchemaVersion == 2 {
+		s := receipt.Spec.VerificationV2
+		if !e.currentV2Matches(s.ProfileID, s.EmbeddedVM, s.RuntimeInventoryDigest) {
+			return fail("source", domain.ImportSourceChanged)
+		}
+		if _, err = e.validateV2Inspection(ctx, receipt); err != nil {
+			return fail("source", domain.ImportSourceChanged)
+		}
 	}
 	if err = workspace.PublishRepositoryImport(stage, e.dir(id), ref, digest); err != nil {
 		return fail("publish", domain.ImportPublishFailed)

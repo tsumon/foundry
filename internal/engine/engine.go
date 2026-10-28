@@ -96,6 +96,9 @@ func (e *Engine) Create(ctx context.Context, r CreateRequest) (domain.Mission, e
 	if e.closed {
 		return domain.Mission{}, errors.New("engine closed")
 	}
+	if err := e.bindV2Create(ctx, &r); err != nil {
+		return domain.Mission{}, err
+	}
 	if err := e.c4CreateGate(r); err != nil {
 		return domain.Mission{}, err
 	}

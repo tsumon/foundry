@@ -20,6 +20,7 @@ type CommittedTreeInspection struct {
 	ContextBytes    int64
 	ContextManifest []domain.FileMeta
 	ProtectedInputs []string
+	VerificationV2  *domain.C4InputContractV2
 }
 type committedFile struct {
 	p, id   string
@@ -44,6 +45,9 @@ func InspectCommittedTree(ctx context.Context, repo, commit string, spec domain.
 }
 
 func committedTreeFacts(ctx context.Context, tree committedTree, spec domain.RepositoryImportSpec) (CommittedTreeInspection, error) {
+	if spec.VerificationV2 != nil {
+		return committedTreeFactsV2(ctx, tree, spec)
+	}
 	files := make(map[string][]byte, len(tree.files))
 	for _, f := range tree.files {
 		files[f.p] = f.content
@@ -80,11 +84,14 @@ func committedTreeFacts(ctx context.Context, tree committedTree, spec domain.Rep
 // A single bounded traversal owns both snapshot and inspection policy. It scans
 // every entry and blob, including files outside the selected context.
 func readCommittedTree(ctx context.Context, repo, commit string, scope []string) (committedTree, error) {
+	return readCommittedTreeMode(ctx, repo, commit, scope, false)
+}
+func readCommittedTreeMode(ctx context.Context, repo, commit string, scope []string, metadata bool) (committedTree, error) {
 	zero := committedTree{}
 	if err := ctx.Err(); err != nil {
 		return zero, err
 	}
-	if err := ValidateRules(scope); err != nil {
+	if err := ValidateRules(scope); !metadata && err != nil {
 		return zero, domain.ImportUnsafePath
 	}
 	if _, err := hex.DecodeString(commit); err != nil || len(commit) != 40 && len(commit) != 64 {
@@ -171,7 +178,7 @@ func readCommittedTree(ctx context.Context, repo, commit string, scope []string)
 			}
 		}
 	}
-	if len(tree.facts.ContextManifest) == 0 {
+	if !metadata && len(tree.facts.ContextManifest) == 0 {
 		return zero, domain.ImportEmptyContext
 	}
 	tree.facts.FileCount = len(tree.files)

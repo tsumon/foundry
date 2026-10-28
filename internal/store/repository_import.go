@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Store) initializeRepositoryInspections() error {
-	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS repository_inspections (id TEXT PRIMARY KEY, data BLOB NOT NULL)`)
+	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS repository_inspections (id TEXT PRIMARY KEY, data BLOB NOT NULL); CREATE TABLE IF NOT EXISTS dependency_admissions (digest TEXT PRIMARY KEY, data BLOB NOT NULL)`)
 	return err
 }
 
@@ -84,7 +84,7 @@ func readGitRepositoryForInspection(ctx context.Context, q inspectionRegistryRea
 
 func (s *Store) GetRepositoryInspection(id string) (domain.RepositoryInspection, error) {
 	var raw []byte
-	err := s.db.QueryRow(`SELECT CASE WHEN length(data)<=? THEN data ELSE NULL END FROM repository_inspections WHERE id=?`, domain.MaxRepositoryInspectionBytes, id).Scan(&raw)
+	err := s.db.QueryRow(`SELECT CASE WHEN length(data)<=? THEN data ELSE NULL END FROM repository_inspections WHERE id=?`, domain.MaxRepositoryInspectionBytesV2, id).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.RepositoryInspection{}, ErrNotFound
 	}
@@ -106,7 +106,7 @@ func (s *Store) GetRepositoryInspection(id string) (domain.RepositoryInspection,
 
 // Stored history is bounded and never causes a source reread.
 func (s *Store) ListRepositoryInspections() ([]domain.RepositoryInspection, error) {
-	rows, err := s.db.Query(`SELECT id,CASE WHEN length(data)<=? THEN data ELSE NULL END FROM repository_inspections ORDER BY rowid DESC LIMIT 100`, domain.MaxRepositoryInspectionBytes)
+	rows, err := s.db.Query(`SELECT id,CASE WHEN length(data)<=? THEN data ELSE NULL END FROM repository_inspections ORDER BY rowid DESC LIMIT 100`, domain.MaxRepositoryInspectionBytesV2)
 	if err != nil {
 		return nil, err
 	}

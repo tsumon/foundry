@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"foundry/internal/platformfs"
+	"path"
 	"slices"
 	"strings"
 )
@@ -355,7 +356,7 @@ func (c C4InputContractV2) ValidateSourceInventory(files []C4InputFileV2) error 
 	seen := make(map[string]bool, len(files))
 	var total int64
 	for i, f := range files {
-		if (i > 0 && f.Path <= files[i-1].Path) || !paths.add(f.Path, 1) || !c4InputFileMetadataV2(f) || f.Bytes > MaxC4InputSourceBytesV2-total {
+		if (i > 0 && f.Path <= files[i-1].Path) || !paths.add(f.Path, 1) || ValidateC4SourcePathV2(f.Path) != nil || !c4InputFileMetadataV2(f) || f.Bytes > MaxC4InputSourceBytesV2-total {
 			return ErrInvalidC4InputV2
 		}
 		total += f.Bytes
@@ -394,6 +395,29 @@ func (c C4InputContractV2) ValidateSourceInventory(files []C4InputFileV2) error 
 // inventory validation remains the caller's target responsibility.
 func (c C4InputContractV2) ValidateProfileBinding(p C4Profile) error {
 	if c.Validate() != nil || p.Validate() != nil || p.SchemaVersion != 2 || p.ID != c.ProfileID || p.V2.DependencyBundleDigest != c.Dependencies.BundleDigest || p.V2.ProtectedInputsDigest != c.ProtectedInputsDigest || p.V2.ExecutionContractDigest != c.ExecutionContractDigest {
+		return ErrInvalidC4InputV2
+	}
+	return nil
+}
+
+// ValidateC4SourcePathV2 enforces the same closed project layout at committed
+// inspection and candidate dispatch. It grants no edit scope or file authority.
+func ValidateC4SourcePathV2(p string) error {
+	for _, part := range strings.Split(p, "/") {
+		if c4InputReservedV2(part) {
+			return ErrInvalidC4InputV2
+		}
+	}
+	base := path.Base(p)
+	if strings.Contains(p, "/") && (base == "package.json" || base == "package-lock.json" || base == "foundry.python.lock.json" || base == "tsconfig.json") {
+		return ErrInvalidC4InputV2
+	}
+	switch base {
+	case "go.mod", "Cargo.toml", "CMakeLists.txt", "binding.gyp", "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "pnpm-lock.yaml", "yarn.lock", "lerna.json":
+		return ErrInvalidC4InputV2
+	}
+	switch strings.ToLower(path.Ext(base)) {
+	case ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".rs", ".go", ".node", ".so", ".dylib", ".dll", ".exe", ".whl", ".pyc":
 		return ErrInvalidC4InputV2
 	}
 	return nil

@@ -74,7 +74,7 @@ func (s *Store) ListRepositoryImportOperations() ([]domain.RepositoryImportOpera
 func readImportInspection(ctx context.Context, q inspectionRegistryReader, id string) (domain.RepositoryInspection, error) {
 	var v domain.RepositoryInspection
 	var raw []byte
-	err := q.QueryRowContext(ctx, `SELECT CASE WHEN length(data)<=? THEN data ELSE NULL END FROM repository_inspections WHERE id=?`, domain.MaxRepositoryInspectionBytes, id).Scan(&raw)
+	err := q.QueryRowContext(ctx, `SELECT CASE WHEN length(data)<=? THEN data ELSE NULL END FROM repository_inspections WHERE id=?`, domain.MaxRepositoryInspectionBytesV2, id).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, ErrNotFound
 	}
@@ -225,7 +225,10 @@ func validateMissionImport(ctx context.Context, q inspectionRegistryReader, m do
 	if err != nil {
 		return domain.ImportInvalidBinding
 	}
-	return validateImportReceiptBinding(v, *o.Binding)
+	if err := validateImportReceiptBinding(v, *o.Binding); err != nil {
+		return err
+	}
+	return validateV2MissionImport(ctx, q, m, v)
 }
 
 // This read-only relational check also detects stripping BOTH mission fields.
@@ -251,6 +254,9 @@ func commitRepositoryImportTx(tx *sql.Tx, m domain.Mission, o domain.RepositoryI
 	if err = validateImportReceiptBinding(v, *o.Binding); err != nil {
 		return err
 	}
+	if err = validateV2MissionImport(context.Background(), tx, m, v); err != nil {
+		return err
+	}
 	if err = recheckImportRegistry(context.Background(), tx, v, sourcePath); err != nil {
 		return err
 	}
@@ -259,4 +265,22 @@ func commitRepositoryImportTx(tx *sql.Tx, m domain.Mission, o domain.RepositoryI
 	current.Revision++
 	current.UpdatedAt = timestamp()
 	return writeRepositoryImport(tx, o, current)
+}
+
+func validateV2MissionImport(ctx context.Context, q inspectionRegistryReader, m domain.Mission, v domain.RepositoryInspection) error {
+	if v.SchemaVersion != 2 {
+		if m.Spec.C4 != nil && m.Spec.C4.SchemaVersion == 2 {
+			return domain.ImportInvalidBinding
+		}
+		return nil
+	}
+	a, err := readDependencyAdmission(ctx, q, v.Spec.VerificationV2.AdmissionDigest)
+	if err != nil {
+		return domain.ImportInvalidBinding
+	}
+	p, protected, err := domain.DeriveV2MissionMaterial(v, a)
+	if err != nil || !reflect.DeepEqual(m.Spec.C4, &p) || !reflect.DeepEqual(m.Spec.Scope, v.Spec.Scope) || !reflect.DeepEqual(m.Spec.Acceptance, v.Spec.Acceptance) || m.Spec.Image != v.Spec.Image || !reflect.DeepEqual(m.Spec.Protected, protected) || !reflect.DeepEqual(m.ContextManifest, v.ContextManifest) {
+		return domain.ImportInvalidBinding
+	}
+	return nil
 }

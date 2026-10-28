@@ -119,3 +119,36 @@ func TestC4VMProductionWrappersRejectUntrustedRuntime(t *testing.T) {
 		}
 	}
 }
+
+func (s *vmTestSession) MatchesV2(q vmruntime.RequestV2) bool { return s.Matches(q.Owner) }
+func TestVMV2ZeroCaseInfrastructureRetained(t *testing.T) {
+	q := vmruntime.Request{OperationID: "op", MissionID: "mission", Owner: "owner", Name: "name"}
+	s := &vmTestSession{q: q, r: c4verify.Result{Class: "infrastructure_failed", ExitCode: 1, Tests: 0, Output: "synthetic compiler evidence"}, valid: true, started: true}
+	d := &c4VMLifecycle{request: q, requestV2: &vmruntime.RequestV2{Owner: q}, session: s}
+	v, err := d.inspect(context.Background(), s.ID())
+	if err != nil || v.Verification == nil || v.Verification.Output != "synthetic compiler evidence" {
+		t.Fatal("discarded authenticated infrastructure", v, err)
+	}
+	r := classifyC4(v, nil, nil)
+	if r.Class != "infrastructure_failed" || r.Tests != 0 {
+		t.Fatal(r)
+	}
+	s.r.Class = "test_failed"
+	v, _ = d.inspect(context.Background(), s.ID())
+	r = classifyC4(v, nil, nil)
+	if r.Class == "test_failed" {
+		t.Fatal("zero cases eligible for repair")
+	}
+}
+func TestVMV2TruncatedFailureNeverRepairs(t *testing.T) {
+	q := vmruntime.Request{OperationID: "op", MissionID: "m", Owner: "owner", Name: "n"}
+	s := &vmTestSession{q: q, started: true, valid: true, r: c4verify.Result{Class: "test_failed", ExitCode: 1, Tests: 2, Truncated: true, Output: "synthetic truncated evidence"}}
+	d := &c4VMLifecycle{request: q, requestV2: &vmruntime.RequestV2{Owner: q}, session: s}
+	v, err := d.inspect(context.Background(), s.ID())
+	if err != nil || v.Verification == nil {
+		t.Fatal(err)
+	}
+	if r := classifyC4(v, nil, nil); r.Class != "infrastructure_failed" {
+		t.Fatal("truncated failure eligible for repair", r)
+	}
+}

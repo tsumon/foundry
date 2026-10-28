@@ -36,7 +36,17 @@ func (s *server) codingTasks(w http.ResponseWriter, r *http.Request) {
 				reason = "embedded_vm_bundle_unavailable"
 			}
 		}
-		writeJSON(w, 200, map[string]any{"enabled": s.codingWorkbench, "available": available && installed, "reason": reason, "default_backend": "embedded_vm", "profile": profile, "backends": []any{map[string]any{"mode": "embedded_vm", "available": available && installed, "profile": profile, "prerequisite": "bundled runtime and hardware virtualization; readiness approval required"}, map[string]any{"mode": "docker", "available": available && runtime.GOOS != "windows", "profile": dockerProfile, "prerequisite": "explicit selection and independently approved Docker readiness"}}, "limits": map[string]int{"max_calls": 16, "max_repairs": 2}, "provider_families": []string{"openai", "custom"}, "approval_required": []string{"readiness", "baseline", "context", "execute", "delivery"}})
+		profiles := s.engine.CodingProfilesV2()
+		for i := range profiles {
+			if profiles[i].Available && (!s.codingWorkbench || s.recoveryReadOnly) {
+				profiles[i].Available = false
+				profiles[i].Reason = "coding_workbench_disabled"
+				if s.recoveryReadOnly {
+					profiles[i].Reason = "recovery_read_only"
+				}
+			}
+		}
+		writeJSON(w, 200, map[string]any{"profiles": profiles, "enabled": s.codingWorkbench, "available": available && installed, "reason": reason, "default_backend": "embedded_vm", "profile": profile, "backends": []any{map[string]any{"mode": "embedded_vm", "available": available && installed, "profile": profile, "prerequisite": "bundled runtime and hardware virtualization; readiness approval required"}, map[string]any{"mode": "docker", "available": available && runtime.GOOS != "windows", "profile": dockerProfile, "prerequisite": "explicit selection and independently approved Docker readiness"}}, "limits": map[string]int{"max_calls": 16, "max_repairs": 2}, "provider_families": []string{"openai", "custom"}, "approval_required": []string{"readiness", "baseline", "context", "execute", "delivery"}})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -48,15 +58,15 @@ func (s *server) codingTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var q engine.CreateRequest
-	if err := decodeAccountJSON(w, r, &q); err != nil {
+	if err := decodeCodingJSON(w, r, &q); err != nil {
 		writeDecodeError(w, err)
 		return
 	}
-	if q.Spec.C4 == nil || q.Spec.C4.ID != "c4_go_model_v1" {
+	if q.Spec.C4 == nil || q.Spec.C4.ID != "c4_go_model_v1" && q.Spec.C4.SchemaVersion != 2 {
 		writeError(w, 400, "validation", "model-backed C4 declaration required")
 		return
 	}
-	if q.Spec.C4.Mode == "embedded_vm" {
+	if q.Spec.C4.Mode == "embedded_vm" && q.Spec.C4.SchemaVersion != 2 {
 		trusted, ok := s.engine.CodingVMProfile()
 		p := q.Spec.C4
 		if !ok || p.EmbeddedVM != nil && (p.Validate() != nil || p.ProfileDigest() != trusted.ProfileDigest()) || p.DockerPath != "" || p.Endpoint != "" || p.ImageID != "" || p.SchemaVersion != 0 && p.SchemaVersion != 1 || p.ControlVersion != 0 && p.ControlVersion != 1 || p.Platform != "" && p.Platform != trusted.Platform || p.Verifier != "" && p.Verifier != trusted.Verifier {

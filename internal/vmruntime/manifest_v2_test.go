@@ -194,3 +194,21 @@ func TestRetainedMixedSchemasAndUnknownCatalogFailClosed(t *testing.T) {
 		}
 	}
 }
+func TestValidateInstalledV2IsReadOnlyAndRejectsChangedAssets(t *testing.T) {
+	root, instances := fixtureBundleV2(t)
+	r, err := LoadV2(root, instances)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.ValidateInstalledV2(); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(instances)
+	if len(entries) != 0 {
+		t.Fatal("metadata booted instance")
+	}
+	os.WriteFile(filepath.Join(root, "kernel"), []byte("tampered"), 0600)
+	if r.ValidateInstalledV2() == nil {
+		t.Fatal("installed tamper retained eligibility")
+	}
+}

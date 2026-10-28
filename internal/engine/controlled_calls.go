@@ -342,6 +342,13 @@ func (e *Engine) controlledModelInput(m domain.Mission, role domain.Role, extra 
 		payload["candidate_generation"] = m.CandidateGeneration
 		payload["candidate_digest"] = m.CandidateDigest
 	}
+	if m.Spec.C4 != nil && m.Spec.C4.SchemaVersion == 2 {
+		summary, err := e.v2ContextSummary(m)
+		if err != nil {
+			return controlledInput{}, err
+		}
+		payload["verification_v2"] = summary
+	}
 	if m.ReplanContext != nil {
 		payload["replan_context"] = m.ReplanContext
 	}

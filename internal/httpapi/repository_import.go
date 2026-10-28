@@ -26,7 +26,7 @@ func (s *server) repositoryInspections(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, rows)
 	case http.MethodPost:
 		var request domain.RepositoryInspectionRequest
-		if err := decodeJSON(w, r, &request); err != nil {
+		if err := decodeCodingJSON(w, r, &request); err != nil {
 			writeDecodeError(w, err)
 			return
 		}

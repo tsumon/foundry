@@ -47,6 +47,10 @@ func (e *Engine) InspectRepository(parent context.Context, request domain.Reposi
 		return zero, domain.ImportInspectionFailed
 	}
 	v := domain.RepositoryInspection{SchemaVersion: 1, ID: id, RepositoryID: request.RepositoryID, RepositoryRevision: request.RepositoryRevision, Spec: request.Spec, PolicyVersion: "committed_text_v1", Status: "blocked", Stage: "identity", WorkingTreeStatus: "not_checked"}
+	if request.Spec.VerificationV2 != nil {
+		v.SchemaVersion = 2
+		v.PolicyVersion = "committed_text_c4_v2"
+	}
 	observation, inspectErr := gitinspect.Inspect(ctx, source)
 	if inspectErr != nil {
 		switch observation.ErrorCode {
@@ -82,6 +86,9 @@ func (e *Engine) InspectRepository(parent context.Context, request domain.Reposi
 				} else {
 					v.Code = domain.ImportInspectionFailed
 				}
+				if v.Code == domain.ImportInputs {
+					v.Stage = "inputs"
+				}
 				if v.Code == domain.ImportAcceptance {
 					v.Stage = "acceptance"
 				}
@@ -95,6 +102,7 @@ func (e *Engine) InspectRepository(parent context.Context, request domain.Reposi
 				v.ContextBytes = &facts.ContextBytes
 				v.ContextManifest = facts.ContextManifest
 				v.ProtectedInputs = facts.ProtectedInputs
+				v.VerificationV2 = facts.VerificationV2
 			}
 		}
 	}
@@ -113,9 +121,27 @@ func (e *Engine) InspectRepository(parent context.Context, request domain.Reposi
 		v.ContextBytes = nil
 		v.ContextManifest = nil
 		v.ProtectedInputs = nil
+		v.VerificationV2 = nil
 	}
 	v.CheckedAt = now()
 	v.Digest = domain.RepositoryInspectionDigest(v)
+	if v.SchemaVersion == 2 && v.Status == "ready" {
+		s := v.Spec.VerificationV2
+		_, bindingErr := e.validateV2Inspection(ctx, v)
+		if !e.currentV2Matches(s.ProfileID, s.EmbeddedVM, s.RuntimeInventoryDigest) || bindingErr != nil {
+			v.Status = "blocked"
+			v.Stage = "dependencies"
+			v.Code = domain.ImportDependencies
+			v.FileCount = nil
+			v.TotalBytes = nil
+			v.ContextFileCount = nil
+			v.ContextBytes = nil
+			v.ContextManifest = nil
+			v.ProtectedInputs = nil
+			v.VerificationV2 = nil
+			v.Digest = domain.RepositoryInspectionDigest(v)
+		}
+	}
 	saved, err := e.s.SaveRepositoryInspectionContext(journalCtx, v, source)
 	if errors.Is(err, domain.ImportSourceChanged) || errors.Is(err, store.ErrNotFound) {
 		return zero, domain.ImportSourceChanged

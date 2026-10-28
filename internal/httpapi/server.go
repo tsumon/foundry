@@ -330,6 +330,8 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 				"observation_hooks": !s.c4ControlledOnly, "hook_scripts": false, "hook_webhooks": false, "git_hooks": false,
 			},
 		})
+	case r.URL.Path == "/api/coding-dependencies":
+		s.codingDependencies(w, r)
 	case r.URL.Path == "/api/coding-tasks":
 		s.codingTasks(w, r)
 	case r.URL.Path == "/api/model-accounts" || strings.HasPrefix(r.URL.Path, "/api/model-accounts/"):
@@ -399,7 +401,7 @@ func writeMappedError(w http.ResponseWriter, err error) {
 	if errors.As(err, &importErr) {
 		status := 500
 		switch importErr {
-		case domain.ImportInvalidRequest, domain.ImportInvalidRecord, domain.ImportLocation:
+		case domain.ImportInvalidRequest, domain.ImportInvalidRecord, domain.ImportLocation, domain.ImportDependencies, domain.ImportInputs:
 			status = 400
 		case domain.ImportSourceChanged, domain.ImportIntentConflict, domain.ImportIncomplete, domain.ImportInvalidBinding:
 			status = 409

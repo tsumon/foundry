@@ -243,3 +243,7 @@ func (s *Session) receiptBytesV2(stage string, facts *nativeFacts) ([]byte, erro
 	}
 	return json.Marshal(r)
 }
+
+// ValidateInstalledV2 revalidates sealed assets and inventory without probing
+// hardware, accessing project/dependency inputs or allocating a session.
+func (r *Runtime) ValidateInstalledV2() error { return r.revalidateV2() }

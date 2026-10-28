@@ -15,7 +15,7 @@ import (
 // NewCodingVMCapability accepts only sealed, installed runtime provenance.
 // Construction and metadata never probe hardware or boot a guest.
 func NewCodingVMCapability(g *model.Router, vm *vmruntime.Runtime, retained ...*vmruntime.Runtime) (*C4ControlledCapability, error) {
-	if g == nil || vm == nil || !vm.Trusted() || vm.Identity().Validate() != nil {
+	if g == nil || vm == nil || !vm.Trusted() || vm.Identity().Validate() != nil || vm.Identity().SchemaVersion != 1 {
 		return nil, ErrC4Unavailable
 	}
 	id, err := opaque()
@@ -43,6 +43,12 @@ func (c *C4ControlledCapability) vmForProfile(p domain.C4Profile) *vmruntime.Run
 		return nil
 	}
 	if r := c.retainedVMs[*p.EmbeddedVM]; r != nil && r.Trusted() && r.Identity() == *p.EmbeddedVM {
+		if p.SchemaVersion == 2 {
+			target, err := r.ProbeTargetV2(p.ID)
+			if err != nil || target.RuntimeInventoryDigest != p.V2.RuntimeInventoryDigest {
+				return nil
+			}
+		}
 		return r
 	}
 	return nil
@@ -87,7 +93,7 @@ func NewCodingDockerCapability(g *model.Router) (*C4ControlledCapability, error)
 	return &C4ControlledCapability{modelBacked: true, config: C4Activation{SchemaVersion: 1, Enabled: true, RuntimeID: id, ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339Nano)}, source: "docker_c4_control", models: g}, nil
 }
 
-func isModelC4(m domain.Mission) bool { return m.Spec.C4 != nil && m.Spec.C4.ID == "c4_go_model_v1" }
+func isModelC4(m domain.Mission) bool { return m.Spec.C4 != nil && m.Spec.C4.IsModelBacked() }
 
 // Historical structure must accept valid pre-catalog snapshots unchanged.
 // New-task selection policy belongs to admission, not startup recovery.
@@ -118,7 +124,7 @@ func newModelC4Profiles(profiles map[domain.Role]domain.Profile, snapshot *domai
 }
 
 func c4SelectedProfiles(p *domain.C4Profile, profiles map[domain.Role]domain.Profile, snapshot *domain.MissionModelSnapshot) error {
-	if p != nil && p.ID == "c4_go_model_v1" {
+	if p != nil && p.IsModelBacked() {
 		return modelC4Profiles(profiles, snapshot)
 	}
 	return c4Profiles(profiles, snapshot)
@@ -179,6 +185,9 @@ func (e *Engine) AdmitCodingModelCall(ctx context.Context, q model.Request) erro
 	var input controlledInput
 	if json.Unmarshal(raw, &input) != nil {
 		return errors.New("invalid sealed input")
+	}
+	if err = e.validateV2ContextSummary(m, input.Prompt); err != nil {
+		return err
 	}
 	expected := model.Request{InvocationID: v.ID, SnapshotSchema: input.SnapshotSchema, Selection: input.Selection, Profile: input.Profile, Role: input.Role, System: input.System, Prompt: input.Prompt, MaxOutputTokens: input.MaxOutputTokens}
 	snapshot, err := domain.EffectiveModelSnapshot(m)

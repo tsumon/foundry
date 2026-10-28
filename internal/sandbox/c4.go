@@ -43,6 +43,7 @@ type C4Inspection struct {
 	Running, OOMKilled bool
 	ExitCode           int
 	Verification       *c4verify.Result
+	vmV2               bool
 }
 
 // C4SyntheticDriver seals synthetic provenance in process, not in request data.
@@ -318,6 +319,10 @@ func classifyC4(v C4Inspection, waitErr, ctxErr error) domain.C4Result {
 		return r
 	}
 	r.Tests = verified.Tests
+	if v.vmV2 && (verified.Class == "timeout" || verified.Class == "interrupted") {
+		r.Class = verified.Class
+		return r
+	}
 	if exit == 0 && verified.Class == "passed" && verified.Tests > 0 {
 		r.Class = "passed"
 	}

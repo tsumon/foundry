@@ -18,41 +18,45 @@ type ImportError string
 func (e ImportError) Error() string { return string(e) }
 
 const (
-	MaxRepositoryInspectionBytes             = 1 << 20
-	ImportInvalidRequest         ImportError = "invalid_request"
-	ImportConsentRequired        ImportError = "consent_required"
-	ImportSourceChanged          ImportError = "source_changed"
-	ImportInvalidRecord          ImportError = "invalid_inspection"
-	ImportStorageFailed          ImportError = "storage_failed"
-	ImportUnavailable            ImportError = "repository_unavailable"
-	ImportLayout                 ImportError = "unsupported_layout"
-	ImportMissingHEAD            ImportError = "missing_head"
-	ImportObjectsUnavailable     ImportError = "objects_unavailable"
-	ImportUnsupportedEntry       ImportError = "unsupported_entry"
-	ImportUnsafePath             ImportError = "unsafe_path"
-	ImportCaseCollision          ImportError = "case_collision"
-	ImportBinary                 ImportError = "binary_file"
-	ImportTreeLimit              ImportError = "tree_limit"
-	ImportContextLimit           ImportError = "context_limit"
-	ImportEmptyContext           ImportError = "empty_context"
-	ImportAcceptance             ImportError = "unsupported_acceptance"
-	ImportLocation               ImportError = "source_data_overlap"
-	ImportTimeout                ImportError = "timeout"
-	ImportCanceled               ImportError = "canceled"
-	ImportInspectionFailed       ImportError = "inspection_failed"
-	ImportGitUnavailable         ImportError = "git_unavailable"
-	ImportInvalidBinding         ImportError = "invalid_import_binding"
-	ImportIntentConflict         ImportError = "import_intent_conflict"
-	ImportIncomplete             ImportError = "import_incomplete"
-	ImportPrepareFailed          ImportError = "import_prepare_failed"
-	ImportPublishFailed          ImportError = "import_publish_failed"
+	MaxRepositoryInspectionBytes               = 1 << 20
+	MaxRepositoryInspectionBytesV2             = 2 << 20
+	ImportInputs                   ImportError = "invalid_verification_inputs"
+	ImportDependencies             ImportError = "invalid_dependencies"
+	ImportInvalidRequest           ImportError = "invalid_request"
+	ImportConsentRequired          ImportError = "consent_required"
+	ImportSourceChanged            ImportError = "source_changed"
+	ImportInvalidRecord            ImportError = "invalid_inspection"
+	ImportStorageFailed            ImportError = "storage_failed"
+	ImportUnavailable              ImportError = "repository_unavailable"
+	ImportLayout                   ImportError = "unsupported_layout"
+	ImportMissingHEAD              ImportError = "missing_head"
+	ImportObjectsUnavailable       ImportError = "objects_unavailable"
+	ImportUnsupportedEntry         ImportError = "unsupported_entry"
+	ImportUnsafePath               ImportError = "unsafe_path"
+	ImportCaseCollision            ImportError = "case_collision"
+	ImportBinary                   ImportError = "binary_file"
+	ImportTreeLimit                ImportError = "tree_limit"
+	ImportContextLimit             ImportError = "context_limit"
+	ImportEmptyContext             ImportError = "empty_context"
+	ImportAcceptance               ImportError = "unsupported_acceptance"
+	ImportLocation                 ImportError = "source_data_overlap"
+	ImportTimeout                  ImportError = "timeout"
+	ImportCanceled                 ImportError = "canceled"
+	ImportInspectionFailed         ImportError = "inspection_failed"
+	ImportGitUnavailable           ImportError = "git_unavailable"
+	ImportInvalidBinding           ImportError = "invalid_import_binding"
+	ImportIntentConflict           ImportError = "import_intent_conflict"
+	ImportIncomplete               ImportError = "import_incomplete"
+	ImportPrepareFailed            ImportError = "import_prepare_failed"
+	ImportPublishFailed            ImportError = "import_publish_failed"
 )
 
 type RepositoryImportSpec struct {
-	Scope      []string `json:"scope"`
-	Protected  []string `json:"protected"`
-	Acceptance []string `json:"acceptance"`
-	Image      string   `json:"image"`
+	Scope          []string             `json:"scope"`
+	Protected      []string             `json:"protected"`
+	Acceptance     []string             `json:"acceptance"`
+	Image          string               `json:"image"`
+	VerificationV2 *C4ImportSelectionV2 `json:"verification_v2,omitempty"`
 }
 
 type RepositoryImportBinding struct {
@@ -87,7 +91,11 @@ func RepositoryImportSpecDigest(s RepositoryImportSpec) string {
 		s.Protected = []string{}
 	}
 	b, _ := json.Marshal(s)
-	h := sha256.Sum256(append([]byte("FOUNDRY repository import spec v1\x00"), b...))
+	prefix := "FOUNDRY repository import spec v1\x00"
+	if s.VerificationV2 != nil {
+		prefix = "FOUNDRY repository import spec v2\x00"
+	}
+	h := sha256.Sum256(append([]byte(prefix), b...))
 	return hex.EncodeToString(h[:])
 }
 
@@ -192,6 +200,7 @@ type RepositoryInspection struct {
 	ContextManifest    []FileMeta           `json:"context_manifest"`
 	ProtectedInputs    []string             `json:"protected_inputs"`
 	Digest             string               `json:"digest"`
+	VerificationV2     *C4InputContractV2   `json:"verification_v2,omitempty"`
 }
 
 func importText(s string, max int, required bool) bool {
@@ -227,6 +236,9 @@ func importRelative(p string) bool {
 	return importText(p, 4096, true) && !path.IsAbs(p) && path.Clean(p) == p && p != "." && p != ".." && !strings.HasPrefix(p, "../") && !strings.Contains(p, "\\")
 }
 func ValidateRepositoryImportSpec(s RepositoryImportSpec) error {
+	if s.VerificationV2 != nil && s.VerificationV2.Validate() != nil {
+		return ImportInvalidRequest
+	}
 	if len(s.Scope) < 1 || len(s.Scope) > 500 || len(s.Protected) > 500 || len(s.Acceptance) < 1 || len(s.Acceptance) > 12 || !importText(s.Image, 512, false) {
 		return ImportInvalidRequest
 	}
@@ -271,14 +283,22 @@ func RepositoryInspectionDigest(v RepositoryInspection) string {
 	_ = json.Unmarshal(raw, &fields)
 	delete(fields, "digest")
 	raw, _ = json.Marshal(fields)
-	h := sha256.Sum256(append([]byte("repository_inspection_v1\n"), raw...))
+	prefix := "repository_inspection_v1\n"
+	if v.SchemaVersion == 2 {
+		prefix = "repository_inspection_v2\n"
+	}
+	h := sha256.Sum256(append([]byte(prefix), raw...))
 	return hex.EncodeToString(h[:])
 }
 func validImportFailure(stage string, code ImportError) bool {
 	if code == ImportTimeout || code == ImportCanceled {
-		return stage == "identity" || stage == "location" || stage == "tree" || stage == "acceptance"
+		return stage == "identity" || stage == "location" || stage == "tree" || stage == "acceptance" || stage == "inputs" || stage == "dependencies"
 	}
 	switch stage {
+	case "inputs":
+		return code == ImportInputs
+	case "dependencies":
+		return code == ImportDependencies
 	case "identity":
 		return code == ImportUnavailable || code == ImportLayout || code == ImportMissingHEAD || code == ImportInspectionFailed || code == ImportGitUnavailable
 	case "location":
@@ -291,7 +311,7 @@ func validImportFailure(stage string, code ImportError) bool {
 	return false
 }
 func ValidateRepositoryInspection(v RepositoryInspection) error {
-	if v.SchemaVersion != 1 || !importID(v.ID) || v.PolicyVersion != "committed_text_v1" || v.WorkingTreeStatus != "not_checked" || ValidateRepositoryImportSpec(v.Spec) != nil || !importText(v.Root, 4096, false) || !importText(v.Branch, 1024, false) {
+	if !validInspectionVersion(v) || !importID(v.ID) || v.WorkingTreeStatus != "not_checked" || ValidateRepositoryImportSpec(v.Spec) != nil || !importText(v.Root, 4096, false) || !importText(v.Branch, 1024, false) {
 		return ImportInvalidRecord
 	}
 	if v.RepositoryID == "" && v.RepositoryRevision != 0 || v.RepositoryID != "" && (!importID(v.RepositoryID) || v.RepositoryRevision < 1) {
@@ -309,10 +329,19 @@ func ValidateRepositoryInspection(v RepositoryInspection) error {
 		return ImportInvalidRecord
 	}
 	if v.Status == "blocked" {
+		if v.SchemaVersion == 1 && (v.Stage == "inputs" || v.Stage == "dependencies") {
+			return ImportInvalidRecord
+		}
+		if v.VerificationV2 != nil {
+			return ImportInvalidRecord
+		}
 		if !validImportFailure(v.Stage, v.Code) || v.FileCount != nil || v.TotalBytes != nil || v.ContextFileCount != nil || v.ContextBytes != nil || len(v.ContextManifest) != 0 || len(v.ProtectedInputs) != 0 {
 			return ImportInvalidRecord
 		}
 	} else if v.Status == "ready" {
+		if v.SchemaVersion == 2 && validateInspectionV2(v) != nil {
+			return ImportInvalidRecord
+		}
 		if v.Stage != "complete" || v.Code != "" || v.Root == "" || v.Commit == "" || v.FileCount == nil || v.TotalBytes == nil || v.ContextFileCount == nil || v.ContextBytes == nil {
 			return ImportInvalidRecord
 		}
@@ -343,7 +372,11 @@ func ValidateRepositoryInspection(v RepositoryInspection) error {
 		return ImportInvalidRecord
 	}
 	raw, err := json.Marshal(v)
-	if err != nil || len(raw) > MaxRepositoryInspectionBytes {
+	limit := MaxRepositoryInspectionBytes
+	if v.SchemaVersion == 2 {
+		limit = MaxRepositoryInspectionBytesV2
+	}
+	if err != nil || len(raw) > limit {
 		return ImportInvalidRecord
 	}
 	if !importHex(v.Digest, 64) || v.Digest != RepositoryInspectionDigest(v) {
