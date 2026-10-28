@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +152,158 @@ func TestV2NodeChildrenDoNotInheritReportOrContract(t *testing.T) {
 	v, _, d := adapterRunV2(t, false, root, "a.test.cjs")
 	if v.Class != "passed" {
 		t.Fatal(v, string(d))
+	}
+}
+
+func failureDiagnosticsV2(t *testing.T, raw []byte) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for _, line := range bytes.Split(raw, []byte{'\n'}) {
+		if !bytes.HasPrefix(line, []byte(`{"kind":"foundry_test_failure_diagnostic_v2"`)) {
+			continue
+		}
+		if len(line) > 8192 {
+			t.Fatal("unbounded diagnostic record")
+		}
+		for _, c := range line {
+			if c < 32 || c > 126 {
+				t.Fatal("unescaped diagnostic control or non-ASCII character")
+			}
+		}
+		var record map[string]any
+		if e := json.Unmarshal(line, &record); e != nil {
+			t.Fatal(e)
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+func TestV2AdaptersRetainFailureDiagnosticsWithoutChangingAuthority(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, class, message string
+		python                     bool
+		tests                      int
+	}{
+		{"node-assertion", `require('node:test').test('owned assertion',()=>require('node:assert/strict').equal(1,2,'OWNED_ASSERTION'));`, "test_failed", "OWNED_ASSERTION", false, 1},
+		{"node-setup", `const {describe,it,before}=require('node:test');describe('owned suite',()=>{before(()=>{throw Error('OWNED_SETUP')});it('never',()=>{})});`, "infrastructure_failed", "OWNED_SETUP", false, 0},
+		{"node-discovery", `throw Error('OWNED_DISCOVERY');`, "infrastructure_failed", "test failed", false, 0},
+		{"node-subtest", `require('node:test').test('parent',async t=>{await t.test('owned subtest',()=>{throw Error('OWNED_SUBTEST')})});`, "test_failed", "OWNED_SUBTEST", false, 1},
+		{"python-assertion", "import unittest\nclass Owned(unittest.TestCase):\n def test_owned(self): self.assertEqual(1,2,'OWNED_ASSERTION')\n", "test_failed", "OWNED_ASSERTION", true, 1},
+		{"python-setup", "import unittest\nclass Owned(unittest.TestCase):\n @classmethod\n def setUpClass(cls): raise RuntimeError('OWNED_SETUP')\n def test_never(self): pass\n", "infrastructure_failed", "OWNED_SETUP", true, 0},
+		{"python-discovery", "raise RuntimeError('OWNED_DISCOVERY')\n", "infrastructure_failed", "OWNED_DISCOVERY", true, 0},
+		{"python-subtest", "import unittest\nclass Owned(unittest.TestCase):\n def test_owned(self):\n  with self.subTest(owned=True): self.fail('OWNED_SUBTEST')\n", "test_failed", "OWNED_SUBTEST", true, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, file := t.TempDir(), "a.test.cjs"
+			if tc.python {
+				file = "test_a.py"
+			}
+			if e := os.WriteFile(filepath.Join(root, file), []byte(tc.body), 0600); e != nil {
+				t.Fatal(e)
+			}
+			v, exit, raw := adapterRunV2(t, tc.python, root, file)
+			if v.Class != tc.class || v.Tests != tc.tests || exit != 1 {
+				t.Fatalf("changed authority: %+v exit=%d diagnostics=%s", v, exit, raw)
+			}
+			records := failureDiagnosticsV2(t, raw)
+			if len(records) == 0 {
+				t.Fatalf("missing failure diagnostic: %s", raw)
+			}
+			found := false
+			for _, r := range records {
+				for key, value := range r {
+					limits := map[string]int{"kind": 64, "runner": 64, "stage": 32, "name": 128, "file": 256, "error_type": 64, "failure_type": 64, "message": 1024, "cause": 1024}
+					if key == "line" {
+						if line, ok := value.(float64); !ok || line < 0 || line > 1000000 {
+							t.Fatal("unbounded line", r)
+						}
+						continue
+					}
+					if limit, ok := limits[key]; !ok || len(diagnosticTextV2(value)) > limit {
+						t.Fatal("unknown or unbounded diagnostic field", r)
+					}
+				}
+				if strings.Contains(diagnosticTextV2(r["message"]), tc.message) || strings.Contains(diagnosticTextV2(r["cause"]), tc.message) {
+					found = true
+					if r["file"] != file {
+						t.Fatal("missing project-relative location", r)
+					}
+				}
+				if strings.Contains(diagnosticTextV2(r["file"]), root) || strings.Contains(diagnosticTextV2(r["message"]), root) {
+					t.Fatal("absolute project path in diagnostic", r)
+				}
+			}
+			if !found {
+				t.Fatalf("missing error text %q: %s", tc.message, raw)
+			}
+		})
+	}
+}
+
+func diagnosticTextV2(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+func TestV2AdapterFailureDiagnosticsAreBoundedEscapedAndNeverStringifyObjects(t *testing.T) {
+	for _, python := range []bool{false, true} {
+		t.Run(map[bool]string{false: "node", true: "python"}[python], func(t *testing.T) {
+			root, file := t.TempDir(), "a.test.cjs"
+			body := `const {test}=require('node:test');for(let i=0;i<80;i++)test('owned\\name\n\x1b'+i,()=>{const e=Error('OWNED_BOUND\x00\x1b\n'+ 'x'.repeat(5000));e.cause={message:{toJSON(){throw Error('DO_NOT_SERIALIZE')}}};throw e});`
+			if python {
+				file = "test_a.py"
+				body = `import unittest
+class Opaque:
+ def __str__(self): raise RuntimeError('DO_NOT_STRINGIFY')
+ def __repr__(self): raise RuntimeError('DO_NOT_SERIALIZE')
+class Owned(unittest.TestCase):
+ def test_owned(self):
+  for i in range(80):
+   with self.subTest(i=i): raise AssertionError('OWNED_BOUND\x00\x1b\n'+'x'*5000, Opaque())
+`
+			}
+			if e := os.WriteFile(filepath.Join(root, file), []byte(body), 0600); e != nil {
+				t.Fatal(e)
+			}
+			v, _, raw := adapterRunV2(t, python, root, file)
+			wantTests := 80
+			if python {
+				wantTests = 1
+			}
+			if v.Class != "test_failed" || v.Tests != wantTests {
+				t.Fatalf("changed authority %+v: %s", v, raw)
+			}
+			records := failureDiagnosticsV2(t, raw)
+			if len(records) == 0 || len(records) >= 80 || len(raw) > 16384 || !bytes.Contains(raw, []byte("OWNED_BOUND")) || bytes.Contains(raw, []byte("DO_NOT_")) || bytes.Contains(raw, []byte("private contract sentinel")) {
+				t.Fatalf("unsafe or absent diagnostic: bytes=%d records=%d output=%s", len(raw), len(records), raw)
+			}
+		})
+	}
+}
+
+func TestV2PythonDiagnosticOmitsExternalDriveLocation(t *testing.T) {
+	python := os.Getenv("FOUNDRY_BUILD_PYTHON")
+	if !filepath.IsAbs(python) {
+		t.Fatal("absolute trusted FOUNDRY_BUILD_PYTHON required")
+	}
+	// A Windows regression runtime can live on a different drive from the
+	// fixture. That location must be omitted without interrupting the result.
+	script := `import runpy,sys,os
+m=runpy.run_path(sys.argv[1])
+d=m['FailureDiagnostics'](sys.argv[2])
+try: exec(compile("raise AssertionError('OWNED_EXTERNAL')",os.path.join(os.path.abspath(os.sep),'unowned','test.py'),'exec'))
+except BaseException: err=sys.exc_info()
+def external_drive(*args): raise ValueError('different drive')
+m['os'].path.relpath=external_drive
+d.failure('discovery',None,err)
+`
+	raw, e := exec.Command(python, "-I", "-S", "-B", "-c", script, runnerAssetV2(t, "python.py"), t.TempDir()).CombinedOutput()
+	if e != nil {
+		t.Fatalf("diagnostic location interrupted result: %s %v", raw, e)
+	}
+	records := failureDiagnosticsV2(t, raw)
+	if len(records) != 1 || records[0]["file"] != "" || !strings.Contains(diagnosticTextV2(records[0]["message"]), "OWNED_EXTERNAL") {
+		t.Fatalf("external location leaked or error missing: %s", raw)
 	}
 }

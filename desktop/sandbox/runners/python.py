@@ -9,6 +9,66 @@ import tempfile
 import unittest
 
 
+class FailureDiagnostics:
+    """Bounded scalar stderr only. Never format tracebacks or project objects."""
+    def __init__(self, root=''):
+        self.root = os.path.abspath(root) if root else ''
+        self.remaining = 16384
+
+    def text(self, value, limit):
+        if type(value) is not str:
+            return '[non-scalar]'
+        value = value[:4096]
+        if self.root:
+            value = value.replace(self.root, '<project>')
+        return ''.join(c if 32 <= ord(c) <= 126 else '\\u%04x' % ord(c) for c in value[:limit])[:limit]
+
+    def failure(self, stage, test, err):
+        if not self.remaining:
+            return
+        name, file, line, error_type, message = '', '', 0, '', ''
+        if isinstance(test, unittest.TestCase):
+            # Use the base instance-dict descriptor, not an overridden id/str
+            # method or subtest parameter repr supplied by the project.
+            fields = unittest.TestCase.__dict__['__dict__'].__get__(test, type(test))
+            method = fields.get('_testMethodName', '')
+            name = self.text(type.__dict__['__name__'].__get__(type(test)), 63) + '.' + self.text(method, 64)
+        if type(err) is tuple and len(err) == 3 and isinstance(err[1], BaseException):
+            exc = err[1]
+            error_type = self.text(type.__dict__['__name__'].__get__(type(exc)), 64)
+            args = BaseException.args.__get__(exc, type(exc))
+            # Exception args may contain hostile __str__/__repr__ objects.
+            message = self.text('; '.join(self.text(a, 1024) for a in args[:4]), 1024)
+            tb = err[2]
+            for _ in range(64):
+                if tb is None:
+                    break
+                if self.root and os.path.isabs(tb.tb_frame.f_code.co_filename):
+                    try:
+                        p = os.path.relpath(tb.tb_frame.f_code.co_filename, self.root)
+                    except ValueError:
+                        p = '..'  # A host regression runtime may use another drive.
+                    if p != '..' and not p.startswith('..' + os.sep) and not os.path.isabs(p):
+                        file, line = self.text(p, 256), tb.tb_lineno if 0 < tb.tb_lineno <= 1000000 else 0
+                tb = tb.tb_next
+        raw = (json.dumps(dict(kind='foundry_test_failure_diagnostic_v2', runner='python-unittest-v2',
+            stage=stage, name=name, file=file, line=line, error_type=error_type, message=message),
+            ensure_ascii=True, separators=(',', ':')) + '\n').encode('ascii')
+        if len(raw) > self.remaining:
+            self.remaining = 0
+            return
+        self.remaining -= len(raw)
+        # FD3 remains the sole closed count/class report channel.
+        while raw:
+            try:
+                n = os.write(2, raw)
+            except OSError:
+                break  # Diagnostic delivery never changes framework authority.
+            if n <= 0:
+                break
+            raw = raw[n:]
+
+
 class Report:
     def __init__(self, fd):
         self.fd, self.seq, self.started, self.size = fd, 0, 0, 0
@@ -47,10 +107,12 @@ class Result(unittest.TestResult):
     Import/setup/error placeholders never emit case lifecycles. Expected
     failures and skips remain distinct and never become completed assertions.
     """
-    def __init__(self, report):
+    def __init__(self, report, root=''):
         super().__init__()
         self.report, self.discovery, self.active, self.status = report, 0, None, None
         self.infrastructure = False
+        self.stage = 'discovery'
+        self.diagnostics = FailureDiagnostics(root)
 
     def startTest(self, test):
         super().startTest(test)
@@ -85,10 +147,12 @@ class Result(unittest.TestResult):
             self.addError(test, err)
         else:
             self.status = 'failed'
+            self.diagnostics.failure('test', test, err)
 
     def addError(self, test, err):
         self.discovery += 1
         self.infrastructure = True
+        self.diagnostics.failure(self.stage if self.active is not None else 'discovery', test, err)
 
     def addSkip(self, test, reason):
         if self.active is test:
@@ -98,6 +162,7 @@ class Result(unittest.TestResult):
 
     def addExpectedFailure(self, test, err):
         self.status = 'expected_failed'
+        self.diagnostics.failure('test', test, err)
 
     def addUnexpectedSuccess(self, test):
         self.status = 'unexpected_passed'
@@ -112,6 +177,7 @@ class Result(unittest.TestResult):
                 self.status = 'passed'
         elif issubclass(err[0], test.failureException):
             self.status = 'failed'
+            self.diagnostics.failure('test', test, err)
         else:
             self.addError(test, err)
 
@@ -121,7 +187,7 @@ def run_tests(contract, fd):
     root = contract['source_root']
     # The static parent has already admitted and frozen these exact roots.
     sys.path[:0] = [os.path.join(root, p) for p in contract['source_roots']] + ['/foundry-deps/python']
-    result = Result(report)
+    result = Result(report, root)
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     for i, file in enumerate(contract['test_files']):
@@ -133,6 +199,7 @@ def run_tests(contract, fd):
             suite.addTests(loader.loadTestsFromModule(module))
         except BaseException:
             result.discovery += 1
+            result.diagnostics.failure('discovery', None, sys.exc_info())
     suite.run(result)
     return report.end(result.discovery)
 

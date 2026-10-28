@@ -122,7 +122,8 @@ class TestTriple(unittest.TestCase):
 
 const nodeGuardsV2 = `module.exports = function() {
  const fs=require('node:fs'),os=require('node:os'),a=require('node:assert/strict');
- a.equal(process.getuid(),65534);a.equal(process.getgid(),65534);a.deepEqual(process.getgroups(),[]);
+ // Node includes the effective GID even when Linux getgroups(2) is empty.
+ a.equal(process.getuid(),65534);a.equal(process.getgid(),65534);a.deepEqual(process.getgroups(),[65534]);
  a.match(fs.readFileSync('/proc/self/status','utf8'),/^NoNewPrivs:\s+1$/m);
  a.deepEqual(Object.keys(os.networkInterfaces()),[]);
  const mounts=fs.readFileSync('/proc/self/mountinfo','utf8');

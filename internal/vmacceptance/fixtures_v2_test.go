@@ -2,6 +2,7 @@ package vmacceptance
 
 import (
 	"context"
+	"encoding/json"
 	"foundry/internal/dependencyadmission"
 	"foundry/internal/dependencybundle"
 	"foundry/internal/domain"
@@ -108,5 +109,47 @@ func TestV2FixtureSelectionIsClosed(t *testing.T) {
 		if _, e := selectFixture(q[0], q[1]); e != nil {
 			t.Fatal(q, e)
 		}
+	}
+}
+
+func TestV2NodeFixtureGuardsRequirePrimaryOnlyNodeGroups(t *testing.T) {
+	for _, profile := range []string{"c4_node_model_v2", "c4_typescript_model_v2"} {
+		t.Run(profile, func(t *testing.T) {
+			f, e := selectFixture(profile, "workflow")
+			if e != nil {
+				t.Fatal(e)
+			}
+			// Execute the actual protected guard with test-only Linux observations.
+			// Never run Linux isolation checks or mutate process credentials on host.
+			guard, e := json.Marshal(f.files["tests/guards.cjs"])
+			if e != nil {
+				t.Fatal(e)
+			}
+			script := `const vm=require('node:vm'),assert=require('node:assert/strict');
+const guard=` + string(guard) + `;
+function check(change={}) {
+ const values={uid:65534,gid:65534,groups:[65534],status:'NoNewPrivs:\t1\n',network:{},mounts:'root / - tmpfs tmpfs ro\n',writable:'',readable:'',fd:'pipe:[1234]',...change};
+ const bootstrap='const values='+JSON.stringify(values)+';const process={getuid:()=>values.uid,getgid:()=>values.gid,getgroups:()=>values.groups};'+
+ 'const fs={readFileSync:p=>p==="/proc/self/status"?values.status:values.mounts,existsSync:()=>true,'+
+ 'openSync:(p,mode)=>{if(p===(mode==="r+"?values.writable:values.readable))return 10;throw Error("denied")},closeSync:()=>{},readlinkSync:()=>values.fd};'+
+ 'const os={networkInterfaces:()=>values.network};'+
+ 'const require=name=>name==="node:fs"?fs:name==="node:os"?os:assert;';
+ vm.runInNewContext(bootstrap+guard+'\nmodule.exports();',{module:{exports:{}},assert},{timeout:1000});
+}
+check();
+for(const change of [{groups:[]},{groups:[65534,42]},{groups:[42]},{groups:[65534,65534]},
+ {uid:0},{gid:0},{status:'NoNewPrivs:\t0\n'},{network:{eth0:[]}},{mounts:'1 / - virtiofs host rw\n'},
+ ...['/workspace/src/triple.js','/workspace/src/triple.ts','/workspace/package.json','/workspace/node_modules/foundry-fixture-dep/index.js','/usr/bin/node','/foundry-build/compiled/src/triple.js'].map(writable=>({writable})),
+ ...['/dev/hvc0','/dev/ttyS0','/dev/console','/proc/1/mem','/proc/1/fd/0'].map(readable=>({readable})),
+ ...['foundry-child','/dev/hvc0','/dev/ttyS0','/dev/console'].map(fd=>({fd}))]) assert.throws(()=>check(change));
+`
+			p := filepath.Join(t.TempDir(), "guard.cjs")
+			if e = os.WriteFile(p, []byte(script), 0600); e != nil {
+				t.Fatal(e)
+			}
+			if out, e := exec.Command("node", p).CombinedOutput(); e != nil {
+				t.Fatalf("offline guard observations: %s %v", out, e)
+			}
+		})
 	}
 }

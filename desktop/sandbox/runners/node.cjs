@@ -5,6 +5,45 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { run } = require('node:test');
 
+function failureDiagnostics(root) {
+  let remaining = 16384;
+  // Read data properties only; never inspect/serialize a project error object
+  // or call its getters, toString, toJSON, or custom inspection hooks.
+  function own(value, key) {
+    if (!value || typeof value !== 'object') return undefined;
+    try { const d = Object.getOwnPropertyDescriptor(value, key); return d && 'value' in d ? d.value : undefined; } catch { return undefined; }
+  }
+  function text(value, limit) {
+    if (typeof value !== 'string') return '';
+    return value.slice(0,4096).split(root).join('<project>').slice(0,limit)
+      .replace(/[^\x20-\x7e]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4,'0')).slice(0,limit);
+  }
+  return (data, stage) => {
+    if (!remaining) return;
+    const detail = own(data, 'details'), error = own(detail, 'error'), cause = own(error, 'cause');
+    const file = own(data, 'file');
+    let relative = '';
+    if (typeof file === 'string' && file.length <= 4096) {
+      const p = path.relative(root, path.resolve(root, file));
+      if (p !== '..' && !p.startsWith('..' + path.sep) && !path.isAbsolute(p)) relative = p;
+    }
+    const line = own(data, 'line');
+    const raw = JSON.stringify({kind:'foundry_test_failure_diagnostic_v2',runner:'node-test-v2',stage,
+      name:text(own(data,'name'),128),file:text(relative,256),line:Number.isSafeInteger(line) && line > 0 && line <= 1000000 ? line : 0,
+      error_type:text(own(error,'name'),64),failure_type:text(own(error,'failureType'),64),
+      message:text(own(error,'message'),1024),cause:text(own(cause,'message'),1024)}) + '\n';
+    const size = Buffer.byteLength(raw);
+    if (size > remaining) { remaining = 0; return; }
+    remaining -= size;
+    // Diagnostic-only stderr; FD3's closed framework report is unchanged.
+    try {
+      const b = Buffer.from(raw);
+      let at = 0;
+      while (at < b.length) { const n = fs.writeSync(2, b, at, b.length - at); if (!n) break; at += n; }
+    } catch { /* Diagnostic delivery never changes framework authority. */ }
+  };
+}
+
 function reporter(fd) {
   let seq = 0, started = 0, bytes = 0;
   const counts = { passed: 0, failed: 0, skipped: 0, expected_failed: 0, unexpected_passed: 0 };
@@ -37,6 +76,7 @@ function reporter(fd) {
 async function runTests(contract, fd) {
   const r = reporter(fd);
   const root = contract.output_root || contract.source_root;
+  const diagnostic = failureDiagnostics(root);
   const stack = [];
   const fileSummaries = new Set(), namedCandidates = [];
   const entries = new Set(contract.test_files.flatMap(f => { const p = path.join(root, f); return [p, fs.realpathSync(p)]; }));
@@ -59,6 +99,8 @@ async function runTests(contract, fd) {
       const failure = detail.error && detail.error.failureType;
       if (!frame) throw new Error('test lifecycle');
       stack.length = data.nesting;
+      if (type === 'test:fail' && failure !== 'subtestsFailed') diagnostic(data,
+        detail.type === 'suite' || frame.children || !data.line || detail.error && ('exitCode' in detail.error || 'signal' in detail.error) || failure && failure !== 'testCodeFailure' ? 'infrastructure' : 'assertion');
       if (detail.type === 'suite' || frame.children) {
         if (type === 'test:fail' && failure !== 'subtestsFailed') discovery++;
       } else if (!data.line || detail.error && ('exitCode' in detail.error || 'signal' in detail.error) || failure && failure !== 'testCodeFailure') {
