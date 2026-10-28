@@ -664,3 +664,105 @@ func TestV2ExchangePreAcknowledgmentFailureRetainsOnlyClosedHostFacts(t *testing
 		})
 	}
 }
+
+// Arm at the response EOF, then change Err from its first sampled value to a
+// deadline before a possible second read. Stop ends the observation window.
+type firstObservationContextV2 struct {
+	context.Context
+	first          error
+	armed, stopped bool
+	reads, atStop  int
+}
+
+func (c *firstObservationContextV2) Err() error {
+	if !c.armed {
+		return nil
+	}
+	if c.stopped {
+		return context.DeadlineExceeded
+	}
+	c.reads++
+	if c.reads == 1 {
+		return c.first
+	}
+	return context.DeadlineExceeded
+}
+
+type firstObservationNativeV2 struct {
+	*failedStartNative
+	ctx    *firstObservationContextV2
+	output io.ReadCloser
+}
+
+func (p *firstObservationNativeV2) Output() io.ReadCloser { return p.output }
+func (p *firstObservationNativeV2) Wait() error           { return nil }
+func (p *firstObservationNativeV2) Stop() error {
+	if !p.ctx.stopped {
+		p.ctx.atStop = p.ctx.reads
+		p.ctx.stopped = true
+	}
+	return nil
+}
+
+type armObservationReaderV2 struct {
+	r   *strings.Reader
+	ctx *firstObservationContextV2
+}
+
+func (r armObservationReaderV2) Read(b []byte) (int, error) {
+	n, e := r.r.Read(b)
+	if e == io.EOF {
+		r.ctx.armed = true
+	}
+	return n, e
+}
+func TestV2ExchangeFirstObservationSamplesContextOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		first      error
+	}{
+		{"live_then_deadline", "live", nil}, {"deadline", "deadline", context.DeadlineExceeded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, q := testRuntimeV2(t, "c4_node_model_v2")
+			s, e := r.CreateV2(context.Background(), q)
+			if e != nil {
+				t.Fatal(e)
+			}
+			ctx := &firstObservationContextV2{Context: context.Background(), first: tc.first}
+			p := &firstObservationNativeV2{failedStartNative: &failedStartNative{terminated: true}, ctx: ctx}
+			p.output = io.NopCloser(armObservationReaderV2{r: strings.NewReader(ReadyMarkerV2), ctx: ctx})
+			// Use the actual exchange body with already admitted request/owned process
+			// state, so the fixture is the context observed by that method directly.
+			s.started, s.process = true, p
+			started := make(chan error, 1)
+			s.exchange(ctx, p, started)
+			if e = <-started; e != nil {
+				t.Fatal("request was not acknowledged", e)
+			}
+			if e = s.Wait(context.Background()); !errors.Is(e, ErrProtocolV2) {
+				t.Fatal("response rejection changed", e)
+			}
+			if e = s.Close(context.Background()); e != nil {
+				t.Fatal(e)
+			}
+			raw, e := os.ReadFile(filepath.Join(s.dir, "terminal.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			var record struct {
+				Native nativeFacts `json:"native"`
+			}
+			if e = json.Unmarshal(raw, &record); e != nil {
+				t.Fatal(e)
+			}
+			d := record.Native.Exchange
+			if ctx.atStop != 1 || d == nil || d.Context != tc.want || d.Context == "canceled" || d.Stage != "response" || d.Code != "header_eof" {
+				t.Fatalf("first observation mixed context reads: reads=%d diagnostic=%+v want=%s", ctx.atStop, d, tc.want)
+			}
+			if _, valid := s.AuthenticatedEvidenceV2(q); valid {
+				t.Fatal("diagnostic granted response authority")
+			}
+		})
+	}
+}

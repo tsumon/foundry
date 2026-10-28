@@ -325,9 +325,10 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 			return
 		}
 		state := "live"
-		if ctx.Err() == context.DeadlineExceeded {
+		contextErr := ctx.Err()
+		if contextErr == context.DeadlineExceeded {
 			state = "deadline"
-		} else if ctx.Err() != nil {
+		} else if contextErr != nil {
 			state = "canceled"
 		}
 		exchange = &exchangeDiagnostic{Stage: stage, Code: code, Context: state}
