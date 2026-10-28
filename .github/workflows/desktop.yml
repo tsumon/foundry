@@ -108,6 +108,11 @@ jobs:
         with:
           name: foundry-runtime-sources
           path: ${{ runner.temp }}/foundry-runtime-sources
+      - name: Set up trusted build Python
+        id: build-python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14.8'
       - name: Install exact locked build inputs
         run: |
           set -eu
@@ -117,6 +122,8 @@ jobs:
           go mod download
           go mod verify
       - name: Desktop boundaries and real Electron download contract
+        env:
+          FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
         run: |
           set -eu
           npm test --prefix desktop
@@ -198,6 +205,11 @@ jobs:
         with:
           name: foundry-runtime-sources
           path: ${{ runner.temp }}/foundry-runtime-sources
+      - name: Set up trusted build Python
+        id: build-python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14.8'
       - name: Native compiler and trusted Git prerequisites
         run: |
           $ErrorActionPreference = 'Stop'
@@ -248,6 +260,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Native private upgrade copy/restore regression failed' }
           "FOUNDRY_UPGRADE_COPY=$helper" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Native CGO commands and Windows boundary/integration gates
+        env:
+          FOUNDRY_BUILD_PYTHON: ${{ steps.build-python.outputs.python-path }}
         run: ./desktop/windows-test.ps1
       - name: Isolated Windows Credential Manager diagnostic lifecycle
         run: |
