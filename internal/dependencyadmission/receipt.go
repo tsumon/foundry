@@ -40,6 +40,7 @@ type PackageIdentity struct {
 	ArtifactSHA256 string `json:"artifact_sha256"`
 	ArtifactSize   int64  `json:"artifact_size"`
 	ArtifactClaim  string `json:"artifact_claim"`
+	RecordSHA256   string `json:"record_sha256,omitempty"`
 }
 type DependencyEdge struct {
 	From        string `json:"from"`
@@ -96,6 +97,9 @@ func (r AdmissionReceipt) computeDigest() string {
 // Validate checks canonical retained facts and their digest. It neither reads a
 // bundle nor authorizes execution; callers must check the binding independently.
 func (r AdmissionReceipt) Validate() error {
+	if r.Policy == pythonPolicy {
+		return r.validatePython()
+	}
 	if r.SchemaVersion != 1 || r.Policy != nodePolicy || r.Provenance != "user_supplied_tree" || r.SourceFiles == nil || len(r.SourceFiles) != 2 || r.Packages == nil || len(r.Packages) > maxPackages || r.Edges == nil || len(r.Edges) > maxEdges {
 		return errInvalid
 	}
@@ -112,7 +116,7 @@ func (r AdmissionReceipt) Validate() error {
 	packages := map[string]*nodePackage{}
 	for i, p := range r.Packages {
 		n, e := locationName(p.Location)
-		if e != nil || n != p.Name || !stableVersion(p.Version) || !validHash(p.MetadataSHA256) || p.ArtifactSHA256 != "" || p.ArtifactSize != 0 || p.ArtifactClaim != "unverified_lock_claim" || i > 0 && !packageLess(r.Packages[i-1], p) || locations[p.Location] {
+		if e != nil || n != p.Name || !stableVersion(p.Version) || !validHash(p.MetadataSHA256) || p.ArtifactSHA256 != "" || p.RecordSHA256 != "" || p.ArtifactSize != 0 || p.ArtifactClaim != "unverified_lock_claim" || i > 0 && !packageLess(r.Packages[i-1], p) || locations[p.Location] {
 			return errInvalid
 		}
 		locations[p.Location] = true

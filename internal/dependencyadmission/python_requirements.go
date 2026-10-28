@@ -126,6 +126,7 @@ func pythonSatisfies(spec, version string) (bool, error) {
 }
 
 var pythonRequirementPattern = regexp.MustCompile(`^([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)(.*)$`)
+var pythonInactivePredicate = regexp.MustCompile(`^(===|==|!=|<=|>=|~=|<|>)\s*[A-Za-z0-9*][A-Za-z0-9.!+*_-]*$`)
 var pythonExtraMarker = regexp.MustCompile(`^extra\s*==\s*(['"])([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)['"]$`)
 
 func normalizePythonName(s string) string {
@@ -183,6 +184,9 @@ func pythonRequirement(s string, extras []string) (string, string, string, error
 		return "", "", "", errInvalid
 	}
 	name := normalizePythonName(m[1])
+	if !pythonName(name) {
+		return "", "", "", errInvalid
+	}
 	spec := strings.TrimSpace(m[2])
 	if strings.HasPrefix(spec, "(") && strings.HasSuffix(spec, ")") {
 		spec = strings.TrimSpace(spec[1 : len(spec)-1])
@@ -196,8 +200,12 @@ func pythonRequirement(s string, extras []string) (string, string, string, error
 				return "", "", "", e
 			}
 		} else {
-			for _, c := range spec {
-				if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune(" .,*<>=!~+-_", c)) {
+			parts := strings.Split(spec, ",")
+			if len(spec) > 256 || len(parts) > 8 {
+				return "", "", "", errInvalid
+			}
+			for _, part := range parts {
+				if !pythonInactivePredicate.MatchString(strings.TrimSpace(part)) {
 					return "", "", "", errInvalid
 				}
 			}

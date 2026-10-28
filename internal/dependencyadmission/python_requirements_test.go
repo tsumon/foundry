@@ -44,3 +44,11 @@ func TestPythonRequirementMarkers(t *testing.T) {
 		}
 	}
 }
+
+func TestPythonInactiveStillRequiresPredicateSyntax(t *testing.T) {
+	for _, s := range []string{"foo arbitrary text; extra == 'docs'", "foo >=; extra == 'docs'", "foo >=1,,<2; extra == 'docs'", "foo =1; extra == 'docs'"} {
+		if _, _, _, e := pythonRequirement(s, []string{"docs"}); e == nil {
+			t.Errorf("accepted %s", s)
+		}
+	}
+}
