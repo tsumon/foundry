@@ -68,7 +68,11 @@ func wheelZIPCount(b []byte) (int, error) {
 			break
 		}
 	}
-	if end < 0 {
+	// archive/zip accepts a later EOCD whose comment merely fits before EOF.
+	// Exclude later signatures, even incomplete ones, from this supported subset
+	// so decoding cannot select a different directory or allocate from its count.
+	// Ordinary archive comments remain supported and part of the original hash.
+	if end < 0 || bytes.Contains(b[end+4:], []byte{'P', 'K', 5, 6}) {
 		return 0, errInvalid
 	}
 	e := b[end:]
