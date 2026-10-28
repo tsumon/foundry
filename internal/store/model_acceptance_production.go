@@ -9,7 +9,10 @@ import (
 func (s *Store) initializeProductionConnectionDispatch() error {
 	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS model_acceptance_dispatches(operation_id TEXT PRIMARY KEY REFERENCES model_acceptance_operations(id),claim_sequence INTEGER NOT NULL UNIQUE REFERENCES model_acceptance_claims(sequence));
 CREATE TRIGGER IF NOT EXISTS acceptance_dispatch_no_update BEFORE UPDATE ON model_acceptance_dispatches BEGIN SELECT RAISE(ABORT,'immutable acceptance dispatch'); END;
-CREATE TRIGGER IF NOT EXISTS acceptance_dispatch_no_delete BEFORE DELETE ON model_acceptance_dispatches BEGIN SELECT RAISE(ABORT,'immutable acceptance dispatch'); END;`)
+CREATE TRIGGER IF NOT EXISTS acceptance_dispatch_no_delete BEFORE DELETE ON model_acceptance_dispatches BEGIN SELECT RAISE(ABORT,'immutable acceptance dispatch'); END;
+CREATE TABLE IF NOT EXISTS model_acceptance_inference_sends(operation_id TEXT PRIMARY KEY REFERENCES model_acceptance_dispatches(operation_id),claim_sequence INTEGER NOT NULL UNIQUE REFERENCES model_acceptance_claims(sequence),started_at TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS inference_send_no_update BEFORE UPDATE ON model_acceptance_inference_sends BEGIN SELECT RAISE(ABORT,'immutable inference send'); END;
+CREATE TRIGGER IF NOT EXISTS inference_send_no_delete BEFORE DELETE ON model_acceptance_inference_sends BEGIN SELECT RAISE(ABORT,'immutable inference send'); END;`)
 	return err
 }
 

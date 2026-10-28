@@ -51,7 +51,11 @@ func NewProductionCatalog(ledger *store.Store, options ProductionCatalogOptions)
 	s.catalog.admission = domain.ProductionAdmission{Generation: hex.EncodeToString(nonce), Profile: "openai_siwc_catalog_v1"}
 	// Fresh connections only: no environment proxy, redirect, or reused-connection
 	// automatic replay. This client is exclusive to one-request catalog dispatch.
-	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, ForceAttemptHTTP2: false, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second}
+	// HTTP/2 can replay a bodyless GET after GOAWAY/REFUSED_STREAM even with
+	// keep-alives disabled. Pin the protocol instead of relying on defaults.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	transport := &http.Transport{Protocols: protocols, Proxy: nil, DisableKeepAlives: true, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second}
 	s.catalog.http = &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	s.routes[saved.ID] = saved
 	return s

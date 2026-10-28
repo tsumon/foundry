@@ -5,6 +5,9 @@ import "strings"
 // SanitizeModelCallReceipt removes unknown metadata rather than treating any
 // provider text as a trusted machine code. Success means completed, not approved.
 func SanitizeModelCallReceipt(r ModelCallReceipt) ModelCallReceipt {
+	if !r.ExchangeDiagnostic.Valid() {
+		r.ExchangeDiagnostic = HTTPExchangeDiagnostic{}
+	}
 	if !r.ResponseDiagnostic.Valid() {
 		r.ResponseDiagnostic = ResponseDiagnostic{}
 	}

@@ -24,6 +24,7 @@ type DesktopStatus struct {
 	Blocker         string `json:"blocker,omitempty"`
 	ConnectionReady bool   `json:"connection_ready"`
 	CatalogReady    bool   `json:"catalog_ready"`
+	InferenceReady  bool   `json:"inference_ready"`
 }
 
 // DesktopCoordinator owns a single immutable service at a time. Its lock spans
@@ -73,6 +74,11 @@ func (c *DesktopCoordinator) Status(account string) DesktopStatus {
 	v.ConnectionReady = c.service.ProductionConnectionStatus(account).Enabled
 	catalog := c.service.ProductionCatalogStatus(account)
 	v.CatalogReady = catalog.Enabled
+	inference := c.service.ProductionInferenceStatus(account)
+	v.InferenceReady = inference.Enabled
+	if v.Blocker == "" && c.phase == "inference" {
+		v.Blocker = inference.Blocker
+	}
 	if v.Blocker == "" && c.phase == "catalog" {
 		v.Blocker = catalog.Blocker
 	}
@@ -87,7 +93,7 @@ func (c *DesktopCoordinator) Prepare(account, phase, route string, revision int6
 		return store.ErrConflict
 	}
 	defer c.mu.Unlock()
-	if c.closed || c.blocker != "" || (phase != "connection" && phase != "catalog") {
+	if c.closed || c.blocker != "" || (phase != "connection" && phase != "catalog" && phase != "inference") {
 		return ErrDisabled
 	}
 	c.service.sessionsMu.Lock()
@@ -125,9 +131,15 @@ func (c *DesktopCoordinator) Prepare(account, phase, route string, revision int6
 			return ErrDisabled
 		}
 		expiry = c.options.Now().Add(10 * time.Minute)
-	} else {
+	} else if phase == "catalog" {
 		next = NewProductionCatalog(c.store, ProductionCatalogOptions{Route: r, Resolver: c.options.Resolver})
 		if next.ProductionCatalogStatus(account).Admission == nil {
+			next.Close()
+			return ErrDisabled
+		}
+	} else {
+		next = NewProductionInference(c.store, ProductionInferenceOptions{Route: r, Resolver: c.options.Resolver})
+		if next.ProductionInferenceStatus(account).Admission == nil {
 			next.Close()
 			return ErrDisabled
 		}

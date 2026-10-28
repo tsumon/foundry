@@ -31,10 +31,11 @@ func inferenceLedgerFixture(t *testing.T, ttl ...time.Duration) (*Store, domain.
 	if e != nil {
 		t.Fatal(e)
 	}
+	inferenceBudgetMission(t, s, a, r)
 	return s, a, r, o, domain.ProductionAdmission{Generation: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Profile: "openai_siwc_inference_v1"}
 }
 func inferenceProposal(a domain.ModelAccount, r domain.ModelRoute, c domain.ModelAcceptanceOperation) domain.ModelAcceptanceProposal {
-	return domain.ModelAcceptanceProposal{Phase: "inference", RouteID: r.ID, ExpectedAccountRevision: a.Revision, PrerequisiteID: c.ID, Model: "gpt-6.1-sol"}
+	return domain.ModelAcceptanceProposal{Phase: "inference", RouteID: r.ID, ExpectedAccountRevision: a.Revision, PrerequisiteID: c.ID, Model: "gpt-6.1-sol", BudgetMissionID: "inference-budget-task", ExpectedMissionRevision: 1}
 }
 
 func TestProductionInferenceExpiryAtEveryBoundary(t *testing.T) {
@@ -95,6 +96,9 @@ func TestProductionInferenceExpiryAtEveryBoundary(t *testing.T) {
 				return
 			}
 			matched := true
+			if e = s.BeginProductionInferenceSend(o, admission, now); e != nil {
+				t.Fatal(e)
+			}
 			evidence := domain.InferenceEvidence{TerminalEvent: "response.completed", ResolvedModel: "gpt-6.1-sol", OutputMatched: &matched, OutputDigest: domain.AcceptanceDigest("FOUNDRY_INFERENCE_OK")}
 			if _, e = s.FinishProductionInference(o, admission, "succeeded", "completed", "", evidence, 0, 0, false, now.Add(31*time.Second)); e == nil {
 				t.Fatal("late success accepted")
@@ -199,6 +203,9 @@ func TestProductionInferenceReceiptAuthorityAndEvidence(t *testing.T) {
 				if e = s.ReserveProductionInferenceDispatch(o, admission, now); e != nil {
 					t.Fatal(e)
 				}
+				if e = s.BeginProductionInferenceSend(o, admission, now); e != nil {
+					t.Fatal(e)
+				}
 			}
 			if change == "replayed reservation" {
 				if e = s.ReserveProductionInferenceDispatch(o, admission, now); e == nil {
@@ -287,7 +294,8 @@ func TestProductionInferenceIndependentLedger(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	q := domain.ModelAcceptanceProposal{Phase: "inference", RouteID: r.ID, ExpectedAccountRevision: a.Revision, PrerequisiteID: o.ID, Model: "gpt-6.1-sol"}
+	m := inferenceBudgetMission(t, s, a, r)
+	q := boundInferenceProposal(t, a, r, o, m)
 	admission := domain.ProductionAdmission{Generation: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Profile: "openai_siwc_inference_v1"}
 	pending, e := ledger.ProposeProductionInference(a.ID, q, admission, now)
 	if e != nil {

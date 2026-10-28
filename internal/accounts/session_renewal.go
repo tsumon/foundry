@@ -115,7 +115,7 @@ func (c *SessionRenewal) Status(id string) (domain.SessionRenewalStatus, error) 
 	if receipt != nil && receipt.AuthorizationID == b.Binding.ID {
 		if receipt.Stage == "dispatched" {
 			result.State = "in_progress"
-		} else if receipt.Stage != "succeeded" && receipt.Stage != "waiting" {
+		} else if b.State != "revoked" && receipt.Stage != "succeeded" && receipt.Stage != "waiting" {
 			result.State = receipt.Stage
 		}
 	}
@@ -228,7 +228,9 @@ func (c *SessionRenewal) Tick(ctx context.Context) {
 			c.mu.Unlock()
 			continue
 		}
-		workCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		// Native credential access may wait for the OS. Its wait must not use
+		// the network deadline; refreshSession starts that deadline at exchange.
+		workCtx, cancel := context.WithCancel(ctx)
 		work := &renewalWork{cancel: cancel, done: make(chan struct{})}
 		c.active[p.AccountID] = work
 		c.mu.Unlock()
@@ -247,6 +249,9 @@ func (c *SessionRenewal) Tick(ctx context.Context) {
 				}
 				if provider.Code == "refresh_not_ready" && provider.Certainty == "not_sent" {
 					stage, category = "waiting", "refresh_not_ready"
+				}
+				if provider.Code == "credential_preflight" && provider.Certainty == "not_sent" {
+					category = "credential_preflight"
 				}
 			}
 			latest, e := c.ledger().GetModelAuthorization(b.Binding.ID)

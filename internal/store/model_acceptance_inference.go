@@ -105,6 +105,48 @@ func (s *Store) ValidateProductionInferenceDispatch(claim domain.ModelAcceptance
 	return s.validateProductionDispatch(claim, admission, now)
 }
 
+// Credential access has its own material/authorization deadline. Only this
+// immutable checkpoint starts the 30-second network window. A reserved dispatch
+// alone cannot prove that any network attempt or successful response occurred.
+func (s *Store) BeginProductionInferenceSend(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, now time.Time) error {
+	if claim.Source != "production_inference" || admission.Profile != "openai_siwc_inference_v1" {
+		return ErrConflict
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`UPDATE model_acceptance_operations SET revision=revision WHERE id=?`, claim.ID); err != nil {
+		return err
+	}
+	if err = validateSingleRequestClaim(tx, claim, admission, now); err != nil {
+		return err
+	}
+	var sequence int64
+	if err = tx.QueryRow(`SELECT claim_sequence FROM model_acceptance_dispatches WHERE operation_id=?`, claim.ID).Scan(&sequence); err != nil || sequence != claim.ClaimSequence {
+		return ErrConflict
+	}
+	if _, err = tx.Exec(`INSERT INTO model_acceptance_inference_sends(operation_id,claim_sequence,started_at) VALUES(?,?,?)`, claim.ID, claim.ClaimSequence, now.UTC().Format(time.RFC3339Nano)); err != nil {
+		return ErrConflict
+	}
+	return tx.Commit()
+}
+
+func validateInferenceSendWindow(tx *sql.Tx, claim domain.ModelAcceptanceOperation, now time.Time) error {
+	var sequence int64
+	var raw string
+	if err := tx.QueryRow(`SELECT claim_sequence,started_at FROM model_acceptance_inference_sends WHERE operation_id=?`, claim.ID).Scan(&sequence, &raw); err != nil || sequence != claim.ClaimSequence {
+		return ErrConflict
+	}
+	start, err := time.Parse(time.RFC3339Nano, raw)
+	claimStart, claimErr := time.Parse(time.RFC3339Nano, claim.StartedAt)
+	if err != nil || claimErr != nil || start.Before(claimStart) || now.Before(start) || !start.Add(30*time.Second).After(now) {
+		return ErrConflict
+	}
+	return nil
+}
+
 func validDigest(s string) bool {
 	b, e := hex.DecodeString(s)
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == s
@@ -135,9 +177,24 @@ func validInferenceEvidence(state, certainty, code string, e domain.InferenceEvi
 	return e.OutputMatched == nil && e.OutputDigest == "" && e.ResolvedModel == "" && ((state == "failed" && (certainty == "rejected" || certainty == "not_sent")) || state == "unknown" && certainty == "unknown") && code != ""
 }
 
-func (s *Store) FinishProductionInference(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, state, certainty, code string, evidence domain.InferenceEvidence, input, output int64, usage bool, now time.Time) (domain.ModelAcceptanceOperation, error) {
+type inferenceReceipt struct {
+	evidence   domain.InferenceEvidence
+	diagnostic *domain.InferenceDiagnostic
+}
+
+func (s *Store) FinishProductionInference(claim domain.ModelAcceptanceOperation, admission domain.ProductionAdmission, state, certainty, code string, evidence domain.InferenceEvidence, input, output int64, usage bool, now time.Time, diagnostics ...domain.InferenceDiagnostic) (domain.ModelAcceptanceOperation, error) {
+	if claim.Material.InferenceBudget == nil {
+		return domain.ModelAcceptanceOperation{}, ErrConflict
+	}
 	if !admission.Valid() || admission.Profile != "openai_siwc_inference_v1" || claim.Source != "production_inference" || !validAcceptanceMaterial(claim) || claim.Material.ProductionAdmission == nil || *claim.Material.ProductionAdmission != admission {
 		return domain.ModelAcceptanceOperation{}, ErrConflict
 	}
-	return s.finishModelAcceptance(claim.AccountID, claim.ID, claim.Revision, state, certainty, code, nil, input, output, usage, nil, now, &claim, evidence)
+	receipt := inferenceReceipt{evidence: evidence}
+	if len(diagnostics) > 1 {
+		return domain.ModelAcceptanceOperation{}, ErrConflict
+	}
+	if len(diagnostics) == 1 {
+		receipt.diagnostic = &diagnostics[0]
+	}
+	return s.finishModelAcceptance(claim.AccountID, claim.ID, claim.Revision, state, certainty, code, nil, input, output, usage, nil, now, &claim, receipt)
 }

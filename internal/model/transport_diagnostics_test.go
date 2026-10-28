@@ -25,7 +25,11 @@ func TestSIWCTransportMediaDiagnostics(t *testing.T) {
 		{"empty", []string{""}, "empty", "missing_media_type"},
 		{"invalid", []string{"PRIVATE;="}, "single", "invalid_media_type"},
 		{"wrong", []string{"application/json; secret=PRIVATE"}, "single", "unexpected_media_type"},
-		{"multiple", []string{"application/json", "text/event-stream"}, "multiple", "unexpected_media_type"},
+		{"multiple", []string{"application/json", "text/event-stream"}, "multiple", "invalid_media_type"},
+		{"SSE first conflicting", []string{"text/event-stream", "application/json"}, "multiple", "invalid_media_type"},
+		{"repeated SSE", []string{"text/event-stream", "text/event-stream"}, "multiple", "invalid_media_type"},
+		{"empty first duplicate", []string{"", "text/event-stream"}, "multiple", "invalid_media_type"},
+		{"combined duplicate", []string{"text/event-stream, text/event-stream"}, "single", "invalid_media_type"},
 		{"valid", []string{"text/event-stream; charset=utf-8"}, "single", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

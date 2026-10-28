@@ -15,6 +15,12 @@ type CredentialResolver interface {
 	ResolveModelCredential(context.Context, domain.RoleModelSelection) (CredentialLease, error)
 }
 
+// CredentialAccessError identifies local secure-storage access failure without
+// exposing the native error, item reference or secret. It does not revoke a grant.
+type CredentialAccessError struct{}
+
+func (*CredentialAccessError) Error() string { return "local credential access failed" }
+
 type SelectionPreflighter interface {
 	PreflightModelSelection(context.Context, int, domain.RoleModelSelection) error
 }
@@ -22,15 +28,16 @@ type SelectionPreflighter interface {
 // ProviderError carries bounded, non-secret outcome metadata. Callers must
 // populate diagnostic fields from allowlisted protocol values, never raw text.
 type ProviderError struct {
-	ResponseDiagnostic domain.ResponseDiagnostic `json:"response_diagnostic,omitzero"`
-	Code               string                    `json:"code"`
-	Certainty          string                    `json:"certainty"`
-	RequestID          string                    `json:"request_id,omitempty"`
-	RetryAfterSeconds  int                       `json:"retry_after_seconds,omitempty"`
-	HTTPStatus         int                       `json:"http_status,omitempty"`
-	ProviderCode       string                    `json:"provider_code,omitempty"`
-	ProviderParam      string                    `json:"provider_param,omitempty"`
-	BodyShape          string                    `json:"body_shape,omitempty"`
+	ExchangeDiagnostic domain.HTTPExchangeDiagnostic `json:"exchange_diagnostic,omitzero"`
+	ResponseDiagnostic domain.ResponseDiagnostic     `json:"response_diagnostic,omitzero"`
+	Code               string                        `json:"code"`
+	Certainty          string                        `json:"certainty"`
+	RequestID          string                        `json:"request_id,omitempty"`
+	RetryAfterSeconds  int                           `json:"retry_after_seconds,omitempty"`
+	HTTPStatus         int                           `json:"http_status,omitempty"`
+	ProviderCode       string                        `json:"provider_code,omitempty"`
+	ProviderParam      string                        `json:"provider_param,omitempty"`
+	BodyShape          string                        `json:"body_shape,omitempty"`
 }
 
 func (e *ProviderError) Error() string {
@@ -40,6 +47,11 @@ func (e *ProviderError) Error() string {
 	switch e.Code {
 	case "auth_invalid", "entitlement_denied", "quota_exhausted", "rate_limited", "request_rejected", "server_error", "transport_unknown", "response_incomplete", "live_provider_access_pending_confirmation":
 		return e.Code
+	case "credential_access_failed", "credential_wait_expired":
+		if e.Certainty == "not_sent" {
+			return e.Code
+		}
+		return "model_provider_error"
 	default:
 		return "model_provider_error"
 	}

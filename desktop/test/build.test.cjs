@@ -4,8 +4,12 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { validateOutput, writeManifest } = require("../build-support.cjs");
-const { verifyResources, executableName } = require("../runtime.cjs");
-const { sandboxFixture } = require("./sandbox-fixture.cjs");
+const {
+  sandboxFixture,
+  loadDesktopFixtureModule,
+} = require("./sandbox-fixture.cjs");
+const { verifyResources, executableName } =
+  loadDesktopFixtureModule("runtime.cjs");
 
 test("sandbox packaging requires explicit absolute verified input and preserves signed helper bytes", (t) => {
   const root = fs.realpathSync(
@@ -15,6 +19,8 @@ test("sandbox packaging requires explicit absolute verified input and preserves 
   const bundle = path.join(root, "bundle"),
     target = path.join(root, "resources", "sandbox");
   const manifest = sandboxFixture(bundle, "darwin/arm64");
+  if (process.platform !== "win32")
+    fs.chmodSync(path.join(bundle, manifest.runtime), 0o755);
   const { copySandboxBundle } = require("../build-support.cjs");
   assert.throws(
     () => copySandboxBundle(undefined, target, "darwin/arm64"),
@@ -150,7 +156,13 @@ test("desktop jobs build the verified sandbox before packaging and publish its s
     assert.match(steps[sandbox].run, /node desktop\/sandbox\/build\.cjs/);
     assert.match(steps[packaging].run, /FOUNDRY_SANDBOX_BUNDLE/);
     assert.match(steps[packaging].run, /sandbox-sources/);
-    assert.match(steps[upload].with.path, /alpha\.3/);
+    const installerOutput =
+      name === "macos-installer" ? "macos_installer" : "windows_installer";
+    assert.ok(
+      steps[upload].with.path.includes(
+        "${{ needs.runtime-sources.outputs." + installerOutput + " }}",
+      ),
+    );
     assert.match(steps[upload].with.path, /sandbox-sources\//);
     for (const step of [
       steps[sandbox],
@@ -175,6 +187,92 @@ test("desktop jobs build the verified sandbox before packaging and publish its s
       );
     } else assert.match(job.name, /not VM execution/);
   }
+});
+test("installer acceptance and uploads follow prerelease and stable package versions", (t) => {
+  const workflow = require("../node_modules/js-yaml").load(
+    fs.readFileSync(
+      path.join(__dirname, "../../.github/workflows/desktop.yml"),
+      "utf8",
+    ),
+  );
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "foundry-version-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "desktop"));
+  const sourceJob = workflow.jobs["runtime-sources"];
+  const metadataStep = sourceJob.steps.find((s) => s.id === "package-metadata");
+  assert.ok(metadataStep);
+  // Run the workflow's actual node program with a changed package manifest.
+  const program = metadataStep.run.match(/^\s*node -e '([\s\S]*)'\s*$/)[1];
+  for (const version of ["0.2.0-rc.1", "1.0.0", "1.0.0+build.7"]) {
+    const output = path.join(root, version + ".output");
+    fs.writeFileSync(
+      path.join(root, "desktop/package.json"),
+      JSON.stringify({ version }),
+    );
+    require("node:child_process").execFileSync(
+      process.execPath,
+      ["-e", program],
+      {
+        cwd: root,
+        env: { ...process.env, GITHUB_OUTPUT: output },
+      },
+    );
+    assert.equal(
+      fs.readFileSync(output, "utf8"),
+      `macos_installer=Foundry-${version}-arm64.dmg\nwindows_installer=Foundry-${version}-x64.exe\n`,
+    );
+  }
+  for (const version of [
+    null,
+    "../installer",
+    "1.0.0\nunexpected=value",
+    "1.0.0\n",
+  ]) {
+    const output = path.join(root, "invalid.output");
+    fs.writeFileSync(
+      path.join(root, "desktop/package.json"),
+      JSON.stringify({ version }),
+    );
+    const result = require("node:child_process").spawnSync(
+      process.execPath,
+      ["-e", program],
+      {
+        cwd: root,
+        env: { ...process.env, GITHUB_OUTPUT: output },
+        encoding: "utf8",
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Invalid desktop package version/);
+    assert.equal(fs.existsSync(output), false);
+  }
+  for (const output of ["macos_installer", "windows_installer"])
+    assert.equal(
+      sourceJob.outputs[output],
+      "${{ steps.package-metadata.outputs." + output + " }}",
+    );
+  const installed = workflow.jobs["macos-installer"].steps.find(
+    (s) => s.id === "installed-contract",
+  );
+  assert.equal(
+    installed.env.FOUNDRY_MAC_INSTALLER,
+    "${{ needs.runtime-sources.outputs.macos_installer }}",
+  );
+  assert.match(installed.run, /"\$output\/\$FOUNDRY_MAC_INSTALLER"/);
+  const windowsSmoke = fs.readFileSync(
+    path.join(__dirname, "../windows-installed-smoke.ps1"),
+    "utf8",
+  );
+  assert.match(windowsSmoke, /Join-Path \$PSScriptRoot 'package\.json'/);
+  assert.match(
+    windowsSmoke,
+    /\$packageVersion = .*ConvertFrom-Json\)\.version/,
+  );
+  assert.match(
+    windowsSmoke,
+    /Join-Path \$Output "Foundry-\$packageVersion-x64\.exe"/,
+  );
+  assert.doesNotMatch(windowsSmoke, /Foundry-\d+\.\d+\.\d+/);
 });
 test("workflow boundary checks parse LF and native Windows CRLF identically", () => {
   const workflow = fs.readFileSync(

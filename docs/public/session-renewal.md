@@ -31,6 +31,30 @@ The shipped desktop composition supports this capability on Mac and Windows, but
 
 ## Failure and recovery
 
+### Native credential wait and network deadline (2026-10-27)
+
+Local credential-store reads can wait for an operating-system prompt. They must
+not consume the 30-second network/exchange deadline. The desktop's cancelable
+lifetime still owns the operation; cancellation/withdrawal is checked again
+after credential access and before the single token exchange. The exchange gets
+a fresh bounded deadline only once the two existing credential checks finish.
+No background goroutine is allowed to send later after a canceled wait.
+
+A failure proven to occur before any credential-rotation intent is a local
+`credential_preflight` failure with certainty `not_sent`. Preserve the current
+grant/generation rather than labeling it as an uncertain server rotation. The
+durable receipt still blocks subsequent ticks and restarts: this distinction is
+not an automatic retry or a new recovery authorization. After an intent, or if
+dispatch certainty is unknown, existing conservative recovery rules remain.
+UI copy distinguishes local unsent failures from actual invalid-grant/login
+requirements without promising that expired access tokens are usable.
+
+Existing `refresh_unknown` credentials and historical receipts are not repaired
+or reclassified on upgrade. In particular, lack of a success receipt is never
+permission to replay an old refresh token. Task snapshots, baselines, evidence,
+and consumed budgets are untouched. This change is validated with isolated
+synthetic credentials/loopback OAuth, not with real subscriptions.
+
 - Missing or revoked consent, changed account/grant/route, missing offline access, malformed scheduling metadata, stale material or recovery-read-only mode: no secret/network work; renewal blocked.
 - Provider says too early: wait for the known permitted time; do not loop requests.
 - Any sent request whose outcome is unknown: stop automatic renewal for this session, retain previous protected credential and immutable journal, deny use of uncertain credentials, and require explicit recovery/reconnection. Never replay the old rotating token after restart.

@@ -203,7 +203,7 @@ func (s *Service) ResolveModelCredential(ctx context.Context, sel domain.RoleMod
 	}
 	secret, err := s.secrets.Get(ref)
 	if err != nil || secret == "" {
-		return zero, credentialDenial(err)
+		return zero, &model.CredentialAccessError{}
 	}
 	if auth.Binding.ID != "" {
 		var bundle storedModelTokenBundle

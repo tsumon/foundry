@@ -69,6 +69,7 @@ async function assertDesktopSubscriptionMetadata(
         phase: "unprepared",
         connection_ready: false,
         catalog_ready: false,
+        inference_ready: false,
       },
       catalog_choices: [],
     });

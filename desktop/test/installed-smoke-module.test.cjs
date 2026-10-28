@@ -50,6 +50,7 @@ test("installed subscription metadata stays unprepared and never creates diagnos
               phase: "unprepared",
               connection_ready: false,
               catalog_ready: false,
+              inference_ready: false,
             },
             catalog_choices: [],
           }),
@@ -78,6 +79,30 @@ test("installed subscription metadata stays unprepared and never creates diagnos
     ),
     /diagnostic/,
   );
+});
+
+test("installed metadata rejects enabled or missing inference authority on startup", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "foundry-inference-closed-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const inference of [true, undefined]) {
+    const calls = [];
+    const request = async (_child, route) => {
+      calls.push(route);
+      return {
+      status: 200,
+      json: async () => route === "/api/model-routes"
+        ? { runtime: { desktop_subscription: true, live_authorization: false,
+            live_discovery: false, automatic_paid_fallback: false } }
+        : { preparation: { phase: "unprepared", connection_ready: false,
+            catalog_ready: false, ...(inference === undefined ? {} : { inference_ready: inference }) },
+            catalog_choices: [] },
+      };
+    };
+    await assert.rejects(assertDesktopSubscriptionMetadata(
+      { ready: { dataDir: root } }, "local-cookie", "darwin", "coding", request,
+    ), { code: "ERR_ASSERTION" });
+    assert.equal(calls.length, 2, "invalid preparation must fail before the renewal read");
+  }
 });
 
 function removeCryptoImport(source) {

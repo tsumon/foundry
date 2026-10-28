@@ -82,6 +82,45 @@ test("invalid and reserved metadata fails before filesystem or transport", async
     assert.equal(fs.existsSync(output), false);
   }
 });
+test("reused artifact cannot replace checkout hashes with its own manifest", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "foundry-reused-sources-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const local = path.join(root, "input");
+  fs.mkdirSync(local);
+  const changed = Buffer.from(bytes);
+  changed[0] ^= 1;
+  fs.writeFileSync(path.join(local, entry.file), changed);
+  fs.writeFileSync(
+    path.join(local, "manifest.json"),
+    JSON.stringify({
+      files: [
+        {
+          ...entry,
+          sha256: crypto.createHash("sha256").update(changed).digest("hex"),
+        },
+      ],
+    }),
+  );
+  let requests = 0;
+  await assert.rejects(
+    prepareSources({
+      output: path.join(root, "output"),
+      local,
+      manifest: { files: [entry] },
+      readme: "",
+      fetchImpl: async () => {
+        requests++;
+        throw Error("must not fetch");
+      },
+    }),
+    /integrity/,
+  );
+  assert.equal(requests, 0);
+  assert.deepEqual(fs.readFileSync(path.join(local, entry.file)), changed);
+  assert.equal(fs.existsSync(path.join(root, "output", entry.file)), false);
+});
 test("transport is allowlisted, one-shot and redirect/size bounded offline", async () => {
   let calls = 0;
   const official = {

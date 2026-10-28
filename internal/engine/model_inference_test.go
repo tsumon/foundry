@@ -408,11 +408,13 @@ func TestInferenceInterruptedOrUnsealedResultIsUnknown(t *testing.T) {
 			m = approveInferenceContext(t, s, m)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+			trace := domain.HTTPExchangeDiagnostic{Version: 1, ClientRequestID: "fdy_0123456789abcdef0123456789abcdef", ProxyMode: "disabled", PeerClass: "loopback", Headers: domain.HTTPPhaseDiagnostic{State: "completed", Attempts: 1}, FirstByteMillis: 0, FinalStatus: 200, RequestWrites: 1, HeaderFields: 1, Transport: domain.HTTPTransportDiagnostic{Version: 1, ContentType: "single", Protocol: "http1_1", BodyLength: "positive"}}
+			g.result.ExchangeDiagnostic = trace
 			if failure == "cancel" || failure == "cancel-provider-error" {
 				g.beforeReturn = cancel
 				if failure == "cancel-provider-error" {
 					g.result.RequestID = ""
-					g.err = &model.ProviderError{Code: "response_incomplete", Certainty: "unknown", RequestID: "request-one", HTTPStatus: 200}
+					g.err = &model.ProviderError{Code: "response_incomplete", Certainty: "unknown", RequestID: "request-one", HTTPStatus: 200, ExchangeDiagnostic: trace}
 				}
 			} else {
 				g.result.Text = "invalid\x00evidence"
@@ -427,6 +429,10 @@ func TestInferenceInterruptedOrUnsealedResultIsUnknown(t *testing.T) {
 			}
 			if rows[0].Status != "outcome_unknown" || rows[0].Result != nil || rows[0].ModelReceipt == nil || rows[0].ModelReceipt.Certainty != "unknown" || rows[0].ModelReceipt.RequestID != "request-one" {
 				t.Fatalf("unknown receipt missing: %+v", rows[0])
+			}
+			stored, err := s.GetInvocation(rows[0].ID)
+			if err != nil || stored.ModelReceipt == nil || stored.ModelReceipt.ExchangeDiagnostic != trace {
+				t.Fatal("interrupted receipt lost exchange observation", err)
 			}
 		})
 	}

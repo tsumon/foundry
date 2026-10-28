@@ -26,9 +26,16 @@ func fail(_ code: Int32, _ stage: String, _ error: Error? = nil) -> Never {
 let args = CommandLine.arguments
 guard args.count == 5, args[1] == "--kernel", args[3] == "--initrd" else { fail(64, "invalid_arguments") }
 for path in [args[2], args[4]] {
-    guard path.hasPrefix("/"), URL(fileURLWithPath: path).standardizedFileURL.path == path else { fail(64, "invalid_arguments") }
+    // Match the controller's physical canonical paths. Foundation's URL
+    // standardization rewrites valid /private/tmp paths to the /tmp symlink.
+    // Do not normalize and execute aliases: reject non-canonical input instead.
+    let components = path.split(separator: "/", omittingEmptySubsequences: false)
+    guard path.hasPrefix("/"), components.dropFirst().allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { fail(64, "invalid_arguments") }
     var info = stat()
     guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { fail(65, "invalid_input") }
+    guard let resolved = realpath(path, nil) else { fail(65, "invalid_input") }
+    defer { free(resolved) }
+    guard String(cString: resolved).utf8.elementsEqual(path.utf8) else { fail(64, "invalid_arguments") }
 }
 
 @available(macOS 12.0, *)

@@ -7,8 +7,12 @@ import (
 	"time"
 )
 
-func completedDesktopCatalog(t *testing.T) (*Store, domain.ModelAccount, domain.ModelRoute, domain.ModelAcceptanceOperation) {
+func completedDesktopCatalog(t *testing.T, models ...string) (*Store, domain.ModelAccount, domain.ModelRoute, domain.ModelAcceptanceOperation) {
 	t.Helper()
+	model := "gpt-5.1"
+	if len(models) > 0 {
+		model = models[0]
+	}
 	s, c, a, r, connection := catalogFixture(t)
 	admission := domain.ProductionAdmission{Generation: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Profile: "openai_siwc_catalog_v1"}
 	now := time.Now()
@@ -27,7 +31,7 @@ func completedDesktopCatalog(t *testing.T) (*Store, domain.ModelAccount, domain.
 	if e = c.ReserveProductionCatalogDispatch(o, admission, now); e != nil {
 		t.Fatal(e)
 	}
-	o, e = c.FinishProductionCatalog(o, "succeeded", "completed", "", []domain.ModelAcceptanceCatalogEntry{{ID: "gpt-5.1", DisplayName: "Synthetic model"}}, now)
+	o, e = c.FinishProductionCatalog(o, "succeeded", "completed", "", []domain.ModelAcceptanceCatalogEntry{{ID: model, DisplayName: "Synthetic model"}}, now)
 	if e != nil {
 		t.Fatal(e)
 	}

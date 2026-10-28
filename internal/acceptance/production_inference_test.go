@@ -26,6 +26,7 @@ func inferenceController(t *testing.T) (*Service, *store.Store, domain.ModelAcco
 	if e != nil || c.State != "succeeded" {
 		t.Fatalf("catalog: %s %v", c.State, e)
 	}
+	inferenceTaskFixture(t, db, a, r)
 	resolver.reads.Store(0)
 	s := NewProductionInference(db, ProductionInferenceOptions{Route: r, Resolver: resolver})
 	if s.inference.http == nil {
@@ -47,7 +48,11 @@ func inferenceController(t *testing.T) (*Service, *store.Store, domain.ModelAcco
 }
 func proposeInference(t *testing.T, s *Service, a domain.ModelAccount, r domain.ModelRoute, c domain.ModelAcceptanceOperation) domain.ModelAcceptanceOperation {
 	t.Helper()
-	o, e := s.Propose(a.ID, domain.ModelAcceptanceProposal{Phase: "inference", RouteID: r.ID, ExpectedAccountRevision: a.Revision, PrerequisiteID: c.ID, Model: "gpt-6.1-sol"})
+	m, err := s.store.GetMission("inference-budget-task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, e := s.Propose(a.ID, domain.ModelAcceptanceProposal{Phase: "inference", RouteID: r.ID, ExpectedAccountRevision: a.Revision, PrerequisiteID: c.ID, Model: "gpt-6.1-sol", BudgetMissionID: m.ID, ExpectedMissionRevision: m.Revision})
 	if e != nil {
 		t.Fatal(e)
 	}

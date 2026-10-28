@@ -1,12 +1,16 @@
 package tests
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSharedBuildRejectsMissingGo(t *testing.T) {
@@ -30,17 +34,40 @@ func TestSharedBuildRejectsMissingGo(t *testing.T) {
 }
 
 func TestBothLaunchersUseSharedPreflightAndBuild(t *testing.T) {
-	for _, launcher := range []string{"start.sh", "dev.sh"} {
-		t.Run(launcher, func(t *testing.T) {
+	for _, testCase := range []struct {
+		name, launcher string
+		exitStatus     int
+	}{
+		{name: "start.sh", launcher: "start.sh"},
+		{name: "dev.sh", launcher: "dev.sh"},
+		{name: "start.sh/controller-failure", launcher: "start.sh", exitStatus: 23},
+		{name: "dev.sh/controller-failure", launcher: "dev.sh", exitStatus: 23},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			launcher := testCase.launcher
 			fixture := launchFixture(t)
-			command := exec.Command("sh", filepath.Join(fixture.root, "scripts", launcher))
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, "sh", filepath.Join(fixture.root, "scripts", launcher))
+			command.WaitDelay = time.Second
 			command.Env = append(os.Environ(),
 				"FOUNDRY_GO="+fixture.goPath,
 				"PATH="+fixture.toolDir+":/usr/bin:/bin",
 				"LAUNCH_TEST_LOG="+fixture.logPath,
+				"LAUNCH_TEST_SERVER_EXIT_STATUS="+strconv.Itoa(testCase.exitStatus),
 			)
-			if output, err := command.CombinedOutput(); err != nil {
+			if launcher == "dev.sh" {
+				command.Env = append(command.Env, "LAUNCH_TEST_EXPECT_WATCHER=1")
+			}
+			output, err := command.CombinedOutput()
+			if testCase.exitStatus == 0 && err != nil {
 				t.Fatalf("%s failed: %v\n%s", launcher, err, output)
+			}
+			if testCase.exitStatus != 0 {
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != testCase.exitStatus {
+					t.Fatalf("%s did not preserve controller exit status %d: %v\n%s", launcher, testCase.exitStatus, err, output)
+				}
 			}
 			log := readLaunchLog(t, fixture.logPath)
 			for _, boundary := range []string{"npm run build", "make FOUNDRY_GO=" + fixture.goPath + " build", "foundry"} {
@@ -51,6 +78,9 @@ func TestBothLaunchersUseSharedPreflightAndBuild(t *testing.T) {
 			if launcher == "dev.sh" {
 				if count := strings.Count(log, "vite build --watch\n"); count != 1 {
 					t.Errorf("dev watcher count=%d log=%q", count, log)
+				}
+				if count := strings.Count(log, "vite stopped\n"); count != 1 {
+					t.Errorf("dev watcher cleanup count=%d log=%q", count, log)
 				}
 			} else if strings.Contains(log, "vite build --watch") {
 				t.Errorf("production launcher started watcher: %q", log)
@@ -95,9 +125,38 @@ func launchFixture(t *testing.T) launchTestFixture {
 	writeExecutable(t, goPath, "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(root, "tools", "npm"), "#!/bin/sh\nprintf 'npm %s\\n' \"$*\" >> \"$LAUNCH_TEST_LOG\"\n")
 	writeExecutable(t, filepath.Join(root, "tools", "make"), "#!/bin/sh\nprintf 'make %s\\n' \"$*\" >> \"$LAUNCH_TEST_LOG\"\n")
-	writeExecutable(t, filepath.Join(root, "web", "node_modules", ".bin", "vite"), "#!/bin/sh\nprintf 'vite %s\\n' \"$*\" >> \"$LAUNCH_TEST_LOG\"\n")
+	writeExecutable(t, filepath.Join(root, "web", "node_modules", ".bin", "vite"), `#!/bin/sh
+printf 'vite %s\n' "$*" >> "$LAUNCH_TEST_LOG"
+trap 'printf "vite stopped\n" >> "$LAUNCH_TEST_LOG"; exit 0' TERM
+: > "$LAUNCH_TEST_LOG.watcher-ready"
+remaining=500
+while [ "$remaining" -gt 0 ]; do
+	remaining=$((remaining - 1))
+	sleep 0.01
+done
+echo "dev watcher was not stopped" >&2
+exit 1
+`)
 	writeExecutable(t, filepath.Join(root, "web", "node_modules", ".bin", "tsc"), "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(root, "bin", "foundry"), "#!/bin/sh\nprintf 'foundry\\n' >> \"$LAUNCH_TEST_LOG\"\n")
+	// A real controller stays alive while the watcher starts. Make that lifecycle
+	// explicit in the fixture instead of racing an immediately exiting controller
+	// against the launcher's cleanup trap. The bounded wait also makes a missing
+	// watcher fail without leaving this test blocked.
+	writeExecutable(t, filepath.Join(root, "bin", "foundry"), `#!/bin/sh
+if [ "${LAUNCH_TEST_EXPECT_WATCHER:-}" = 1 ]; then
+	remaining=500
+	while [ ! -f "$LAUNCH_TEST_LOG.watcher-ready" ]; do
+		remaining=$((remaining - 1))
+		if [ "$remaining" -eq 0 ]; then
+			echo "dev watcher did not become ready" >&2
+			exit 1
+		fi
+		sleep 0.01
+	done
+fi
+printf 'foundry\n' >> "$LAUNCH_TEST_LOG"
+exit "${LAUNCH_TEST_SERVER_EXIT_STATUS:-0}"
+`)
 	return launchTestFixture{root: root, toolDir: filepath.Join(root, "tools"), logPath: logPath, goPath: goPath}
 }
 

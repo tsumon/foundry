@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"mime"
 	"net/http"
+	"net/http/httptrace"
 	"reflect"
 	"strings"
 
@@ -47,7 +48,7 @@ func routedPayload(r Request, adapter string) (string, any) {
 	}
 }
 
-func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, endpoint string, payload any) (*routedHTTPResponse, int64, error) {
+func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, endpoint string, payload any) (reply *routedHTTPResponse, generation int64, sendErr error) {
 	if ctx.Err() != nil {
 		return nil, 0, providerFailure("request_rejected", "not_sent")
 	}
@@ -96,7 +97,19 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 	if err := r.checkCodingSend(ctx, s, method, endpoint, encoded); err != nil {
 		return nil, lease.Generation, err
 	}
+	var observer *exchangeObserver
+	if s.Route.Adapter == "openai_siwc_responses" && method == http.MethodPost {
+		observer = newExchangeObserver(r.http.Transport)
+		req.Header.Set("X-Client-Request-Id", observer.d.ClientRequestID)
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(), observer.trace()))
+	}
 	response, err := r.http.Do(req)
+	exchange := observer.finish(response)
+	defer func() {
+		if p, ok := sendErr.(*ProviderError); ok && exchange.Valid() {
+			p.ExchangeDiagnostic = exchange
+		}
+	}()
 	if err != nil {
 		return nil, lease.Generation, providerFailure("transport_unknown", "unknown")
 	}
@@ -131,7 +144,7 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 		removeCredentialErrorEchoes(response.Request, failure)
 		return nil, lease.Generation, failure
 	}
-	return &routedHTTPResponse{Response: response, transport: transport}, lease.Generation, nil
+	return &routedHTTPResponse{Response: response, transport: transport, exchange: exchange}, lease.Generation, nil
 }
 
 func validSIWCRequestPair(method, endpoint string) bool {
@@ -159,17 +172,20 @@ func (r *Router) decodeResponse(response *http.Response, adapter string) (result
 	if adapter == "openai_siwc_responses" {
 		want = "text/event-stream"
 	}
-	if err != nil || media != want {
+	// Header.Get only returns the first value. Duplicate media fields are
+	// ambiguous even if their first value (or both values) claims to be SSE.
+	multipleMedia := adapter == "openai_siwc_responses" && len(response.Header.Values("Content-Type")) > 1
+	if err != nil || media != want || multipleMedia {
 		p := providerFailure("response_incomplete", "unknown")
 		if adapter == "openai_siwc_responses" {
 			d := domain.ResponseDiagnostic{Version: 1, Stage: "http_media", Reason: "unexpected_media_type", MediaType: "other"}
 			if media == "application/json" {
 				d.MediaType = "json"
 			}
-			if err != nil {
+			if err != nil || multipleMedia {
 				d.Reason, d.MediaType = "invalid_media_type", "invalid"
 			}
-			if response.Header.Get("Content-Type") == "" {
+			if !multipleMedia && response.Header.Get("Content-Type") == "" {
 				d.Reason, d.MediaType = "missing_media_type", "missing"
 			}
 			p.ResponseDiagnostic = d

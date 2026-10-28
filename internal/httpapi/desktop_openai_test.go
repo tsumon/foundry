@@ -77,3 +77,25 @@ func TestDesktopSubscriptionDoesNotBlockDistinctAPIKeyAccount(t *testing.T) {
 		t.Fatalf("unrelated API account blocked: %d %s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestDesktopInferencePreparationHTTPKeepsIndependentApproval(t *testing.T) {
+	f, a, r, _ := operatorHTTPFixture(t)
+	s := f.handler.(*server)
+	s.codingWorkbench = true
+	s.desktopAccounts = acceptance.NewDesktopCoordinator(f.store, acceptance.DesktopOptions{Resolver: s.accounts, Probe: func() error { t.Fatal("inference performed Keychain probe"); return nil }})
+	defer s.desktopAccounts.Close()
+	path := "/api/model-accounts/" + a.ID + "/desktop-preparation"
+	body := `{"phase":"inference","route_id":"` + r.ID + `","expected_account_revision":1}`
+	if rr := f.request("POST", path, body, false); rr.Code != 401 {
+		t.Fatal("unauthenticated inference preparation")
+	}
+	if rr := f.request("POST", path, body, true); rr.Code != 200 || !strings.Contains(rr.Body.String(), `"phase":"inference"`) {
+		t.Fatalf("missing desktop inference phase: %d %s", rr.Code, rr.Body.String())
+	}
+	if rr := f.request("GET", "/api/model-accounts/"+a.ID+"/acceptance-operations", "", true); rr.Code != 200 || !strings.Contains(rr.Body.String(), `"production_inference_enabled":false`) {
+		t.Fatal("missing prerequisite treated as approval")
+	}
+	if rr := f.request("POST", path, strings.Replace(body, `"inference"`, `"arbitrary"`, 1), true); rr.Code != 400 {
+		t.Fatal("arbitrary phase enabled")
+	}
+}

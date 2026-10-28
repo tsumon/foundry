@@ -8,7 +8,7 @@ import (
 
 func modelFailureReceipt(result model.Result, err error) (string, string, *domain.ModelCallReceipt) {
 	status, code := "outcome_unknown", "model_transport_unknown"
-	r := domain.ModelCallReceipt{RequestID: result.RequestID, ResolvedModel: result.ResolvedModel, CredentialGeneration: result.CredentialGeneration, Certainty: "unknown"}
+	r := domain.ModelCallReceipt{RequestID: result.RequestID, ResolvedModel: result.ResolvedModel, CredentialGeneration: result.CredentialGeneration, Certainty: "unknown", ExchangeDiagnostic: result.ExchangeDiagnostic}
 	var p *model.ProviderError
 	if errors.As(err, &p) && p != nil {
 		code = p.Error()
@@ -25,6 +25,7 @@ func modelFailureReceipt(result model.Result, err error) (string, string, *domai
 		r.BodyShape = p.BodyShape
 		r.RetryAfterSeconds = p.RetryAfterSeconds
 		r.ResponseDiagnostic = p.ResponseDiagnostic
+		r.ExchangeDiagnostic = p.ExchangeDiagnostic
 	}
 	r = domain.SanitizeModelCallReceipt(r)
 	return status, code, &r

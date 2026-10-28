@@ -126,16 +126,17 @@ type CallUsage struct {
 
 // Non-authoritative, bounded provider outcome metadata; never an input grant.
 type ModelCallReceipt struct {
-	ResponseDiagnostic   ResponseDiagnostic `json:"response_diagnostic,omitzero"`
-	RequestID            string             `json:"request_id,omitempty"`
-	ResolvedModel        string             `json:"resolved_model,omitempty"`
-	CredentialGeneration int64              `json:"credential_generation,omitempty"`
-	HTTPStatus           int                `json:"http_status,omitempty"`
-	ProviderCode         string             `json:"provider_code,omitempty"`
-	ProviderParam        string             `json:"provider_param,omitempty"`
-	BodyShape            string             `json:"body_shape,omitempty"`
-	RetryAfterSeconds    int                `json:"retry_after_seconds,omitempty"`
-	Certainty            string             `json:"certainty"`
+	ExchangeDiagnostic   HTTPExchangeDiagnostic `json:"exchange_diagnostic,omitzero"`
+	ResponseDiagnostic   ResponseDiagnostic     `json:"response_diagnostic,omitzero"`
+	RequestID            string                 `json:"request_id,omitempty"`
+	ResolvedModel        string                 `json:"resolved_model,omitempty"`
+	CredentialGeneration int64                  `json:"credential_generation,omitempty"`
+	HTTPStatus           int                    `json:"http_status,omitempty"`
+	ProviderCode         string                 `json:"provider_code,omitempty"`
+	ProviderParam        string                 `json:"provider_param,omitempty"`
+	BodyShape            string                 `json:"body_shape,omitempty"`
+	RetryAfterSeconds    int                    `json:"retry_after_seconds,omitempty"`
+	Certainty            string                 `json:"certainty"`
 }
 
 type InvocationDetail struct {

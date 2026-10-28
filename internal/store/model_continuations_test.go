@@ -31,9 +31,13 @@ type continuationLedger interface {
 }
 
 func continuationFixture(t *testing.T, active ...bool) (*Store, domain.Mission, string) {
+	return continuationModelFixture(t, "gpt-5.1", active...)
+}
+
+func continuationModelFixture(t *testing.T, model string, active ...bool) (*Store, domain.Mission, string) {
 	t.Helper()
-	s, a, r, catalog := completedDesktopCatalog(t)
-	p := domain.Profile{ID: "continuation-profile", Name: "Synthetic", Kind: "direct", Protocol: r.Protocol, BaseURL: r.BaseURL, AccountID: a.ID, RouteID: r.ID, Model: "gpt-5.1", CatalogOperationID: catalog.ID}
+	s, a, r, catalog := completedDesktopCatalog(t, model)
+	p := domain.Profile{ID: "continuation-profile", Name: "Synthetic", Kind: "direct", Protocol: r.Protocol, BaseURL: r.BaseURL, AccountID: a.ID, RouteID: r.ID, Model: model, CatalogOperationID: catalog.ID}
 	if err := s.PutProfile(p); err != nil {
 		t.Fatal(err)
 	}

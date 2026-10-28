@@ -1,5 +1,33 @@
 package domain
 
+import "encoding/hex"
+
+// Observations are separate from comparable business evidence and never confer success.
+type InferenceDiagnostic struct {
+	Exchange HTTPExchangeDiagnostic `json:"exchange"`
+	Response *ResponseDiagnostic    `json:"response,omitempty"`
+}
+
+func (d InferenceDiagnostic) Valid() bool {
+	return d.Exchange.Valid() && (d.Response == nil || d.Response.Valid() && d.Response.Transport == d.Exchange.Transport)
+}
+
+// Absent bindings preserve historical material bytes, never execution authority.
+type InferenceBudgetBinding struct {
+	SchemaVersion  int    `json:"schema_version"`
+	MissionID      string `json:"mission_id"`
+	Revision       int64  `json:"revision"`
+	Epoch          int64  `json:"epoch"`
+	SnapshotDigest string `json:"snapshot_digest"`
+	UsedCalls      int    `json:"used_calls"`
+	MaxCalls       int    `json:"max_calls"`
+}
+
+func (b InferenceBudgetBinding) Valid() bool {
+	d, err := hex.DecodeString(b.SnapshotDigest)
+	return b.SchemaVersion == 1 && ValidateModelCredentialOperation(b.MissionID) == nil && b.Revision > 0 && b.Revision < 1<<53-1 && b.Epoch >= 0 && b.Epoch < 1<<53 && err == nil && len(d) == 32 && hex.EncodeToString(d) == b.SnapshotDigest && b.UsedCalls >= 0 && b.MaxCalls > b.UsedCalls && b.MaxCalls < 1<<53
+}
+
 const OpenAIInferenceModel = "gpt-6.1-sol"
 const OpenAIInferencePrompt = "Reply exactly: FOUNDRY_INFERENCE_OK"
 const OpenAIInferenceExpected = "FOUNDRY_INFERENCE_OK"
@@ -34,6 +62,9 @@ func SafeInferenceProviderParam(param string) string {
 }
 
 func (m ModelAcceptanceMaterial) ValidProductionInference() bool {
+	if m.InferenceBudget != nil && !m.InferenceBudget.Valid() {
+		return false
+	}
 	if m.ProductionAdmission == nil || m.ProductionAdmission.Profile != "openai_siwc_inference_v1" || !m.ProductionAdmission.Valid() || m.Phase != "inference" || m.RequestMethod != "POST" || m.RequestURL != OpenAIInferenceURL || m.Model != OpenAIInferenceModel || m.InferencePrompt != OpenAIInferencePrompt || m.PromptDigest != AcceptanceDigest(OpenAIInferencePrompt) || m.ResponseByteLimit != 1<<20 {
 		return false
 	}
@@ -41,5 +72,6 @@ func (m ModelAcceptanceMaterial) ValidProductionInference() bool {
 	m.ProductionAdmission = &ProductionAdmission{Generation: m.ProductionAdmission.Generation, Profile: "openai_siwc_catalog_v1"}
 	m.Phase, m.RequestMethod, m.RequestURL = "catalog", "GET", OpenAICatalogURL
 	m.Model, m.PromptDigest, m.InferencePrompt, m.CatalogDigest, m.ResponseByteLimit = "", "", "", "", 0
+	m.InferenceBudget = nil
 	return m.ValidProductionCatalog()
 }

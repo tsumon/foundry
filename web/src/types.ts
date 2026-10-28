@@ -166,7 +166,17 @@ export interface ModelAcceptanceAuthorization {
   generation: number;
   expires_at: string;
 }
+export interface InferenceBudgetBinding {
+  schema_version: number;
+  mission_id: string;
+  revision: number;
+  epoch: number;
+  snapshot_digest: string;
+  used_calls: number;
+  max_calls: number;
+}
 export interface ModelAcceptanceMaterial {
+  inference_budget?: InferenceBudgetBinding;
   production_admission?: ModelProductionAdmission;
   request_method?: "GET" | "POST";
   request_url?:
@@ -261,6 +271,10 @@ export interface ModelConnectionDiagnostic {
   cleanup: "not_required" | "completed" | "pending" | "unknown";
 }
 export interface ModelAcceptanceOperation {
+  inference_diagnostic?: {
+    exchange: ModelExchangeDiagnostic;
+    response?: ModelResponseDiagnostic;
+  };
   id: string;
   account_id: string;
   revision: number;
@@ -345,6 +359,8 @@ export interface ModelAcceptanceOperationResponse {
   connection_session?: ConnectionSession;
 }
 export interface ModelAcceptanceProposal {
+  budget_mission_id?: string;
+  expected_mission_revision?: number;
   phase: ModelAcceptancePhase;
   connection_purpose?: "identity_only" | "subscription_only";
   route_id: string;
@@ -711,6 +727,7 @@ export interface ModelResponseDiagnostic {
 }
 
 export interface ModelCallReceipt {
+  exchange_diagnostic?: ModelExchangeDiagnostic;
   response_diagnostic?: ModelResponseDiagnostic;
   request_id?: string;
   resolved_model?: string;
@@ -721,6 +738,33 @@ export interface ModelCallReceipt {
   body_shape?: string;
   retry_after_seconds?: number;
   certainty: "completed" | "not_sent" | "rejected" | "unknown";
+}
+export interface ModelExchangeDiagnostic {
+  version: number;
+  client_request_id: string;
+  dns: ModelExchangePhase;
+  connect: ModelExchangePhase;
+  tls: ModelExchangePhase;
+  headers: ModelExchangePhase;
+  first_byte_millis: number;
+  request_writes: number;
+  write_failed: boolean;
+  reused_connection: boolean;
+  proxy_mode: string;
+  peer_class: string;
+  tls_version?: string;
+  alpn?: string;
+  tls_verified: boolean;
+  peer_certificate_sha256?: string;
+  issuer_sha256?: string;
+  final_status: number;
+  header_fields: number;
+  transport?: ModelResponseDiagnostic["transport"];
+}
+export interface ModelExchangePhase {
+  state?: string;
+  attempts: number;
+  millis: number;
 }
 export interface InvocationDetail {
   invocation: Invocation;

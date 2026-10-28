@@ -3,7 +3,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'Native Windows required' }
 $node = (Get-Command node.exe).Source
-$installer = Join-Path $Output 'Foundry-0.1.0-alpha.3-x64.exe'
+$packageVersion = (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'package.json') -Raw | ConvertFrom-Json).version
+if ($packageVersion -cnotmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z') { throw 'Invalid desktop package version' }
+$installer = Join-Path $Output "Foundry-$packageVersion-x64.exe"
 $testRoot = Join-Path $env:RUNNER_TEMP ('Foundry 验收 ' + [Guid]::NewGuid().ToString('N'))
 $installed = Join-Path $testRoot '用户安装 Foundry'
 New-Item -ItemType Directory -Path $testRoot | Out-Null

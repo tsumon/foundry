@@ -39,7 +39,9 @@ func NewRouter(legacy Gateway, resolver CredentialResolver, options RouterOption
 	// Disable environment proxies: even test credentials must only reach the pinned listener.
 	// No reused connections: net/http otherwise has implicit stale-connection
 	// replay paths, including GET discovery. Never inherit mutable global hooks.
-	r.http.Transport = &http.Transport{DialContext: (&net.Dialer{Timeout: 30 * time.Second}).DialContext, DisableKeepAlives: true, ResponseHeaderTimeout: 90 * time.Second}
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	r.http.Transport = &http.Transport{Protocols: protocols, DialContext: (&net.Dialer{Timeout: 30 * time.Second}).DialContext, DisableKeepAlives: true, ResponseHeaderTimeout: 90 * time.Second}
 	for _, origin := range options.SimulationOrigins {
 		if validSimulationOrigin(origin) {
 			r.origins[origin] = true
@@ -178,6 +180,10 @@ func (r *Router) Complete(ctx context.Context, request Request) (Result, error) 
 	}
 	defer response.Body.Close()
 	result, err := r.decodeResponse(response.Response, s.Route.Adapter)
+	result.ExchangeDiagnostic = response.exchange
+	if p, ok := err.(*ProviderError); ok && response.exchange.Valid() {
+		p.ExchangeDiagnostic = response.exchange
+	}
 	if p, ok := err.(*ProviderError); ok && p.ResponseDiagnostic.Valid() && response.transport.Valid() {
 		p.ResponseDiagnostic.Transport = response.transport
 	}

@@ -22,6 +22,13 @@ The material freezes enabled account/revision, subscription-only route with `ext
 
 ## Single-use lifecycle
 
+The 30-second deadline is the network window, starting at an immutable send
+checkpoint after credential access. Waiting for native storage remains subject
+to material expiry and cancellation; a late OS result cannot authorize sending.
+Successful finish requires that checkpoint as well as the unchanged completed
+response, exact authority and budget checks. Local access errors are distinct
+from provider authentication errors and never trigger automatic login or retry.
+
 Reuse the existing propose → pending → separately approve → approved → explicitly execute → running → succeeded/failed/unknown ledger. Creation and approval perform no secret read or network request. Execution transactionally revalidates the complete material, consumes one attempt and creates a unique immutable dispatch reservation before reading the one credential. Revalidate after leasing and immediately before send; generation, deadline and snapshot must still match. Duplicate clicks, parallel requests, lost UI responses and process restarts cannot replay the operation. Fresh connections disable environment proxies, redirects, HTTP/2/reused-connection retries and application retries.
 
 Successful inference requires an actual `response.completed` event with a completed response, the requested model, bounded well-formed text and no executable/tool output. Deltas alone are never success. Report transport completion and expected-output match separately: a completed response with different text fails the content check without another request. Persist only safe receipt fields: request/model identifiers, timestamps, terminal event, finite error code/certainty, material/result digests, attempts/claim, output match and output digest, and actual usage when supplied. No raw response, token, secret reference, headers, OAuth URLs, codes or arbitrary output text is retained in the receipt.

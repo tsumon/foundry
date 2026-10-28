@@ -358,7 +358,7 @@ func (s *SIWCService) refreshSimulation(ctx context.Context, authorizationID str
 // The public legacy Refresh entrypoint continues to deny production calls.
 func (s *SIWCService) refreshSession(ctx context.Context, authorizationID string, expectedAccountRevision, renewalRevision int64, now func() time.Time) (result domain.ModelAuthorization, resultErr error) {
 	if err := ctx.Err(); err != nil {
-		return result, safeError(err)
+		return result, siwcFailure("credential_preflight", "not_sent")
 	}
 	authorization, err := s.lifecycle.store.GetModelAuthorization(authorizationID)
 	if err != nil || authorization.State != "available" || authorization.Binding.Issuer != s.options.Issuer {
@@ -391,6 +391,11 @@ func (s *SIWCService) refreshSession(ctx context.Context, authorizationID string
 		return result, safeError(err)
 	}
 	if _, err = s.lifecycle.BeginModelAuthorization(ctx, account.ID, operationID, "refresh", authorizationID); err != nil {
+		// Begin checks cancellation under its mutex before creating the intent.
+		// Store errors remain conservative; only this known local path is unsent.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return result, siwcFailure("credential_preflight", "not_sent")
+		}
 		return result, err
 	}
 	committed := false
@@ -414,7 +419,12 @@ func (s *SIWCService) refreshSession(ctx context.Context, authorizationID string
 		"refresh_token": {previous.RefreshToken},
 		"resource":      {previous.Resource},
 	}
-	tokens, err := s.requestSIWCToken(ctx, form, siwcPurposeSubscription)
+	// Both native credential reads are complete. Only network exchange and
+	// identity verification consume this deadline. Parent cancellation still
+	// fences dispatch and the subsequent credential commit/cleanup.
+	exchangeCtx, cancelExchange := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelExchange()
+	tokens, err := s.requestSIWCToken(exchangeCtx, form, siwcPurposeSubscription)
 	if err != nil {
 		if terminalSIWCRefreshError(err) {
 			if _, revokeErr := s.lifecycle.RevokeModelAuthorization(context.Background(), authorizationID); revokeErr != nil {
@@ -431,11 +441,11 @@ func (s *SIWCService) refreshSession(ctx context.Context, authorizationID string
 	if err != nil {
 		return result, siwcFailure("entitlement_denied", "rejected")
 	}
-	discovery, err := s.fetchSIWCDiscovery(ctx)
+	discovery, err := s.fetchSIWCDiscovery(exchangeCtx)
 	if err != nil {
 		return result, err
 	}
-	claims, err := s.validateSIWCIDToken(ctx, discovery.JWKSURI, tokens.IDToken, authorization.Binding.ClientID, "")
+	claims, err := s.validateSIWCIDToken(exchangeCtx, discovery.JWKSURI, tokens.IDToken, authorization.Binding.ClientID, "")
 	if err != nil || claims.Issuer != authorization.Binding.Issuer || claims.Subject != authorization.Binding.Subject {
 		return result, siwcFailure("auth_invalid", "rejected")
 	}
@@ -447,6 +457,10 @@ func (s *SIWCService) refreshSession(ctx context.Context, authorizationID string
 	if err = s.revalidateSIWCAccount(account); err != nil {
 		return result, err
 	}
+	if err = exchangeCtx.Err(); err != nil {
+		return result, safeError(err)
+	}
+	cancelExchange()
 	expiresAt := now().UTC().Add(time.Duration(tokens.ExpiresIn) * time.Second).Format(time.RFC3339)
 	result, err = s.lifecycle.commitModelAuthorization(ctx, operationID, binding, ModelTokenBundle{
 		AccessToken: tokens.AccessToken, RefreshToken: tokens.RefreshToken, IDToken: tokens.IDToken,
@@ -479,7 +493,7 @@ func (s *SIWCService) preflightSIWCRefresh(ctx context.Context, expected domain.
 	s.lifecycle.mu.Lock()
 	defer s.lifecycle.mu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return safeError(err)
+		return siwcFailure("credential_preflight", "not_sent")
 	}
 	current, err := s.lifecycle.store.CurrentModelAuthorization(expectedAccount.ID)
 	if err != nil || current.State != "available" || current.Binding.ID != expected.Binding.ID || current.Generation != expected.Generation || current.SecretRef != expected.SecretRef {
@@ -491,7 +505,10 @@ func (s *SIWCService) preflightSIWCRefresh(ctx context.Context, expected domain.
 	}
 	raw, err := s.lifecycle.secrets.Get(current.SecretRef)
 	if err != nil {
-		return safeError(err)
+		return siwcFailure("credential_preflight", "not_sent")
+	}
+	if err = ctx.Err(); err != nil {
+		return siwcFailure("credential_preflight", "not_sent")
 	}
 	var schedule struct {
 		ExpiresAt         string `json:"expires_at"`

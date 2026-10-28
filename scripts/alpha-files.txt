@@ -10,6 +10,7 @@ internal/store/session_renewal.go
 internal/store/session_renewal_test.go
 internal/accounts/session_renewal.go
 internal/accounts/session_renewal_test.go
+internal/accounts/session_renewal_wait_test.go
 internal/httpapi/session_renewal.go
 internal/httpapi/session_renewal_test.go
 internal/httpapi/session_renewal_browser_fixture_test.go
@@ -98,6 +99,7 @@ docs/media/README.md
 docs/media/model-acceptance.jpg
 docs/media/workbench-plan-approval.jpg
 docs/public/alpha-status.md
+docs/public/release-readiness.md
 docs/public/architecture.md
 docs/public/coding-loop-c1.md
 docs/public/coding-loop-c2.md
@@ -684,6 +686,7 @@ internal/acceptance/production_catalog_test.go
 internal/acceptance/production_inference.go
 internal/acceptance/production_inference_authority_test.go
 internal/acceptance/production_inference_recovery_test.go
+internal/acceptance/production_inference_wait_test.go
 internal/acceptance/production_inference_test.go
 internal/domain/model_acceptance_catalog_test.go
 internal/domain/coding.go
@@ -715,6 +718,7 @@ internal/store/model_acceptance_catalog.go
 internal/store/model_acceptance_catalog_test.go
 internal/store/model_acceptance_inference.go
 internal/store/model_acceptance_inference_test.go
+internal/store/model_acceptance_inference_wait_test.go
 web/src/components/ModelAcceptanceCatalog.test.tsx
 web/src/test/catalogFixtures.ts
 internal/acceptance/inference_browser_export_test.go
@@ -1064,3 +1068,9 @@ web/src/components/CodingTaskSetup.test.tsx
 web/src/components/CodingTaskSetup.tsx
 web/src/embeddedVM.test.tsx
 web/src/test/c4VMStatusContract.json
+docs/public/model-inference-diagnostic-budget.md
+internal/acceptance/production_inference_budget_test.go
+internal/acceptance/production_protocol_test.go
+internal/store/model_acceptance_inference_budget.go
+internal/store/model_acceptance_inference_budget_test.go
+web/src/components/InferenceDiagnostic.tsx

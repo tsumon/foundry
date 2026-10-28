@@ -48,7 +48,10 @@ func NewProductionInference(ledger *store.Store, options ProductionInferenceOpti
 	}
 	s.inference.admission = domain.ProductionAdmission{Generation: hex.EncodeToString(nonce), Profile: "openai_siwc_inference_v1"}
 	// Exclusive fresh connection: never proxy, redirect, retry, or reuse HTTP/2.
-	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, ForceAttemptHTTP2: false, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second}
+	// ForceAttemptHTTP2=false alone still permits HTTP/2 with default dialing.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	transport := &http.Transport{Protocols: protocols, Proxy: nil, DisableKeepAlives: true, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second}
 	s.inference.http = &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	s.routes[saved.ID] = saved
 	return s
@@ -86,7 +89,7 @@ func (s *Service) ownedInference(account, id string) (domain.ModelAcceptanceOper
 		return s.mutationResult(o, e)
 	}
 	m := o.Material
-	if o.Source != "production_inference" || o.LiveAccess != "inference_once" || o.Phase != "inference" || m.ProductionAdmission == nil || *m.ProductionAdmission != s.inference.admission || !m.ValidProductionInference() || m.Route != s.inference.route {
+	if o.Source != "production_inference" || o.LiveAccess != "inference_once" || o.Phase != "inference" || m.InferenceBudget == nil || m.ProductionAdmission == nil || *m.ProductionAdmission != s.inference.admission || !m.ValidProductionInference() || m.Route != s.inference.route {
 		return domain.ModelAcceptanceOperation{}, ErrDisabled
 	}
 	return o, nil
@@ -95,13 +98,10 @@ func (s *Service) executeInference(ctx context.Context, o domain.ModelAcceptance
 	if e := s.store.ReserveProductionInferenceDispatch(o, s.inference.admission, s.now()); e != nil {
 		return s.finishInference(o, model.Result{}, catalogFailure("request_rejected", "not_sent"))
 	}
-	started, _ := time.Parse(time.RFC3339Nano, o.StartedAt)
 	expiry, _ := time.Parse(time.RFC3339Nano, o.Material.ExpiresAt)
-	deadline := started.Add(30 * time.Second)
-	if expiry.Before(deadline) {
-		deadline = expiry
-	}
-	ctx, cancel := context.WithDeadline(ctx, deadline)
+	// Native credential access may wait for the OS. It remains bounded by the
+	// approved material and caller cancellation, not by the HTTP window.
+	ctx, cancel := context.WithDeadline(ctx, expiry)
 	defer cancel()
 	result, e := s.requestInference(ctx, o)
 	if e == nil && ctx.Err() != nil {
@@ -109,7 +109,21 @@ func (s *Service) executeInference(ctx context.Context, o domain.ModelAcceptance
 	}
 	return s.finishInference(o, result, e)
 }
-func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptanceOperation) (model.Result, error) {
+func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptanceOperation) (result model.Result, cause error) {
+	var exchange domain.HTTPExchangeDiagnostic
+	defer func() {
+		if !exchange.Valid() {
+			return
+		}
+		result.ExchangeDiagnostic = exchange
+		var pe *model.ProviderError
+		if errors.As(cause, &pe) {
+			pe.ExchangeDiagnostic = exchange
+			if pe.ResponseDiagnostic.Valid() {
+				pe.ResponseDiagnostic.Transport = exchange.Transport
+			}
+		}
+	}()
 	fail := func(code, certainty string) (model.Result, error) {
 		return model.Result{}, catalogFailure(code, certainty)
 	}
@@ -120,9 +134,28 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 		return fail("request_rejected", "not_sent")
 	}
 	lease, e := s.inference.resolver.ResolveModelCredential(ctx, o.Material.Selection())
+	if ctx.Err() != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fail("credential_wait_expired", "not_sent")
+		}
+		return fail("request_rejected", "not_sent")
+	}
+	var localAccess *model.CredentialAccessError
+	if errors.As(e, &localAccess) {
+		return fail("credential_access_failed", "not_sent")
+	}
 	if e != nil || lease.Secret == "" || strings.ContainsAny(lease.Secret, "\r\n") || lease.Generation != o.Material.Authorization.Generation {
 		return fail("auth_invalid", "not_sent")
 	}
+	if !validate() {
+		return fail("request_rejected", "not_sent")
+	}
+	sendAt := s.now()
+	if e = s.store.BeginProductionInferenceSend(o, s.inference.admission, sendAt); e != nil {
+		return fail("request_rejected", "not_sent")
+	}
+	ctx, cancel := context.WithDeadline(ctx, sendAt.Add(30*time.Second))
+	defer cancel()
 	req, e := http.NewRequestWithContext(ctx, http.MethodPost, domain.OpenAIInferenceURL, strings.NewReader(domain.OpenAIInferenceBody))
 	if e != nil {
 		return fail("request_rejected", "not_sent")
@@ -136,7 +169,9 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 	if !validate() {
 		return fail("auth_invalid", "not_sent")
 	}
+	req, finishObservation := model.ObserveInferenceRequest(req, s.inference.http.Transport)
 	response, e := s.inference.http.Do(req)
+	exchange = finishObservation(response)
 	if e != nil {
 		return fail("transport_unknown", "unknown")
 	}
@@ -152,10 +187,25 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 		return model.Result{}, model.SubscriptionInferenceHTTPFailure(response.StatusCode, response.Header, body, lease.Secret)
 	}
 	media, _, e := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if e != nil || media != "text/event-stream" {
-		return fail("response_incomplete", "unknown")
+	// Do not trust just the first of multiple singleton Content-Type fields.
+	multipleMedia := len(response.Header.Values("Content-Type")) > 1
+	if e != nil || media != "text/event-stream" || multipleMedia {
+		d := domain.ResponseDiagnostic{Version: 1, Stage: "http_media", Reason: "unexpected_media_type", MediaType: "other"}
+		if media == "application/json" {
+			d.MediaType = "json"
+		}
+		if e != nil || multipleMedia {
+			d.Reason, d.MediaType = "invalid_media_type", "invalid"
+		}
+		if !multipleMedia && response.Header.Get("Content-Type") == "" {
+			d.Reason, d.MediaType = "missing_media_type", "missing"
+		}
+		return model.Result{}, &model.ProviderError{Code: "response_incomplete", Certainty: "unknown", ResponseDiagnostic: d}
 	}
-	result, e := model.DecodeSubscriptionInference(response.Body, lease.Secret)
+	result, e = model.DecodeSubscriptionInference(response.Body, lease.Secret)
+	if e == nil && ctx.Err() != nil {
+		return fail("transport_unknown", "unknown")
+	}
 	id := response.Header.Get("X-Request-ID")
 	if domain.ValidModelCatalogIdentifier(id) && !strings.Contains(id, lease.Secret) {
 		if e == nil {
@@ -170,6 +220,21 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 	return result, e
 }
 func (s *Service) finishInference(o domain.ModelAcceptanceOperation, result model.Result, cause error) (domain.ModelAcceptanceOperation, error) {
+	var diagnostics []domain.InferenceDiagnostic
+	diagnostic := domain.InferenceDiagnostic{Exchange: result.ExchangeDiagnostic}
+	var observed *model.ProviderError
+	if errors.As(cause, &observed) {
+		if observed.ExchangeDiagnostic.Valid() {
+			diagnostic.Exchange = observed.ExchangeDiagnostic
+		}
+		if observed.ResponseDiagnostic.Valid() {
+			copy := observed.ResponseDiagnostic
+			diagnostic.Response = &copy
+		}
+	}
+	if diagnostic.Valid() {
+		diagnostics = append(diagnostics, diagnostic)
+	}
 	state, certainty, code := "succeeded", "completed", ""
 	evidence := domain.InferenceEvidence{}
 	if cause == nil {
@@ -198,7 +263,7 @@ func (s *Service) finishInference(o domain.ModelAcceptanceOperation, result mode
 			result.UsageKnown = streamFailure.UsageKnown
 		}
 	}
-	saved, e := s.store.FinishProductionInference(o, s.inference.admission, state, certainty, code, evidence, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now())
+	saved, e := s.store.FinishProductionInference(o, s.inference.admission, state, certainty, code, evidence, result.InputTokens, result.OutputTokens, result.UsageKnown, s.now(), diagnostics...)
 	if e != nil {
 		s.ready.Store(false)
 		_, _ = s.store.FinishProductionInference(o, s.inference.admission, "unknown", "unknown", "transport_unknown", domain.InferenceEvidence{}, 0, 0, false, s.now())

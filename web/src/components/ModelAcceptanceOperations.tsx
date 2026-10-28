@@ -17,12 +17,14 @@ import {
   validConnectionSession,
 } from "./ModelConnectionSession";
 import { ConnectionDiagnostic } from "./ConnectionDiagnostic";
+import { InferenceDiagnostic } from "./InferenceDiagnostic";
 import {
   inferenceModel,
   inferencePrompt,
   inferenceProfile,
   validInferenceMaterial,
   validInferenceReceipt,
+  validInferenceBudget,
 } from "./inferenceReview";
 
 const phaseLabels: Record<ModelAcceptancePhase, string> = {
@@ -43,6 +45,8 @@ const stateLabels: Record<ModelAcceptanceOperation["state"], string> = {
 };
 const phases: ModelAcceptancePhase[] = ["connection", "catalog", "inference"];
 const receiptCodes = new Set([
+  "credential_access_failed",
+  "credential_wait_expired",
   "auth_invalid",
   "entitlement_denied",
   "quota_exhausted",
@@ -578,6 +582,10 @@ function validOperation(
     value.material.account.id === accountID &&
     digest.test(value.material_digest) &&
     (value.code === undefined || receiptCodes.has(value.code)) &&
+    (!["credential_access_failed", "credential_wait_expired"].includes(
+      value.code ?? "",
+    ) ||
+      value.source === "production_inference") &&
     Array.isArray(value.catalog) &&
     (value.source === "production_inference"
       ? validInferenceReceipt(value)
@@ -915,6 +923,13 @@ function AcceptanceOperations({
     useState<ConnectionSession>();
   const [routeID, setRouteID] = useState("");
   const [model, setModel] = useState("");
+  const [budgetMissionID, setBudgetMissionID] = useState("");
+  const [budgetRevision, setBudgetRevision] = useState("");
+  const validBudgetInput =
+    identifier.test(budgetMissionID) &&
+    /^[1-9][0-9]*$/.test(budgetRevision) &&
+    Number.isSafeInteger(Number(budgetRevision)) &&
+    Number(budgetRevision) < Number.MAX_SAFE_INTEGER;
   const [selected, setSelected] = useState<
     Partial<Record<ModelAcceptancePhase, string>>
   >({});
@@ -929,6 +944,8 @@ function AcceptanceOperations({
     setSelected({});
     setRouteID("");
     setModel("");
+    setBudgetMissionID("");
+    setBudgetRevision("");
     setConnectionSession(undefined);
   };
   const acceptHistory = (value: unknown) => {
@@ -1101,15 +1118,16 @@ function AcceptanceOperations({
     );
   }, [catalog?.id, catalog?.revision, productionCatalog, productionInference]);
 
-  // No polling: the local timer only closes controls at the known credential expiry.
+  // No polling: only the current prerequisite controls the inference gate.
+  // Expired diagnostic history remains readable, but is not current authority.
+  // Each selected operation still checks its own expiry and frozen lineage.
   const catalogAuthorizationExpiry =
     productionCatalog || productionInference
       ? operations
           .filter(
             (operation) =>
               (productionInference
-                ? operation.source === "production_inference" ||
-                  operation.id === catalog?.id
+                ? operation.id === catalog?.id
                 : operation.source === "production_catalog" &&
                   operation.material.production_admission?.generation ===
                     snapshot?.production_admission?.generation) &&
@@ -1404,6 +1422,7 @@ function AcceptanceOperations({
     connection?.result_account_revision ?? account.revision,
   );
   const propose = (phase: ModelAcceptancePhase) => {
+    if (productionInference && !validBudgetInput) return;
     const prerequisite =
       phase === "catalog"
         ? connection?.id
@@ -1424,6 +1443,12 @@ function AcceptanceOperations({
           : {}),
         ...(prerequisite ? { prerequisite_id: prerequisite } : {}),
         ...(phase === "inference" ? { model } : {}),
+        ...(productionInference
+          ? {
+              budget_mission_id: budgetMissionID,
+              expected_mission_revision: Number(budgetRevision),
+            }
+          : {}),
       }),
     );
   };
@@ -1607,7 +1632,10 @@ function AcceptanceOperations({
           const operation = chosen(phase);
           const prerequisiteMissing =
             (phase === "catalog" && !connection) ||
-            (phase === "inference" && (!catalog || !model));
+            (phase === "inference" &&
+              (!catalog ||
+                !model ||
+                (productionInference && !validBudgetInput)));
           const identityClosedPhase = identityOnly && phase !== "connection";
           const historicalPhase =
             (historicalInference && phase === "inference") ||
@@ -1649,28 +1677,61 @@ function AcceptanceOperations({
                 </p>
               )}
               {phase === "inference" && !historicalInference && (
-                <label>
-                  推理模型
-                  <select
-                    aria-label="推理模型"
-                    value={model}
-                    disabled={
-                      productionInference || mutationDisabled || !catalog
-                    }
-                    onChange={(event) => setModel(event.target.value)}
-                  >
-                    {(catalog?.catalog ?? [])
-                      .filter(
-                        (entry) =>
-                          !productionInference || entry.id === inferenceModel,
-                      )
-                      .map((entry) => (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.display_name} · {entry.id}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <>
+                  {productionInference && (
+                    <>
+                      <label>
+                        预算任务 ID
+                        <input
+                          aria-label="预算任务 ID"
+                          value={budgetMissionID}
+                          onChange={(event) =>
+                            setBudgetMissionID(event.target.value)
+                          }
+                          disabled={mutationDisabled}
+                        />
+                      </label>
+                      <label>
+                        预期任务版本
+                        <input
+                          aria-label="预期任务版本"
+                          inputMode="numeric"
+                          value={budgetRevision}
+                          onChange={(event) =>
+                            setBudgetRevision(event.target.value)
+                          }
+                          disabled={mutationDisabled}
+                        />
+                      </label>
+                      <p className="field-help">
+                        从任务详情核对 ID
+                        和当前版本；准备后显示服务器绑定的已用/上限预算。仅限暂停或阻塞任务；执行扣除原任务一次调用，不继续任务，不退款或重试。
+                      </p>
+                    </>
+                  )}
+                  <label>
+                    推理模型
+                    <select
+                      aria-label="推理模型"
+                      value={model}
+                      disabled={
+                        productionInference || mutationDisabled || !catalog
+                      }
+                      onChange={(event) => setModel(event.target.value)}
+                    >
+                      {(catalog?.catalog ?? [])
+                        .filter(
+                          (entry) =>
+                            !productionInference || entry.id === inferenceModel,
+                        )
+                        .map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.display_name} · {entry.id}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </>
               )}
               <label>
                 {phaseLabels[phase]}已保存材料
@@ -1864,6 +1925,7 @@ function OperationReview({
   }, [operation.id, operation.state, material.expires_at, production]);
   const reviewDisabled =
     disabled ||
+    (inference && !validInferenceBudget(material.inference_budget)) ||
     (production &&
       (deadlineExpired || Date.parse(material.expires_at) <= Date.now()));
   return (
@@ -1925,6 +1987,20 @@ function OperationReview({
         )}
         {inference && (
           <>
+            <dt>原任务调用预算</dt>
+            <dd>
+              {material.inference_budget
+                ? `${material.inference_budget.mission_id} · r${material.inference_budget.revision} · epoch ${material.inference_budget.epoch} · 已用 ${material.inference_budget.used_calls}/${material.inference_budget.max_calls} · 执行扣除 1 次`
+                : "历史未绑定材料：只读，不可执行"}
+            </dd>
+            {material.inference_budget && (
+              <>
+                <dt>有效模型快照</dt>
+                <dd>
+                  <code>{material.inference_budget.snapshot_digest}</code>
+                </dd>
+              </>
+            )}
             <dt>完整固定提示词</dt>
             <dd>{inferencePrompt}</dd>
             <dt>目录前提</dt>
@@ -2014,7 +2090,9 @@ function OperationReview({
             ? `批准有效期 10 分钟 · 人工登录窗口 ${material.login_timeout_seconds} 秒（执行后开始） · 网络操作期限 ${material.deadline_seconds} 秒 · 批准到期 ${material.expires_at}`
             : material.connection_purpose === "subscription_only"
               ? `批准有效期 10 分钟 · 执行期限 ${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`
-              : `${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`}
+              : inference
+                ? `网络请求期限 ${material.deadline_seconds} 秒（凭据读取后开始）· 本机凭据等待不超过材料到期 ${material.expires_at}`
+                : `${material.deadline_seconds} 秒 · 到期 ${material.expires_at}`}
         </dd>
         <dt>尝试预算</dt>
         <dd>
@@ -2032,13 +2110,21 @@ function OperationReview({
             或金额上限。可能消耗套餐额度；额度未知、远端计费未验证。执行前请核对提供方设置并接受可能的套餐消耗。
           </p>
           <p>
-            30 秒本地超时与 1 MiB 接收限制不保证远端取消或退款。store:false
+            30 秒网络超时与 1 MiB 接收限制不保证远端取消或退款。store:false
             不承诺提供方不保留运营数据。这是连接测试，不是编码质量评估。
           </p>
         </div>
       )}
       {inference && operation.attempts > 0 && (
         <div aria-label="推理回执">
+          <InferenceDiagnostic value={operation.inference_diagnostic} />
+          {material.inference_budget && (
+            <p>
+              已扣除原任务 1 次调用：{material.inference_budget.used_calls + 1}/
+              {material.inference_budget.max_calls}
+              ；本回执之后的任务预算可能变化。
+            </p>
+          )}
           <p>
             {operation.certainty === "completed"
               ? "传输：已完成"
@@ -2065,6 +2151,13 @@ function OperationReview({
             <p>终止事件：{operation.terminal_event}</p>
           )}
           {operation.code && <p>错误分类：{operation.code}</p>}
+          {["credential_access_failed", "credential_wait_expired"].includes(
+            operation.code ?? "",
+          ) && (
+            <p>
+              本机凭据阶段未完成；这不是服务端拒绝登录。现有授权记录保留，不自动重新登录或重试；本次预算仍已计入。
+            </p>
+          )}
           {operation.provider_code && (
             <p>提供方代码：{operation.provider_code}</p>
           )}
