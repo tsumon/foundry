@@ -20,6 +20,8 @@ func run(args []string, out io.Writer) int {
 	flags.BoolVar(&c.NativeVMAcceptance, "native-vm-acceptance", false, "explicitly authorize disposable native VM acceptance")
 	flags.StringVar(&c.Bundle, "bundle", "", "absolute installed sandbox bundle")
 	flags.StringVar(&c.DataDir, "data-dir", "", "absolute fresh private evidence directory")
+	flags.StringVar(&c.Profile, "profile", "", "explicit closed v2 profile (omission preserves v1)")
+	flags.StringVar(&c.Case, "case", "", "explicit closed v2 fixture case")
 	parseErr := flags.Parse(args)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

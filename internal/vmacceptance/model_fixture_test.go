@@ -27,6 +27,39 @@ func TestLocalFixtureRejectsChangedWireBeforeConsumingResponse(t *testing.T) {
 	}
 }
 
+func TestV2ModelFixtureEditsOnlySelectedSource(t *testing.T) {
+	for _, id := range []string{"c4_node_model_v2", "c4_typescript_model_v2", "c4_python_model_v2"} {
+		f, e := selectFixture(id, "workflow")
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, role := range []domain.Role{domain.Planner, domain.Worker, domain.Debugger} {
+			raw, e := fixtureReplyFor(model.Request{Role: role}, &f)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if !strings.Contains(raw, f.path) || strings.Contains(raw, "triple.go") {
+				t.Fatal("wrong language scope", raw)
+			}
+			if role != domain.Planner {
+				var v struct {
+					Edits []struct{ Path, Content string }
+				}
+				if json.Unmarshal([]byte(raw), &v) != nil || len(v.Edits) != 1 || v.Edits[0].Path != f.path {
+					t.Fatal(raw)
+				}
+				want := f.worker
+				if role == domain.Debugger {
+					want = f.repaired
+				}
+				if v.Edits[0].Content != want {
+					t.Fatal("fixture changed immutable input")
+				}
+			}
+		}
+	}
+}
+
 func TestLocalFixtureOutputsOnlyScopedRepairAndBoundReview(t *testing.T) {
 	for _, role := range []domain.Role{domain.Worker, domain.Debugger} {
 		q := model.Request{Role: role}

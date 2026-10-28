@@ -12,9 +12,15 @@ const asar = require("@electron/asar");
 const sha = (value) => crypto.createHash("sha256").update(value).digest("hex");
 const host = process.platform === "win32" ? "windows/amd64" : "darwin/arm64";
 const hashJSON = (value) => sha(JSON.stringify(value));
-// Exact additive DDL observed between pinned alpha.3 and the stable candidate.
+// Exact additive DDL from each closed pinned prior source to this candidate.
 // No prior object may change and no other object may appear.
+const priorReleases={
+ "v0.1.0-alpha.3":{commit:"5237fc49bafe4c5d33d3d6fa117ac59c467ace16",installer:"Foundry-0.1.0-alpha.3-x64.exe",installerSHA256:"023bf7e0c95b3ec90e76e429b145e9fbbe0b1d52103ec82e5ac4eb3968188327"},
+ "v0.1.0":{commit:"ab89b5a88f73755e91aaefa5b73b1dfd5c73fdb0",installer:"Foundry-0.1.0-x64.exe",installerSHA256:"5a770a31021d3914ad1b30a5597e0ec17e256c50f7e65c7565cfd21603f6ac7d"},
+};
+function priorRelease(version){assert(Object.hasOwn(priorReleases,version),"Unreviewed prior release");return {...priorReleases[version]}}
 const allowedMigration = new Map([
+ ["table:dependency_admissions","CREATE TABLE dependency_admissions (digest TEXT PRIMARY KEY, data BLOB NOT NULL)"],
   ["table:model_acceptance_inference_budgets", "CREATE TABLE model_acceptance_inference_budgets(operation_id TEXT PRIMARY KEY REFERENCES model_acceptance_claims(operation_id), mission_id TEXT NOT NULL REFERENCES missions(id), revision INTEGER NOT NULL, binding_digest TEXT NOT NULL)"],
   ["table:model_acceptance_inference_sends", "CREATE TABLE model_acceptance_inference_sends(operation_id TEXT PRIMARY KEY REFERENCES model_acceptance_dispatches(operation_id),claim_sequence INTEGER NOT NULL UNIQUE REFERENCES model_acceptance_claims(sequence),started_at TEXT NOT NULL)"],
   ["trigger:inference_budget_no_delete", "CREATE TRIGGER inference_budget_no_delete BEFORE DELETE ON model_acceptance_inference_budgets BEGIN SELECT RAISE(ABORT,'immutable inference budget'); END"],
@@ -23,16 +29,18 @@ const allowedMigration = new Map([
   ["trigger:inference_send_no_update", "CREATE TRIGGER inference_send_no_update BEFORE UPDATE ON model_acceptance_inference_sends BEGIN SELECT RAISE(ABORT,'immutable inference send'); END"],
 ]);
 
-function assertSchemaEvolution(before, after, candidate) {
+function assertSchemaEvolution(before, after, candidate,sourceVersion="v0.1.0-alpha.3") {
+  priorRelease(sourceVersion);
+  const migration=sourceVersion==="v0.1.0"?new Map([["table:dependency_admissions",allowedMigration.get("table:dependency_admissions")]]):allowedMigration;
   const key = (row) => row.type + ":" + row.name;
   const original = new Map(before.map((row) => [key(row), row.sql]));
   const actual = new Map(after.map((row) => [key(row), row.sql]));
   assert.equal(original.size, before.length, "Duplicate initial schema object");
   assert.equal(actual.size, after.length, "Duplicate resulting schema object");
-  assert.equal(actual.size, original.size + (candidate ? allowedMigration.size : 0),
+  assert.equal(actual.size, original.size + (candidate ? migration.size : 0),
     "Unreviewed schema object added or removed");
   for (const [name, sql] of original) assert.equal(actual.get(name), sql, "Historical schema changed: " + name);
-  for (const [name, sql] of allowedMigration) {
+  for (const [name, sql] of migration) {
     assert.equal(original.has(name), false, "Migration already in old source: " + name);
     if (candidate) assert.equal(actual.get(name), sql, "Unexpected migration DDL: " + name);
   }
@@ -136,7 +144,7 @@ function snapshot(fixture) {
       missions: inventory(path.join(data, "missions")),
       schema: db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all(),
       migration_table_rows: Object.fromEntries(
-        ["model_acceptance_inference_budgets", "model_acceptance_inference_sends"].map((name) => [name,
+        ["model_acceptance_inference_budgets", "model_acceptance_inference_sends","dependency_admissions"].map((name) => [name,
           db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name=?").get(name).n === 1
             ? db.prepare("SELECT count(*) AS n FROM " + name).get().n : null]),
       ),
@@ -144,7 +152,10 @@ function snapshot(fixture) {
   } finally { db.close(); fs.rmSync(scratch, { recursive: true }); }
 }
 
-function assertFixture(fixture, fixtureFile) {
+function assertFixture(fixture, fixtureFile,sourceVersion="v0.1.0-alpha.3") {
+  const prior=priorRelease(sourceVersion);
+  assert.equal(fixture.source_version,sourceVersion,"Wrong prior source version");
+  assert.equal(fixture.source_commit,prior.commit,"Wrong pinned prior source");
   assert(path.isAbsolute(fixture.data_root) && path.isAbsolute(fixture.archive));
   assert.equal(path.dirname(fixture.data_root), path.dirname(fixtureFile), "Fixture must own its data root");
   assert(fixture.archive.startsWith(path.join(fixture.data_root, "coding", "vm-bundles") + path.sep),
@@ -201,13 +212,13 @@ async function inspect(child, fixture, expected, resources) {
     installed_default_manifest_digest: catalog.profile.embedded_vm.manifest_digest };
 }
 
-async function run(oldResources, newResources, fixtureFile, reportFile) {
+async function run(oldResources, newResources, fixtureFile, reportFile,sourceVersion="v0.1.0-alpha.3") {
   assert(host === "darwin/arm64" || host === "windows/amd64", "Native supported host required");
   for (const file of [oldResources, newResources, fixtureFile, reportFile]) assert(path.isAbsolute(file));
   assert.notEqual(path.resolve(oldResources), path.resolve(newResources));
   assert(!fs.existsSync(reportFile), "Fresh report required");
   const fixture = JSON.parse(fs.readFileSync(fixtureFile, "utf8"));
-  assertFixture(fixture, fixtureFile);
+  assertFixture(fixture, fixtureFile,sourceVersion);
   const work = reportFile + ".work";
   fs.mkdirSync(work, { mode: 0o700 });
   const old = packagedRuntime(oldResources, path.join(work, "upgrade-old-module"));
@@ -219,9 +230,9 @@ async function run(oldResources, newResources, fixtureFile, reportFile) {
     const { schema: beforeSchema, migration_table_rows: beforeTables, ...before } = initial;
     const { schema: afterSchema, migration_table_rows: afterTables, ...after } = actual;
     assert.deepEqual(after, before, "Frozen task/account/credential history changed");
-    assertSchemaEvolution(beforeSchema, afterSchema, candidate);
+    assertSchemaEvolution(beforeSchema, afterSchema, candidate,sourceVersion);
     for (const name of Object.keys(beforeTables))
-      assert.equal(afterTables[name], candidate ? 0 : null, "Migration table contains data");
+      assert.equal(afterTables[name],beforeTables[name]===null?(candidate?0:null):beforeTables[name], "Migration table contains data");
   }
   async function start(version, name, expected = "ok") {
     let child;
@@ -257,18 +268,18 @@ async function run(oldResources, newResources, fixtureFile, reportFile) {
   retained(false);
   await start(old, "rollback-from-consistent-checkpoint");
   await start(current, "upgrade-after-restore");
-  const report = { result: "PASS", source_version: "v0.1.0-alpha.3", scope: "packaged controller and synthetic journal; no provider or VM execution", synthetic: true, host,
+  const report = { result: "PASS", source_version:sourceVersion,source_commit:priorRelease(sourceVersion).commit, scope: "packaged controller and synthetic journal; no provider or VM execution", synthetic: true, host,
     old_manifest_sha256: old.manifest, current_manifest_sha256: current.manifest,
     frozen_history_sha256: hashJSON(initial), steps, requested_provider_calls: 0, requested_vm_calls: 0, requested_model_calls: 0 };
   fs.writeFileSync(reportFile, JSON.stringify(report, null, 2) + "\n", { flag: "wx", mode: 0o600 });
   return report;
 }
 
-async function probeOld(resources, fixtureFile, output) {
+async function probeOld(resources, fixtureFile, output,sourceVersion="v0.1.0-alpha.3") {
   assert(path.isAbsolute(resources) && path.isAbsolute(fixtureFile) && path.isAbsolute(output));
   assert(!fs.existsSync(output));
   const fixture = JSON.parse(fs.readFileSync(fixtureFile, "utf8"));
-  assertFixture(fixture, fixtureFile);
+  assertFixture(fixture, fixtureFile,sourceVersion);
   const before = snapshot(fixture);
   const work = output + ".work";
   fs.mkdirSync(work, { mode: 0o700 });
@@ -281,7 +292,7 @@ async function probeOld(resources, fixtureFile, output) {
     assert.equal(child.process.exitCode, 0);
     assert.deepEqual(snapshot(fixture), before);
   } finally { if (child) await child.stop(); }
-  const receipt = { result: "PASS", source_version: "v0.1.0-alpha.3", host,
+  const receipt = { result: "PASS", source_version:sourceVersion,source_commit:priorRelease(sourceVersion).commit, host,
     old_manifest_sha256: old.manifest, frozen_history_sha256: hashJSON(before) };
   fs.writeFileSync(output, JSON.stringify(receipt, null, 2) + "\n", { flag: "wx", mode: 0o600 });
   return receipt;
@@ -310,4 +321,4 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
-module.exports = { packagedRuntime, inventory, exactCopy, snapshot, allowedMigration, assertSchemaEvolution, probeOld, verifyFresh, run };
+module.exports = { packagedRuntime, inventory, exactCopy, snapshot, allowedMigration, assertSchemaEvolution, priorRelease,assertFixture,probeOld, verifyFresh, run };

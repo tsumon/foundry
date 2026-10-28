@@ -1,7 +1,9 @@
 param(
   [Parameter(Mandatory=$true)][string]$Output,
   [Parameter(Mandatory=$true)][string]$OldInstaller,
-  [Parameter(Mandatory=$true)][string]$UpgradeFixture
+  [Parameter(Mandatory=$true)][string]$UpgradeFixture,
+  [Parameter(Mandatory=$true)][string]$StableInstaller,
+  [Parameter(Mandatory=$true)][string]$StableUpgradeFixture
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -52,6 +54,12 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Mandatory installed WHPX guest acceptance failed; see bounded native-vm-acceptance.json when available' }
   $nativeVM = ($vmResult -join "`n") | ConvertFrom-Json
   if ($nativeVM.passed -ne $true -or $nativeVM.acceleration -cne 'whpx') { throw 'Missing native WHPX guest receipt' }
+  $env:FOUNDRY_VM_ACCEPTANCE_DATA = Join-Path $testRoot 'native-v2-evidence'
+  $env:FOUNDRY_VM_ACCEPTANCE_REPORT = Join-Path $Output 'native-vm-v2-matrix.json'
+  $v2Result = & $node (Join-Path $PSScriptRoot 'native-vm-smoke.cjs') --v2-matrix
+  if ($LASTEXITCODE -ne 0) { throw 'Mandatory installed v2 WHPX matrix failed; distinct bounded attempt receipts retained' }
+  $nativeV2 = ($v2Result -join "`n") | ConvertFrom-Json
+  if ($nativeV2.passed -ne $true -or $nativeV2.kind -cne 'foundry-native-vm-v2-matrix' -or $nativeV2.cases.Count -ne 12) { throw 'Missing installed v2 native matrix' }
   $runtimeResult = & $node (Join-Path $PSScriptRoot 'installed-smoke.cjs')
   if ($LASTEXITCODE -ne 0) { throw 'Installed bundled backend smoke failed' }
   $runtime = ($runtimeResult -join "`n") | ConvertFrom-Json
@@ -208,5 +216,8 @@ public static class FoundryWindow {
   if (Test-Path $freshApp) { throw 'Fresh candidate uninstall left executable' }
   foreach ($runtimePath in @('sandbox','sandbox-v2')) { if (Test-Path (Join-Path $freshResources $runtimePath)) { throw 'Fresh uninstall left installed runtime resources' } }
   if (-not (Test-Path $profileDB) -or -not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash -or -not (Test-Path $runtimeCodingDB) -or (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash -ne $runtimeCodingHash -or (Get-FileHash $evidenceDB -Algorithm SHA256).Hash -ne $evidenceHash) { throw 'Fresh install or uninstall changed retained evidence' }
-  @{ result='PASS'; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; upgrade=$upgrade; freshInstall=$fresh; nativeUI='OS UI Automation opened the fixed native coding menu and confirmation, observed configurable VM metadata with opt-in unchecked and independent approvals, returned to persistent mode, and captured painted clients; no manual interactive acceptance claimed'; firstUI=$firstReady; codingAction=$codingAction; codingUI=$codingReady; persistentAction=$persistentAction; switchedUI=$switchedReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS; defaulted to persistent mode and retained coding data'; uninstall='PASS; persistent, coding, and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
+  $stableRaw = & (Join-Path $PSScriptRoot 'windows-upgrade-smoke.ps1') -Output $Output -Node $node -Installer $installer -OldInstaller $StableInstaller -UpgradeFixture $StableUpgradeFixture -TestRoot $testRoot
+  $stableUpgrade = ($stableRaw -join "`n") | ConvertFrom-Json
+  if ($stableUpgrade.result -cne 'PASS') { throw 'Stable upgrade supplement did not pass' }
+  @{ result='PASS'; nativeV2=$nativeV2; stableUpgrade=$stableUpgrade; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; upgrade=$upgrade; freshInstall=$fresh; nativeUI='OS UI Automation opened the fixed native coding menu and confirmation, observed configurable VM metadata with opt-in unchecked and independent approvals, returned to persistent mode, and captured painted clients; no manual interactive acceptance claimed'; firstUI=$firstReady; codingAction=$codingAction; codingUI=$codingReady; persistentAction=$persistentAction; switchedUI=$switchedReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS; defaulted to persistent mode and retained coding data'; uninstall='PASS; persistent, coding, and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
 } finally { $env:PATH=$oldPath }

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"foundry/internal/domain"
+	"foundry/internal/gitexec"
 	"foundry/internal/model"
 	"foundry/internal/platformfs"
 	"foundry/internal/store"
@@ -17,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -26,6 +28,26 @@ import (
 )
 
 func TestReleaseUpgradeSeed(t *testing.T) {
+	sourceVersion := os.Getenv("FOUNDRY_UPGRADE_SOURCE_VERSION")
+	if sourceVersion == "" {
+		sourceVersion = "v0.1.0-alpha.3"
+	}
+	commits := map[string]string{"v0.1.0-alpha.3": "5237fc49bafe4c5d33d3d6fa117ac59c467ace16", "v0.1.0": "ab89b5a88f73755e91aaefa5b73b1dfd5c73fdb0"}
+	sourceCommit, ok := commits[sourceVersion]
+	if !ok {
+		t.Fatal("unreviewed prior source")
+	}
+	git, err := gitexec.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer git.Close()
+	command := exec.Command(git.Path, "-c", "core.hooksPath="+git.Hooks, "rev-parse", "HEAD")
+	command.Env = git.Environment
+	head, err := command.Output()
+	if err != nil || strings.TrimSpace(string(head)) != sourceCommit {
+		t.Fatal("pinned source checkout required")
+	}
 	root := os.Getenv("FOUNDRY_UPGRADE_SEED_ROOT")
 	if !filepath.IsAbs(root) {
 		t.Fatal("explicit isolated root required")
@@ -146,7 +168,7 @@ func TestReleaseUpgradeSeed(t *testing.T) {
 	e.Close()
 	db.Close()
 	s.Close()
-	metadata := map[string]any{"mission_id": m.ID, "data_root": dataRoot, "repo_path": q.RepoPath, "archive": archived, "identity": identity, "baseline": "synthetic journal only; no test execution", "budget": "synthetic 2/7; no model calls", "credential_reads": lease.reads, "vm_operations": 0}
+	metadata := map[string]any{"source_version": sourceVersion, "source_commit": sourceCommit, "mission_id": m.ID, "data_root": dataRoot, "repo_path": q.RepoPath, "archive": archived, "identity": identity, "baseline": "synthetic journal only; no test execution", "budget": "synthetic 2/7; no model calls", "credential_reads": lease.reads, "vm_operations": 0}
 	encoded, _ := json.MarshalIndent(metadata, "", "  ")
 	if err = os.WriteFile(filepath.Join(root, "fixture.json"), encoded, 0600); err != nil {
 		t.Fatal(err)

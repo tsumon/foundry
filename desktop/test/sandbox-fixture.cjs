@@ -19,7 +19,7 @@ function loadDesktopFixtureModule(
   };
   if (!Object.hasOwn(platforms, host)) throw Error("Unsupported fixture host");
   const directory = path.resolve(__dirname, ".."),
-    files = new Set(["runtime.cjs", "native-vm-smoke.cjs", "upgrade-smoke.cjs"]),
+    files = new Set(["runtime.cjs", "native-vm-smoke.cjs", "native-vm-v2.cjs", "upgrade-smoke.cjs"]),
     cache = new Map(),
     fixtureProcess = Object.create(process);
   Object.defineProperties(fixtureProcess, {

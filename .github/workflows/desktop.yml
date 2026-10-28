@@ -374,9 +374,52 @@ jobs:
           if (Test-Path $oldInstaller) { throw 'Old installer output must be fresh' }
           Invoke-WebRequest 'https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe' -OutFile $oldInstaller
           if ((Get-FileHash $oldInstaller -Algorithm SHA256).Hash.ToLowerInvariant() -cne '023bf7e0c95b3ec90e76e429b145e9fbbe0b1d52103ec82e5ac4eb3968188327') { throw 'Pinned alpha.3 installer digest mismatch' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ab89b5a88f73755e91aaefa5b73b1dfd5c73fdb0
+          path: release-stable-source
+          persist-credentials: false
+      - name: Seed independent stable task and fetch pinned stable installer
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $seed = Join-Path $env:RUNNER_TEMP 'foundry-upgrade-stable-seed'
+          if (Test-Path $seed) { throw 'Stable seed root must be fresh' }
+          Copy-Item desktop/test/upgrade-seed.go.txt release-stable-source/internal/engine/release_upgrade_seed_test.go
+          Push-Location release-stable-source
+          try {
+            $env:FOUNDRY_UPGRADE_SEED_ROOT = $seed
+            $env:FOUNDRY_UPGRADE_SOURCE_VERSION = 'v0.1.0'
+            go test -count=1 -run '^TestReleaseUpgradeSeed$' ./internal/engine
+            if ($LASTEXITCODE -ne 0) { throw 'Pinned stable synthetic seed failed' }
+          } finally { Pop-Location; Remove-Item Env:FOUNDRY_UPGRADE_SEED_ROOT -ErrorAction SilentlyContinue; Remove-Item Env:FOUNDRY_UPGRADE_SOURCE_VERSION -ErrorAction SilentlyContinue }
+          if (-not (Test-Path (Join-Path $seed 'fixture.json'))) { throw 'Stable synthetic seed missing' }
+          $oldInstaller = Join-Path $env:RUNNER_TEMP 'Foundry-0.1.0-x64.exe'
+          if (Test-Path $oldInstaller) { throw 'Stable installer output must be fresh' }
+          Invoke-WebRequest 'https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-x64.exe' -OutFile $oldInstaller
+          if ((Get-FileHash $oldInstaller -Algorithm SHA256).Hash.ToLowerInvariant() -cne '5a770a31021d3914ad1b30a5597e0ec17e256c50f7e65c7565cfd21603f6ac7d') { throw 'Pinned stable installer digest mismatch' }
       - name: Alpha.3 over-install, mandatory WHPX guest, native UI, restart, and uninstall
         id: installed-contract
-        run: ./desktop/windows-installed-smoke.ps1 -Output (Join-Path $env:RUNNER_TEMP 'foundry-windows-output') -OldInstaller (Join-Path $env:RUNNER_TEMP 'Foundry-0.1.0-alpha.3-x64.exe') -UpgradeFixture (Join-Path $env:RUNNER_TEMP 'foundry-upgrade-seed/fixture.json')
+        run: ./desktop/windows-installed-smoke.ps1 -Output (Join-Path $env:RUNNER_TEMP 'foundry-windows-output') -OldInstaller (Join-Path $env:RUNNER_TEMP 'Foundry-0.1.0-alpha.3-x64.exe') -UpgradeFixture (Join-Path $env:RUNNER_TEMP 'foundry-upgrade-seed/fixture.json') -StableInstaller (Join-Path $env:RUNNER_TEMP 'Foundry-0.1.0-x64.exe') -StableUpgradeFixture (Join-Path $env:RUNNER_TEMP 'foundry-upgrade-stable-seed/fixture.json')
+      - name: Retain bounded native failure receipts without distribution artifacts
+        if: ${{ failure() && steps.installed-contract.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: foundry-windows-native-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/foundry-windows-output/native-vm-acceptance.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-node-workflow.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-typescript-workflow.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-workflow.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-typescript-typecheck.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-setup.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-discovery.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-memory.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-pids.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-timeout.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-signal.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-descendant.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-held_stream.json
       - name: Upload only after every native gate passes
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -391,6 +434,22 @@ jobs:
             ${{ runner.temp }}/foundry-windows-output/upgrade-acceptance.json
             ${{ runner.temp }}/foundry-windows-output/fresh-candidate-integrity.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-acceptance.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-matrix.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-node-workflow.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-typescript-workflow.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-workflow.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-typescript-typecheck.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-setup.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-discovery.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-memory.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-pids.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-timeout.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-signal.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-descendant.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-held_stream.json
+            ${{ runner.temp }}/foundry-windows-output/upgrade-stable-old-installed.json
+            ${{ runner.temp }}/foundry-windows-output/upgrade-stable-acceptance.json
+            ${{ runner.temp }}/foundry-windows-output/upgrade-stable-uninstall.json
             ${{ runner.temp }}/foundry-windows-output/windows-ui.png
             ${{ runner.temp }}/foundry-windows-output/windows-ui-coding.png
             ${{ runner.temp }}/foundry-windows-output/windows-ui-return.png

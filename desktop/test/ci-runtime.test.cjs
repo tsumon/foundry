@@ -72,6 +72,7 @@ function assertWindowsCoverage(commands) {
   }
   assert.ok(commands.some(({command,args}) => command === "go" && args[0] === "test" && args.includes("./internal/vmruntime") && args.some(arg => arg.includes("RuntimeV2"))), "Windows executes v2 host runtime and manifest tests");
   assert.ok(commands.some(({command,args}) => command === "go" && args[0] === "test" && args.includes("./internal/vmguest") && args.some(arg => arg.includes("ChildContractClosed"))), "Windows executes portable v2 child contracts");
+  for(const boundary of ['LateInput','Publication','Receive'])assert.ok(commands.some(({command,args})=>command==='go'&&args[0]==='test'&&args.includes('./internal/vmguest')&&args.some(arg=>arg.includes(boundary))), 'Windows executes v2 '+boundary+' boundary regressions');
   for (const pkg of ["./internal/dependencybundle", "./internal/frameworkreport", "./internal/domain"]) {
     assert.ok(commands.some(({ command, args }) => command === "go" && args[0] === "test"
       && args.includes("-count=1") && args.includes(pkg)
@@ -98,3 +99,29 @@ test("Windows coverage policy rejects compile-only Go package selection", () => 
   }
   assert.throws(() => assertWindowsCoverage(changed), assert.AssertionError);
 });
+
+function assertNativeV2Wiring(workflow,driver){
+ const job=workflow.jobs['windows-installer'],steps=job.steps;
+ const installed=steps.find(s=>s.id==='installed-contract'),index=steps.indexOf(installed);
+ assert.ok(installed&&!installed.if&&!installed['continue-on-error']);
+ assert.match(installed.run,/-StableInstaller /);assert.match(installed.run,/-StableUpgradeFixture /);
+ const source=steps.find(s=>s.with?.path==='release-stable-source');assert.equal(source?.with.ref,'ab89b5a88f73755e91aaefa5b73b1dfd5c73fdb0');assert.equal(source.with['persist-credentials'],false);
+ assert.equal((driver.match(/native-vm-smoke\.cjs'\) --v2-matrix/g)||[]).length,1);
+ assert.equal((driver.match(/\$vmResult = & \$node .*native-vm-smoke\.cjs'\)\s*\n/g)||[]).length,1);
+ const upload=steps.find(s=>s.with?.name==='foundry-windows-x64');assert.ok(steps.indexOf(upload)>index);assert.equal(upload.if,undefined);assert.equal(upload['continue-on-error'],undefined);
+ for(const row of require('../native-vm-v2.cjs').nativeV2Cases()){const name='native-vm-v2-'+row.profile.replace(/^c4_/,'').replace(/_model_v2$/,'')+'-'+row.case+'.json';assert.ok(upload.with.path.includes(name),'missing gated receipt '+name)}
+ const diagnostic=steps.find(s=>s.with?.name==='foundry-windows-native-diagnostics');assert.match(diagnostic.if,/failure\(\)/);assert.ok(steps.indexOf(diagnostic)>index);assert.equal(diagnostic.with['if-no-files-found'],'ignore');
+ for(const file of diagnostic.with.path.trim().split(/\r?\n/)){assert.match(file,/\/native-vm-(?:acceptance|v2-(?:node|typescript|python)-(?:workflow|typecheck|setup|discovery|memory|pids|timeout|signal|descendant|held_stream))\.json$/)}
+ assert.match(upload.with.path,/upgrade-stable-acceptance\.json/);
+ assert.match(driver,/windows-upgrade-smoke\.ps1/);
+}
+const nativeWorkflow=yaml.load(fs.readFileSync(path.join(__dirname,'../../.github/workflows/desktop.yml'),'utf8'));
+const installedDriver=fs.readFileSync(path.join(__dirname,'../windows-installed-smoke.ps1'),'utf8');
+test('Windows v2 native matrix and independent stable supplement are mandatory before distribution upload',()=>assertNativeV2Wiring(nativeWorkflow,installedDriver));
+for(const [name,mutate] of [
+ ['conditional installed gate',v=>v.jobs['windows-installer'].steps.find(s=>s.id==='installed-contract').if='false'],
+ ['missing stable source',v=>v.jobs['windows-installer'].steps=v.jobs['windows-installer'].steps.filter(s=>s.with?.path!=='release-stable-source')],
+ ['missing v2 receipt',v=>{const s=v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-x64');s.with.path=s.with.path.replace(/^.*native-vm-v2-python-memory\.json.*\n/m,'')}],
+ ['ungated distribution artifact',v=>v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-x64').if='always()'],
+ ['broad failure upload',v=>v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-native-diagnostics').with.path+='\n${{ runner.temp }}/private-data/**'],
+])test('Windows native wiring rejects '+name,()=>{assertNativeV2Wiring(nativeWorkflow,installedDriver);const changed=structuredClone(nativeWorkflow);mutate(changed);assert.throws(()=>assertNativeV2Wiring(changed,installedDriver))});

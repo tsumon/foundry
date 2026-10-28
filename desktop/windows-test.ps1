@@ -13,7 +13,7 @@ Checked 'go' @('build', './cmd/...')
 # remain independent requirements; Unix-only credential/FIFO tests stay there.
 Checked 'go' @('test', '-run', '^$', './...')
 Checked 'go' @('test', '-count=1', './internal/platformfs', './internal/gitinspect', './internal/tools', './internal/workspace', './internal/evidence', './internal/repositorytask', './internal/desktophost', './internal/keychaincheck')
-Checked 'go' @('test', '-count=1', './internal/dependencybundle', './internal/frameworkreport', './internal/domain')
+Checked 'go' @('test', '-count=1', './internal/dependencybundle', './internal/frameworkreport', './internal/domain', './internal/dependencyadmission', './internal/vmacceptance', './cmd/foundry-vm-acceptance')
 Checked 'go' @('test', '-count=1', './internal/store', '-run', '^TestWindows')
 Checked 'go' @('test', '-count=1', './internal/sandbox', '-run', '^TestWindows')
 Checked 'go' @('test', '-v', '-count=1', './internal/vmruntime', '-run', '^Test(Windows|QEMU|Archive)')
@@ -23,13 +23,14 @@ Checked 'node' @('--test', 'desktop/test/build-guest-v2.test.cjs')
 Checked 'node' @('--test', 'desktop/test/runtime-v2.test.cjs', 'desktop/test/packaging-v2.test.cjs', 'desktop/test/multilang-inputs.test.cjs', 'desktop/test/runner-contracts-v2.test.cjs')
 Checked 'go' @('test', '-count=1', './internal/vmruntime', '-run', '^Test(InventoryV2|Load.*V2|RetainedMixed|RuntimeV2|V2|V1.*Golden)')
 Checked 'go' @('test', '-count=1', './internal/vmguest', '-run', '^TestV2(ChildContractClosed|StaticBoundaryIdentityFDEnvironmentAndOrder|ResourceCountersRequiredAndNumeric|ProbeAndExactTerminal|PhasesShareDeadlineAndCompileGate|TestVerdictRequiresEOFResourcesAndCleanup|DiagnosticBudgetSharedAcrossPhasesAndStreams|CompilerDigestMustBeCanonicalBeforeTests)$')
+Checked 'go' @('test', '-count=1', './internal/vmguest', '-run', '^TestV2(LateInput|PostTerminal|Publication|BufferedPrefix|Receive|PendingClose|DirectExit|ParserOverflow|UnknownCleanup|ReportGate|DeadlineDuringDrain)')
 Checked 'node' @('--test', 'desktop/test/openai-handoff.test.cjs')
 Checked 'go' @('test', '-count=1', './internal/model', '-run', '^Test(CredentialManager|WindowsSecret)')
 Checked 'go' @('test', '-count=1', './cmd/foundry', '-run', 'Test(Desktop|DataDirectoryLock|LockProcessCrash|Windows|RetainDesktopRuntime)')
 # Actual SQLite/controller source import, multi-file repair, export, explicit
 # approval-before-action, protected drift, and recovery without replay.
 Checked 'go' @('test', '-count=1', './cmd/foundry-acceptance', '-run', 'Test(RepositoryTask|DesktopRepository)')
-Checked 'node' @('--test', 'desktop/test/security.test.cjs', 'desktop/test/downloads.test.cjs', 'desktop/test/build.test.cjs', 'desktop/test/windows.test.cjs', 'desktop/test/native-notices.test.cjs', 'desktop/test/nsis-template.test.cjs', 'desktop/test/coding-mode.test.cjs', 'desktop/test/coding-smoke.test.cjs', 'desktop/test/installed-smoke-module.test.cjs', 'desktop/test/native-vm-smoke.test.cjs', 'desktop/test/upgrade-smoke.test.cjs', 'desktop/test/windows-coding-ui.test.cjs')
+Checked 'node' @('--test', 'desktop/test/security.test.cjs', 'desktop/test/downloads.test.cjs', 'desktop/test/build.test.cjs', 'desktop/test/windows.test.cjs', 'desktop/test/native-notices.test.cjs', 'desktop/test/nsis-template.test.cjs', 'desktop/test/coding-mode.test.cjs', 'desktop/test/coding-smoke.test.cjs', 'desktop/test/installed-smoke-module.test.cjs', 'desktop/test/native-vm-smoke.test.cjs', 'desktop/test/native-vm-v2-smoke.test.cjs', 'desktop/test/ci-runtime.test.cjs', 'desktop/test/upgrade-smoke.test.cjs', 'desktop/test/windows-coding-ui.test.cjs')
 $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 Checked $windowsPowerShell @('-NoProfile', '-NonInteractive', '-File', (Join-Path $PWD 'desktop/windows-taskdialog-action.test.ps1'))
 # Real native Electron session/cookie/attachment events, in disposable profiles.

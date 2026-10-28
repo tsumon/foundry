@@ -14,12 +14,18 @@ import (
 type Config struct {
 	NativeVMAcceptance bool
 	Bundle, DataDir    string
+	Profile, Case      string
 }
 
 func (c Config) Validate() error { return c.validate(runtime.GOOS + "/" + runtime.GOARCH) }
 func (c Config) validate(host string) error {
 	if !c.NativeVMAcceptance {
 		return errors.New("explicit_native_vm_acceptance_required")
+	}
+	if c.Profile != "" || c.Case != "" {
+		if _, e := selectFixture(c.Profile, c.Case); e != nil {
+			return e
+		}
 	}
 	if host != "darwin/arm64" && host != "windows/amd64" {
 		return errors.New("unsupported_native_host")

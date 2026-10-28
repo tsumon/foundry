@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"foundry/internal/domain"
+	"foundry/internal/vmruntime"
 	"regexp"
 	"strings"
 )
@@ -15,12 +16,13 @@ const ModelProvenance = "local_protocol_fixture/not_real_provider"
 var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 type OperationEvidence struct {
-	Kind             string `json:"kind"`
-	Class            string `json:"class"`
-	Tests            int    `json:"tests"`
-	InstanceID       string `json:"instance_id"`
-	CleanupConfirmed bool   `json:"cleanup_confirmed"`
-	CandidateDigest  string `json:"candidate_digest"`
+	Kind             string                             `json:"kind"`
+	Class            string                             `json:"class"`
+	Tests            int                                `json:"tests"`
+	InstanceID       string                             `json:"instance_id"`
+	CleanupConfirmed bool                               `json:"cleanup_confirmed"`
+	CandidateDigest  string                             `json:"candidate_digest"`
+	NativeV2         *vmruntime.AuthenticatedEvidenceV2 `json:"native_v2,omitempty"`
 }
 type Checks struct {
 	ApprovalGates      bool `json:"approval_gates"`
@@ -51,6 +53,7 @@ type Summary struct {
 	SourceDigest     string              `json:"source_digest,omitempty"`
 	PatchDigest      string              `json:"patch_digest,omitempty"`
 	ReportDigest     string              `json:"report_digest,omitempty"`
+	V2               *EvidenceV2         `json:"v2,omitempty"`
 }
 
 func operationEvidence(ops []domain.C4Operation) ([]OperationEvidence, error) {

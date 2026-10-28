@@ -10,6 +10,7 @@ const {
   childEnvironment,
   executableName,
 } = require("./runtime.cjs");
+const {nativeV2Cases,selectedV2,boundedV2Receipt,assertNativeVMReceiptV2}=require("./native-vm-v2.cjs");
 const hash = /^[a-f0-9]{64}$/;
 const receiptKeys = [
   "schema_version",
@@ -111,6 +112,7 @@ function assertNativeVMReceipt(
 function boundedReceipt(raw) {
   assert.ok(typeof raw === "string" && Buffer.byteLength(raw) <= 64 * 1024);
   const receipt = JSON.parse(raw);
+  if(receipt.schema_version===2)return boundedV2Receipt(raw);
   keys(receipt, [
     ...receiptKeys,
     ...optionalFields.filter((field) => Object.hasOwn(receipt, field)),
@@ -176,9 +178,10 @@ function boundedReceipt(raw) {
   return receipt;
 }
 function runNativeVMSmoke(
-  { resources, dataDir, integrity, reportFile, onFailure },
+  { resources, dataDir, integrity, reportFile, onFailure, profile="", caseID="" },
   execute = execFileSync,
 ) {
+  if(profile!==""||caseID!=="")selectedV2(profile,caseID);
   assert.match(integrity, hash);
   verifyResources(resources, integrity);
   assert.ok(
@@ -196,13 +199,13 @@ function runNativeVMSmoke(
       path.isAbsolute(relative),
     "receipt must be outside installed resources",
   );
-  const bundle = path.join(resources, "sandbox");
+  const bundle = path.join(resources, profile?"sandbox-v2":"sandbox");
   let output,
     executionFailed = false;
   try {
     output = execute(
       path.join(resources, "bin", executableName("foundry-vm-acceptance")),
-      ["--native-vm-acceptance", "--bundle", bundle, "--data-dir", dataDir],
+      ["--native-vm-acceptance", "--bundle", bundle, "--data-dir", dataDir,...(profile?["--profile",profile,"--case",caseID]:[])],
       {
         encoding: "utf8",
         timeout: 11 * 60 * 1000,
@@ -229,8 +232,24 @@ function runNativeVMSmoke(
     onFailure(failureDiagnostic(receipt, dataDir, manifestDigest));
   }
   assert.equal(executionFailed, false, "native harness returned nonzero");
-  assertNativeVMReceipt(receipt, manifestDigest);
+  if(profile)assertNativeVMReceiptV2(receipt,manifestDigest,profile,caseID);
+  else assertNativeVMReceipt(receipt, manifestDigest);
   return receipt;
+}
+// Each attempt owns a distinct directory and receipt. Stop at the first failed
+// native attempt; never retry, replace its evidence or run this at app startup.
+function runNativeV2Matrix(options,execute=execFileSync){
+  assert.ok(!fs.existsSync(options.reportFile),"fresh matrix receipt required");
+  const cases=[];
+  for(const row of nativeV2Cases()){
+    const name=row.profile.replace(/^c4_/,"").replace(/_model_v2$/,"")+"-"+row.case;
+    const report=path.join(path.dirname(options.reportFile),"native-vm-v2-"+name+".json");
+    const receipt=runNativeVMSmoke({...options,profile:row.profile,caseID:row.case,dataDir:options.dataDir+"-"+name,reportFile:report},execute);
+    cases.push({...row,report,manifest_digest:receipt.manifest_digest});
+  }
+  assert.equal(new Set(cases.map(r=>r.manifest_digest)).size,1,"matrix runtime changed");
+  const result={schema_version:2,kind:"foundry-native-vm-v2-matrix",passed:true,models:"local_protocol_fixture/not_real_provider",cases};
+  fs.writeFileSync(options.reportFile,JSON.stringify(result)+"\n",{flag:"wx",mode:0o600});return result;
 }
 // Diagnostic-only projection. Never used for admission, evidence or cleanup.
 function failureDiagnostic(receipt, dataDir, manifestDigest) {
@@ -240,6 +259,8 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
     "bundle",
     "repository",
     "setup",
+    "dependencies",
+    "inspection",
     "create",
     "readiness",
     "baseline",
@@ -301,10 +322,18 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
       } finally {
         fs.closeSync(fd);
       }
-      assert.equal(terminal.schema_version, 1);
-      assert.equal(terminal.ID, entry.name);
-      assert.equal(terminal.Stage, "terminal");
-      assert.equal(terminal.ManifestDigest, manifestDigest);
+      if(receipt.schema_version===2){
+        keys(terminal,["schema_version","id","stage","operation_id","mission_id","owner","name","target","profile_digest","policy_digest","input_digest","dependency_digest","candidate_digest","request_digest",...(Object.hasOwn(terminal,"native")?["native"]:[])]);
+        assert.equal(terminal.schema_version,2);assert.equal(terminal.id,entry.name);assert.equal(terminal.stage,"terminal");
+        keys(terminal.target,["profile_id","identity","runtime_inventory_digest"]);
+        assert.equal(terminal.target.profile_id,receipt.v2.profile_id);assert.equal(terminal.target.identity.manifest_digest,manifestDigest);
+        for(const k of ["profile_digest","policy_digest","input_digest","dependency_digest","candidate_digest","request_digest"])assert.match(terminal[k],/^(?:[a-f0-9]{64})?$/);
+      } else {
+        assert.equal(terminal.schema_version, 1);
+        assert.equal(terminal.ID, entry.name);
+        assert.equal(terminal.Stage, "terminal");
+        assert.equal(terminal.ManifestDigest, manifestDigest);
+      }
       assert.equal(receipt.manifest_digest, manifestDigest);
       const native = terminal.native;
       const optional = [
@@ -535,6 +564,7 @@ function probeWindowsHypervisor(probe, systemRoot, execute = execFileSync) {
 module.exports = {
   assertNativeVMReceipt,
   runNativeVMSmoke,
+  runNativeV2Matrix,
   probeWindowsHypervisor,
 };
 if (require.main === module)
@@ -555,12 +585,17 @@ if (require.main === module)
       process.exitCode = result.available ? 0 : 1;
       return;
     }
+    const args=process.argv.slice(2);
+    const matrix=args.length===1&&args[0]==="--v2-matrix";
+    let profile="",caseID="";
+    if(!matrix&&args.length){assert.equal(args.length,4);assert.equal(args[0],"--profile");assert.equal(args[2],"--case");profile=args[1];caseID=args[3];selectedV2(profile,caseID)}
     const resources = process.env.FOUNDRY_INSTALLED_RESOURCES;
     const { extractFile } = await import("@electron/asar");
     const { manifestSHA256: integrity } = JSON.parse(
       extractFile(path.join(resources, "app.asar"), "resource-integrity.json"),
     );
-    const receipt = runNativeVMSmoke({
+    const receipt = (matrix?runNativeV2Matrix:runNativeVMSmoke)({
+      profile,caseID,
       resources,
       dataDir: process.env.FOUNDRY_VM_ACCEPTANCE_DATA,
       reportFile: process.env.FOUNDRY_VM_ACCEPTANCE_REPORT,

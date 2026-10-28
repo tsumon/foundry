@@ -144,8 +144,9 @@ test("desktop jobs build the verified sandbox before packaging and publish its s
     const sandbox = steps.findIndex((s) => s.id === "sandbox-bundle");
     const packaging = steps.findIndex((s) => s.id === "desktop-package");
     const installed = steps.findIndex((s) => s.id === "installed-contract");
+    const artifact = name === "macos-installer" ? "foundry-macos-arm64" : "foundry-windows-x64";
     const upload = steps.findIndex((s) =>
-      s.uses?.startsWith("actions/upload-artifact@"),
+      s.uses?.startsWith("actions/upload-artifact@") && s.with?.name === artifact,
     );
     assert.ok(
       sandbox >= 0 &&

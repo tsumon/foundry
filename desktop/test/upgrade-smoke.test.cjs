@@ -5,7 +5,7 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { exactCopy, inventory, snapshot, allowedMigration, assertSchemaEvolution } = require("../upgrade-smoke.cjs");
+const { exactCopy, inventory, snapshot, allowedMigration, assertSchemaEvolution,priorRelease,assertFixture } = require("../upgrade-smoke.cjs");
 
 test("only the reviewed additive inference schema migration is accepted", () => {
   const original = [{ type: "table", name: "missions", sql: "CREATE TABLE missions(id TEXT)" }];
@@ -13,7 +13,7 @@ test("only the reviewed additive inference schema migration is accepted", () => 
     const [type, name] = key.split(":");
     return { type, name, sql };
   })];
-  assert.equal(allowedMigration.size, 6);
+  assert.equal(allowedMigration.size, 7);
   assert.doesNotThrow(() => assertSchemaEvolution(original, original, false));
   assert.doesNotThrow(() => assertSchemaEvolution(original, migrated, true));
   assert.throws(() => assertSchemaEvolution(original, migrated, false), /schema/);
@@ -75,13 +75,28 @@ test("stopped synthetic ledger snapshot preserves sealed budget and rejects inco
   migrationDb.exec("CREATE TABLE model_acceptance_inference_budgets(operation_id TEXT); CREATE TABLE model_acceptance_inference_sends(operation_id TEXT)");
   migrationDb.close();
   assert.deepEqual(snapshot(fixture).migration_table_rows,
-    { model_acceptance_inference_budgets: 0, model_acceptance_inference_sends: 0 });
+    { model_acceptance_inference_budgets: 0, model_acceptance_inference_sends: 0, dependency_admissions:null });
   const writtenMigration = new DatabaseSync(dbFile);
   writtenMigration.prepare("INSERT INTO model_acceptance_inference_budgets VALUES(?)").run("unexpected");
   writtenMigration.close();
   assert.equal(snapshot(fixture).migration_table_rows.model_acceptance_inference_budgets, 1);
   fs.writeFileSync(dbFile + "-wal", "incomplete");
   assert.throws(() => snapshot(fixture), /closed, checkpointed/);
+});
+
+test('stable supplement admits only its pinned identity and exact one-table migration',()=>{
+ const stable=priorRelease('v0.1.0');assert.equal(stable.commit,'ab89b5a88f73755e91aaefa5b73b1dfd5c73fdb0');assert.equal(stable.installerSHA256,'5a770a31021d3914ad1b30a5597e0ec17e256c50f7e65c7565cfd21603f6ac7d');assert.throws(()=>priorRelease('arbitrary-old-version'));
+ const old=[{type:'table',name:'missions',sql:'CREATE TABLE missions(id TEXT)'},...[...allowedMigration].filter(([key])=>key!=='table:dependency_admissions').map(([key,sql])=>({type:key.split(':')[0],name:key.split(':')[1],sql}))];
+ const table={type:'table',name:'dependency_admissions',sql:'CREATE TABLE dependency_admissions (digest TEXT PRIMARY KEY, data BLOB NOT NULL)'};
+ assert.doesNotThrow(()=>assertSchemaEvolution(old,[...old,table],true,'v0.1.0'));
+ assert.throws(()=>assertSchemaEvolution(old,[...old,table,{type:'table',name:'unexpected',sql:'CREATE TABLE unexpected(x)'}],true,'v0.1.0'));
+ assert.throws(()=>assertSchemaEvolution(old,[...old,{...table,sql:'CREATE TABLE dependency_admissions (digest BLOB)'}],true,'v0.1.0'));
+ assert.throws(()=>assertSchemaEvolution(old,[...old,table],true,'v0.1.0-alpha.3'));
+ assert.throws(()=>assertSchemaEvolution(old,[...old,table],false,'v0.1.0'));
+ const root=path.resolve(os.tmpdir(),'foundry-synthetic-prior'),file=path.join(root,'fixture.json'),data=path.join(root,'data');
+ const fixture={source_version:'v0.1.0',source_commit:stable.commit,data_root:data,archive:path.join(data,'coding','vm-bundles', 'a'.repeat(64)),baseline:'synthetic journal only; no test execution',credential_reads:0,vm_operations:0};
+ assert.doesNotThrow(()=>assertFixture(fixture,file,'v0.1.0'));
+ for(const changed of [{...fixture,source_commit:'0'.repeat(64)},{...fixture,source_version:'v0.1.0-alpha.3'},{...fixture,credential_reads:1},{...fixture,archive:path.join(root,'foreign-runtime')}])assert.throws(()=>assertFixture(changed,file,'v0.1.0'));
 });
 
 test("native Windows workflow pins public source and installer, then over-installs the same target", () => {

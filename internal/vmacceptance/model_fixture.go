@@ -46,6 +46,7 @@ type localFixture struct {
 	pending *model.Request
 	calls   []model.Request
 	failed  bool
+	spec    *fixtureSpec
 }
 
 func newLocalFixture() *localFixture { return &localFixture{calls: []model.Request{}} }
@@ -90,7 +91,7 @@ func (f *localFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reject()
 		return
 	}
-	reply, err := fixtureReply(q)
+	reply, err := fixtureReplyFor(q, f.spec)
 	if err != nil {
 		reject()
 		return
@@ -102,18 +103,25 @@ func (f *localFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"object": "response", "id": "synthetic-local-response", "model": fixtureModel, "status": "completed", "output": []any{map[string]any{"type": "message", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": reply}}}}, "usage": map[string]int{"input_tokens": 10, "output_tokens": 5}})
 }
 func fixtureReply(q model.Request) (string, error) {
+	return fixtureReplyFor(q, nil)
+}
+func fixtureReplyFor(q model.Request, f *fixtureSpec) (string, error) {
+	path, worker, repaired := "triple.go", workerSource, repairedSource
+	if f != nil {
+		path, worker, repaired = f.path, f.worker, f.repaired
+	}
 	var value any
 	switch q.Role {
 	case domain.Researcher:
 		value = map[string]any{"summary": "SYNTHETIC local fixture observation", "findings": []any{}, "unknowns": []any{}}
 	case domain.Planner:
-		value = map[string]any{"summary": "Preserve Triple behavior with addition only", "steps": []any{map[string]any{"id": "addition", "title": "Use addition", "description": "Replace multiplication with addition preserving signed inputs", "depends_on": []string{}, "files": []string{"triple.go"}}}}
+		value = map[string]any{"summary": "Preserve Triple behavior with addition only", "steps": []any{map[string]any{"id": "addition", "title": "Use addition", "description": "Replace multiplication with addition preserving signed inputs", "depends_on": []string{}, "files": []string{path}}}}
 	case domain.Worker, domain.Debugger:
-		content := workerSource
+		content := worker
 		if q.Role == domain.Debugger {
-			content = repairedSource
+			content = repaired
 		}
-		value = map[string]any{"summary": "SYNTHETIC scoped implementation", "edits": []any{map[string]string{"path": "triple.go", "content": content}}}
+		value = map[string]any{"summary": "SYNTHETIC scoped implementation", "edits": []any{map[string]string{"path": path, "content": content}}}
 	case domain.QA, domain.Auditor:
 		var prompt struct {
 			Extra domain.CodingReviewContract `json:"extra"`

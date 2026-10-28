@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"foundry/internal/dependencybundle"
 	"foundry/internal/domain"
 	"foundry/internal/engine"
 	"foundry/internal/model"
@@ -49,6 +50,15 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		summary.FailureCode = err.Error()
 		return
 	}
+	f := fixtureSpec{path: "triple.go", initial: initialSource, worker: workerSource, repaired: repairedSource, verifier: "/opt/foundry/verify-go-v1", expectedTests: 2}
+	if c.Profile != "" {
+		f, err = selectFixture(c.Profile, c.Case)
+		if err != nil {
+			return
+		}
+		summary.SchemaVersion = 2
+		summary.V2 = &EvidenceV2{ProfileID: f.profile, Case: f.caseID, Provenance: "repository_owned_local_fixture", DependencyFiles: []dependencybundle.File{}, ExpectedFiles: map[string]string{}}
+	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Minute)
 	defer cancel()
 	if err = ctx.Err(); err != nil {
@@ -65,7 +75,13 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		}
 	}
 	summary.Stage = "bundle"
-	vm, e := vmruntime.Load(c.Bundle, filepath.Join(c.DataDir, "instances"))
+	var vm *vmruntime.Runtime
+	var e error
+	if c.Profile == "" {
+		vm, e = vmruntime.Load(c.Bundle, filepath.Join(c.DataDir, "instances"))
+	} else {
+		vm, e = vmruntime.LoadV2(c.Bundle, filepath.Join(c.DataDir, "instances"))
+	}
 	if e != nil {
 		err = e
 		return
@@ -79,7 +95,12 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	}
 	summary.Stage = "repository"
 	source := filepath.Join(c.DataDir, "source")
-	if err = createRepository(ctx, source); err != nil {
+	if c.Profile == "" {
+		err = createRepository(ctx, source)
+	} else {
+		err = f.create(ctx, source, filepath.Join(c.DataDir, "dependency-input"))
+	}
+	if err != nil {
 		return
 	}
 	// This digest includes the committed .git tree, so source mutation cannot be
@@ -88,7 +109,12 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	if err != nil {
 		return
 	}
-	summary.ProtectedDigests, err = protectedDigests(source)
+	protected := protectedDigests
+	if c.Profile != "" {
+		protected = f.protectedDigests
+		summary.V2.ExpectedFiles = f.fileDigests()
+	}
+	summary.ProtectedDigests, err = protected(source)
 	if err != nil {
 		return
 	}
@@ -100,6 +126,9 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	}
 	defer s.Close()
 	fixture := newLocalFixture()
+	if c.Profile != "" {
+		fixture.spec = &f
+	}
 	server := httptest.NewServer(fixture)
 	defer server.Close()
 	lease := &fixtureLease{base: server.URL + "/v1"}
@@ -113,12 +142,32 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		}
 		return fixture.authorize(q)
 	}})
-	cap, e := engine.NewCodingVMCapability(router, vm)
+	var cap *engine.C4ControlledCapability
+	if c.Profile == "" {
+		cap, e = engine.NewCodingVMCapability(router, vm)
+	} else {
+		cap, e = engine.NewCodingVMCapabilityWithV2(router, nil, vm)
+	}
 	if e != nil {
 		err = e
 		return
 	}
 	controller = engine.New(s, router, engine.Options{DataDir: filepath.Join(c.DataDir, "engine"), CodingWorkbench: true, C4Controlled: cap, DisableControlledReadCreation: true})
+	if c.Profile != "" {
+		defer func() {
+			if err != nil && summary.MissionID != "" && summary.V2.Inputs != nil {
+				if current, getErr := s.GetMission(summary.MissionID); getErr == nil {
+					summary.Operations = v2FailureOperations(current, vm, *summary.V2.Inputs)
+				}
+				fixture.mu.Lock()
+				defer fixture.mu.Unlock()
+				summary.RoleCounts = map[domain.Role]int{}
+				for _, q := range fixture.calls {
+					summary.RoleCounts[q.Role]++
+				}
+			}
+		}()
+	}
 	defer controller.Close()
 	defer func() {
 		fixture.mu.Lock()
@@ -130,12 +179,48 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	if err = registerFixture(s, lease.base); err != nil {
 		return
 	}
-	inspection, e := controller.InspectRepository(ctx, domain.RepositoryInspectionRequest{RepoPath: source, Consent: true, Spec: domain.RepositoryImportSpec{Scope: []string{"triple.go"}, Protected: []string{"go.mod", "triple_test.go"}, Acceptance: []string{"/opt/foundry/verify-go-v1"}, Image: "embedded-vm-native-acceptance"}})
+	spec := domain.RepositoryImportSpec{Scope: []string{"triple.go"}, Protected: []string{"go.mod", "triple_test.go"}, Acceptance: []string{"/opt/foundry/verify-go-v1"}, Image: "embedded-vm-native-acceptance"}
+	if c.Profile != "" {
+		summary.Stage = "dependencies"
+		var selected *engine.CodingProfileTemplateV2
+		for _, row := range controller.CodingProfilesV2() {
+			if row.ProfileID == c.Profile {
+				copy := row
+				selected = &copy
+			}
+		}
+		if selected == nil || !selected.Available || selected.EmbeddedVM == nil {
+			err = errors.New("current_v2_profile_unavailable")
+			return
+		}
+		admission, admitErr := controller.ImportCodingDependencies(ctx, engine.CodingDependencyImportRequest{RepoPath: source, ProfileID: c.Profile, EmbeddedVM: *selected.EmbeddedVM, RuntimeInventoryDigest: selected.RuntimeInventoryDigest, InputDirectory: filepath.Join(c.DataDir, "dependency-input"), Consent: true})
+		if admitErr != nil {
+			err = admitErr
+			return
+		}
+		summary.V2.RuntimeInventoryDigest = selected.RuntimeInventoryDigest
+		summary.V2.AdmissionDigest = admission.AdmissionDigest
+		dependencyRoot := filepath.Join(c.DataDir, "engine", "dependency-bundles")
+		manifest, manifestErr := dependencybundle.DescribeVerified(ctx, dependencyRoot, dependencybundle.Binding(admission.Dependencies))
+		if manifestErr != nil {
+			err = manifestErr
+			return
+		}
+		summary.V2.DependencyFiles = manifest.Files
+		spec = domain.RepositoryImportSpec{Scope: []string{f.path}, Protected: []string{}, Acceptance: []string{f.verifier}, VerificationV2: &domain.C4ImportSelectionV2{SchemaVersion: 2, ProfileID: c.Profile, EmbeddedVM: *selected.EmbeddedVM, RuntimeInventoryDigest: selected.RuntimeInventoryDigest, AdmissionDigest: admission.AdmissionDigest, Dependencies: admission.Dependencies, SourceRoot: f.sourceRoot, TestRoot: "tests", TestSupportPrefixes: []string{}}}
+		summary.Stage = "inspection"
+	}
+	inspection, e := controller.InspectRepository(ctx, domain.RepositoryInspectionRequest{RepoPath: source, Consent: true, Spec: spec})
 	if e != nil || inspection.Status != "ready" {
 		err = errors.New("repository_inspection_not_ready")
 		return
 	}
 	profile, ok := controller.CodingVMProfile()
+	if c.Profile != "" {
+		profile = domain.C4Profile{SchemaVersion: 2, ID: c.Profile, Mode: "embedded_vm"}
+		ok = inspection.VerificationV2 != nil
+		summary.V2.Inputs = inspection.VerificationV2
+	}
 	if !ok {
 		err = errors.New("trusted_vm_profile_missing")
 		return
@@ -237,7 +322,11 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	if err != nil {
 		return
 	}
-	if len(m.C4Operations) != 1 || !m.C4Operations[0].Passed() || m.C4Operations[0].Result.Tests != 2 {
+	if c.Profile != "" && f.expectedClass != "" {
+		err = finishV2Baseline(ctx, &summary, m, vm, f, source, filepath.Join(c.DataDir, "engine", "missions", m.ID, "base"), filepath.Join(c.DataDir, "engine", "dependency-bundles"), fixture, lease)
+		return
+	}
+	if len(m.C4Operations) != 1 || !m.C4Operations[0].Passed() || m.C4Operations[0].Result.Tests != f.expectedTests {
 		err = errors.New("native_baseline_not_two_passes")
 		return
 	}
@@ -279,7 +368,11 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	}
 	summary.Checks.ApprovalGates = true
 	summary.Stage = "verify"
-	summary.Operations, err = operationEvidence(m.C4Operations)
+	if c.Profile == "" {
+		summary.Operations, err = operationEvidence(m.C4Operations)
+	} else {
+		summary.Operations, err = v2Operations(m, vm, *summary.V2.Inputs, f)
+	}
 	if err != nil {
 		summary.Operations = []OperationEvidence{}
 		return
@@ -302,7 +395,13 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		if o.Kind == "baseline" {
 			digest = o.BaseDigest
 		}
-		if !ok || session.Running() || !session.Matches(vmruntime.Request{OperationID: o.ID, MissionID: m.ID, Owner: o.Owner, Name: o.ContainerName, CandidateDigest: digest}) {
+		matches := ok && !session.Running()
+		if c.Profile == "" {
+			matches = matches && session.Matches(vmruntime.Request{OperationID: o.ID, MissionID: m.ID, Owner: o.Owner, Name: o.ContainerName, CandidateDigest: digest})
+		} else if matches {
+			_, matches = session.AuthenticatedEvidenceV2(vmruntime.RequestV2{Owner: vmruntime.Request{OperationID: o.ID, MissionID: m.ID, Owner: o.Owner, Name: o.ContainerName, CandidateDigest: digest}, Profile: *m.Spec.C4, Inputs: *summary.V2.Inputs})
+		}
+		if !matches {
 			err = errors.New("native_session_not_owned_closed")
 			return
 		}
@@ -317,14 +416,14 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 				return
 			}
 		}
-		protected, e := protectedDigests(generationTree)
-		if e != nil || !reflect.DeepEqual(protected, summary.ProtectedDigests) {
+		actualProtected, e := protected(generationTree)
+		if e != nil || !reflect.DeepEqual(actualProtected, summary.ProtectedDigests) {
 			err = errors.New("protected_history_changed")
 			return
 		}
 	}
 	summary.Checks.ExactInstances = true
-	if m.CandidateGeneration == nil || len(m.Changes) != 2 || m.Changes[0].Before != initialSource || m.Changes[0].After != workerSource || m.Changes[1].After != repairedSource {
+	if m.CandidateGeneration == nil || len(m.Changes) != 2 || m.Changes[0].Before != f.initial || m.Changes[0].After != f.worker || m.Changes[1].After != f.repaired {
 		err = errors.New("repair_trace_not_preserved")
 		return
 	}
@@ -333,12 +432,12 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		err = e
 		return
 	}
-	candidate, e := os.ReadFile(filepath.Join(tree, "triple.go"))
-	if e != nil || string(candidate) != repairedSource {
+	candidate, e := os.ReadFile(filepath.Join(tree, filepath.FromSlash(f.path)))
+	if e != nil || string(candidate) != f.repaired {
 		err = errors.New("candidate_not_addition_only")
 		return
 	}
-	actual, e := protectedDigests(tree)
+	actual, e := protected(tree)
 	if e != nil || !reflect.DeepEqual(actual, summary.ProtectedDigests) {
 		err = errors.New("protected_candidate_changed")
 		return
@@ -350,6 +449,11 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		return
 	}
 	summary.Checks.SourceUnchanged = true
+	if c.Profile != "" {
+		if _, err = dependencybundle.DescribeVerified(ctx, filepath.Join(c.DataDir, "engine", "dependency-bundles"), dependencybundle.Binding(summary.V2.Inputs.Dependencies)); err != nil {
+			return
+		}
+	}
 	if len(m.Reviews) != 2 {
 		err = errors.New("review_count_mismatch")
 		return
@@ -385,7 +489,11 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		err = e
 		return
 	}
-	if len(patch) == 0 || !strings.Contains(string(patch), "n + n + n") || !strings.Contains(string(report), "synthetic-local-6") || !strings.Contains(string(report), fixtureModel) || !strings.Contains(string(report), "simulation") {
+	patchMarker := "n + n + n"
+	if c.Profile != "" {
+		patchMarker = f.deliveryPatchMarker()
+	}
+	if len(patch) == 0 || !strings.Contains(string(patch), patchMarker) || !strings.Contains(string(report), "synthetic-local-6") || !strings.Contains(string(report), fixtureModel) || !strings.Contains(string(report), "simulation") {
 		err = errors.New("delivery_provenance_missing")
 		return
 	}

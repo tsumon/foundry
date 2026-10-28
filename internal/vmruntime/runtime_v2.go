@@ -27,6 +27,42 @@ type sessionV2 struct {
 	source              []SnapshotFile
 	dependencyStoreRoot string
 	requestDigest       string
+	evidence            *AuthenticatedEvidenceV2
+}
+
+// AuthenticatedEvidenceV2 contains bounded facts from the authenticated guest
+// response. It grants no process authority and contains no payload, key or MAC.
+type AuthenticatedEvidenceV2 struct {
+	SessionID     string            `json:"session_id"`
+	OperationID   string            `json:"operation_id"`
+	MissionID     string            `json:"mission_id"`
+	Owner         string            `json:"owner"`
+	Name          string            `json:"name"`
+	Target        ProbeTargetV2     `json:"target"`
+	RequestDigest string            `json:"request_digest"`
+	Checks        SelfCheckV2       `json:"checks"`
+	Phases        []PhaseEvidenceV2 `json:"phases"`
+	Class         string            `json:"class"`
+	Tests         int               `json:"tests"`
+	ExitCode      int               `json:"exit_code"`
+	Truncated     bool              `json:"truncated"`
+}
+
+// AuthenticatedEvidenceV2 returns a defensive snapshot only for the exact
+// immutable request after authenticated response, transport EOF, successful
+// native exit and persisted Close. Receipts cannot recreate this authority.
+func (s *Session) AuthenticatedEvidenceV2(q RequestV2) (AuthenticatedEvidenceV2, bool) {
+	if !s.MatchesV2(q) {
+		return AuthenticatedEvidenceV2{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.closed || !s.valid || s.err != nil || s.process == nil || !s.process.Terminated() || s.v2.evidence == nil {
+		return AuthenticatedEvidenceV2{}, false
+	}
+	v := *s.v2.evidence
+	v.Phases = slices.Clone(v.Phases)
+	return v, true
 }
 
 func (r *Runtime) availableV2() bool {
@@ -192,6 +228,11 @@ func (s *Session) writeRequest(ctx context.Context, w io.Writer) error {
 func (s *Session) readResponse(r io.Reader) (c4verify.Result, error) {
 	if s.v2 != nil {
 		v, e := ReadResponseV2(r, s.v2.wire)
+		if e == nil {
+			s.mu.Lock()
+			s.v2.evidence = &AuthenticatedEvidenceV2{SessionID: s.id, OperationID: s.owner.OperationID, MissionID: s.owner.MissionID, Owner: s.owner.Owner, Name: s.owner.Name, Target: s.v2.wire.Target, RequestDigest: v.RequestDigest, Checks: v.Checks, Phases: slices.Clone(v.Phases), Class: v.Result.Class, Tests: v.Result.Tests, ExitCode: v.Result.ExitCode, Truncated: v.Result.Truncated}
+			s.mu.Unlock()
+		}
 		return v.Result, e
 	}
 	v, e := ReadResponse(r, s.wire)
