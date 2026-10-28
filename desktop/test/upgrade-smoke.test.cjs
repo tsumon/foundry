@@ -1,6 +1,7 @@
 "use strict";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -25,7 +26,14 @@ test("consistent backup copies exact files and rejects links and reused destinat
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "foundry-upgrade-copy-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const source = path.join(root, "source"), target = path.join(root, "target");
-  fs.mkdirSync(path.join(source, "evidence"), { recursive: true, mode: 0o700 });
+  if (process.platform === "win32") {
+    const helper = process.env.FOUNDRY_UPGRADE_COPY;
+    assert(helper && path.isAbsolute(helper), "Native Windows private fixture helper required");
+    execFileSync(helper, ["--private-dir", source], { windowsHide: true, timeout: 120000 });
+  } else {
+    fs.mkdirSync(source, { mode: 0o700 });
+  }
+  fs.mkdirSync(path.join(source, "evidence"), { mode: 0o700 });
   fs.writeFileSync(path.join(source, "evidence", "sealed"), "synthetic evidence", { mode: 0o600 });
   exactCopy(source, target);
   assert.deepEqual(inventory(target), inventory(source));

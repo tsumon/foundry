@@ -242,6 +242,18 @@ func copyExact(source, target string) error {
 	return nil
 }
 
+// The Node regression uses the same protected directory constructor as the
+// native upgrade fixture, without changing the temporary parent's ACL.
+func privateDirectoryFresh(path string) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return errors.New("absolute clean private directory path required")
+	}
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		return errors.New("fresh private directory destination required")
+	}
+	return platformfs.PrivateDirectory(path)
+}
+
 func compareEntry(want, got entry, phase string) error {
 	if want.rel != got.rel || want.directory != got.directory {
 		return fmt.Errorf("%s inventory path/type changed", phase)
@@ -262,6 +274,13 @@ func compareEntry(want, got entry, phase string) error {
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--private-dir" {
+		if err := privateDirectoryFresh(os.Args[2]); err != nil {
+			_, _ = os.Stderr.WriteString(err.Error() + "\n")
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) != 3 {
 		os.Exit(2)
 	}

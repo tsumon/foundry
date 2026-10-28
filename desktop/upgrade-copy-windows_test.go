@@ -48,6 +48,41 @@ func TestWindowsUpgradeRejectsInheritedSourceRoot(t *testing.T) {
 	}
 }
 
+func TestWindowsUpgradeFreshPrivateFixtureDirectory(t *testing.T) {
+	parent := t.TempDir()
+	parentBefore, err := security(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(parent, "source")
+	if err := privateDirectoryFresh(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := platformfs.PrivateDirectory(target); err != nil {
+		t.Fatal("fixture directory is not private", err)
+	}
+	if err := privateDirectoryFresh(target); err == nil || !strings.Contains(err.Error(), "fresh") {
+		t.Fatalf("existing private target accepted: %v", err)
+	}
+	unsafe := filepath.Join(parent, "inherited")
+	if err := os.Mkdir(unsafe, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if inherited, err := security(unsafe); err != nil || inherited.protected {
+		t.Fatal("unsafe fixture must have an inherited DACL", err)
+	}
+	if err := privateDirectoryFresh(unsafe); err == nil || !strings.Contains(err.Error(), "fresh") {
+		t.Fatalf("existing inherited target accepted: %v", err)
+	}
+	if err := privateDirectoryFresh("relative"); err == nil || !strings.Contains(err.Error(), "absolute clean") {
+		t.Fatalf("relative target accepted: %v", err)
+	}
+	parentAfter, err := security(parent)
+	if err != nil || parentAfter != parentBefore {
+		t.Fatalf("fixture changed parent owner/DACL: %v", err)
+	}
+}
+
 func TestWindowsUpgradePrivateCopyAndRestore(t *testing.T) {
 	parent := t.TempDir()
 	source := filepath.Join(parent, "source")
