@@ -13,14 +13,15 @@ import (
 )
 
 type c4DriverFixture struct {
-	t                *testing.T
-	op               domain.C4Operation
-	trace            *[]string
-	fail             string
-	inspection       C4Inspection
-	logs             string
-	captureTruncated bool
-	inspectCount     int
+	t                 *testing.T
+	op                domain.C4Operation
+	trace             *[]string
+	fail              string
+	inspection        C4Inspection
+	logs              string
+	captureTruncated  bool
+	inspectCount      int
+	startCtx, waitCtx context.Context
 }
 
 func (f *c4DriverFixture) record(ctx context.Context, c C4Command, stage string) error {
@@ -65,6 +66,7 @@ func (f *c4DriverFixture) Create(ctx context.Context, c C4Command) (string, erro
 	return strings.Repeat("d", 64), nil
 }
 func (f *c4DriverFixture) Start(ctx context.Context, c C4Command) error {
+	f.startCtx = ctx
 	err := f.record(ctx, c, "start")
 	if f.fail == "start timeout" {
 		return context.DeadlineExceeded
@@ -75,6 +77,7 @@ func (f *c4DriverFixture) Start(ctx context.Context, c C4Command) error {
 	return err
 }
 func (f *c4DriverFixture) Wait(ctx context.Context, c C4Command) error {
+	f.waitCtx = ctx
 	err := f.record(ctx, c, "wait")
 	if f.fail == "timeout" {
 		return context.DeadlineExceeded

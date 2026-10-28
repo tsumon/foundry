@@ -252,7 +252,7 @@ func executeC4Lifecycle(ctx context.Context, o domain.C4Operation, d c4Lifecycle
 	if ctx.Err() != nil {
 		return finish(domain.C4Result{Class: "interrupted"}, id)
 	}
-	execCtx, cancelExec := context.WithTimeout(ctx, 120*time.Second)
+	execCtx, cancelExec := context.WithTimeout(ctx, d.executionTimeout())
 	defer cancelExec()
 	if err = d.start(execCtx, id); err != nil {
 		r := c4StartFailure(err)

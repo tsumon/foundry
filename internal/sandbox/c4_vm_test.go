@@ -8,6 +8,7 @@ import (
 	"foundry/internal/vmruntime"
 	"strings"
 	"testing"
+	"time"
 )
 
 type vmTestSession struct {
@@ -15,11 +16,19 @@ type vmTestSession struct {
 	r                      c4verify.Result
 	valid, started, closed bool
 	closeErr               error
+	startCtx, waitCtx      context.Context
+	cancelOnStart          context.CancelFunc
 }
 
-func (s *vmTestSession) ID() string                      { return strings.Repeat("d", 64) }
-func (s *vmTestSession) Start(context.Context) error     { s.started = true; return nil }
-func (s *vmTestSession) Wait(context.Context) error      { return nil }
+func (s *vmTestSession) ID() string { return strings.Repeat("d", 64) }
+func (s *vmTestSession) Start(ctx context.Context) error {
+	s.startCtx, s.started = ctx, true
+	if s.cancelOnStart != nil {
+		s.cancelOnStart()
+	}
+	return nil
+}
+func (s *vmTestSession) Wait(ctx context.Context) error  { s.waitCtx = ctx; return ctx.Err() }
 func (s *vmTestSession) Result() (c4verify.Result, bool) { return s.r, s.valid && s.started }
 func (s *vmTestSession) Running() bool                   { return false }
 func (s *vmTestSession) Close(context.Context) error {
@@ -151,4 +160,110 @@ func TestVMV2TruncatedFailureNeverRepairs(t *testing.T) {
 	if r := classifyC4(v, nil, nil); r.Class != "infrastructure_failed" {
 		t.Fatal("truncated failure eligible for repair", r)
 	}
+}
+
+func assertC4ExecutionDeadline(t *testing.T, ctx context.Context, before, after time.Time, seconds int) time.Time {
+	t.Helper()
+	if ctx == nil {
+		t.Fatal("execution context not forwarded")
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok || deadline.Before(before.Add(time.Duration(seconds)*time.Second)) || deadline.After(after.Add(time.Duration(seconds)*time.Second)) {
+		t.Fatalf("wrong execution window: deadline=%v want=[%v,%v]", deadline, before.Add(time.Duration(seconds)*time.Second), after.Add(time.Duration(seconds)*time.Second))
+	}
+	return deadline
+}
+
+func TestC4VMLifecycleUsesV2LifetimeForStartAndWaitOnly(t *testing.T) {
+	for _, profile := range []string{"", "c4_node_model_v2", "c4_typescript_model_v2", "c4_python_model_v2", "unknown"} {
+		t.Run("profile="+profile, func(t *testing.T) {
+			for _, parentKind := range []string{"unbounded", "earlier", "cancel-during-start", "already-cancelled"} {
+				t.Run(parentKind, func(t *testing.T) {
+					h := newC4Harness(t)
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+					if parentKind == "earlier" {
+						var stop context.CancelFunc
+						ctx, stop = context.WithTimeout(ctx, time.Minute)
+						defer stop()
+					}
+					if parentKind == "already-cancelled" {
+						cancel()
+					}
+					q := vmRequest(h.op, h.candidate)
+					s := &vmTestSession{q: q, valid: true, r: c4verify.Result{Class: "passed", ExitCode: 0, Tests: 2}}
+					if parentKind == "cancel-during-start" {
+						s.cancelOnStart = cancel
+					}
+					d := &vmTestLifecycle{c4VMLifecycle: &c4VMLifecycle{request: q, session: s}}
+					if profile != "" {
+						d.requestV2 = &vmruntime.RequestV2{Owner: q, Profile: domain.C4Profile{SchemaVersion: 2, ID: profile}}
+					}
+					before := time.Now()
+					o, e := executeC4Lifecycle(ctx, h.op, d, h.persist)
+					after := time.Now()
+					if parentKind == "already-cancelled" {
+						if e == nil || d.created != 0 || s.startCtx != nil || s.waitCtx != nil || o.Passed() {
+							t.Fatal("cancelled parent authorized effects", o, e)
+						}
+						return
+					}
+					if s.startCtx == nil || s.waitCtx != s.startCtx || d.created != 1 || !s.closed || o.CleanupState() != "confirmed" {
+						t.Fatal("lost shared execution context or owned cleanup", o, e)
+					}
+					if parentKind == "earlier" {
+						want, _ := ctx.Deadline()
+						got, _ := s.startCtx.Deadline()
+						if !got.Equal(want) {
+							t.Fatal("earlier parent deadline replaced", got, want)
+						}
+					} else {
+						seconds := 120
+						if profile != "" && profile != "unknown" {
+							seconds = 180
+						}
+						assertC4ExecutionDeadline(t, s.startCtx, before, after, seconds)
+					}
+					if parentKind == "cancel-during-start" {
+						if e == nil || s.waitCtx.Err() != context.Canceled || o.Result == nil || o.Result.Class != "interrupted" || o.Passed() {
+							t.Fatal("parent cancellation became success", o, e)
+						}
+					} else if e != nil || !o.Passed() {
+						t.Fatal("inert lifecycle fixture failed", o, e)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestC4CommandLifecyclesKeepStartAndWaitAt120Seconds(t *testing.T) {
+	t.Run("synthetic", func(t *testing.T) {
+		h := newC4Harness(t)
+		before := time.Now()
+		o, e := h.run()
+		after := time.Now()
+		if e != nil || !o.Passed() || h.driver.startCtx != h.driver.waitCtx {
+			t.Fatal("synthetic lifecycle failed", o, e)
+		}
+		assertC4ExecutionDeadline(t, h.driver.startCtx, before, after, 120)
+	})
+	t.Run("docker-process-fixture", func(t *testing.T) {
+		h, f, trust := newC4DockerHarness(t)
+		before := time.Now()
+		o, e := runC4DockerHarness(h, f, trust)
+		after := time.Now()
+		if e != nil || !o.Passed() {
+			t.Fatal("inert Docker lifecycle failed", o, e)
+		}
+		var deadlines []time.Time
+		for i, step := range f.steps {
+			if len(step.args) >= 4 && step.args[2] == "container" && (step.args[3] == "start" || step.args[3] == "wait") {
+				deadlines = append(deadlines, assertC4ExecutionDeadline(t, f.contexts[i], before, after, 120))
+			}
+		}
+		if len(deadlines) != 2 || !deadlines[0].Equal(deadlines[1]) {
+			t.Fatal("Docker start/wait did not share the unchanged window", deadlines)
+		}
+	})
 }

@@ -17,14 +17,16 @@ type c4ProcessStep struct {
 	err         error
 }
 type c4ScriptProcess struct {
-	t     *testing.T
-	steps []c4ProcessStep
-	calls int
-	trace *[]string
+	t        *testing.T
+	steps    []c4ProcessStep
+	calls    int
+	trace    *[]string
+	contexts []context.Context
 }
 
 func (f *c4ScriptProcess) Run(ctx context.Context, c C4Command, out, stderr io.Writer) (int, error) {
 	f.t.Helper()
+	f.contexts = append(f.contexts, ctx)
 	if f.calls >= len(f.steps) {
 		f.t.Fatalf("unexpected process: %+v", c)
 	}

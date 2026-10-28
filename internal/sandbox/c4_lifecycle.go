@@ -2,12 +2,15 @@ package sandbox
 
 import (
 	"context"
+	"foundry/internal/domain"
 	"io"
+	"time"
 )
 
 // c4Lifecycle is backend-neutral and private. Production wrappers establish
 // provenance before entering the shared durable state machine.
 type c4Lifecycle interface {
+	executionTimeout() time.Duration
 	create(context.Context) (string, error)
 	start(context.Context, string) error
 	wait(context.Context, string) error
@@ -19,6 +22,10 @@ type c4Lifecycle interface {
 type c4CommandLifecycle struct {
 	plan   C4Plan
 	driver C4Driver
+}
+
+func (d c4CommandLifecycle) executionTimeout() time.Duration {
+	return time.Duration(domain.FixedC4Policy().TimeoutSeconds) * time.Second
 }
 
 func (d c4CommandLifecycle) create(ctx context.Context) (string, error) {

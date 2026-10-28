@@ -103,6 +103,17 @@ type c4VMLifecycle struct {
 	session   c4VMSession
 }
 
+func (d *c4VMLifecycle) executionTimeout() time.Duration {
+	if d.requestV2 != nil && d.requestV2.Profile.SchemaVersion == 2 {
+		if policy, err := domain.FixedC4VMPolicyV2(d.requestV2.Profile.ID); err == nil {
+			// The guest owns the unchanged test deadline. The host must retain
+			// the existing VM envelope for boot, transfer, cleanup and response.
+			return time.Duration(policy.LifetimeSeconds) * time.Second
+		}
+	}
+	return time.Duration(domain.FixedC4Policy().TimeoutSeconds) * time.Second
+}
+
 func (d *c4VMLifecycle) create(ctx context.Context) (string, error) {
 	if d.runtime == nil || d.session != nil {
 		return "", ErrC4Execution
