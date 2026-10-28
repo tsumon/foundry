@@ -10,6 +10,7 @@ import (
 	"foundry/internal/engine"
 	"foundry/internal/model"
 	"foundry/internal/platformfs"
+	"foundry/internal/sandbox"
 	"foundry/internal/store"
 	"foundry/internal/vmruntime"
 	"foundry/internal/workspace"
@@ -319,15 +320,9 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		return
 	}
 	m, err = controller.ExecuteC4Baseline(ctx, m.ID, m.Revision, op.ID, op.MaterialDigest)
-	if err != nil {
-		return
-	}
-	if c.Profile != "" && f.expectedClass != "" {
-		err = finishV2Baseline(ctx, &summary, m, vm, f, source, filepath.Join(c.DataDir, "engine", "missions", m.ID, "base"), filepath.Join(c.DataDir, "engine", "dependency-bundles"), fixture, lease)
-		return
-	}
-	if len(m.C4Operations) != 1 || !m.C4Operations[0].Passed() || m.C4Operations[0].Result.Tests != f.expectedTests {
-		err = errors.New("native_baseline_not_two_passes")
+	var baselineFinished bool
+	baselineFinished, err = finishBaseline(ctx, &summary, m, vm, f, source, filepath.Join(c.DataDir, "engine", "missions", m.ID, "base"), filepath.Join(c.DataDir, "engine", "dependency-bundles"), fixture, lease, err)
+	if baselineFinished {
 		return
 	}
 	summary.Stage = "plan"
@@ -523,6 +518,27 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	summary.Stage = "complete"
 	summary.Passed = true
 	return
+}
+
+// finishBaseline is the post-execution boundary shared by v1 and v2. It never
+// creates or executes a VM; terminal fixture success still requires owned facts.
+func finishBaseline(ctx context.Context, summary *Summary, m domain.Mission, vm *vmruntime.Runtime, f fixtureSpec, source, base, dependencyRoot string, fixture *localFixture, lease *fixtureLease, executionErr error) (bool, error) {
+	if executionErr != nil {
+		closed, selectionErr := selectFixture(f.profile, f.caseID)
+		// The production engine intentionally returns this exact sentinel for a
+		// completed non-pass. Wrapped/joined storage or lifecycle errors are not
+		// that contract. An expected negative still needs every native/input check.
+		if executionErr != sandbox.ErrC4Execution || selectionErr != nil || closed.expectedClass == "" || closed.expectedClass == "passed" || f.expectedClass != closed.expectedClass || f.expectedTests != closed.expectedTests {
+			return true, executionErr
+		}
+	}
+	if f.profile != "" && f.expectedClass != "" {
+		return true, finishV2Baseline(ctx, summary, m, vm, f, source, base, dependencyRoot, fixture, lease)
+	}
+	if len(m.C4Operations) != 1 || !m.C4Operations[0].Passed() || m.C4Operations[0].Result.Tests != f.expectedTests {
+		return true, errors.New("native_baseline_not_two_passes")
+	}
+	return false, nil
 }
 
 func registerFixture(s *store.Store, base string) error {
