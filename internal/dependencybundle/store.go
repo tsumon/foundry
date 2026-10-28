@@ -451,7 +451,7 @@ func importFrozen(ctx context.Context, root, sourceDir string, m Manifest, syncP
 	if !unchanged(before, after) {
 		return result, ErrIntegrity
 	}
-	if e = verifyRoot(ctx, stage, binding, nil); e != nil {
+	if e = verifyRoot(ctx, stage, binding, nil, nil); e != nil {
 		return result, e
 	}
 	if e = syncDirectories(ctx, stage, m); e != nil {
@@ -557,6 +557,21 @@ func Verify(ctx context.Context, root string, b Binding) error {
 // A callback may receive earlier verified files before a later error; callers must
 // discard any incomplete transfer and only commit after ReadVerified returns nil.
 func ReadVerified(ctx context.Context, root string, b Binding, emit func(File, []byte) error) error {
+	return readVerified(ctx, root, b, emit, nil)
+}
+
+// DescribeVerified returns the canonical manifest only after full payload,
+// inventory and directory identity verification. Transfer must call ReadVerified
+// again; this description is not authority for subsequently mutable store files.
+func DescribeVerified(ctx context.Context, root string, b Binding) (Manifest, error) {
+	var m Manifest
+	if err := readVerified(ctx, root, b, nil, &m); err != nil {
+		return Manifest{}, err
+	}
+	return m, nil
+}
+
+func readVerified(ctx context.Context, root string, b Binding, emit func(File, []byte) error, description *Manifest) error {
 	if e := checkContext(ctx); e != nil {
 		return e
 	}
@@ -584,7 +599,7 @@ func ReadVerified(ctx context.Context, root string, b Binding, emit func(File, [
 	if privateDirectory(filepath.Join(root, b.BundleDigest), opened) != nil {
 		return ErrIntegrity
 	}
-	if e = verifyRoot(ctx, r, b, emit); e != nil {
+	if e = verifyRoot(ctx, r, b, emit, description); e != nil {
 		return e
 	}
 	named, e := store.root.Lstat(b.BundleDigest)
@@ -593,7 +608,7 @@ func ReadVerified(ctx context.Context, root string, b Binding, emit func(File, [
 	}
 	return checkNamed(root, store)
 }
-func verifyRoot(ctx context.Context, r *os.Root, b Binding, emit func(File, []byte) error) error {
+func verifyRoot(ctx context.Context, r *os.Root, b Binding, emit func(File, []byte) error, description *Manifest) error {
 	meta, manifestInfo, e := openFile(r, "manifest.json")
 	if e != nil {
 		return e
@@ -691,7 +706,13 @@ func verifyRoot(ctx context.Context, r *os.Root, b Binding, emit func(File, []by
 	if !unchanged(before, after) {
 		return ErrIntegrity
 	}
-	return checkContext(ctx)
+	if e = checkContext(ctx); e != nil {
+		return e
+	}
+	if description != nil {
+		*description = m
+	}
+	return nil
 }
 
 // decodeManifest bounds the file slice before appending any untrusted records.
