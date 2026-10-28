@@ -87,6 +87,8 @@ Choose **Controlled Coding Workbench** in the application menu. It has its own p
 
 **The current scope is bounded, standard-library Go projects—not arbitrary stacks.** Both hosts test inside Linux; this does not validate native DMG/EXE, browser or mobile applications. There is no package installation, guest networking, host filesystem share, source-checkout write or protected-test edit. Credential expiry, quota exhaustion, ambiguous outcomes and unconfirmed shutdown stop the task: no automatic retry, refresh or paid-API substitution. Call-count and time limits are not monetary caps. See the [sandbox design](docs/public/embedded-sandbox.md) and [desktop guide](docs/public/desktop-guide.md).
 
+**Verified real path (2026-10-28):** On Mac, the local CPA entry configured in Magpie served `grok-4.6` for research → planning → code change → built-in VM tests → QA/audit → patch delivery. Five real model calls; baseline and candidate each passed 14 tests. Protected tests and the source checkout stayed unchanged. The first candidate passed, so real Debugger repair was not exercised; failure/repair/recheck has local protocol regression coverage. [Read the acceptance scope and evidence summary](docs/public/compatible-api-acceptance.md).
+
 An existing Docker environment can be explicitly selected for a **new task** on the supported Mac path. Its immutable image, readiness and approval material are separate; a VM approval never authorizes Docker.
 
 ## Try the workflow without an account
@@ -137,7 +139,7 @@ database. See the [upgrade compatibility design](docs/public/desktop-parity-upgr
 | Approvals and recovery | Controller-bound revisions/digests; restart never replays unknown outcomes or widens permission |
 | MCP / Skills / hooks | Management, discovery and static descriptions; source CLI has an independently approved local MCP fixture. Desktop simulation enables no external tool execution |
 | Optional Docker | Explicit Mac selection of an existing immutable image, separate readiness/baseline/candidate approvals; Windows Docker remains closed, never a fallback |
-| Real models / subscriptions | Production protocol wired; real-account acceptance requires separate authorization. Tasks never implicitly log in, query catalogs, refresh, retry or switch to paid APIs |
+| Real models / subscriptions | Mac local CPA/Grok real code delivery accepted; OpenAI subscriptions remain experimental. Tasks never implicitly log in, query catalogs, refresh, retry or switch to paid APIs |
 | Automatic apply / Git writes / deployment / migrations | **Not provided**; exported patches are handled outside the product |
 
 Roles assign responsibilities, not permissions. Model reviews are not test evidence, and a synthetic pass does not verify a real project. See [Alpha status](docs/public/alpha-status.md) for the full support boundary.

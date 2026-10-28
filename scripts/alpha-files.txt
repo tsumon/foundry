@@ -1,6 +1,7 @@
 .github/workflows/verify.yml
 docs/public/api-key-coding.md
 docs/public/api-key-coding-plan.md
+docs/public/compatible-api-acceptance.md
 web/src/components/OpenAIAPISetup.tsx
 web/src/components/OpenAIAPISetup.test.tsx
 docs/public/session-renewal.md

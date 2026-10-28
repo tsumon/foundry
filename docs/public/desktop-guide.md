@@ -177,8 +177,10 @@ The current task defaults are a finite 16-call budget and at most two repairs.
 Usage is recorded, not a promise of available subscription quota. A transport
 timeout or response-size bound is not an output-token or spending hard cap.
 Expiry, allowance exhaustion and unknown outcomes stop without automatic retry,
-refresh or paid fallback. Real-account end-to-end acceptance remains separately
-authorized and is not implied by local integration tests or an installer.
+refresh or paid fallback. The [Mac CPA/Grok acceptance](compatible-api-acceptance.md)
+records a real five-role code delivery with passing VM tests. It is distinct from
+local protocol fixtures and Windows installation/VM tests; subscription inference
+is not certified by that result.
 See [coding design](live-coding.md) for the exact authority and failure model.
 
 After delivery, that model-backed task is a read-only historical result: download

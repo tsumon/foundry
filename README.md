@@ -87,7 +87,9 @@ Mac 包使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Win
 
 **当前范围是使用标准库的受限 Go 项目，不是任意技术栈。** Mac 和 Windows 都运行 Linux 客户系统中的测试，不等于验证原生 DMG、EXE、浏览器或移动应用。没有依赖安装、主机共享目录或客户系统网络，不改原仓库或受保护测试。凭据过期、额度不足、结果不明或沙盒关闭未确认就停止；不会自动重试、刷新或改用收费 API。调用次数与超时不是费用硬上限。见[内置沙盒设计](docs/public/embedded-sandbox.md)和[使用指南](docs/public/desktop-guide.md)。
 
-API Key 在 Mac 保存到 Keychain、Windows 保存到 Credential Manager，不落明文文件或浏览器存储。调用预算限制发送次数，不是金额硬上限；请同时设置供应商项目支出限额。既有订阅任务、预算及证据原样保留，使用 API 应创建独立任务。协议与失败修复回归使用本地服务，**真实付费 API 编码闭环仍待验收**。实验性登录见[订阅工作台](docs/public/mac-subscription-workbench.md)。
+**已验证的真实路径（2026-10-28）：** Mac 上通过 Magpie 中配置的本地 CPA，使用 `grok-4.6` 完成调研 → 计划 → 代码修改 → 内置 VM 测试 → QA/审计 → 补丁交付。5 次真实模型调用，基线与候选各 14 项测试通过；受保护测试和原仓库未改。首版候选通过，未触发真实 Debugger；失败修复复验有本地协议回归。[查看验收范围与证据摘要](docs/public/compatible-api-acceptance.md)。
+
+API Key 在 Mac 保存到 Keychain、Windows 保存到 Credential Manager，不落明文文件或浏览器存储。调用预算限制发送次数，不是金额硬上限；请同时设置供应商项目支出限额。既有订阅任务、预算及证据原样保留，使用 API 应创建独立任务。实验性登录见[订阅工作台](docs/public/mac-subscription-workbench.md)。
 
 ### 升级应用，不重写你的任务
 
@@ -129,7 +131,7 @@ Mac / Windows 受控桌面支持[独立会话续期](docs/public/session-renewal
 | 审批与恢复 | 控制器绑定 revision/digest；重启不自动重放未知结果或扩大授权 |
 | MCP / Skills / hooks | 管理、发现与静态说明；源码 CLI 有单独获批的本地 MCP fixture。桌面演示不启用外部工具执行 |
 | 可选 Docker | Mac 显式选择已有固定镜像，独立就绪、基线和候选审批；Windows Docker 仍关闭，不作为兜底 |
-| 真实模型 / 订阅 | 生产协议已接线；真实账户验收另行授权。任务不隐式登录、查目录、刷新、重试或切换收费 API |
+| 真实模型 / 订阅 | Mac 本地 CPA/Grok 已完成真实代码交付验收；OpenAI 订阅仍为实验性。任务不隐式登录、查目录、刷新、重试或切换收费 API |
 | 自动 apply / Git 写入 / 部署 / 数据库迁移 | **不提供**；导出的 patch 由你在产品外处理 |
 
 角色是职责，不是权限来源。模型审查不等于测试证据，模拟通过不等于真实项目已验证。完整范围见 [Alpha 状态](docs/public/alpha-status.md)。

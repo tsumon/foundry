@@ -56,8 +56,11 @@ Local protocol fixtures cover API dispatch through the production router and
 engine: Researcher, Planner, Worker, failed candidate, Debugger, recheck, QA,
 Auditor and sealed delivery. Native installer checks are separate from real
 provider acceptance. A working local fixture is not a successful paid API call.
-Real API acceptance needs a user-supplied project key and an explicitly budgeted
-task. No claim of a completed real-model coding loop is made until that succeeds.
+The [2026-10-28 Mac acceptance](compatible-api-acceptance.md) completed a real
+CPA/Grok-backed code change, VM tests, QA/Auditor review and sealed delivery in
+five successful calls. The candidate passed on its first run; real-provider
+Debugger repair remains untested. This does not certify every compatible gateway
+or the separate experimental subscription transport.
 
 Protocol references: [authentication](https://developers.openai.com/api/reference/overview),
 [Responses](https://developers.openai.com/api/reference/resources/responses/methods/create).
