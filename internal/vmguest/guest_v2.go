@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type phaseRequestV2 struct {
@@ -20,7 +21,29 @@ type phaseRequestV2 struct {
 type phaseOutcomeV2 struct {
 	Process                       frameworkreport.Result
 	CleanupConfirmed, ResourcesOK bool
+	FailureStage                  failureStageV2
 }
+type failureStageV2 string
+
+const (
+	cleanupFailedV2     failureStageV2 = "cleanup_failed"
+	cleanupDeadlineV2   failureStageV2 = "cleanup_deadline"
+	waitFailedV2        failureStageV2 = "child_wait_failed"
+	waitDeadlineV2      failureStageV2 = "child_wait_deadline"
+	resourcesFailedV2   failureStageV2 = "resources_failed"
+	resourcesDeadlineV2 failureStageV2 = "resources_deadline"
+	drainFailedV2       failureStageV2 = "stream_failed"
+	drainDeadlineV2     failureStageV2 = "stream_deadline"
+)
+
+func (s failureStageV2) valid() bool {
+	switch s {
+	case cleanupFailedV2, cleanupDeadlineV2, waitFailedV2, waitDeadlineV2, resourcesFailedV2, resourcesDeadlineV2, drainFailedV2, drainDeadlineV2:
+		return true
+	}
+	return false
+}
+
 type phaseExecutorV2 interface {
 	Run(context.Context, phaseRequestV2, io.Writer, io.Writer, io.Writer) phaseOutcomeV2
 }
@@ -106,6 +129,7 @@ type diagnosticsV2 struct {
 	mu             sync.Mutex
 	data           []byte
 	stdout, stderr bool
+	sealed         bool
 }
 type diagnosticWriterV2 struct {
 	budget *diagnosticsV2
@@ -117,6 +141,9 @@ func (w diagnosticWriterV2) Write(b []byte) (int, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	n := len(b)
+	if d.sealed {
+		return n, nil
+	}
 	left := c4verify.OutputLimit - len(d.data)
 	if len(b) > left {
 		if w.stderr {
@@ -133,6 +160,12 @@ func (d *diagnosticsV2) facts() (string, bool, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return strings.ToValidUTF8(string(d.data), "?"), d.stdout, d.stderr
+}
+func (d *diagnosticsV2) seal() (string, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.sealed = true
+	return strings.ToValidUTF8(string(d.data), "?"), d.stdout || d.stderr
 }
 func phasesV2(q vmruntime.WireRequestV2) []phaseV2 {
 	if q.Action == "probe" {
@@ -189,6 +222,8 @@ func runPhasesV2(ctx context.Context, q vmruntime.WireRequestV2, exec phaseExecu
 	out, errOut := diagnosticWriterV2{budget: d}, diagnosticWriterV2{budget: d, stderr: true}
 	result := c4verify.Result{Class: "infrastructure_failed"}
 	phases := []vmruntime.PhaseEvidenceV2{}
+	var failedPhase phaseV2
+	var failure failureStageV2
 	for _, p := range phasesV2(q) {
 		runner := frameworkreport.NodeTestV2
 		if p == testPythonV2 {
@@ -200,6 +235,7 @@ func runPhasesV2(ctx context.Context, q vmruntime.WireRequestV2, exec phaseExecu
 			report = parser
 		}
 		o := exec.Run(work, phaseRequestV2{p, phaseContractV2(q, p)}, out, errOut, report)
+		failedPhase, failure = p, o.FailureStage
 		if !o.CleanupConfirmed {
 			checks.PhaseCleanupConfirmed = false
 		}
@@ -238,6 +274,21 @@ func runPhasesV2(ctx context.Context, q vmruntime.WireRequestV2, exec phaseExecu
 		if p.probe() {
 			result.Class = "probe_passed"
 		}
+	}
+	// Freeze diagnostics after the terminal verdict; late drains cannot alter it.
+	output, truncated := d.seal()
+	result.Output = output
+	result.Truncated = result.Truncated || truncated
+	if (result.Class == "infrastructure_failed" || result.Class == "timeout") && failure.valid() && failedPhase.valid() {
+		annotation := "\n[foundry-v2 phase=" + string(failedPhase) + " stage=" + string(failure) + "]\n"
+		if n := c4verify.OutputLimit - len(annotation); len(result.Output) > n {
+			for !utf8.ValidString(result.Output[:n]) {
+				n--
+			}
+			result.Output = result.Output[:n]
+			result.Truncated = true
+		}
+		result.Output += annotation
 	}
 	return result, phases
 }

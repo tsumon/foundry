@@ -137,8 +137,7 @@ func (m *linuxMachineV2) Run(ctx context.Context, r phaseRequestV2, stdout, stde
 		return checkCounterV2(events, "populated")
 	}
 	if e = cmd.Start(); e != nil {
-		cleaned := cleanup() == nil
-		return phaseOutcomeV2{Process: frameworkreport.Result{Err: e}, CleanupConfirmed: cleaned, ResourcesOK: phaseResourcesLinuxV2(group) == nil}
+		return finalizeStartFailureV2(ctx, e, cleanup, func() error { return phaseResourcesLinuxV2(group) })
 	}
 	outW.Close()
 	errW.Close()

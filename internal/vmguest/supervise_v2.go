@@ -47,7 +47,7 @@ type drainResultV2 struct {
 // Wait observes only the direct process, never the pipe drains. Its stdout and
 // stderr must be native files, so Cmd.Wait has no implicit copier to wait for.
 // Every termination path retires the group before waiting for bounded EOF.
-func superviseV2(ctx context.Context, s phaseStreamsV2, wait func() frameworkreport.Result, cleanup, resources func() error, stdout, stderr, report io.Writer, drainTimeout time.Duration) (o phaseOutcomeV2) {
+func superviseV2(ctx context.Context, s phaseStreamsV2, wait func() frameworkreport.Result, cleanup, resources func() error, stdout, stderr, report io.Writer, finalizationTimeout time.Duration) (o phaseOutcomeV2) {
 	defer func() {
 		if ctx.Err() == context.DeadlineExceeded {
 			o.Process.DeadlineExceeded = true
@@ -110,53 +110,122 @@ func superviseV2(ctx context.Context, s phaseStreamsV2, wait func() frameworkrep
 	case <-ctx.Done():
 	case <-invalid:
 		o.Process.Err = errGuestV2
+		o.FailureStage = drainFailedV2
 	}
-	if e := cleanup(); e == nil {
-		o.CleanupConfirmed = true
-	} else {
-		o.Process.Err = errGuestV2
+	// The expired work context still permits one bounded exact-group cleanup.
+	// Every finalization stage consumes this same deadline, never a fresh timer.
+	deadline := time.Now().Add(finalizationTimeout)
+	timer := time.NewTimer(finalizationTimeout)
+	defer timer.Stop()
+	fail := func(stage failureStageV2) {
+		// An exhausted finalization boundary must remain visible even when the
+		// child or an earlier returning control already reported a failure.
+		switch stage {
+		case cleanupDeadlineV2, waitDeadlineV2, resourcesDeadlineV2, drainDeadlineV2:
+			o.FailureStage = stage
+		default:
+			if o.FailureStage == "" {
+				o.FailureStage = stage
+			}
+		}
+		if o.Process.Err == nil {
+			o.Process.Err = errGuestV2
+		}
+	}
+	// Close cannot hold the finalization owner beyond its deadline. Native
+	// callers supply owned pipe handles; late close/drain results grant no facts.
+	defer func() {
+		for _, r := range streams {
+			if r != nil {
+				go r.Close()
+			}
+		}
+	}()
+	control := func(fn func() error, failure, timeout failureStageV2) (bool, bool) {
+		if !time.Now().Before(deadline) {
+			fail(timeout)
+			return false, true
+		}
+		done := make(chan error, 1)
+		go func() { done <- fn() }()
+		select {
+		case e := <-done:
+			// A ready result cannot win a select against an already-expired timer.
+			if !time.Now().Before(deadline) {
+				fail(timeout)
+				return false, true
+			}
+			if e != nil {
+				fail(failure)
+				return false, false
+			}
+			return true, false
+		case <-timer.C:
+			fail(timeout)
+			return false, true
+		}
+	}
+	var expired bool
+	if o.CleanupConfirmed, expired = control(cleanup, cleanupFailedV2, cleanupDeadlineV2); expired {
+		o.Process.ReportTruncated = s.report != nil
+		return o
 	}
 	if !gotExit {
-		timer := time.NewTimer(drainTimeout)
 		select {
 		case p := <-exit:
+			if !time.Now().Before(deadline) {
+				fail(waitDeadlineV2)
+				o.Process.ReportTruncated = s.report != nil
+				return o
+			}
 			prior := o.Process.Err
 			o.Process = p
 			if prior != nil {
 				o.Process.Err = prior
 			}
 		case <-timer.C:
-			o.Process.Err = errGuestV2
+			fail(waitDeadlineV2)
+			o.Process.ReportTruncated = s.report != nil
+			return o
 		}
-		timer.Stop()
 	}
-	if e := resources(); e == nil {
-		o.ResourcesOK = true
-	} else {
-		o.Process.Err = errGuestV2
+	if o.Process.Err != nil && o.FailureStage == "" {
+		o.FailureStage = waitFailedV2
 	}
-
-	timer := time.NewTimer(drainTimeout)
-	defer timer.Stop()
+	if o.ResourcesOK, expired = control(resources, resourcesFailedV2, resourcesDeadlineV2); expired {
+		o.Process.ReportTruncated = s.report != nil
+		return o
+	}
 	for i := 0; i < count; i++ {
 		select {
 		case d := <-drains:
+			if !time.Now().Before(deadline) {
+				fail(drainDeadlineV2)
+				o.Process.ReportTruncated = s.report != nil
+				return o
+			}
 			if d.err != nil {
-				o.Process.Err = errGuestV2
+				fail(drainFailedV2)
 				if d.report {
 					o.Process.ReportTruncated = true
 				}
 			}
 		case <-timer.C:
-			for _, r := range streams {
-				if r != nil {
-					_ = r.Close()
-				}
-			}
-			o.Process.Err = errGuestV2
+			fail(drainDeadlineV2)
 			o.Process.ReportTruncated = s.report != nil
 			return o
 		}
 	}
+	return o
+}
+
+// A failed Start owns no child exit or streams, but still owns its exact group.
+func finalizeStartFailureV2(ctx context.Context, startErr error, cleanup, resources func() error) phaseOutcomeV2 {
+	o := superviseV2(ctx, phaseStreamsV2{}, func() frameworkreport.Result {
+		return frameworkreport.Result{Err: startErr}
+	}, cleanup, resources, io.Discard, io.Discard, io.Discard, time.Second)
+	// A canceled context may win before the inert wait result is observed.
+	// Start's known error remains authoritative; no child exit is invented.
+	o.Process.Err = startErr
 	return o
 }
