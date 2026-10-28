@@ -31,6 +31,7 @@ type C4Profile struct {
 	Endpoint       string        `json:"endpoint"`
 	Verifier       string        `json:"verifier"`
 	EmbeddedVM     *C4VMIdentity `json:"embedded_vm,omitempty"`
+	V2             *C4ProfileV2  `json:"v2,omitempty"`
 }
 
 type C4Tmpfs struct {
@@ -82,6 +83,9 @@ func c4Digest(kind string, value any) string {
 }
 
 func (p C4Profile) ProfileDigest() string {
+	if p.SchemaVersion == 2 {
+		return p.profileDigestV2()
+	}
 	if p.Mode == "embedded_vm" {
 		return c4Digest("vm-profile", struct {
 			Profile C4Profile  `json:"profile"`
@@ -197,8 +201,14 @@ func c4Absolute(p string) bool {
 }
 
 func (p C4Profile) Validate() error {
+	if p.SchemaVersion == 2 {
+		return p.validateV2()
+	}
+	if p.V2 != nil {
+		return errors.New("unexpected v2 profile material")
+	}
 	if p.Mode == "embedded_vm" {
-		if p.SchemaVersion != 1 || p.ControlVersion != 1 || p.ID != "c4_go_model_v1" || p.ImageID != "" || p.DockerPath != "" || p.Endpoint != "" || p.Verifier != "/opt/foundry/verify-go-v1" || p.EmbeddedVM == nil || p.EmbeddedVM.Validate() != nil || p.Platform != p.EmbeddedVM.GuestPlatform {
+		if p.SchemaVersion != 1 || p.ControlVersion != 1 || p.ID != "c4_go_model_v1" || p.ImageID != "" || p.DockerPath != "" || p.Endpoint != "" || p.Verifier != "/opt/foundry/verify-go-v1" || p.EmbeddedVM == nil || p.EmbeddedVM.SchemaVersion != 1 || p.EmbeddedVM.Validate() != nil || p.Platform != p.EmbeddedVM.GuestPlatform {
 			return errors.New("invalid or unsupported VM profile")
 		}
 		return nil

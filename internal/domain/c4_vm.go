@@ -17,7 +17,9 @@ type C4VMIdentity struct {
 }
 
 func (v C4VMIdentity) Validate() error {
-	if v.SchemaVersion != 1 || v.Protocol != "foundry-vm-v1" || v.PolicyVersion != "go-vm-v1" || !(v.HostPlatform == "darwin/arm64" && v.GuestPlatform == "linux/arm64" || v.HostPlatform == "windows/amd64" && v.GuestPlatform == "linux/amd64") {
+	versionOK := v.SchemaVersion == 1 && v.Protocol == "foundry-vm-v1" && v.PolicyVersion == "go-vm-v1" ||
+		v.SchemaVersion == 2 && v.Protocol == "foundry-vm-v2" && v.PolicyVersion == "multilang-vm-v2"
+	if !versionOK || !(v.HostPlatform == "darwin/arm64" && v.GuestPlatform == "linux/arm64" || v.HostPlatform == "windows/amd64" && v.GuestPlatform == "linux/amd64") {
 		return errors.New("unsupported VM identity")
 	}
 	for _, digest := range []string{v.ManifestDigest, v.RuntimeDigest, v.KernelDigest, v.RootFSDigest, v.VerifierDigest} {
