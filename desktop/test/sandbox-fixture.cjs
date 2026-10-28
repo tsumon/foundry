@@ -11,6 +11,7 @@ const { compileFunction } = require("node:vm");
 function loadDesktopFixtureModule(
   name,
   host = process.platform === "win32" ? "windows/amd64" : "darwin/arm64",
+  extractedRuntimeRoot,
 ) {
   const platforms = {
     "darwin/arm64": { platform: "darwin", arch: "arm64" },
@@ -18,26 +19,27 @@ function loadDesktopFixtureModule(
   };
   if (!Object.hasOwn(platforms, host)) throw Error("Unsupported fixture host");
   const directory = path.resolve(__dirname, ".."),
-    files = new Set(["runtime.cjs", "native-vm-smoke.cjs"]),
+    files = new Set(["runtime.cjs", "native-vm-smoke.cjs", "upgrade-smoke.cjs"]),
     cache = new Map(),
     fixtureProcess = Object.create(process);
   Object.defineProperties(fixtureProcess, {
     platform: { value: platforms[host].platform },
     arch: { value: platforms[host].arch },
   });
+  if (extractedRuntimeRoot !== undefined && (!path.isAbsolute(extractedRuntimeRoot) || path.resolve(extractedRuntimeRoot) !== extractedRuntimeRoot)) throw Error("Absolute extracted fixture runtime root required");
+  function fixtureFile(file) {
+    return (path.dirname(file) === directory && files.has(path.basename(file))) ||
+      (path.dirname(file) === extractedRuntimeRoot && path.basename(file) === "runtime.cjs");
+  }
   function load(file) {
-    if (!files.has(path.basename(file)) || path.dirname(file) !== directory)
-      throw Error("Unsupported fixture module");
+    if (!fixtureFile(file)) throw Error("Unsupported fixture module");
     if (cache.has(file)) return cache.get(file).exports;
     const fixtureModule = { exports: {} },
       originalRequire = createRequire(file);
     cache.set(file, fixtureModule);
     function fixtureRequire(request) {
       const resolved = originalRequire.resolve(request);
-      return path.dirname(resolved) === directory &&
-        files.has(path.basename(resolved))
-        ? load(resolved)
-        : originalRequire(request);
+      return fixtureFile(resolved) ? load(resolved) : originalRequire(request);
     }
     fixtureRequire.main = require.main;
     compileFunction(
@@ -98,7 +100,7 @@ function sandboxFixture(
   fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(manifest));
   return manifest;
 }
-function v2Fixture(root,host='darwin/arm64') {
+function v2Fixture(root,host=process.platform === 'win32' ? 'windows/amd64' : 'darwin/arm64') {
   const m=sandboxFixture(root,host);m.schema_version=2;m.protocol='foundry-vm-v2';m.policy_version='multilang-vm-v2';
   fs.renameSync(path.join(root,m.verifier),path.join(root,'foundry-vm-guest-v2'));m.assets.find(a=>a.path===m.verifier).path='foundry-vm-guest-v2';m.verifier='foundry-vm-guest-v2';
   const d=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../../internal/vmruntime/testdata/runtime-inventory-v2.json')));d.guest_platform=m.guest_platform;
