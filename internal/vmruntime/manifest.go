@@ -130,23 +130,34 @@ func loadManifest(bundle string) (Manifest, domain.C4VMIdentity, error) {
 	if m.SchemaVersion != 1 || m.HostPlatform != host || m.GuestPlatform != guest || m.Protocol != "foundry-vm-v1" || m.PolicyVersion != "go-vm-v1" || m.Runtime != exe || m.Kernel != "kernel" || m.RootFS != "initramfs.cpio.gz" || m.Verifier != "foundry-vm-guest" || len(m.Assets) < 4 || len(m.Assets) > 4096 {
 		return m, id, errors.New("invalid bundle contract")
 	}
+	assets, e := verifyBundleAssets(root, m.Assets, []string{m.Runtime, m.Kernel, m.RootFS, m.Verifier})
+	if e != nil {
+		return m, id, e
+	}
+	sum := sha256.Sum256(b)
+	id = domain.C4VMIdentity{SchemaVersion: 1, ManifestDigest: hex.EncodeToString(sum[:]), HostPlatform: host, GuestPlatform: guest, RuntimeDigest: assets[m.Runtime].SHA256, KernelDigest: assets[m.Kernel].SHA256, RootFSDigest: assets[m.RootFS].SHA256, VerifierDigest: assets[m.Verifier].SHA256, Protocol: m.Protocol, PolicyVersion: m.PolicyVersion}
+	return m, id, nil
+}
+
+// Shared by both strict manifest loaders; no schema normalization is serialized.
+func verifyBundleAssets(root *os.Root, inventory []Asset, required []string) (map[string]Asset, error) {
 	assets := map[string]Asset{}
 	folded := map[string]bool{}
 	var total int64
-	for _, a := range m.Assets {
+	for _, a := range inventory {
 		key := strings.ToLower(a.Path)
 		total += a.Size
 		if !safeRelative(a.Path) || a.Path == "manifest.json" || folded[key] || !hexDigest(a.SHA256) || a.Size < 0 || a.Size > 2*1024*1024*1024 || total > 4*1024*1024*1024 {
-			return m, id, errors.New("invalid asset inventory")
+			return nil, errors.New("invalid asset inventory")
 		}
 		folded[key] = true
 		assets[a.Path] = a
 		if e := verifyAsset(root, a, nil); e != nil {
-			return m, id, e
+			return nil, e
 		}
 	}
 	count := 0
-	e = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, e error) error {
+	e := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, e error) error {
 		if e != nil {
 			return e
 		}
@@ -171,14 +182,12 @@ func loadManifest(bundle string) (Manifest, domain.C4VMIdentity, error) {
 		return nil
 	})
 	if e != nil {
-		return m, id, e
+		return nil, e
 	}
-	for _, p := range []string{m.Runtime, m.Kernel, m.RootFS, m.Verifier} {
+	for _, p := range required {
 		if _, ok := assets[p]; !ok {
-			return m, id, errors.New("required asset missing")
+			return nil, errors.New("required asset missing")
 		}
 	}
-	sum := sha256.Sum256(b)
-	id = domain.C4VMIdentity{SchemaVersion: 1, ManifestDigest: hex.EncodeToString(sum[:]), HostPlatform: host, GuestPlatform: guest, RuntimeDigest: assets[m.Runtime].SHA256, KernelDigest: assets[m.Kernel].SHA256, RootFSDigest: assets[m.RootFS].SHA256, VerifierDigest: assets[m.Verifier].SHA256, Protocol: m.Protocol, PolicyVersion: m.PolicyVersion}
-	return m, id, nil
+	return assets, nil
 }

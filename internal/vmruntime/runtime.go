@@ -35,6 +35,8 @@ type Runtime struct {
 	mu                       sync.Mutex
 	bundleRoot, instanceRoot string
 	manifest                 Manifest
+	manifestV2               ManifestV2
+	inventoryV2              RuntimeInventoryV2
 	identity                 domain.C4VMIdentity
 	production               bool
 	launch                   func(context.Context, command) (nativeProcess, error)
@@ -46,6 +48,7 @@ type Session struct {
 	id, dir                  string
 	owner                    Request
 	wire                     WireRequest
+	v2                       *sessionV2
 	started, closing, closed bool
 	process                  nativeProcess
 	cancel                   context.CancelFunc
@@ -99,7 +102,7 @@ func (r *Runtime) Create(ctx context.Context, q Request) (*Session, error) {
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
-	if r == nil || r.launch == nil {
+	if r == nil || r.launch == nil || r.identity.SchemaVersion != 1 {
 		return nil, errors.New("VM runtime unavailable")
 	}
 	for _, s := range []string{q.OperationID, q.MissionID, q.Owner, q.Name} {
@@ -121,15 +124,21 @@ func (r *Runtime) create(ctx context.Context, q Request, action string, files []
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
-	id, e := randomID()
-	if e != nil {
-		return nil, e
-	}
 	nonce, e := randomID()
 	if e != nil {
 		return nil, e
 	}
 	secret, e := randomID()
+	if e != nil {
+		return nil, e
+	}
+	return r.allocateSession(ctx, q, WireRequest{SchemaVersion: 1, Action: action, Nonce: nonce, Secret: secret, GuestPlatform: r.identity.GuestPlatform, CandidateDigest: q.CandidateDigest, Files: files}, nil)
+}
+func (r *Runtime) allocateSession(ctx context.Context, q Request, wire WireRequest, v2 *sessionV2) (*Session, error) {
+	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
+	id, e := randomID()
 	if e != nil {
 		return nil, e
 	}
@@ -140,7 +149,7 @@ func (r *Runtime) create(ctx context.Context, q Request, action string, files []
 	if e := createPrivateDirectory(dir); e != nil {
 		return nil, errors.New("cannot create private VM instance")
 	}
-	s := &Session{runtime: r, id: id, dir: dir, owner: q, wire: WireRequest{SchemaVersion: 1, Action: action, Nonce: nonce, Secret: secret, GuestPlatform: r.identity.GuestPlatform, CandidateDigest: q.CandidateDigest, Files: files}, done: make(chan struct{})}
+	s := &Session{runtime: r, id: id, dir: dir, owner: q, wire: wire, v2: v2, done: make(chan struct{})}
 	if e := s.receipt("allocated"); e != nil {
 		return nil, e
 	}
@@ -150,14 +159,17 @@ func (r *Runtime) create(ctx context.Context, q Request, action string, files []
 	return s, nil
 }
 func (r *Runtime) Probe(ctx context.Context) error {
-	if r == nil || r.launch == nil {
+	if r == nil || r.launch == nil || r.identity.SchemaVersion != 1 {
 		return errors.New("VM runtime unavailable")
 	}
 	s, e := r.create(ctx, Request{OperationID: "probe", MissionID: "readiness", Owner: "runtime", Name: "probe"}, "probe", []SnapshotFile{})
 	if e != nil {
 		return e
 	}
-	e = s.Start(ctx)
+	return runProbe(ctx, s)
+}
+func runProbe(ctx context.Context, s *Session) error {
+	e := s.Start(ctx)
 	if e == nil {
 		e = s.Wait(ctx)
 	}
@@ -175,20 +187,29 @@ func (s *Session) ID() string {
 	return s.id
 }
 func (s *Session) Matches(q Request) bool {
-	return s != nil && s.owner.OperationID == q.OperationID && s.owner.MissionID == q.MissionID && s.owner.Owner == q.Owner && s.owner.Name == q.Name && s.owner.CandidateDigest == q.CandidateDigest
+	return s != nil && s.v2 == nil && s.wire.SchemaVersion == 1 && s.owner.OperationID == q.OperationID && s.owner.MissionID == q.MissionID && s.owner.Owner == q.Owner && s.owner.Name == q.Name && s.owner.CandidateDigest == q.CandidateDigest
 }
 func (s *Session) receipt(stage string) error {
 	return s.receiptWithNative(stage, nil)
 }
 func (s *Session) receiptWithNative(stage string, facts *nativeFacts) error {
-	b, e := json.Marshal(struct {
+	b, e := s.receiptBytes(stage, facts)
+	if e != nil {
+		return errors.New("cannot encode instance receipt")
+	}
+	return s.persistReceipt(stage, b)
+}
+func (s *Session) receiptBytes(stage string, facts *nativeFacts) ([]byte, error) {
+	if s.v2 != nil {
+		return s.receiptBytesV2(stage, facts)
+	}
+	return json.Marshal(struct {
 		SchemaVersion                                                                   int `json:"schema_version"`
 		ID, OperationID, MissionID, Owner, Name, CandidateDigest, ManifestDigest, Stage string
 		Native                                                                          *nativeFacts `json:"native,omitempty"`
 	}{1, s.id, s.owner.OperationID, s.owner.MissionID, s.owner.Owner, s.owner.Name, s.owner.CandidateDigest, s.runtime.identity.ManifestDigest, stage, facts})
-	if e != nil {
-		return errors.New("cannot encode instance receipt")
-	}
+}
+func (s *Session) persistReceipt(stage string, b []byte) error {
 	p := filepath.Join(s.dir, stage+".json")
 	f, e := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if e != nil {
@@ -325,9 +346,10 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 			started <- final
 		}
 	}()
-	marker := make([]byte, len(ReadyMarker))
+	expectedMarker := s.readyMarker()
+	marker := make([]byte, len(expectedMarker))
 	_, readErr := io.ReadFull(p.Output(), marker)
-	validMarker := readErr == nil && string(marker) == ReadyMarker
+	validMarker := readErr == nil && string(marker) == expectedMarker
 	switch {
 	case validMarker:
 		readiness = "matched"
@@ -341,7 +363,7 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 		readiness = "short_read"
 	case readErr != nil:
 		readiness = "read_failed"
-	case string(marker) != ReadyMarker:
+	case string(marker) != expectedMarker:
 		readiness, readinessPrefix = "marker_mismatch", "unknown"
 		// Classify only the already-read fixed public prefixes. Never scan past a
 		// rejected marker, accept CRLF, or retain arbitrary guest/host output.
@@ -359,7 +381,7 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 		final = errors.New("trusted guest readiness missing")
 		return
 	}
-	if e := WriteRequest(p.Input(), s.wire); e != nil {
+	if e := s.writeRequest(ctx, p.Input()); e != nil {
 		final = errors.New("guest input transfer failed")
 		return
 	}
@@ -369,7 +391,7 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 	}
 	startReported = true
 	started <- nil
-	response, e := ReadResponse(p.Output(), s.wire)
+	response, e := s.readResponse(p.Output())
 	if e != nil {
 		final = e
 		return
@@ -380,7 +402,7 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 		final = errors.New("duplicate or trailing guest frame")
 		return
 	}
-	result = response.Result
+	result = response
 	valid = true
 }
 func (s *Session) finish(result c4verify.Result, valid bool, e error) {
@@ -500,8 +522,7 @@ func (s *Session) Close(ctx context.Context) error {
 		return e
 	}
 	s.closed = true
-	s.wire.Secret = ""
-	s.wire.Files = nil
+	s.erasePayload()
 	return nil
 }
 
@@ -569,7 +590,7 @@ func snapshot(ctx context.Context, dir string) ([]SnapshotFile, error) {
 	return files, nil
 }
 func (s *Session) prepare(ctx context.Context) (command, error) {
-	m, id, e := loadManifest(s.runtime.bundleRoot)
+	m, id, e := loadVerifiedBoot(s.runtime.bundleRoot, s.runtime.identity.SchemaVersion)
 	if e != nil || id != s.runtime.identity {
 		return command{}, errors.New("installed VM bundle changed")
 	}
@@ -611,5 +632,5 @@ func (s *Session) prepare(ctx context.Context) (command, error) {
 			}
 		}
 	}
-	return nativeCommand(dest, m), nil
+	return nativeBootCommand(dest, m), nil
 }

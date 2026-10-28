@@ -4,7 +4,8 @@ import "path/filepath"
 
 // The command is entirely application-owned. No candidate or model string is
 // part of argv, and no ambient executable search/environment is inherited.
-func nativeCommand(root string, m Manifest) command {
+func nativeCommand(root string, m Manifest) command { return nativeBootCommand(root, m.boot()) }
+func nativeBootCommand(root string, m bootAssets) command {
 	c := command{Path: filepath.Join(root, filepath.FromSlash(m.Runtime)), Dir: filepath.Join(root, "runtime"), Env: []string{"LANG=C", "LC_ALL=C"}}
 	kernel, initrd := filepath.Join(root, m.Kernel), filepath.Join(root, m.RootFS)
 	if m.HostPlatform == "darwin/arm64" {

@@ -15,7 +15,7 @@ import (
 // never boots a guest or changes the source. Failed staging is left for explicit
 // inspection; it can never be loaded as a published runtime.
 func Retain(source, archive string, expected domain.C4VMIdentity) (string, error) {
-	m, identity, err := loadManifest(source)
+	m, identity, err := loadVerifiedBoot(source, expected.SchemaVersion)
 	if err != nil || expected.Validate() != nil || identity != expected {
 		return "", errors.New("runtime archive source identity mismatch")
 	}
@@ -35,7 +35,7 @@ func Retain(source, archive string, expected domain.C4VMIdentity) (string, error
 	}
 	target := filepath.Join(archive, expected.ManifestDigest)
 	if _, err := os.Lstat(target); err == nil {
-		_, actual, e := loadManifest(target)
+		_, actual, e := loadVerifiedBoot(target, expected.SchemaVersion)
 		if e != nil || actual != expected || checkArchiveDirectory(target) != nil {
 			return "", errors.New("retained runtime integrity mismatch")
 		}
@@ -110,7 +110,7 @@ func Retain(source, archive string, expected domain.C4VMIdentity) (string, error
 	if writeErr != nil || syncErr != nil || closeErr != nil {
 		return "", errors.New("cannot sync runtime manifest")
 	}
-	_, actual, err := loadManifest(stage)
+	_, actual, err := loadVerifiedBoot(stage, expected.SchemaVersion)
 	if err != nil || actual != expected {
 		return "", errors.New("staged runtime identity mismatch")
 	}
@@ -179,7 +179,19 @@ func LoadRetained(archive, instances string) ([]*Runtime, error) {
 		if err := checkArchiveDirectory(path); err != nil {
 			return nil, err
 		}
-		r, err := Load(path, instances)
+		schema, err := bundleSchema(path)
+		if err != nil {
+			return nil, err
+		}
+		var r *Runtime
+		switch schema {
+		case 1:
+			r, err = Load(path, instances)
+		case 2:
+			r, err = LoadV2(path, instances)
+		default:
+			return nil, errors.New("unknown runtime schema")
+		}
 		if err != nil || r.Identity().ManifestDigest != entry.Name() {
 			return nil, errors.New("retained runtime identity mismatch")
 		}
