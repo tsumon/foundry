@@ -101,3 +101,26 @@ int FreeLibrary(HMODULE module) {if(module!=(HMODULE)(uintptr_t)1)exit(97);freed
     assert.deepEqual(JSON.parse(out), want);
   }
 });
+
+test("standalone C probe stays outside the Windows Go package with CGO enabled", () => {
+  const metadata = JSON.parse(
+    execFileSync(process.env.FOUNDRY_GO || "go", ["list", "-e", "-json", "./desktop"], {
+      cwd: path.resolve(__dirname, "../.."),
+      encoding: "utf8",
+      timeout: 60000,
+      env: {
+        ...process.env,
+        GOOS: "windows",
+        GOARCH: "amd64",
+        CGO_ENABLED: "1",
+        GOTOOLCHAIN: "local",
+        GOPROXY: "off",
+        GOSUMDB: "off",
+      },
+    }),
+  );
+  assert.equal(metadata.Error, undefined);
+  assert.deepEqual(metadata.CFiles || [], []);
+  assert.ok(metadata.IgnoredOtherFiles.includes("windows-hypervisor-probe.c"));
+  assert.ok(metadata.GoFiles.includes("upgrade-copy-windows.go"));
+});

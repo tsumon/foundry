@@ -1,4 +1,7 @@
-/* CI diagnostic only: no partition creation, feature changes or fallback. */
+//go:build ignore
+
+/* Standalone GCC diagnostic, not a Go/cgo package source file.
+   No partition creation, feature changes or fallback. */
 #include <windows.h>
 #include <inttypes.h>
 #include <stdio.h>
