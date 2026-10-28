@@ -97,7 +97,7 @@ func modelC4Profiles(profiles map[domain.Role]domain.Profile, snapshot *domain.M
 	}
 	for _, role := range domain.RolePolicyRoles() {
 		s, ok := snapshot.Roles[role]
-		if !ok || profiles[role] != s.Profile || s.Account == nil || s.Route == nil || s.Account.Provider != "openai" || s.Profile.AccountID == "" || s.Route.ExtraUsage != "off" || domain.ValidateModelRoute(*s.Route, *s.Account) != nil {
+		if !ok || profiles[role] != s.Profile || s.Account == nil || s.Route == nil || (s.Account.Provider != "openai" && !(s.Account.Provider == "custom" && s.Route.Adapter == "compatible_api_responses")) || s.Profile.AccountID == "" || s.Route.ExtraUsage != "off" || domain.ValidateModelRoute(*s.Route, *s.Account) != nil {
 			return ErrC4Unavailable
 		}
 	}

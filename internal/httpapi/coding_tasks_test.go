@@ -135,7 +135,7 @@ func TestCodingTasksCreatesOnlyInspectedAccountBoundDraft(t *testing.T) {
 				t.Fatal("UI cannot admit configured coding models", rr.Body.String())
 			}
 			for _, adapter := range response.Mission.Runtime.Adapters {
-				if adapter.LiveEnabled != (adapter.Provider == "openai") {
+		if adapter.LiveEnabled != (adapter.Provider == "openai" || adapter.ID == "compatible_api_responses") {
 					t.Fatal("wrong coding adapter projection", adapter)
 				}
 			}

@@ -95,7 +95,7 @@ func (r *Router) PreflightModelSelection(ctx context.Context, schema int, s doma
 	if p.ID == "" || strings.TrimSpace(p.Model) == "" || p.HasKey || a.ID != p.AccountID || a.Revision < 1 || a.Revision != p.AccountRevision || p.BaseURL != a.BaseURL || p.CredentialVersion != a.CurrentCredentialVersion || p.RouteID != route.ID || p.Protocol != route.Protocol || domain.ValidateModelRoute(*route, *a) != nil {
 		return providerFailure("request_rejected", "not_sent")
 	}
-	if r.codingAdmission != nil && a.Provider != "openai" {
+	if r.codingAdmission != nil && a.Provider != "openai" && !(a.Provider == "custom" && route.Adapter == "compatible_api_responses") {
 		return providerFailure("request_rejected", "not_sent")
 	}
 	if route.Adapter == "openai_siwc_responses" && route.Environment != "live" && OpenAIPreparationEndpointPolicy(route.BaseURL) != "owned_simulation_required" {

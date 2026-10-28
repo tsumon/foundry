@@ -79,7 +79,7 @@ Mac 包使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Win
 
 在应用菜单中选择 **Controlled Coding Workbench**，进入与普通工作台、演示数据隔离的持久编程空间：
 
-1. 明确选择 OpenAI 账户、路由和各角色模型。API Key 与订阅是不同路由，不会互相兜底。Mac 和 Windows 的编码入口均可在模型账户卡中显式准备订阅连接，经单独审批、执行和手动浏览器授权后，再独立审批目录查询；从有效的本地目录证据保存模型连接并分配角色。普通工作台仍不开放这一准备入口。
+1. **推荐 API Key 直连，无需 ChatGPT 登录。** 在模型设置创建 OpenAI 或兼容 Responses 网关账户并保存 Key；使用「API 快速配置」填写该服务可用的模型 ID、确认 API 计费，保存后分配给新任务的角色。支持显式配置的 Magpie/CPA 端点，固定接收地址和模型，不自动改路。保存不会查询目录或发送推理；API 额度与 ChatGPT 订阅不同。此快捷入口属于最新源码，下面固定版本的 Release 安装包不会随源码更新。见 [API 接入说明](docs/public/api-key-coding.md)。已有订阅登录保留为实验性兼容入口，不会自动转成收费 API。
 2. 填写需求、已提交的 Go 仓库、可修改文件和受保护文件。默认内置沙盒，运行时摘要随任务冻结；创建任务不调用模型，也不启动虚拟机。
 3. 分别审批并执行沙盒就绪检查、基线测试；基线通过后，再审批发送上下文，由 Researcher 和 Planner 生成计划。
 4. 审阅或修订计划，单独批准执行。Worker 提出候选补丁；真实验证器发现明确的测试失败后，Debugger 最多修复两轮，再复验。
@@ -87,7 +87,7 @@ Mac 包使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Win
 
 **当前范围是使用标准库的受限 Go 项目，不是任意技术栈。** Mac 和 Windows 都运行 Linux 客户系统中的测试，不等于验证原生 DMG、EXE、浏览器或移动应用。没有依赖安装、主机共享目录或客户系统网络，不改原仓库或受保护测试。凭据过期、额度不足、结果不明或沙盒关闭未确认就停止；不会自动重试、刷新或改用收费 API。调用次数与超时不是费用硬上限。见[内置沙盒设计](docs/public/embedded-sandbox.md)和[使用指南](docs/public/desktop-guide.md)。
 
-双端订阅接线使用相同的审批流程：Mac 保存到 Keychain，Windows 保存到 Credential Manager（完整大凭据分段存储，不落明文文件）。本轮协议验收使用本地合成服务；系统凭据检查使用 Foundry 专用测试项，**不代表真实账户或模型闭环已验收**。目录选择绑定账户、路由、授权代次/到期和回执，目录不是推理批准。详见[订阅工作台](docs/public/mac-subscription-workbench.md)。
+API Key 在 Mac 保存到 Keychain、Windows 保存到 Credential Manager，不落明文文件或浏览器存储。调用预算限制发送次数，不是金额硬上限；请同时设置供应商项目支出限额。既有订阅任务、预算及证据原样保留，使用 API 应创建独立任务。协议与失败修复回归使用本地服务，**真实付费 API 编码闭环仍待验收**。实验性登录见[订阅工作台](docs/public/mac-subscription-workbench.md)。
 
 ### 升级应用，不重写你的任务
 

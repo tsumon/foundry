@@ -56,7 +56,7 @@ function metadata(platform = "win32", enabled = true) {
       },
     ],
     limits: { max_calls: 16, max_repairs: 2 },
-    provider_families: ["openai"],
+    provider_families: ["openai", "custom"],
     approval_required: [
       "readiness",
       "baseline",

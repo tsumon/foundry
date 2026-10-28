@@ -19,6 +19,7 @@ export interface ModelRouteSnapshot {
 }
 
 const adapterLabels: Record<string, string> = {
+  compatible_api_responses: "兼容 API / Magpie · Responses",
   openai_api_chat: "OpenAI API · Chat Completions",
   openai_api_responses: "OpenAI API · Responses",
   anthropic_api_messages: "Anthropic API · Messages",

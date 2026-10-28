@@ -41,6 +41,8 @@ func ValidateModelRoute(r ModelRoute, a ModelAccount) error {
 	provider, auth, protocol, spend := "", "api_key", "chat_completions", "explicit_api"
 	var endpoints []string
 	switch r.Adapter {
+	case "compatible_api_responses":
+		provider, protocol = "custom", "responses"
 	case "openai_api_chat", "openai_api_responses", "openai_siwc_responses":
 		provider, endpoints = "openai", []string{"https://api.openai.com/v1"}
 		if r.Adapter != "openai_api_chat" {
@@ -71,6 +73,9 @@ func ValidateModelRoute(r ModelRoute, a ModelAccount) error {
 		return ErrInvalidModelRoute
 	}
 	if r.Environment == "live" {
+		if r.Adapter == "compatible_api_responses" && compatibleAPIEndpoint(r.BaseURL) {
+			return nil
+		}
 		for _, endpoint := range endpoints {
 			if r.BaseURL == endpoint {
 				return nil
@@ -90,4 +95,25 @@ func ValidateModelRoute(r ModelRoute, a ModelAccount) error {
 		return ErrInvalidModelRoute
 	}
 	return nil
+}
+
+// A compatible route is an explicitly frozen receiver, not an exception to
+// official-provider endpoint checks. No credentials, query or ambiguous paths.
+func compatibleAPIEndpoint(base string) bool {
+	u, err := url.Parse(base)
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || strings.ContainsAny(base, "\\\r\n\t ") || strings.HasSuffix(u.Path, "/") {
+		return false
+	}
+	for _, segment := range strings.Split(strings.TrimPrefix(u.Path, "/"), "/") {
+		if segment == "." || segment == ".." || segment == "" && u.Path != "" {
+			return false
+		}
+	}
+	if u.Port() != "" {
+		port, err := strconv.Atoi(u.Port())
+		if err != nil || port < 1 || port > 65535 || strconv.Itoa(port) != u.Port() {
+			return false
+		}
+	}
+	return u.Scheme == "https" || u.Scheme == "http" && u.Hostname() == "127.0.0.1" && u.Port() != ""
 }

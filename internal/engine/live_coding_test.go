@@ -36,6 +36,10 @@ func codingImport(t *testing.T, base string) (*Engine, *store.Store, CreateReque
 }
 
 func codingImportWithStore(t *testing.T, base string, persistent *store.Store) (*Engine, *store.Store, CreateRequest, *c4Driver, *codingLease) {
+	return codingImportWithAdapter(t, base, persistent, "openai_api_responses")
+}
+
+func codingImportWithAdapter(t *testing.T, base string, persistent *store.Store, adapter string) (*Engine, *store.Store, CreateRequest, *c4Driver, *codingLease) {
 	t.Helper()
 	e, s, repo, _ := importFixture(t)
 	if persistent != nil {
@@ -48,7 +52,11 @@ func codingImportWithStore(t *testing.T, base string, persistent *store.Store) (
 	}
 	importGit(t, repo, "add", ".")
 	importGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "owned test repository")
-	a, err := s.SaveModelAccount(domain.ModelAccount{ID: "coding-account", Name: "Owned simulation", Provider: "openai", AuthMethod: "api_key", BillingMode: "api_credits", BaseURL: base, Enabled: true}, 0)
+	provider := "openai"
+	if adapter == "compatible_api_responses" {
+		provider = "custom"
+	}
+	a, err := s.SaveModelAccount(domain.ModelAccount{ID: "coding-account", Name: "Owned simulation", Provider: provider, AuthMethod: "api_key", BillingMode: "api_credits", BaseURL: base, Enabled: true}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +66,7 @@ func codingImportWithStore(t *testing.T, base string, persistent *store.Store) (
 	if _, err = s.FinishModelCredential("coding-key", "available"); err != nil {
 		t.Fatal(err)
 	}
-	route, err := s.CreateModelRoute(domain.ModelRoute{ID: "coding-route", AccountID: a.ID, Adapter: "openai_api_responses", Protocol: "responses", BaseURL: base, Environment: "simulation", SpendClass: "explicit_api", ExtraUsage: "off"})
+	route, err := s.CreateModelRoute(domain.ModelRoute{ID: "coding-route", AccountID: a.ID, Adapter: adapter, Protocol: "responses", BaseURL: base, Environment: "simulation", SpendClass: "explicit_api", ExtraUsage: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +92,14 @@ func codingImportWithStore(t *testing.T, base string, persistent *store.Store) (
 }
 
 func TestLiveCodingOwnedRouterRepairDelivery(t *testing.T) {
+	testCodingOwnedRouterRepairDelivery(t, "openai_api_responses")
+}
+
+func TestCompatibleCodingOwnedRouterRepairDelivery(t *testing.T) {
+	testCodingOwnedRouterRepairDelivery(t, "compatible_api_responses")
+}
+
+func testCodingOwnedRouterRepairDelivery(t *testing.T, adapter string) {
 	replies := []string{`{"summary":"observed","findings":[],"unknowns":[]}`, `{"summary":"change label","steps":[{"id":"label","title":"change label","description":"change implementation","depends_on":[],"files":["main.go"]}]}`, `{"summary":"first candidate","edits":[{"path":"main.go","content":"package demo // broken\n"}]}`, `{"summary":"repair","edits":[{"path":"main.go","content":"package demo\nfunc Label() string { return \"ready\" }\n"}]}`, codingPass, codingPass}
 	wire := &codingReviewGateway{script: &scripted{outputs: replies}}
 	requests := []model.Request{}
@@ -118,7 +134,7 @@ func TestLiveCodingOwnedRouterRepairDelivery(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"object": "response", "id": "owned-response", "model": "owned-returned", "status": "completed", "output": []any{map[string]any{"type": "message", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": output.Text}}}}, "usage": map[string]int{"input_tokens": 10, "output_tokens": 5}})
 	}))
 	defer server.Close()
-	e, s, q, d, lease := codingImport(t, server.URL+"/v1")
+	e, s, q, d, lease := codingImportWithAdapter(t, server.URL+"/v1", nil, adapter)
 	before := importSourceDigest(t, q.RepoPath)
 	m, err := e.Create(context.Background(), q)
 	if err != nil {

@@ -31,10 +31,10 @@ export const billingLabels = {
 };
 const blank: AccountCreateInput = {
   name: "",
-  provider: "custom",
-  base_url: "",
+  provider: "openai",
+  base_url: "https://api.openai.com/v1",
   auth_method: "api_key",
-  billing_mode: "unknown",
+  billing_mode: "api_credits",
 };
 export function ModelAccounts({
   onAccounts,
@@ -119,13 +119,18 @@ export function ModelAccounts({
       }
     });
   return (
-    <section className="model-accounts" aria-label="模型账户">
+    <section
+      id="model-account-settings"
+      className="model-accounts"
+      aria-label="模型账户"
+    >
       <h2>模型账户</h2>
       <p className="note">
         {runtime?.live_inference
           ? "账户只是本地配置记录：身份未验证、额度未知；仅受支持的账户编码任务按独立审批，配置不代表已连接、已授权或可调用。"
           : "账户只是本地配置记录：身份未验证、额度未知、真实账户调用尚未开放。"}
-        厂商与计费渠道均为用户声明；保存不会登录、探测或自动付费降级。桌面编码工作台可显式准备订阅连接；其他入口需操作员启动。连接与目录仍独立审批。
+        推荐使用 API
+        Key。厂商与计费渠道均为用户声明；保存不会登录、探测或自动付费降级。订阅登录为实验性兼容入口，连接与目录仍独立审批。
       </p>
       {(error || readError) && (
         <p role="alert" className="form-error">
@@ -198,6 +203,13 @@ export function ModelAccounts({
                 const { account } = await modelAccountApi.create(form);
                 if (valid()) {
                   merge(account);
+                  selectionEpoch.current++;
+                  setConnectionPolicy("unavailable");
+                  setLegacySIWCCapability(false);
+                  setSelected(account);
+                  setCredentials([]);
+                  setName(account.name);
+                  setEnabled(account.enabled);
                   setForm(blank);
                 }
               } catch (cause) {
@@ -267,7 +279,9 @@ export function ModelAccounts({
             >
               <option value="api_key">API Key</option>
               {form.provider === "openai" && (
-                <option value="openai_siwc">OpenAI SIWC（仅元数据）</option>
+                <option value="openai_siwc">
+                  OpenAI SIWC（实验性订阅登录）
+                </option>
               )}
             </select>
             <label htmlFor="account-url">账户固定端点</label>
@@ -392,7 +406,8 @@ export function ModelAccounts({
           />
           {runtime?.desktop_subscription === true &&
             selected.auth_method === "openai_siwc" && (
-              <>
+              <details className="disclosure">
+                <summary>实验性订阅登录与续期</summary>
                 <DesktopSubscription
                   key={selected.id}
                   account={selected}
@@ -404,7 +419,7 @@ export function ModelAccounts({
                   key={`renewal-${selected.id}`}
                   account={selected}
                 />
-              </>
+              </details>
             )}
         </section>
       )}

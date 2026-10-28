@@ -198,3 +198,24 @@ func TestRouterExplicitAdapterWireContracts(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIResponsesRejectAmbiguousMediaWithoutRetry(t *testing.T) {
+	for _, media := range [][]string{{"application/json", "text/html"}, {"application/json", "application/json"}, {""}} {
+		t.Run(strings.Join(media, ";"), func(t *testing.T) {
+			calls := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.Header()["Content-Type"] = media
+				fmt.Fprint(w, `{"object":"response","status":"completed","model":"actual","output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]}],"usage":{"input_tokens":3,"output_tokens":4}}`)
+			}))
+			defer srv.Close()
+			resolver := &leaseResolver{}
+			r := NewRouter(nil, resolver, RouterOptions{SimulationOrigins: []string{srv.URL}})
+			result, err := r.Complete(context.Background(), routedRequest(routedSelection(srv.URL+"/v1", "openai_api_responses")))
+			requireProviderError(t, err, "response_incomplete", "unknown")
+			if result.Text != "" || result.UsageKnown || calls != 1 || resolver.calls != 1 {
+				t.Fatal("invalid response accepted or replayed")
+			}
+		})
+	}
+}

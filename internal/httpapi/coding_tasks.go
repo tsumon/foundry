@@ -36,7 +36,7 @@ func (s *server) codingTasks(w http.ResponseWriter, r *http.Request) {
 				reason = "embedded_vm_bundle_unavailable"
 			}
 		}
-		writeJSON(w, 200, map[string]any{"enabled": s.codingWorkbench, "available": available && installed, "reason": reason, "default_backend": "embedded_vm", "profile": profile, "backends": []any{map[string]any{"mode": "embedded_vm", "available": available && installed, "profile": profile, "prerequisite": "bundled runtime and hardware virtualization; readiness approval required"}, map[string]any{"mode": "docker", "available": available && runtime.GOOS != "windows", "profile": dockerProfile, "prerequisite": "explicit selection and independently approved Docker readiness"}}, "limits": map[string]int{"max_calls": 16, "max_repairs": 2}, "provider_families": []string{"openai"}, "approval_required": []string{"readiness", "baseline", "context", "execute", "delivery"}})
+		writeJSON(w, 200, map[string]any{"enabled": s.codingWorkbench, "available": available && installed, "reason": reason, "default_backend": "embedded_vm", "profile": profile, "backends": []any{map[string]any{"mode": "embedded_vm", "available": available && installed, "profile": profile, "prerequisite": "bundled runtime and hardware virtualization; readiness approval required"}, map[string]any{"mode": "docker", "available": available && runtime.GOOS != "windows", "profile": dockerProfile, "prerequisite": "explicit selection and independently approved Docker readiness"}}, "limits": map[string]int{"max_calls": 16, "max_repairs": 2}, "provider_families": []string{"openai", "custom"}, "approval_required": []string{"readiness", "baseline", "context", "execute", "delivery"}})
 		return
 	}
 	if r.Method != http.MethodPost {

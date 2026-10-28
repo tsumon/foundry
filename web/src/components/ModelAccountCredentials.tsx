@@ -140,7 +140,8 @@ export function ModelAccountCredentials({
     >
       <h3>追加式凭据版本</h3>
       <p className="muted">
-        凭据仅短暂用于本次写入；不显示尾号，不存浏览器。真实账户调用尚未开放。
+        凭据保存在系统凭据存储，不显示尾号、不存浏览器。保存不会发起调用；在 API
+        快速配置中选择模型后，仍需任务独立审批。
       </p>
       {error && (
         <p role="alert" className="form-error">

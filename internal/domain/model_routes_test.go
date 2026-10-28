@@ -5,6 +5,31 @@ import (
 	"testing"
 )
 
+func TestCompatibleResponsesFreezesExplicitAPIReceiver(t *testing.T) {
+	for _, base := range []string{"https://gateway.example.invalid/v1", "http://127.0.0.1:3425/v1"} {
+		a := ModelAccount{ID: "a", Name: "Explicit gateway", Provider: "custom", AuthMethod: "api_key", BillingMode: "metered_api", BaseURL: base}
+		r := ModelRoute{ID: "r", AccountID: "a", Adapter: "compatible_api_responses", Protocol: "responses", BaseURL: base, Environment: "live", SpendClass: "explicit_api", ExtraUsage: "off"}
+		if err := ValidateModelRoute(r, a); err != nil {
+			t.Fatal("explicit compatible receiver rejected", err)
+		}
+		for _, bad := range []string{"http://gateway.example.invalid/v1", "http://localhost:3425/v1", "https://user@gateway.example.invalid/v1", "https://gateway.example.invalid/v1?key=value", "https://gateway.example.invalid/v1/../other", "https://gateway.example.invalid/v1/", "https://gateway.example.invalid/v1%2Fother"} {
+			aa, rr := a, r
+			aa.BaseURL, rr.BaseURL = bad, bad
+			if ValidateModelRoute(rr, aa) == nil {
+				t.Fatal("unsafe compatible receiver", bad)
+			}
+		}
+		a.Provider = "openai"
+		if ValidateModelRoute(r, a) == nil {
+			t.Fatal("compatible route impersonated official provider")
+		}
+		a.Provider, a.BillingMode = "custom", "subscription"
+		if ValidateModelRoute(r, a) == nil {
+			t.Fatal("subscription silently became API billing")
+		}
+	}
+}
+
 // Losing any of these comparisons would let an unrelated receiver or billing
 // channel acquire the authority of a user's explicitly chosen route.
 func TestR5BRouteIdentityEndpointAndBillingFence(t *testing.T) {

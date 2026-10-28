@@ -1,4 +1,8 @@
 .github/workflows/verify.yml
+docs/public/api-key-coding.md
+docs/public/api-key-coding-plan.md
+web/src/components/OpenAIAPISetup.tsx
+web/src/components/OpenAIAPISetup.test.tsx
 docs/public/session-renewal.md
 docs/public/session-renewal-plan.md
 docs/public/session-renewal-catalog.md

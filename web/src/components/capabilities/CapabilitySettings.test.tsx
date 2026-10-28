@@ -50,8 +50,8 @@ it("keeps original model settings as the default without requesting capabilities
   ).toBeVisible();
   await waitFor(() => expect(screen.getByLabelText("连接名称")).toBeEnabled());
   expect(fetcher.mock.calls.map(([path]) => path)).toEqual([
-    "/api/model-routes",
     "/api/model-accounts",
+    "/api/model-routes",
     "/api/profiles",
     "/api/role-model-policy",
   ]);
@@ -180,8 +180,8 @@ it("opens event hooks through an independent lazy route without changing the mod
   ).toBeVisible();
   await waitFor(() =>
     expect(fetcher.mock.calls.map(([path]) => path)).toEqual([
-      "/api/model-routes",
       "/api/model-accounts",
+      "/api/model-routes",
       "/api/profiles",
       "/api/role-model-policy",
       "/api/hooks",

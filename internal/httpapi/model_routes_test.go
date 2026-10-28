@@ -73,7 +73,7 @@ func TestModelRoutesRuntimeContractAndStrictMutationBoundary(t *testing.T) {
 	if runtime.Routes == nil || len(runtime.Routes) != 0 || !runtime.Runtime.SimulationInference || runtime.Runtime.SimulationAuthorization || runtime.Runtime.LiveAuthorization || runtime.Runtime.LiveDiscovery || runtime.Runtime.LiveInference || runtime.Runtime.AutomaticPaidFallback {
 		t.Fatalf("unsafe runtime=%+v", runtime)
 	}
-	if len(runtime.Runtime.Adapters) != 7 {
+	if len(runtime.Runtime.Adapters) != 8 {
 		t.Fatalf("adapters=%+v", runtime.Runtime.Adapters)
 	}
 	for _, adapter := range runtime.Runtime.Adapters {

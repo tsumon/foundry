@@ -19,6 +19,7 @@ type modelAdapterView struct {
 }
 
 var modelAdapterViews = []modelAdapterView{
+	{ID: "compatible_api_responses", Provider: "custom", AuthMethod: "api_key", Protocol: "responses", SpendClass: "explicit_api", Implemented: true},
 	{ID: "openai_api_chat", Provider: "openai", AuthMethod: "api_key", Protocol: "chat_completions", SpendClass: "explicit_api", Implemented: true},
 	{ID: "openai_api_responses", Provider: "openai", AuthMethod: "api_key", Protocol: "responses", SpendClass: "explicit_api", Implemented: true},
 	{ID: "anthropic_api_messages", Provider: "anthropic", AuthMethod: "api_key", Protocol: "messages", SpendClass: "explicit_api", Implemented: true},
@@ -47,7 +48,7 @@ func (s *server) modelRuntimeView() modelRuntimeView {
 	if s.codingWorkbench && !s.recoveryReadOnly && s.engine.CodingWorkbenchAvailable() {
 		view.LiveInference = true
 		for i := range view.Adapters {
-			view.Adapters[i].LiveEnabled = view.Adapters[i].Provider == "openai"
+			view.Adapters[i].LiveEnabled = view.Adapters[i].Provider == "openai" || view.Adapters[i].ID == "compatible_api_responses"
 		}
 	}
 	if s.modelRouter != nil {

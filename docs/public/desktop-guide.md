@@ -100,10 +100,14 @@ host-script fallback is provided. The source repository and protected tests rema
 untouched. If you explicitly choose Docker on Mac, supply an existing immutable
 local image matching the verifier contract; Foundry does not pull or build it.
 
-1. Open **Controlled Coding Workbench**. Configure an explicit OpenAI account and
-   route in the existing model settings, then choose role models. An API-key route
-   and an already authorized subscription route are never interchangeable.
-   Opening settings or creating metadata does not read a credential or log in.
+1. Open **Controlled Coding Workbench**. In the latest source, the recommended
+   path is **API quick setup**: create an OpenAI or compatible gateway API Key
+   account, save the key in native storage, enter its model ID, acknowledge billing,
+   and save the model connection. Choose it in role settings for new tasks.
+   Neither login nor catalog discovery is required. Saving metadata does not
+   send inference. API and experimental subscription routes are never automatic
+   fallbacks for one another. See [API setup](api-key-coding.md); pinned Release
+   binaries reflect their recorded source revision, not the latest source UI.
 2. In task creation, inspect the repository and freeze its committed base, file
    scope, model selections, call budget and immutable local verification profile.
    Creation grants neither network nor execution permission.

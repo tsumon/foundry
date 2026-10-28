@@ -31,8 +31,11 @@ synthetic paths and their evidence remain unchanged. A separate model-backed C4
 capability composes the router with the existing controlled verifier; globally
 removing synthetic restrictions or falling back to the legacy runner is forbidden.
 
-The initial live provider family is OpenAI using an explicitly selected API-key
-route or an already authorized subscription route. Choosing the subscription
+Live coding supports OpenAI and explicitly configured compatible Responses
+gateways, with [API Key setup](api-key-coding.md) as the primary path and existing
+subscription sign-in retained as experimental.
+Tasks use an explicitly selected API-key route or an already authorized
+subscription route. Choosing the subscription
 route never authorizes the API-key route. No login, catalog lookup, token refresh,
 provider retry or account/model substitution happens as a task side effect.
 Existing connection/catalog/single-inference acceptances are not task approval.

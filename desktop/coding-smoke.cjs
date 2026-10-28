@@ -75,7 +75,7 @@ function assertCodingMetadata(
       assert.match(vm[key], /^[a-f0-9]{64}$/);
     }
   }
-  assert.deepEqual(value.provider_families, ["openai"]);
+  assert.deepEqual(value.provider_families, ["openai", "custom"]);
   assert.deepEqual(value.approval_required, [
     "readiness",
     "baseline",

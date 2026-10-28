@@ -378,6 +378,12 @@ it("creates unverified metadata with strict create fields and known-zero credent
   vi.stubGlobal("fetch", fetcher);
   render(<ModelSettings />);
   expect(await screen.findByText("尚无模型账户")).toBeVisible();
+  fireEvent.change(screen.getByLabelText("声明厂商"), {
+    target: { value: "custom" },
+  });
+  fireEvent.change(screen.getByLabelText("声明计费渠道"), {
+    target: { value: "unknown" },
+  });
   fireEvent.change(screen.getByLabelText("账户名称"), {
     target: { value: "SYNTHETIC account" },
   });
@@ -396,6 +402,7 @@ it("creates unverified metadata with strict create fields and known-zero credent
   });
   expect(screen.getByText(/当前凭据：0（未配置）/)).toBeVisible();
   expect(screen.getAllByText(/额度未知/).length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: "保存新版本" })).toBeVisible();
   expect(
     screen.getByRole("button", { name: "OpenAI 真实登录（未开放）" }),
   ).toBeDisabled();
@@ -555,7 +562,9 @@ it("keeps legacy authorization and acceptance actions closed when route policy f
     await screen.findByRole("button", { name: "管理账户 OpenAI subscription" }),
   );
 
-  expect(await screen.findByText("acceptance_record_unavailable")).toBeVisible();
+  expect(
+    await screen.findByText("acceptance_record_unavailable"),
+  ).toBeVisible();
   expect(
     screen.getByRole("button", { name: "本地模拟登录（等待路由策略）" }),
   ).toBeDisabled();
@@ -567,7 +576,9 @@ it("keeps legacy authorization and acceptance actions closed when route policy f
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "创建连接材料" })).toBeDisabled();
   expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
-  expect(document.body.textContent).not.toContain("untrusted acceptance detail");
+  expect(document.body.textContent).not.toContain(
+    "untrusted acceptance detail",
+  );
 });
 
 it("restores only backend-declared legacy SIWC controls for a non-gate history", async () => {
@@ -620,8 +631,7 @@ it("restores only backend-declared legacy SIWC controls for a non-gate history",
         remote_revocations: [],
       });
     if (
-      path ===
-      "/api/model-accounts/legacy-siwc-account/acceptance-operations"
+      path === "/api/model-accounts/legacy-siwc-account/acceptance-operations"
     )
       return response({
         operations: [],
@@ -650,10 +660,14 @@ it("restores only backend-declared legacy SIWC controls for a non-gate history",
 
   const start = await screen.findByRole("button", { name: "开始本地模拟登录" });
   expect(start).toBeEnabled();
-  expect(screen.getByRole("button", { name: "刷新本地模拟授权" })).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "刷新本地模拟授权" }),
+  ).toBeEnabled();
   fireEvent.click(start);
   expect(await screen.findByText("legacy-flow")).toBeVisible();
-  expect(fetcher.mock.calls.filter(([, request]) => request?.method)).toHaveLength(1);
+  expect(
+    fetcher.mock.calls.filter(([, request]) => request?.method),
+  ).toHaveLength(1);
 });
 
 it("clears uncertain secrets, suppresses duplicates and keeps original GET-only receipt across settings unmount", async () => {

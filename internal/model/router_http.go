@@ -37,7 +37,7 @@ func routedPayload(r Request, adapter string) (string, any) {
 		return "/messages", map[string]any{"model": r.Profile.Model, "system": r.System, "messages": []chatMessage{{Role: "user", Content: r.Prompt}}, "max_tokens": r.MaxOutputTokens}
 	case "openai_siwc_responses":
 		return "/responses", map[string]any{"model": r.Profile.Model, "instructions": r.System, "input": []chatMessage{{Role: "user", Content: r.Prompt}}, "stream": true, "store": false}
-	case "openai_api_responses":
+	case "openai_api_responses", "compatible_api_responses":
 		return "/responses", map[string]any{"model": r.Profile.Model, "instructions": r.System, "input": []chatMessage{{Role: "user", Content: r.Prompt}}, "max_output_tokens": r.MaxOutputTokens, "store": false}
 	default:
 		key := "max_tokens"
@@ -173,8 +173,8 @@ func (r *Router) decodeResponse(response *http.Response, adapter string) (result
 		want = "text/event-stream"
 	}
 	// Header.Get only returns the first value. Duplicate media fields are
-	// ambiguous even if their first value (or both values) claims to be SSE.
-	multipleMedia := adapter == "openai_siwc_responses" && len(response.Header.Values("Content-Type")) > 1
+	// ambiguous for JSON as well as SSE, even if both values are identical.
+	multipleMedia := len(response.Header.Values("Content-Type")) > 1
 	if err != nil || media != want || multipleMedia {
 		p := providerFailure("response_incomplete", "unknown")
 		if adapter == "openai_siwc_responses" {
@@ -204,7 +204,7 @@ func (r *Router) decodeResponse(response *http.Response, adapter string) (result
 		switch adapter {
 		case "anthropic_api_messages":
 			result, err = decodeMessages(body)
-		case "openai_api_responses":
+		case "openai_api_responses", "compatible_api_responses":
 			result, err = decodeRoutedResponses(body)
 		default:
 			result, err = decodeRoutedChat(body)

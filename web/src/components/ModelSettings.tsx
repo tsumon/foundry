@@ -11,6 +11,7 @@ import {
 } from "../types";
 import { RoleBindings } from "./RoleBindings";
 import { ModelAccounts } from "./ModelAccounts";
+import { OpenAIAPISetup } from "./OpenAIAPISetup";
 import { accountError } from "../modelAccountApi";
 import {
   ModelRouteSettings,
@@ -30,6 +31,7 @@ export function ModelSettings() {
   const [routes, setRoutes] = useState<ModelRoute[]>([]);
   const [modelRuntime, setModelRuntime] = useState<ModelRuntime>();
   const [routesLoaded, setRoutesLoaded] = useState(false);
+  const [routeEpoch, setRouteEpoch] = useState(0);
   const [settings, setSettings] = useState<Settings>({
     default_profile_id: "",
     role_bindings: {},
@@ -165,9 +167,22 @@ export function ModelSettings() {
           让每个角色使用合适的模型。凭据留在后端，授权由你掌握。
         </p>
       </header>
-      <ModelRouteSettings
+      <OpenAIAPISetup
         accounts={accounts}
-        onSnapshot={acceptRouteSnapshot}
+        routes={routes}
+        profiles={profiles}
+        runtime={modelRuntime}
+        loaded={loaded && routesLoaded}
+        onRoutes={(next) => {
+          setRoutes(next);
+          setRouteEpoch((n) => n + 1);
+        }}
+        onProfile={(profile) =>
+          setProfiles((old) => [
+            profile,
+            ...old.filter((p) => p.id !== profile.id),
+          ])
+        }
       />
       <ModelAccounts
         onAccounts={setAccounts}
@@ -179,6 +194,11 @@ export function ModelSettings() {
             ...old.filter((p) => p.id !== profile.id),
           ])
         }
+      />
+      <ModelRouteSettings
+        key={routeEpoch}
+        accounts={accounts}
+        onSnapshot={acceptRouteSnapshot}
       />
       {error && (
         <p className="form-error" role="alert">
@@ -521,40 +541,42 @@ export function ModelSettings() {
       </section>
       {loaded && (
         <>
-          <RoleBindings
-            profiles={profiles}
-            accounts={accounts}
-            settings={settings}
-            liveTaskInference={modelRuntime?.live_inference === true}
-            disabled={busy || loading}
-            onChange={(next) => {
-              if (!loading && !busy) setSettings(next);
-            }}
-            onSave={() => {
-              if (loading) return;
-              void run(async () => {
-                const bindings = Object.fromEntries(
-                  roles.map((role) => [
-                    role,
-                    settings.role_bindings[role] ?? "",
-                  ]),
-                );
-                const result = await api.saveSettings({
-                  default_profile_id: settings.default_profile_id,
-                  role_bindings: bindings,
+          <div id="model-role-settings">
+            <RoleBindings
+              profiles={profiles}
+              accounts={accounts}
+              settings={settings}
+              liveTaskInference={modelRuntime?.live_inference === true}
+              disabled={busy || loading}
+              onChange={(next) => {
+                if (!loading && !busy) setSettings(next);
+              }}
+              onSave={() => {
+                if (loading) return;
+                void run(async () => {
+                  const bindings = Object.fromEntries(
+                    roles.map((role) => [
+                      role,
+                      settings.role_bindings[role] ?? "",
+                    ]),
+                  );
+                  const result = await api.saveSettings({
+                    default_profile_id: settings.default_profile_id,
+                    role_bindings: bindings,
+                  });
+                  setSettings({
+                    ...result.settings,
+                    role_bindings: result.settings.role_bindings ?? {},
+                  });
+                  setNotice(
+                    settings.model_policy_decision_id
+                      ? "手动角色分配已保存，活动策略标记已清除。已有任务保持冻结。"
+                      : "默认连接与角色分配已保存。",
+                  );
                 });
-                setSettings({
-                  ...result.settings,
-                  role_bindings: result.settings.role_bindings ?? {},
-                });
-                setNotice(
-                  settings.model_policy_decision_id
-                    ? "手动角色分配已保存，活动策略标记已清除。已有任务保持冻结。"
-                    : "默认连接与角色分配已保存。",
-                );
-              });
-            }}
-          />
+              }}
+            />
+          </div>
           <RolePolicySettings
             key={settings.model_policy_decision_id ?? "manual"}
             profiles={profiles}
