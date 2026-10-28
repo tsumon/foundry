@@ -239,7 +239,7 @@ jobs:
           $env:CGO_ENABLED = '0'
           go build -o $helper ./desktop
           if ($LASTEXITCODE -ne 0) { throw 'Native private upgrade copy helper build failed' }
-          go test -count=1 -run '^TestWindowsUpgradePrivateCopyAndRestore$' ./desktop
+          go test -count=1 -run '^TestWindowsUpgrade' ./desktop
           if ($LASTEXITCODE -ne 0) { throw 'Native private upgrade copy/restore regression failed' }
           "FOUNDRY_UPGRADE_COPY=$helper" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Native CGO commands and Windows boundary/integration gates

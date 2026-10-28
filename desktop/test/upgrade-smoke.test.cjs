@@ -100,7 +100,7 @@ test("native Windows workflow pins public source and installer, then over-instal
   assert.match(smoke, /Fresh candidate uninstall left executable/);
   assert.match(smoke, /Fresh install or uninstall changed retained evidence/);
   assert.match(workflow, /fresh-candidate-integrity\.json/);
-  assert.match(workflow, /TestWindowsUpgradePrivateCopyAndRestore/);
+  assert.match(workflow, /go test -count=1 -run '\^TestWindowsUpgrade' \.\/desktop/);
   assert.match(workflow, /FOUNDRY_UPGRADE_COPY/);
   assert.doesNotMatch(workflow, /New-Item -ItemType Directory -Path \$seed/);
   const parsed = require("../node_modules/js-yaml").load(workflow);
