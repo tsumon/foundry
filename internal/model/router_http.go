@@ -80,7 +80,7 @@ func (r *Router) send(ctx context.Context, s domain.RoleModelSelection, method, 
 	if lease.Secret == "" || strings.ContainsAny(lease.Secret, "\r\n") {
 		return nil, lease.Generation, providerFailure("auth_invalid", "not_sent")
 	}
-	req.Header.Set("User-Agent", "Foundry/0.1.0")
+	req.Header.Set("User-Agent", "Foundry/0.2.0")
 	req.Header.Set("Accept", "application/json")
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")

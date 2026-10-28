@@ -165,7 +165,7 @@ func (s *Service) requestInference(ctx context.Context, o domain.ModelAcceptance
 	req.Header.Set("Authorization", "Bearer "+lease.Secret)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("User-Agent", "Foundry/0.1.0")
+	req.Header.Set("User-Agent", "Foundry/0.2.0")
 	if !validate() {
 		return fail("auth_invalid", "not_sent")
 	}

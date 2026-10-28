@@ -596,7 +596,7 @@ func (f *protocolFixture) handleModel(w http.ResponseWriter, r *http.Request) {
 		f.handleGateModel(w, r)
 		return
 	}
-	if !f.authorized(r) || r.Header.Get("User-Agent") != "Foundry/0.1.0" {
+	if !f.authorized(r) || r.Header.Get("User-Agent") != "Foundry/0.2.0" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_api_key"}})

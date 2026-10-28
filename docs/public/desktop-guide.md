@@ -1,9 +1,8 @@
-# Desktop guide — 0.1.0
+# Desktop guide — stable 0.1.0 and candidate 0.2.0
 
 Foundry Desktop packages the existing workbench and local Go controller. It does
 not require a separately installed Node.js, npm, Go toolchain or compiler to run.
-Git is a separate prerequisite for repository operations. The stable scope is serial, approval-bound delivery for committed standard-library
-Go repositories; arbitrary-language autonomous development is not supported.
+Git is a separate prerequisite for repository operations. Released 0.1.0 supports serial, approval-bound standard-library Go delivery. Candidate 0.2.0 adds the closed Node, TypeScript and Python contracts below; its exact-source native, installer/UI, upgrade, provider and hosted CI gates remain pending. This page describes implementation and required acceptance, not a new release receipt.
 
 ## Get the right artifact
 
@@ -17,8 +16,7 @@ Release evidence distinguishes native installation and upgrade checks, real VM
 execution, local model fixtures and real provider calls. A successful build or a
 past package's result is not acceptance of a different installer. The recommended
 API route has [real Mac CPA/Grok delivery evidence](compatible-api-acceptance.md);
-Windows provider compatibility is covered by protocol fixtures, not a real-account
-claim. Subscription integration remains experimental.
+Windows model-protocol fixtures do not establish real-provider compatibility. Hosted Windows cannot reach a provider bound to a Mac loopback address. Historical Mac Go evidence does not prove new-language delivery. Subscription integration remains experimental.
 
 | Target | Package | Trust status |
 | --- | --- | --- |
@@ -55,7 +53,7 @@ New tasks default to a bundled Linux VM: Apple's Virtualization.framework on
 Apple Silicon and bundled, headless QEMU with WHPX on Windows x64. Windows needs
 hardware virtualization and Windows Hypervisor Platform already available;
 Foundry does not enable features, reboot or substitute software emulation.
-Docker remains an explicit Mac-only alternative for a new task. Installed
+Docker remains an explicit Mac-only alternative for a new Go task; v2 profiles are VM-only. Installed
 metadata is not evidence of successful readiness or permission to execute.
 Normal launch and the simulation retain their original closed behavior.
 
@@ -85,12 +83,11 @@ Closing the app stops its own controller. It does not erase retained evidence,
 restart failed work, or grant any pending approval. Starting a new simulation
 creates a new run; it does not resume the previous simulation automatically.
 
-## Model-driven Go tasks (opt-in)
+## Model-driven tasks (opt-in)
 
 The new coding mode does not require `foundry.task.json` or preset patches. It
 uses a committed repository snapshot, a goal and protected/scoped files. The
-bundled verifier runs standard-library Go 1.27.3 tests in Linux, not native Mac or
-Windows application tests. No guest NIC, host share, dependency installation or
+stable verifier runs standard-library Go 1.27.3 tests. Candidate 0.2.0 adds only the fixed profiles below. Tests execute in Linux, not as native Mac or Windows application tests. No guest NIC, host share, dependency installation or
 host-script fallback is provided. The source repository and protected tests remain
 untouched. If you explicitly choose Docker on Mac, supply an existing immutable
 local image matching the verifier contract; Foundry does not pull or build it.
@@ -102,9 +99,7 @@ local image matching the verifier contract; Foundry does not pull or build it.
    Neither login nor catalog discovery is required. Saving metadata does not
    send inference. API and experimental subscription routes are never automatic
    fallbacks for one another. See [API setup](api-key-coding.md).
-2. In task creation, inspect the repository and freeze its committed base, file
-   scope, model selections, call budget and immutable local verification profile.
-   Creation grants neither network nor execution permission.
+2. In task creation, choose the language. For v2, explicitly import the pre-existing local dependency directory with separate read/copy/storage consent, then inspect the repository. Freeze its committed base, editable scope, protected inputs, model selections, call budget and exact verification profile. Creation grants neither network nor execution permission.
 3. Prepare, approve and explicitly execute the separate sandbox readiness check.
    Prepare, approve and execute baseline verification. A passing baseline is
    required; this mode does not ask a model to repair an already-failing baseline.
@@ -180,6 +175,37 @@ See [coding design](live-coding.md) for the exact authority and failure model.
 After delivery, that model-backed task is a read-only historical result: download
 its artifacts or inspect evidence, but start a new task for additional model chat
 or execution. New readiness/cleanup preparation cannot rewrite a delivered record.
+
+## Candidate 0.2.0 language and dependency inputs
+
+Use one committed single-package project. The source root is exactly `.` or `src`; it never expands the editable scope. Node/TypeScript tests live under selected `test` or `tests`; Python uses `tests`. Declare any additional test-support directory before inspection. The complete selected test/support directories are frozen, including helpers that are not themselves test cases.
+
+| Profile | Test files and fixed runner | Required committed root inputs |
+| --- | --- | --- |
+| Existing Go v1 | Standard-library Go 1.27.3 tests | Existing Go module/test contract |
+| JavaScript v2 | `*.test.js`, `*.test.mjs`, `*.test.cjs`; Node 24.22.1 `node:test` | `package.json`, npm `package-lock.json` v3 |
+| TypeScript v2 | `*.test.ts`; TypeScript 5.9.3 typecheck then Node `node:test` | Same package inputs plus fixed `tsconfig.json` |
+| Python v2 | `test_*.py`; Python 3.13.5 `unittest` | `foundry.python.lock.json` |
+
+For JS/TS, supply an absolute path to an already prepared `node_modules` directory whose pure-JS package tree agrees with the committed lock and manifest. For Python, supply an absolute directory containing exactly the pure `py3-none-any` wheels named by the committed lock. Include the complete transitive closure, including type declarations for typed dependencies. Preparation happens outside Foundry: the app does not fetch packages or run npm, pip, package scripts or project installers. Empty dependency sets still require an explicit empty input and matching committed metadata.
+
+In task creation, select the profile and input directory, accept the separate copy consent, then import dependencies. Review returned package identities/counts and digests; they describe copied input, not publisher authenticity or executed tests. Next inspect committed source and confirm task creation. A changed language, runtime, dependency receipt, layout, scope or config invalidates that inspection. A refused import creates no usable admission; it is never retried automatically. The original directory path is not sent in model context. Models receive only a bounded dependency summary; dependency file contents are not added to it.
+
+TypeScript configuration has exactly `compilerOptions` and `files`. Use the fixed options below and a sorted, complete list of all project `.ts` inputs, including `.d.ts` declarations and selected tests. The controller owns emitted output; custom output, plugins, `extends`, references and compiler redirects are rejected.
+
+```json
+{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","strict":true,"noEmitOnError":true,"allowJs":false,"skipLibCheck":false},"files":["src/triple.ts","tests/triple.test.ts"]}
+```
+
+The Python lock has exactly `schema_version:1`, `python:"3.13.5"`, empty `selected_extras`, sorted `roots:[{name,version}]` and sorted `wheels:[{name,version,filename,sha256,size}]`. Names are normalized lowercase hyphenated identifiers; versions use the admitted numeric grammar. Hashes and sizes must describe actual local wheel bytes. Wheel metadata, dependency closure and RECORD are checked. This is not a requirements.txt, arbitrary pip resolver or native-wheel interface. The following is the complete valid empty-dependency lock:
+
+```json
+{"schema_version":1,"python":"3.13.5","selected_extras":[],"roots":[],"wheels":[]}
+```
+
+Tests/support, manifests, locks, TypeScript config and dependency payload stay immutable. Reserved dependency/build prefixes cannot become editable source. Source scan limits remain 500 files / 10 MiB, selected model context 30 files / 200 KiB; dependency payload is independently bounded to 10,000 files / 64 MiB. Native extensions, package plugins, nested projects/monorepos and other frameworks are unsupported. No guest network, host share, package installation or host fallback is provided.
+
+Installed profile `available` means installed/capability eligibility only. Independently approve readiness, then baseline; neither imported file counts nor selected test-file counts prove completed tests. TypeScript compile failure and Python setup/discovery failure have zero completed cases and stop as infrastructure errors, not Debugger repair prompts. Only complete authenticated assertion-failure evidence with confirmed cleanup can enter the existing bounded repair loop. Runtime/dependency drift blocks the frozen task instead of switching versions.
 
 ## Bring a disposable repository
 
@@ -261,6 +287,8 @@ task; it is not a simulated pass. On managed Windows machines, ask the device
 administrator about the prerequisite. Foundry never changes it automatically.
 Unconfirmed shutdown preserves evidence and blocks further work instead of
 killing processes by name. See [sandbox design](embedded-sandbox.md).
+
+**Candidate input or framework error:** retain the failed admission/inspection or verification evidence. Check the selected framework, root metadata and exact local dependency input. Do not rewrite protected tests, loosen compiler settings or count zero-case setup/discovery/compile failures as a pass. New legitimate inputs need a new admission/inspection and task.
 
 **Simulation versus real verification:** inspect `source_kind`, the attempt trace
 and the exported report. A screenshot, exit code or model review alone does not

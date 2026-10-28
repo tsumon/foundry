@@ -3,7 +3,7 @@
 ## Delivery goal and verification boundary
 
 This work connects the existing account-backed model router, immutable repository
-imports, candidate generations and controlled Go sandbox verifier in one desktop
+imports, candidate generations and fixed language sandbox verifiers in one desktop
 task. It does not replace the workbench or treat installation as evidence of a
 successful real-model task. One delivery milestone covers the whole path.
 
@@ -26,7 +26,7 @@ enumerate, refresh or clean up credentials.
 
 The new task path accepts an inspected committed repository, a selected
 account-backed role snapshot, a frozen built-in VM identity (default) or explicit
-supported Docker profile, and the fixed Go verification policy. It cannot consume descriptor-supplied solutions. The old
+Mac Go Docker profile, and the selected fixed verification policy. It cannot consume descriptor-supplied solutions. The old
 synthetic paths and their evidence remain unchanged. A separate model-backed C4
 capability composes the router with the existing controlled verifier; globally
 removing synthetic restrictions or falling back to the legacy runner is forbidden.
@@ -42,8 +42,7 @@ Existing connection/catalog/single-inference acceptances are not task approval.
 
 ## One task, separate authorities
 
-1. Import consent reads committed files and freezes the baseline, protected inputs
-   and context manifest. It does not send source to a provider.
+1. V2 dependency-copy consent imports pre-existing local inputs separately. Committed-source inspection then freezes baseline, protected tests/support/config/locks, dependency bindings and context manifest. Neither action sends source to a provider or grants execution.
 2. Sandbox readiness and baseline execution retain their separate material,
    approval, dispatch, result and exact-owned cleanup records.
 3. Context approval binds the repository, selected accounts/models, context and
@@ -96,11 +95,7 @@ from invalidating the delivered review and provenance bindings.
 
 ## Supported project and platform limits
 
-The real verifier uses the pinned Go 1.27.3 Linux guest/image contract with protected
-tests/module/configuration files, standard-library-only inputs, no guest network, no pull,
-non-root execution and fixed CPU/memory/PID/time/output limits. Existing import
-size and entry-type restrictions remain. This is not arbitrary-language execution,
-dependency installation, test rewriting, host scripting, deployment or migration.
+Released 0.1.0 uses the pinned Go 1.27.3 standard-library Linux contract. Candidate 0.2.0 adds closed single-package Node `node:test`, TypeScript fixed typecheck then `node:test`, and Python `unittest`, with explicitly imported frozen pure-JS lock-v3 trees or exact locked pure wheels. Tests/helpers, manifests, locks, config and dependency payload are protected. No guest network, package/install scripts, native extensions/plugins, monorepos or other frameworks are admitted. Existing non-root resource limits and import restrictions remain. See the [exact input contract](desktop-guide.md#candidate-020-language-and-dependency-inputs). Typecheck/setup/discovery and zero-case infrastructure errors stop without repair; catalog availability is not completed readiness or tests.
 
 Native credentials on supported desktop platforms must use OS-backed Foundry-only
 storage, not plaintext files. The default [built-in VM](embedded-sandbox.md)
@@ -120,6 +115,4 @@ fallback is allowed. Packaging and successful native execution are separate clai
 - The installed app renders setup, decisions, model provenance, tests and recovery
   without exposing credentials. Windows and Mac packages undergo platform-specific
   checks, not merely cross-compilation.
-- Source/security checks and GitHub CI must pass before updated artifacts are
-  described as accepted. Real provider acceptance remains explicitly pending
-  until the user authorizes credentials and calls.
+- Source/security checks, the installed v1 plus twelve-case v2 native matrix and exact-commit CI must pass before candidate artifacts are described as accepted. Actual candidate native/installer/UI/upgrade/provider/CI results remain pending. Historical [Mac Go provider acceptance](compatible-api-acceptance.md) stays scoped to its original version/projects. Hosted Windows fixtures cannot prove access to the Mac loopback CPA route. New provider attempts require their own bounded authorization.

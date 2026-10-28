@@ -72,7 +72,7 @@ func Discover(ctx context.Context, endpoint, credential string) (result Result, 
 }
 
 func (d *discovery) initialize() error {
-	raw, err := d.post(1, "initialize", map[string]any{"protocolVersion": domain.MCPProtocol, "capabilities": map[string]any{}, "clientInfo": map[string]string{"name": "FOUNDRY", "version": "0.1.0"}})
+	raw, err := d.post(1, "initialize", map[string]any{"protocolVersion": domain.MCPProtocol, "capabilities": map[string]any{}, "clientInfo": map[string]string{"name": "FOUNDRY", "version": "0.2.0"}})
 	if err != nil {
 		return err
 	}

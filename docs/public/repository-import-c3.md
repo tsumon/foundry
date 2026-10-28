@@ -1,6 +1,32 @@
 # C3: repository admission and read-only recovery diagnosis
 
-## Scope and invariant boundaries
+## Candidate 0.2.0: explicit dependency input and schema-2 inspection
+
+The current implementation extends the original C3 contract below. Its original design/fixture limitations are historical; the [controlled workbench](live-coding.md) separately composes real fixed VM verification. Candidate native/provider/installer/CI acceptance remains pending. User instructions are in the [language/input walkthrough](desktop-guide.md#candidate-020-language-and-dependency-inputs).
+
+`GET /api/coding-tasks` retains the legacy Go `available/profile/backends` fields and adds exactly three ordered `profiles` templates: `c4_node_model_v2`, `c4_typescript_model_v2`, `c4_python_model_v2`. Each has language/runner/verifier, `mode:embedded_vm`, limits, eligibility/reason and, when installed assets validate, the full VM identity plus `runtime_inventory_digest`. Top-level Go availability does not determine v2 eligibility. These templates cannot execute and do not prove a successful readiness check. Reading them allocates no VM session.
+
+`POST /api/coding-dependencies` is a separate consent to bounded local copy/storage, never a package installer. Required fields are `profile_id`, exact installed `embedded_vm`, `runtime_inventory_digest`, absolute transient `input_directory` and `consent:true`, plus exactly one source selector: `repo_path`, or `repository_id` with positive `repository_revision`. JS/TS uses the pre-existing node_modules root and committed root package.json/package-lock.json v3; Python uses a wheel directory and committed foundry.python.lock.json. No client-selected dependency store, source bytes, command or authorizing receipt is accepted.
+
+Success returns exactly `admission_digest`, `dependencies`, `source_files` and `summary`. The binding contains schema/ecosystem, bundle/manifest digests and file/byte counts. The bounded summary contains policy, user-supplied provenance, the same digests/counts and sorted package identities with an explicit omitted count. These counts describe copied payload, not completed tests or publisher authenticity. The absolute input path is neither retained in the receipt nor sent to models. Failed or unknown publication supplies no usable admission. Exact immutable metadata and complete payload are rechecked before creation, model context and verification.
+
+Use the existing `POST /api/repository-imports/inspections` consent action with original scope/protected/acceptance/image fields plus `spec.verification_v2`. The selected declaration has `schema_version:2`, `profile_id`, complete installed identity, inventory/admission/dependency binding, `source_root`, `test_root` and sorted `test_support_prefixes`. Source root is exactly `.` or `src`, Node/TS test root `test` or `tests`, Python `tests`; scope still lists concrete editable paths, never `.` or globs. V2 image is empty; acceptance is the selected single fixed verifier:
+
+| Profile | Acceptance verifier |
+| --- | --- |
+| `c4_node_model_v2` | `/opt/foundry/verify-node-v2` |
+| `c4_typescript_model_v2` | `/opt/foundry/verify-typescript-v2` |
+| `c4_python_model_v2` | `/opt/foundry/verify-python-v2` |
+
+A ready schema-2 inspection uses policy `committed_text_c4_v2` and retains both the selected declaration and complete `verification_v2` input contract: source metadata, protected test/helper/manifest/config/lock rows, protected prefixes, selected test files, source root, `foundry-test-v2` harness, dependency/admission bindings and protected/execution digests. TS additionally binds config digest, all sorted `.ts` inputs including declarations and fixed compiled-output root. Entire test/support directories and reserved dependency/build prefixes are protected; root selection does not grant writable scope. Whole-source bounds remain 500 files/10 MiB and model context 30 files/200 KiB. The complete inner contract has an independent 1 MiB bound inside the 2 MiB inspection record. Dependency payload is independently bounded to 10,000 files/64 MiB.
+
+Blocked inspection has no completed contract, successful counts or creation authority. Inspection counts mean **test files**, not passing/completed framework cases. Changing language/runtime/dependencies/layout/support/config/scope invalidates the selected inspection, including stale async replies. Inspection history remains bounded and immutable; failed actions never retry automatically.
+
+`POST /api/coding-tasks` uses the exact inspection ID/digest, original unexpanded declaration and only `spec.c4:{schema_version:2,id:<selected profile>,mode:"embedded_vm"}`. The backend reconstructs the full profile and protected rules from immutable records; client-supplied full execution bindings are refused. Import/coding/control/operation versions remain 1; v1 JSON/hash/report behavior stays unchanged. Creation grants no readiness, baseline, context, model call, execution or delivery consent. Admission does not reconstruct a live runtime session. Current catalog eligibility is not used to rewrite historical tasks.
+
+All routes retain session/Host/Origin/JSON and recovery read-only guards; requests use the existing 1 MiB body limit. V2 nested records reject unknown, duplicate/aliased, missing and null fields. Dependency errors remain the existing bounded envelope: 400 for consent/invalid inputs/location, 409 for changed committed source and 500 for storage failure, without raw host paths/parser detail. This reference supplies no alternate execution route.
+
+## Historical C3 scope and invariant boundaries
 
 C3 adds explicit local repository admission, durable import provenance and
 read-only recovery diagnosis to the existing workbench. It does not replace the

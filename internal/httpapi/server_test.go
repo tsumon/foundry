@@ -232,7 +232,7 @@ func TestAuthenticatedReadUsesLaunchCookie(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Status != "ok" || response.Version != "0.1.0" {
+	if response.Status != "ok" || response.Version != "0.2.0" {
 		t.Fatalf("response=%+v", response)
 	}
 	for _, capability := range []string{"planning", "execution", "docker_verification", "local_patch_delivery", "model_directory_probe", "magpie_discovery", "server_sent_events"} {

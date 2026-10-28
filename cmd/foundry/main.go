@@ -331,7 +331,7 @@ func runWithSecrets(args []string, secrets model.Secrets) error {
 			return err
 		}
 	}
-	log.Printf("FOUNDRY 0.1.0 listening at http://%s", cfg.address)
+	log.Printf("FOUNDRY 0.2.0 listening at http://%s", cfg.address)
 	if recoveryReadOnly {
 		log.Printf("recovery_limited: diagnostic read-only; %s; all business mutations disabled", recoveryError)
 	}

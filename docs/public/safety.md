@@ -28,6 +28,16 @@ Generic external MCP execution is closed. Task-time MCP execution accepts only t
 
 Skill registration stores bounded static text. Skill content does not run scripts, fetch links, grant a tool, or authorize a state transition.
 
+## Built-in VM and candidate v2 inputs
+
+The controlled desktop defaults to a bundled Linux VM, with separate Go v1 and Node/TypeScript/Python v2 identities. V2 permits only single-package `node:test`, fixed TS typecheck then `node:test`, and Python `unittest`; Docker remains a separately selected Mac Go option. No unavailable profile can switch language, use a host runner or bypass virtualization requirements. Installed catalog eligibility is metadata, not readiness or native attestation.
+
+Dependency import is a separate explicit read/copy/storage consent over an already prepared local pure-JS tree or exact locked pure wheels. It grants no test/model/context permission. Admission checks committed metadata and complete bounded payload, stores immutable identities and rechecks them before use. No guest npm/pip, install script, arbitrary native extension/plugin or monorepo is supported. User-supplied lock consistency does not establish publisher authenticity. See the [input walkthrough](desktop-guide.md#candidate-020-language-and-dependency-inputs).
+
+Selected source is read-only; entire tests/support directories, manifests, locks, TS config and dependency payload remain protected. Editable scope cannot broaden through a root selection or model response. The static guest supervisor owns privilege, read-only mounts, control/FD separation and fixed resource policy before project loading; native gates must prove these actual controls. Complete authenticated response, exact EOF and confirmed owned termination/Close are required for retained native facts. A report alone cannot authorize a session.
+
+Selected test-file counts are not completed cases. Compiler, setup/discovery, truncated or zero-case infrastructure failures cannot become passing tests or Debugger repair evidence. Readiness, baseline, context, execution and delivery keep independent approvals. Candidate 0.2.0 native/provider/installed/CI acceptance remains pending; old Go or synthetic receipts cannot fill that gap.
+
 ## Docker verification
 
 This section describes the legacy verification path. The versioned
@@ -74,7 +84,7 @@ These restrictions reduce risk; they are not a proof that Docker, the image, the
 
 ## Failure and unknown outcomes
 
-FOUNDRY distinguishes known failure from an outcome that became uncertain after dispatch. Unknown model/MCP outcomes are not replayed automatically and their reserved budget is not refunded. Controlled C4/coding recovery performs local reconciliation without automatic Docker cleanup; cleanup needs its own current authority and exact-owned ID. The legacy path can perform owner-scoped cleanup. Neither recovery initiates provider/MCP calls, new verification, image resolution or delivery.
+FOUNDRY distinguishes known failure from an outcome that became uncertain after dispatch. Unknown model/MCP outcomes are not replayed automatically and their reserved budget is not refunded. Controlled C4/coding recovery performs local reconciliation without automatic sandbox cleanup; cleanup needs its own current authority and exact-owned ID. The legacy path can perform owner-scoped cleanup. Neither recovery initiates provider/MCP calls, new verification, image resolution or delivery.
 
 Do not manually edit the SQLite database, controller workspace, sealed evidence, or exported artifact metadata to bypass a blocked state. Preserve the data directory for diagnosis and create a new task when frozen inputs legitimately change.
 

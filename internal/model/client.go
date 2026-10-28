@@ -162,7 +162,7 @@ func (c *Client) do(ctx context.Context, profile domain.Profile, method, endpoin
 		return nil, errors.New("create provider request")
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Foundry/0.1.0")
+	req.Header.Set("User-Agent", "Foundry/0.2.0")
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

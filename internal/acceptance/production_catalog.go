@@ -146,7 +146,7 @@ func (s *Service) requestCatalog(ctx context.Context, o domain.ModelAcceptanceOp
 	}
 	req.Header.Set("Authorization", "Bearer "+lease.Secret)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Foundry/0.1.0")
+	req.Header.Set("User-Agent", "Foundry/0.2.0")
 	response, e := s.catalog.http.Do(req)
 	if e != nil {
 		return nil, catalogFailure("transport_unknown", "unknown")

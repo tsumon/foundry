@@ -152,3 +152,29 @@ Set `FOUNDRY_RUNTIME_SOURCES` to a previously verified input directory to prepar
 the sidecar without network. The installed app never runs this build-time script.
 When updating Electron, review its actual platform notice files, source pins,
 patches, configurations and shared-library paths before changing this manifest.
+
+## V2 offline runtime and source sidecars
+
+Candidate 0.2.0 installs exactly one legacy Go runtime at `sandbox/` and one shared Node/TypeScript/Python runtime at `sandbox-v2/`. The latter binds a canonical `runtime-inventory-v2.json`, the static supervisor, three owned runners, Node 24.22.1, TypeScript 5.9.3 and Debian Python 3.13.5 (`3.13.5-2+deb13u5`) plus the measured loader/stdlib/library closure. The descriptor embedded in the image equals the external descriptor; ordinary file SHA-256, descriptor-domain digest, projected-runtime digest and final bundle identity are distinct. Asset validation does not boot a VM or establish test success.
+
+Prepare verified runtime/source inputs with the explicit build-only `desktop/sandbox/multilang-inputs.cjs` command and committed lock, as described in [contributor setup](../CONTRIBUTING.md#pinned-v2-inputs). Supply a trusted absolute host Python 3.13+ path and pinned Go 1.27.3. Build v1 first using the existing native sandbox builder and retain its exact matching source sidecar. Then run the v2 builder on the supported native target with explicit local inputs:
+
+```sh
+export FOUNDRY_BUILD_PYTHON=/absolute/trusted/python3.13
+export FOUNDRY_MULTILANG_INPUTS=/absolute/verified/multilang-inputs
+export FOUNDRY_GO=/absolute/pinned/go
+export FOUNDRY_SANDBOX_BUNDLE=/absolute/v1-output/bundle
+export FOUNDRY_SANDBOX_SOURCES=/absolute/v1-output/sandbox-sources
+export FOUNDRY_SANDBOX_INPUTS=/absolute/verified/native-inputs
+node desktop/sandbox/build-bundle-v2.cjs /absolute/new/v2-output
+export FOUNDRY_SANDBOX_V2_BUNDLE=/absolute/new/v2-output/bundle
+export FOUNDRY_SANDBOX_V2_SOURCES=/absolute/new/v2-output/sandbox-v2-sources
+```
+
+The v2 builder is offline: it verifies cached Go modules and locked local archives, compiles only the owned static guest, constructs the deterministic image/descriptor and publishes its manifest last. It refuses missing, changed or unpinned input. On Windows, also provide `FOUNDRY_WINDOWS_VM_RUNTIME` pointing to the source-built minimal QEMU tree with its configuration, PE closure, stdio/UTF-8 and zlib proofs; an amd64 rootfs alone is not a native Windows bundle. Do not replace missing native input with broad prebuilt QEMU or software emulation.
+
+Package only after both bundles and sources validate. The resulting `sandbox-sources` and `sandbox-v2-sources` directories stay beside build/distribution output, outside installed Resources, together with the Electron `runtime-sources` kit. V2's `legal/sources.json` binds every actual sidecar file; `legal/runtime-components.json` relates runtime inputs, corresponding sources and notices. The v2 sidecar includes exact upstream/distribution sources, TypeScript compiler input, inherited native/kernel source kit, Go source/toolchain archive, linked module sources, guest/runner sources and build recipes. Source URLs alone do not replace these files. Retain original licenses, including nested numeric COPYING variants.
+
+`distribution-manifest.json` binds the installer, both installed bundle manifest hashes and sidecar inventories; SHA256SUMS binds the installer and distribution manifest. Installed acceptance compares sidecars against actual installed bundles. Startup validates sealed runtime/descriptor/notice assets and compact source indexes without reading source tarballs. The installed controller receives startup-owned `FOUNDRY_VM_BUNDLE` and `FOUNDRY_VM_V2_BUNDLE`; these are not interchangeable with build input variables or caller-selected execution authority.
+
+Actual native boot, all-profile interpreter/compiler/isolation/resource/cleanup checks, installed UI and Alpha.3 plus stable upgrades remain mandatory [release gates](../docs/public/release-readiness.md#candidate-020-gates). Static builds or process-platform fixtures cannot satisfy them. Candidate 0.2.0 results remain pending until exact-source receipts exist; this guide invents no native Windows, provider or signing result.

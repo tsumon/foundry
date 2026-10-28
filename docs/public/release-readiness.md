@@ -1,13 +1,54 @@
 # Desktop release readiness
 
-The first stable release is a bounded, serial Go coding workbench, not an
+Released 0.1.0 is a bounded, serial Go coding workbench, not an
 unattended general-purpose developer. Its primary connection is an explicitly
 selected API Key / Responses route. Subscription sign-in stays experimental.
 A version number or successful installer build alone does not satisfy the gates
 below. Independent approvals, consumed unknown calls and immutable task records
 apply to release acceptance as well as development.
 
-## 0.1.0 design and implementation plan
+## Candidate 0.2.0 gates
+
+Candidate version 0.2.0 adds only the [closed language/input contracts](desktop-guide.md#candidate-020-language-and-dependency-inputs). Source harnesses are implemented; actual exact-candidate Mac native, installed UI/upgrade, provider, hosted Windows and consolidated CI/security/distribution gates remain pending. A published 0.1.0 pass is not a candidate 0.2.0 pass. Preserve its fixed downloads, assets and receipts.
+
+1. Finish whole-branch review and one consolidated fix wave before source publication. Keep exact package/web/lock/controller/User-Agent version metadata consistent; do not alter protocol/schema/profile identities. Run covering normal/race/vet/web/typecheck/build, desktop/source/export/license/secret/workflow and existing full dependency/security gates using pinned tools and explicit offline inputs. Preserve all original task records, evidence, approvals and consumed budgets.
+2. Build final exact-source packages after version and documentation changes. Keep one Go v1 `sandbox/` plus one shared three-profile `sandbox-v2/`, both complete source sidecars and notices outside Resources. Verify binary/resource inventories, canonical descriptor/image/supervisor/manifest digests, source linkage, `distribution-manifest.json` and final installer hashes. An amd64 rootfs alone cannot satisfy Windows native packaging.
+3. Run the unchanged installed v1 acceptance and the closed v2 matrix below on supported native hardware, with independent repositories/dependencies/data and separate approvals. Every attempt owns a fresh data directory and receipt; unexpected failure stops without retry. Preserve its actual evidence before any source fix/rebuild. Catalog eligibility and protocol fixtures cannot substitute for actual guest boot/isolation/EOF/termination.
+4. Test the exact candidate DMG/app on Apple Silicon: language/dependency/inspection UI, independent readiness/baseline/context/execution/delivery controls, actual failure evidence/report/patch, two launches and clean quits, old-runtime retention and data recovery. Use real installed-workbench screenshots with disposable data; screenshots alone prove neither guest nor provider execution. Compare original task/project/workbench inventories before/after.
+5. Keep Alpha.3 (`5237fc49bafe4c5d33d3d6fa117ac59c467ace16`) upgrade coverage and supplement it with stable 0.1.0 (`ab89b5a88f73755e91aaefa5b73b1dfd5c73fdb0`). Both use closed source/installer identities and independent synthetic seeds. Stable's supplement tests upgrade/recovery/rollback/uninstall; the full candidate native/UI matrix runs once. Preserve strict old rows/SQL: Alpha.3 allows its six existing additive objects plus dependency_admissions; stable allows only dependency_admissions. Never ignore arbitrary schema differences or point an old program at current data.
+6. After the consolidated source push, require actual exact-commit Verify, security and native Windows Desktop packages results. Windows must exercise installer/UI/restart/upgrade/uninstall, WHPX, all v2 profile/resource/stream cases and secure-I/O source regressions. Mac tests, cross-compilation and process-platform emulation cannot satisfy Windows execution. Record exact workflow/run/artifact/commit/hash evidence; no failed or unverified package may be published.
+7. Keep provider proof separate. New language/context-dispatch real-provider acceptance needs its own explicitly selected receiver/model, independent sample task and bounded call authorization. Historical Mac Go CPA/Grok receipts remain scoped. Hosted Windows cannot reach the user's Mac loopback provider: its native tests use `local_protocol_fixture/not_real_provider`, and the Windows real-provider gap remains explicit. Do not tunnel the service, export credentials, substitute a paid API or claim fixture replies are real.
+8. Publish only after applicable gates pass, with reviewed clean source, final installers, complete corresponding sources/notices, checksums and scoped receipts. Verify full asset downloads with normal TLS and SHA-256. Choose download links from actual published assets; do not invent run IDs or turn this plan into a release receipt. Signing stays ad-hoc Mac/non-notarized and unsigned Windows unless real new signing evidence exists.
+
+### Installed native matrix and receipts
+
+The legacy installed command is unchanged. V2 adds a closed profile/case pair, for example:
+
+```text
+<Resources>/bin/foundry-vm-acceptance --native-vm-acceptance --bundle <Resources>/sandbox-v2 --data-dir <fresh-private-directory> --profile c4_node_model_v2 --case workflow
+```
+
+The desktop wrapper verifies sealed installed resources. Use existing `FOUNDRY_INSTALLED_RESOURCES`, `FOUNDRY_VM_ACCEPTANCE_DATA` and `FOUNDRY_VM_ACCEPTANCE_REPORT`, then invoke `node desktop/native-vm-smoke.cjs --v2-matrix` once. Its default still runs v1; `--profile <closed-profile> --case <closed-case>` selects one explicit attempt. These commands are acceptance-only and never run during ordinary startup. They execute real VM tests and require the corresponding authority, not permission inferred from reading this page.
+
+| Profile | Case | Required native outcome |
+| --- | --- | --- |
+| Node, TS, Python individually | `workflow` | Baseline pass/4 → assertion failure/4 → repaired pass/4 → sealed delivery; six fixture model calls per profile |
+| TS | `typecheck` | Compiler-only infrastructure failure/0, owned adapter exit 2; no model/Debugger call |
+| Python | `setup`, `discovery` individually | Infrastructure failure/0, adapter exit 1; no model/Debugger call |
+| Python | `memory` | Infrastructure failure/0 with actual signaled phase/resource observation |
+| Python | `pids` | Infrastructure failure/0, protected fork EAGAIN assertion and observed resource failure |
+| Python | `timeout` | Timeout/0 with started/signaled phase and actual deadline observation |
+| Python | `signal` | Infrastructure failure/0 with signal and clean resource counters |
+| Python | `descendant` | Pass/1 with exact phase-group descendant cleanup |
+| Python | `held_stream` | Infrastructure failure/0 despite direct parent exit 0; incomplete framework report and held descendant streams require bounded cleanup/EOF |
+
+Each workflow uses admitted nonempty dependencies, including an actual TS declaration and Python pure-wheel import, with independent protected source/config/test hashes. It must establish actual read-only aliases, UID/groups/no-new-privileges, private report/control FD boundaries, no NIC/share, cgroups/page/inode and TS compiled-output freeze. Resource/stream boundaries use the representative Python profile instead of repeating every shared failure across all languages. Fixed production limits are not weakened for tests. Malformed/late serial frame tests remain explicitly offline unless native execution actually occurs; positive native handshakes and held-stream cleanup must exercise the real driver.
+
+Every strict schema-2 receipt is at most 64 KiB and retains `v2` profile/case/provenance, runtime inventory/admission digests, complete input contract, dependency file hashes and expected/protected hashes. Operation `native_v2` facts bind the owned session/request/target and authenticated checks/phases/class/completed counts/exit/truncation. Unknown fields, mismatched counts/owner/target, missing cleanup or unobserved resource qualifications fail. Only twelve successful validations with one manifest identity produce the `foundry-native-vm-v2-matrix` aggregate. Model provenance remains `local_protocol_fixture/not_real_provider`. No receipt reconstructs live authority.
+
+Windows artifact validation/upload includes the unchanged v1 receipt, all twelve v2 receipts and aggregate. Failure-only diagnostics are limited to the thirteen bounded attempt receipt filenames; no installer/source kit/data/environment/raw transcript is uploaded as a diagnostic workaround. Existing successful-distribution gates remain mandatory.
+
+## Historical 0.1.0 design and implementation plan
 
 The existing controller, role router, native credential store and isolated VM
 remain the architecture. Do not replace them or widen execution capabilities.

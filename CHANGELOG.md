@@ -2,6 +2,28 @@
 
 All notable public-facing changes will be recorded here.
 
+## 0.2.0 — candidate, acceptance pending
+
+- Prepare single-package JavaScript `node:test`, TypeScript typecheck plus
+  `node:test`, and Python `unittest` delivery alongside standard-library Go.
+  Choose the fixed language profile and follow the [input walkthrough](docs/public/desktop-guide.md#candidate-020-language-and-dependency-inputs).
+- Import pre-existing local pure-JS lock-v3 trees or exact locked pure wheels
+  through separate copy consent. Keep dependencies, tests/helpers, manifests,
+  locks and compiler configuration immutable throughout the approved workflow.
+  The guest never installs packages or runs project install scripts.
+- Show language/input identities and distinguish selected test files from
+  completed cases. Compile, discovery/setup and zero-case infrastructure
+  failures stop without claiming success or asking Debugger to repair them.
+- Package a shared v2 runtime beside retained Go v1, with separate measured
+  corresponding-source sidecars. Preserve old tasks, approvals and used budgets.
+- Add an installed native profile/failure matrix and stable-0.1.0 upgrade checks
+  alongside Alpha.3. These are source harnesses; candidate native, installed UI,
+  provider and exact-commit CI acceptance remain pending. See [release gates](docs/public/release-readiness.md#candidate-020-gates).
+
+Released 0.1.0 downloads and historical receipts remain fixed. This candidate
+entry is not a publication or new real-provider claim. Mac remains ad-hoc signed
+without notarization; Windows remains unsigned.
+
 ## 0.1.0 — 2026-10-28
 
 - Make API Key / Responses configuration the primary desktop model path, with

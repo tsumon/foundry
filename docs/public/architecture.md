@@ -9,15 +9,20 @@ FOUNDRY is a local HTTP application with a deterministic Go controller and a Rea
 - **Workspace:** [`internal/workspace`](../../internal/workspace) snapshots the selected committed Git tree, validates scope/protected paths, and manages immutable candidate generations. The selected source repository is never the edit target.
 - **Model boundary:** [`internal/model`](../../internal/model) validates protocols, bounds responses, resolves legacy profiles or frozen account routes, and classifies provider outcomes. Secrets use the platform implementation in that package.
 - **MCP boundary:** [`internal/mcp`](../../internal/mcp) implements bounded discovery/calls. [`internal/mcptest`](../../internal/mcptest) owns the only task-executable production fixture, enabled explicitly with `--local-mcp-test`.
-- **Verification:** [`internal/sandbox`](../../internal/sandbox) runs approved acceptance commands in an already-present Docker image using `--pull=never`, `--network=none`, a read-only candidate mount, dropped capabilities, resource limits, and an unprivileged user.
+- **Verification:** [`internal/sandbox`](../../internal/sandbox) dispatches fixed approved profiles through [`internal/vmruntime`](../../internal/vmruntime): retained Go v1 or a separate shared v2 Node/TypeScript/Python VM. Guest source/toolchain/dependencies are read-only, with no NIC/share and fixed privilege/resource limits. Mac Go also has an explicit already-present Docker-image path; it is never a fallback.
+- **Dependency input:** [`internal/dependencyadmission`](../../internal/dependencyadmission) validates and copies explicit pre-existing local pure-JS trees or pure wheels against committed metadata. Immutable admission records bind the task; no package installer runs.
 
 The application database, lock, mission workspaces, sealed evidence, and exports live under `FOUNDRY_DATA_DIR`. The HTTP server accepts only literal `127.0.0.1:<port>` and defaults to `127.0.0.1:4317`.
 
 ## Approval graph
 
 ```text
-create task
-  -> freeze commit + manifest + scope + profiles/policy + budgets
+new-task form
+  -> explicit local dependency-copy consent for v2
+  -> committed inspection
+  -> create task + freeze commit/inputs/scope/profile/budgets
+  -> separate readiness prepare/approve/execute + owned shutdown
+  -> separate baseline prepare/approve/execute + owned cleanup
   -> explicit context approval
   -> research/planning
        -> optional exact MCP proposal
@@ -30,7 +35,7 @@ create task
   -> local patch/report export
 ```
 
-Each approval is bound to controller-computed digests and current revisions. Context approval does not authorize a tool call or execution. A one-call MCP grant does not authorize a second call, a plan, verification, or delivery. Plan approval binds the exact plan, frozen inputs, selected candidate generation, and resolved Docker image. Delivery remains a final explicit action after successful verification and review.
+Each approval is bound to controller-computed digests and current revisions. Context approval does not authorize a tool call or execution. A one-call MCP grant does not authorize a second call, a plan, verification, or delivery. Plan approval binds the exact plan, frozen inputs, selected candidate generation and exact runtime/profile (or explicitly selected Go Docker image). Delivery remains a final explicit action after successful verification and review.
 
 ## Roles divide work, not permission
 
@@ -66,9 +71,17 @@ The read-only model-account acceptance inspection is also not a network permissi
 
 Task-scoped model, repository-read, and MCP calls reserve identity and budget before dispatch. A call that was durably reserved but not dispatched can recover as interrupted-before-dispatch. Once dispatch may have begun, an incomplete or crashed call recovers as outcome unknown. Failure and unknown outcomes remain consumed; the controller does not automatically retry, replay, reconnect, substitute a provider, refund the budget, or claim remote rollback.
 
-Recovery performs local reconciliation. The legacy runner can perform owner-scoped cleanup; controlled C4/coding tasks instead require separate explicit cleanup authority and an exact-owned container ID. Recovery does not initiate a model request, MCP request, new sandbox run, image resolution, Git operation, or delivery. A user must explicitly continue from a verified resumable checkpoint.
+Recovery performs local reconciliation. The legacy runner can perform owner-scoped cleanup; controlled C4/coding tasks instead require separate explicit cleanup authority and an exact-owned sandbox instance identity. Recovery does not initiate a model request, MCP request, new sandbox run, image resolution, Git operation, or delivery. A user must explicitly continue from a verified resumable checkpoint.
 
-## C4-A/B synthetic verification boundary
+## V2 frozen inputs and runtime eligibility
+
+Candidate 0.2.0 uses closed single-package `node:test`, fixed TypeScript typecheck plus `node:test`, and Python `unittest` contracts. Schema-2 inspection and immutable admission records bind committed metadata, protected test/support directories, config/locks, dependency payload and canonical runtime inventory. The server derives the full task profile from those immutable rows; the client submits only its selected profile and exact inspection reference. Model context receives a bounded dependency summary, not payload bytes or local input paths.
+
+Current catalog eligibility only validates installed assets/capability. It neither boots a VM nor proves hardware readiness, completed cases or distribution acceptance. Historical tasks resolve their exact retained runtime and input relations independently of the current catalog. Creation, context dispatch and verification recheck the sealed dependency payload. Cleanup uses existing exact ownership even when payloads are unavailable; a disk receipt never reconstructs process authority.
+
+Complete authenticated framework results supply actual case counts. TypeScript compile, Python setup/discovery and zero-case failures stop as infrastructure errors. Only a genuine completed assertion failure can enter bounded Debugger repair. Current candidate native/provider/installer/CI gates remain pending; see [release readiness](release-readiness.md#candidate-020-gates).
+
+## Historical C4-A/B synthetic verification boundary
 
 [C4](coding-verification-c4.md) adds optional immutable profile/operation records
 to the existing mission CAS store, not a second approval database. A C3-admitted

@@ -1,4 +1,26 @@
-# C4-A/B: approval-bound Go verification preparation
+# C4 verification: candidate v2 and historical Go preparation
+
+## Candidate 0.2.0 fixed profiles
+
+The current source extends model-backed verification with the following closed single-package VM profiles. Actual native/provider/installer/CI gates remain pending; the original C4-A/B/Double design and evidence below retain their historical meaning. See [the input walkthrough](desktop-guide.md#candidate-020-language-and-dependency-inputs) and [schema-2 admission](repository-import-c3.md#candidate-020-explicit-dependency-input-and-schema-2-inspection).
+
+| Profile | Runner | Verifier |
+| --- | --- | --- |
+| `c4_node_model_v2` | `node-test-v2` | `/opt/foundry/verify-node-v2` |
+| `c4_typescript_model_v2` | `typescript-node-test-v2` | `/opt/foundry/verify-typescript-v2` |
+| `c4_python_model_v2` | `python-unittest-v2` | `/opt/foundry/verify-python-v2` |
+
+Each schema-2 task freezes the exact VM identity (`foundry-vm-v2`, `multilang-vm-v2`), canonical runtime-inventory digest, dependency/admission binding and protected/execution input digests. V1 Go profile/identity/report bytes remain unchanged. V2 uses one shared installed image and never Docker, host commands, another language or an unbound current catalog as fallback. Installed eligibility does not prove a boot/self-check or completed tests.
+
+Separate consent imports an existing pure-JS npm lock-v3 tree or exact locked pure wheels. Committed inspection protects entire tests/support, manifests, locks, TS config and dependency payload; no package manager/install script runs in the guest. TS uses the fixed typecheck then frozen compiled Node test phase, including actual dependency type declarations. Python uses isolated unittest. Runtime/source/dependency/compiled-output freeze, UID/NNP, FD/control separation, cgroups and exact shutdown must be established by native evidence. Models receive only a bounded dependency summary, never the dependency payload or local input path.
+
+Existing task controls remain at `GET/POST /api/missions/{id}/c4`. Readiness is `prepare_readiness` → `approve_control` → `execute_readiness`; baseline is `prepare` → `approve` → `execute`; exact cleanup is `prepare_cleanup` → `approve_control` → `execute_cleanup`. Every action binds current revisions and opaque material/operation/control references returned by the server. Readiness receives only the selected runtime target, never project/dependency inputs, and proves no project pass. Context, plan-execution and delivery approvals remain independent.
+
+Completed case counts come only from complete authenticated framework results, never static test-file counts. Compiler, setup/discovery, truncated/zero-case or resource failures remain infrastructure/timeout evidence and cannot trigger Debugger. A genuine completed assertion failure with confirmed cleanup may enter at most two repairs. Profile/baseline/current candidate and independent QA/Auditor evidence still bind delivery. Unknown outcomes stop without retry, refund or provider switch.
+
+Native acceptance has an explicit closed profile/case selection and strict schema-2 receipts; the unchanged v1 default uses schema-1 receipts. Typed authenticated v2 phase/check facts are available only after exact EOF, successful native completion, confirmed termination and successful Close for the same owned request. Defensive copies and disk receipts grant no execution authority. The [installed twelve-case matrix](release-readiness.md#candidate-020-gates) uses real guest tests and explicitly fixture model replies; its required outcomes are not a claim that it has run.
+
+## Historical C4-A/B Go preparation
 
 Status: C4-A/B implemented with local synthetic validation. A separately approved,
 bounded C4-C acceptance subsequently ran the disposable Double project's tests in

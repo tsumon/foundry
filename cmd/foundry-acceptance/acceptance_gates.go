@@ -136,7 +136,7 @@ func seedConnectionDiagnosticFixture(r *acceptanceRuntime) error {
 var gateCatalog = []string{"synthetic-siwc-success-gate", "synthetic-quota-exhausted", "synthetic-permission-denied", "synthetic-rate-limited", "synthetic-sse-outcome-unknown"}
 
 func (f *protocolFixture) handleGateModel(w http.ResponseWriter, r *http.Request) {
-	if !f.authorized(r) || r.Header.Get("User-Agent") != "Foundry/0.1.0" {
+	if !f.authorized(r) || r.Header.Get("User-Agent") != "Foundry/0.2.0" {
 		f.providerError(w, 401, "invalid_api_key")
 		return
 	}

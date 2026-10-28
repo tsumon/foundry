@@ -25,10 +25,10 @@ Plans · Isolated candidates · Built-in sandbox · Repairs · Approvals · Loca
 <p align="center"><img src="docs/media/desktop-delivery.jpg" alt="Installed Foundry: independently approved synthetic delivery with patch and report exports" width="100%"></p>
 <p align="center"><sub>Actual workbench with disposable synthetic data. A screenshot is not evidence of model or sandbox execution.</sub></p>
 
-Foundry is a **Go software-delivery workbench** for a one-person team. Connect an explicitly chosen API model, start from a committed Git snapshot, plan changes, edit isolated candidates, test in a bundled VM, repair confirmed failures and deliver a reviewable **patch and Markdown report**. Your source repository stays untouched; applying and deploying the patch remain your decisions.
+Foundry is a **software-delivery workbench** for a one-person team. Connect an explicitly chosen API model, start from a committed Git snapshot, plan changes, edit isolated candidates, test in a bundled VM, repair confirmed failures and deliver a reviewable **patch and Markdown report**. Your source repository stays untouched; applying and deploying the patch remain your decisions.
 
 > [!IMPORTANT]
-> **Stable 0.1.0 supports serial delivery for standard-library Go projects.** It does not promise arbitrary languages, unattended development or automatic deployment. The default sandbox ships with the app and needs no Docker Desktop. If virtualization is unavailable, execution stops; it never falls back to the host. API models are the recommended path; ChatGPT subscription sign-in remains experimental.
+> **The downloads above are stable 0.1.0, supporting standard-library Go. This source prepares candidate 0.2.0**, adding the bounded language profiles below. Candidate native VM, installer/UI, upgrade, provider and exact-commit CI acceptance are still pending; this is not a 0.2.0 release announcement. The bundled VM needs no Docker Desktop and stops when virtualization is unavailable. API models are the recommended path; subscription sign-in remains experimental.
 
 ## One workbench, three connected views
 
@@ -36,7 +36,22 @@ Foundry is a **Go software-delivery workbench** for a one-person team. Connect a
 | :--- | :--- | :--- |
 | Researcher investigates and Planner proposes. Context sharing and plan execution have separate approvals; plans are editable. | Worker builds an isolated candidate. Protected tests run in a real VM. Confirmed failures can enter at most two Debugger rounds. | QA and Auditor review the same candidate and test evidence. Export requires separate approval; failures and spent calls remain recorded. |
 
+## Candidate 0.2.0 project scope
+
+| Language | Fixed verifier | Dependency input |
+| :--- | :--- | :--- |
+| Go | Go 1.27.3 tests, existing v1 profile | Standard library only |
+| JavaScript | Node 24.22.1 `node:test` | Pre-existing pure-JS `node_modules`, committed npm lock v3 |
+| TypeScript | TypeScript 5.9.3 typecheck, then `node:test` | Same frozen tree, including declared type definitions; fixed `tsconfig.json` |
+| Python | Python 3.13.5 `unittest` | Exact locked `py3-none-any` pure wheels |
+
+Choose one supported single-package project and framework. Prepare third-party inputs outside Foundry, then explicitly consent to copying the local dependency directory before committed-source inspection. Foundry bundles interpreters/compiler; it does not acquire arbitrary project dependencies or run npm, pip or install scripts. Tests, helper directories, manifests, locks, configuration and imported dependencies are protected. Source and test roots follow the [input contract](docs/public/desktop-guide.md#candidate-020-language-and-dependency-inputs); changing a bound choice requires fresh import/inspection.
+
+The three new profiles require the VM, with no host-execution fallback. Native extensions, plugins, monorepos and other test frameworks are unsupported. Installed-profile eligibility does not mean a successful self-check or executed tests. Typecheck, setup/discovery and zero-case infrastructure errors stop the task; they are not passing tests or repair evidence. [Candidate gates and historical scope](docs/public/alpha-status.md)
+
 ## Download and install
+
+These fixed downloads remain v0.1.0; candidate 0.2.0 has no published installer here yet.
 
 | Platform | Installer | Corresponding third-party source |
 | :--- | :--- | :--- |
@@ -47,14 +62,14 @@ Check [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.1.0/SH
 
 **Signing status:** Mac uses an ad-hoc integrity signature, without Developer ID signing or notarization. Windows is unsigned, with no verified publisher. Checksums do not authenticate the publisher. Do not disable Gatekeeper, SmartScreen or antivirus; use the reviewed source workflow if your organization's policy rejects unsigned apps. A stable version number does not mean platform notarization or a commercial support promise.
 
-The controller, frontend, Linux guest and Go toolchain are bundled. You do not need separate Go, Node.js, npm or Docker installations. Repository imports require supported local Git. Windows also requires hardware virtualization and Windows Hypervisor Platform already enabled. Foundry does not enable OS features, install services or reboot the machine. Intel Mac, Windows ARM and Linux desktop packages are not supported. See the [desktop guide](docs/public/desktop-guide.md).
+The stable installer bundles the controller, frontend, Linux guest and Go toolchain. Candidate 0.2.0 also packages the pinned Node/Python interpreters and TypeScript compiler. Running the app needs no separate language toolchain or Docker; preparing third-party dependency inputs may need tools outside Foundry. Repository imports require supported local Git. Windows also requires hardware virtualization and Windows Hypervisor Platform already enabled. Foundry does not enable OS features, install services or reboot the machine. Intel Mac, Windows ARM and Linux desktop packages are not supported. See the [desktop guide](docs/public/desktop-guide.md).
 
 ## Deliver with your own model
 
 Choose **Controlled Coding Workbench** in the app menu:
 
 1. **Configure an API.** Create an OpenAI or compatible Responses-gateway API Key account and save its key. Use **API quick setup** to enter an available model ID, acknowledge billing and assign it to roles for new tasks. Explicit Magpie/CPA Responses endpoints are supported. No ChatGPT login is needed; saving does not query a catalog or run inference. [Setup guide](docs/public/api-key-coding.md)
-2. **Import a repository.** Choose a committed standard-library Go repository, describe the goal, specify editable files and protected tests, and confirm models, the call ceiling and sandbox.
+2. **Import a repository.** In stable 0.1.0 choose committed standard-library Go; in candidate 0.2.0 select a supported profile and import its pre-existing dependency input separately. Specify the goal, editable files and protected tests, inspect the exact committed snapshot, then confirm models, the call ceiling and sandbox.
 3. **Establish the baseline.** Separately approve and run VM readiness and baseline tests. The baseline must pass; this workflow does not ask the model to repair an already-failing repository.
 4. **Approve the plan.** Confirm the outgoing files and receiver, authorize Researcher / Planner, then review or revise their plan before separately approving execution.
 5. **Check the outcome.** Worker edits an isolated candidate. Confirmed test failures trigger bounded Debugger repair and recheck. QA / Auditor independently review the evidence. Network, infrastructure and unknown-outcome failures stop.
@@ -62,19 +77,20 @@ Choose **Controlled Coding Workbench** in the app menu:
 
 API keys live in macOS Keychain or Windows Credential Manager, not browser storage or plaintext configuration. Tasks pin the receiver, account and model, with no automatic call retry or paid-provider fallback. Call counts and timeouts **are not monetary caps**; also configure provider spending limits. A dispatched call with an unknown result still consumes budget and is never replayed on restart.
 
-Tests run in a Linux guest; they do not certify native DMG, EXE, web or mobile apps. The guest has no network or host share and installs no external dependencies. Mac users with an existing Docker setup may explicitly choose an immutable local image for a new task, with separate approvals; Docker is never an automatic VM fallback.
+Tests run in a Linux guest; they do not certify native DMG, EXE, web or mobile apps. The guest has no network or host share and installs no external dependencies. Mac users with an existing Docker setup may explicitly choose an immutable local image for a new Go task, with separate approvals; the new language profiles are VM-only.
 
 ## Read the evidence by scope
 
 | Evidence | What it covers |
 | :--- | :--- |
-| [Real Mac CPA/Grok delivery](docs/public/compatible-api-acceptance.md) | Five real role calls; baseline and candidate each passed 14 real VM tests, with source and protected tests unchanged. The first candidate passed, so no real Debugger call occurred. |
-| [Real repair delivery](docs/public/compatible-api-acceptance.md#real-repair-and-delivery--stable-candidate) | Six roles each called the real model once. A deliberate injected error failed in the VM; Debugger repaired it and all 9 tests passed. This is not a claim of a spontaneous model defect. |
+| [Historical v0.1.0 Mac Go CPA/Grok delivery](docs/public/compatible-api-acceptance.md) | Five real role calls; baseline and candidate each passed 14 real VM tests, with source and protected tests unchanged. The first candidate passed, so no real Debugger call occurred. |
+| [Historical v0.1.0 Mac Go repair delivery](docs/public/compatible-api-acceptance.md#real-repair-and-delivery--stable-candidate) | Six roles each called the real model once. A deliberate injected error failed in the VM; Debugger repaired it and all 9 tests passed. This is not a claim of a spontaneous model defect. |
 | Versioned Release receipts | Distinguish provider calls, protocol fixtures, installation/upgrade and VM execution, bound to commits and installer hashes. |
-| Native Windows installation and WHPX acceptance | Actual installation, UI, restart and VM failure→repair→recheck. Protocol-fixture roles are not real Windows provider calls. |
+| Historical v0.1.0 Windows installation and WHPX acceptance | Its release receipts scope installation, UI, restart and Go VM failure→repair→recheck. Candidate 0.2.0 Windows gates are pending. |
+| Candidate 0.2.0 native matrix | Source harness defines all-profile workflow and failure checks using `local_protocol_fixture/not_real_provider` model replies. Actual installed native results are pending. |
 | Local demonstration | Labeled `SYNTHETIC` / `synthetic_stub`; no cloud calls or Go compiler execution. |
 
-Historical OpenAI subscription response failures remain recorded; success on the API/Grok route does not rewrite them. Each live acceptance proves only its receiver, model, project and host. See [supported scope](docs/public/alpha-status.md).
+Hosted Windows cannot reach a provider bound to the Mac loopback address. WHPX/model-protocol fixtures therefore do not establish Windows real-provider access, and old Mac Go receipts do not prove the new languages. Historical OpenAI subscription response failures remain recorded; success on the API/Grok route does not rewrite them. Each live acceptance proves only its receiver, model, project and host. See [supported scope](docs/public/alpha-status.md).
 
 ## Upgrade and recover
 
@@ -90,7 +106,7 @@ MCP, Skills and observation hooks provide management, discovery and static descr
 
 ## Run from source
 
-Development baseline: Go **1.27.3**, Node.js **22.23.2**, npm **10.9.8**, cgo/a C compiler and supported local Git.
+Development baseline: Go **1.27.3**, Node.js **22.23.2**, npm **10.9.8**, cgo/a C compiler and supported local Git. Candidate v2 source tests/builds also require an explicit trusted Python **3.13+** path and pinned offline runtime/compiler inputs; see [contributor setup](CONTRIBUTING.md#pinned-v2-inputs). The quickstart below intentionally uses released v0.1.0 and a synthetic workflow.
 
 ```sh
 git clone --branch v0.1.0 --depth 1 https://github.com/tsumon/foundry.git

@@ -1,4 +1,14 @@
-# Supported scope — 0.1.0
+# Supported scope — candidate 0.2.0 and released 0.1.0
+
+## Candidate 0.2.0 (acceptance pending)
+
+The current source adds fixed single-package JavaScript `node:test`, TypeScript typecheck then `node:test`, and Python `unittest` profiles beside standard-library Go v1. New profiles use the bundled VM only, with explicit immutable local input: frozen pure-JS npm lock-v3 dependencies or exact locked pure Python wheels. Tests, helpers, manifests, locks, TS config and dependency payload are protected. No arbitrary packages, native extensions, plugins, monorepos, other frameworks or in-guest installers are supported. See the [input walkthrough](desktop-guide.md#candidate-020-language-and-dependency-inputs).
+
+Catalog eligibility is not a readiness check, test result or native attestation. Compile, setup/discovery and zero-case infrastructure failures cannot become passing tests or repair evidence. Existing independent approvals and retained runtime identities remain in force.
+
+Implementation/source fixtures and static package validation exist; actual candidate Mac VM, installed UI/upgrade, new-language provider, hosted Windows WHPX/installer and exact-commit CI gates remain pending. No candidate 0.2.0 download or successful run is asserted here. The native matrix uses explicitly synthetic model replies; it cannot extend historical Mac Go real-provider proof. Hosted Windows cannot reach a Mac loopback CPA service, so its fixture workflow cannot establish Windows real-provider access.
+
+## Released 0.1.0
 
 Foundry's first stable scope is a serial, approval-bound coding workflow for
 committed standard-library Go repositories. This path remains available under the
