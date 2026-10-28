@@ -11,7 +11,11 @@ The inventory covers:
 
 - the npm runtime closure (`react`, `react-dom`, and `scheduler`);
 - the complete **web** npm build and test lock tree; and
-- five Go runtime modules plus two modules present only for dependency tests.
+- six Go runtime modules plus two modules present only for dependency tests.
+
+The Go runtime inventory includes `github.com/Masterminds/semver/v3@v3.5.0`
+(MIT), a pure-Go comparator for bounded frozen Node dependency ranges. Its
+unmodified license and exact module checksums are recorded in the inventory.
 
 The desktop build lock is separate (`desktop/package-lock.json`). Its npm build
 tools are not installed in the shipped application. This source inventory is not
@@ -95,8 +99,8 @@ cross-platform compliance claim.
 For installed package roots, the reviewed legal-file set includes
 `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`, `PATENTS*`,
 `THIRD-PARTY-LICENSE*`, and `THIRD-PARTY-NOTICES*`. The 105 installed npm
-entries map to 110 legal-text references. Together with the 10 Go references,
-the inventory contains 120 references to 86 deduplicated byte-exact text
+entries map to 110 legal-text references. Together with the 11 Go references,
+the inventory contains 121 references to 87 deduplicated byte-exact text
 files in this distribution. In particular, `prettier@3.9.10` maps both its
 top-level MIT `LICENSE` and its complete 362,597-byte bundled
 `THIRD-PARTY-NOTICES.md`, which contains the upstream bundled MIT, ISC, BSD,

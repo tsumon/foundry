@@ -6,17 +6,48 @@
     "goChecksums": "go.sum"
   },
   "coverage": {
-    "totalEntries": 155,
+    "totalEntries": 156,
     "npmLockedEntries": 148,
     "npmInstalledMacOSArm64Entries": 105,
     "npmUnverifiedOptionalPlatformEntries": 43,
     "npmRuntimeClosureEntries": 3,
-    "goRuntimeModules": 5,
+    "goRuntimeModules": 6,
     "goDependencyTestModules": 2,
-    "deduplicatedLegalTexts": 86,
+    "deduplicatedLegalTexts": 87,
     "limitation": "Byte-level attribution evidence for the web lock and Go modules, not legal clearance or the desktop build lock. Forty-three optional web build packages were not installed in the reviewed macOS source snapshot. Their text coverage is unresolved before redistribution of those packages; it does not mean they ship in desktop installers. Native runtime notices and sources are covered separately."
   },
   "dependencies": [
+    {
+      "ecosystem": "go",
+      "name": "github.com/Masterminds/semver/v3",
+      "version": "v3.5.0",
+      "scope": "runtime",
+      "direct": true,
+      "dev": false,
+      "optional": false,
+      "os": [],
+      "cpu": [],
+      "declaredLicense": "MIT",
+      "lockPath": "go.sum",
+      "integrity": {
+        "module": "h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=",
+        "goMod": "h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM="
+      },
+      "licenseEvidence": {
+        "status": "verified-go-sum-module-cache",
+        "source": "go.sum-verified-module-cache-root",
+        "texts": [
+          {
+            "originalName": "LICENSE.txt",
+            "path": "third_party/licenses/2db9097f7b3750c1c9426996d21fe443d339131fb758c2167d2d5fabe8e6cbf9.txt",
+            "sha256": "2db9097f7b3750c1c9426996d21fe443d339131fb758c2167d2d5fabe8e6cbf9",
+            "bytes": 1078,
+            "evidenceSource": "github.com/Masterminds/semver/v3@v3.5.0/LICENSE.txt"
+          }
+        ],
+        "note": "Pinned pure-Go range comparator; upstream commit 8b89c86cb53c57cfd5d07c13de12bc4d78954e99."
+      }
+    },
     {
       "ecosystem": "go",
       "name": "github.com/dlclark/regexp2",
