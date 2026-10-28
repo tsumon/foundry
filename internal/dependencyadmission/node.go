@@ -146,7 +146,7 @@ func parsePackage(raw []byte, limit int, locked bool) (*nodePackage, error) {
 		}
 		if resolved != "" {
 			u, e := url.Parse(resolved)
-			if e != nil || u.User != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.RawQuery != "" || u.Fragment != "" {
+			if e != nil || u.User != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || strings.ContainsAny(resolved, "?#") {
 				return nil, errors.New("unsupported_resolved_claim")
 			}
 		}

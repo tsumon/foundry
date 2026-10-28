@@ -497,7 +497,7 @@ func TestNodeNativePayloadFormats(t *testing.T) {
 }
 
 func TestNodeResolvedClaimsRejectQueries(t *testing.T) {
-	for _, claim := range []string{"https://example.invalid/a.tgz?download=1", "https://example.invalid/a.tgz#fragment", "https://user:secret@example.invalid/a.tgz", "file:///tmp/a.tgz"} {
+	for _, claim := range []string{"https://example.invalid/a.tgz?download=1", "https://example.invalid/a.tgz#fragment", "https://example.invalid/a.tgz?", "https://example.invalid/a.tgz#", "https://user:secret@example.invalid/a.tgz", "file:///tmp/a.tgz"} {
 		_, e := parsePackage(encode(map[string]any{"resolved": claim}), maxPackageJSON, true)
 		if e == nil || e.Error() != "unsupported_resolved_claim" || strings.Contains(e.Error(), claim) {
 			t.Fatalf("resolved claim outcome %v", e)
