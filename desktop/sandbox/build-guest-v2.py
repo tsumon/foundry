@@ -275,7 +275,22 @@ RUNNERS = ('opt/foundry/runners/node.cjs', 'opt/foundry/runners/python.py', 'opt
 RUNTIME_KINDS = ('debian-runtime-package', 'node-runtime', 'typescript-compiler')
 SOURCE_KINDS = ('debian-corresponding-source', 'node-source', 'typescript-source')
 
+_windows_backend = None
+
+def windows_backend():
+    global _windows_backend
+    if _windows_backend is None:
+        import importlib.util
+        # -I excludes sibling directories from sys.path. Load only this fixed,
+        # owned helper next to the trusted builder, never a runtime/input file.
+        location=Path(__file__).with_name('build-guest-v2-windows.py')
+        spec=importlib.util.spec_from_file_location('foundry_owned_windows_fs',location)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        _windows_backend=module.WindowsFS()
+    return _windows_backend
+
 def host_path(value, directory=False):
+    if os.name=='nt':return windows_backend().host_path(value,directory)
     path = Path(value)
     if not path.is_absolute() or '..' in path.parts: fail('canonical absolute host path required')
     for part in [*reversed(path.parents), path]:
@@ -299,6 +314,7 @@ def directory_fd(value):
         os.close(fd); raise
 
 def read_regular(path, limit, size=None, digest=None):
+    if os.name=='nt':return windows_backend().read_regular(path,limit,size,digest)
     path = host_path(path)
     parent = directory_fd(path.parent)
     try: fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
@@ -418,6 +434,7 @@ def assemble(lock, input_dir, arch, guest, runners):
     return image, receipt
 
 def publish(output, receipt_path, image, receipt):
+    if os.name=='nt':return windows_backend().publish(output,receipt_path,image,lambda:canonical(receipt)+b'\n')
     paths=[Path(output),Path(receipt_path)]
     if paths[0]==paths[1]: fail('output and receipt must differ')
     parents=[]; owned=[]

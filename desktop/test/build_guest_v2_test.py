@@ -52,6 +52,20 @@ def elf(arch='amd64', interp=None, needed=(), rpath=None):
         struct.pack_into('<IIQQQQQQ', b, 176, 3, 4, 256, 0, 0, len(value), len(value), 1)
     return bytes(b)
 
+def host_alias(link,target):
+    if os.name=='nt':
+        location=Path(__file__).with_name('build_guest_v2_host_test.py')
+        spec=importlib.util.spec_from_file_location('owned_host_fixtures',location)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        # A junction exercises the same reparse-point rejection without the
+        # administrator/developer-mode privilege required by file symlinks.
+        module.make_junction(module.load_helper(),link,target if target.is_dir() else target.parent)
+    else:link.symlink_to(target,target_is_directory=target.is_dir())
+
+def remove_alias(link):
+    if os.name=='nt':link.rmdir()
+    else:link.unlink()
+
 class BuilderTests(unittest.TestCase):
     def test_offline_decoder_returns_normalized_data_without_extraction(self):
         self.assertTrue(MODULE.exists(), 'offline v2 decoder is not implemented')
@@ -267,11 +281,13 @@ class BoundaryTests(unittest.TestCase):
                 if change == 'filename': bad['artifacts'][0]['file'] = '../escape'
                 if change == 'unknown': bad['artifacts'][0]['kind'] = 'untrusted-project'
                 if change == 'missing': path.unlink()
-                if change == 'symlink': path.unlink(); path.symlink_to(root/'ts.tgz')
+                if change == 'symlink': path.unlink(); host_alias(path,root/'ts.tgz')
                 with self.subTest(change=change), self.assertRaises(ValueError): m.validate(bad, root, arch)
-                if change in ['missing', 'symlink']: path.unlink(missing_ok=True); path.write_bytes(saved)
-            alias = root/'alias'; alias.symlink_to(root, target_is_directory=True)
+                if change=='symlink':remove_alias(path)
+                if change in ['missing','symlink']:path.write_bytes(saved)
+            alias = root/'alias'; host_alias(alias,root)
             with self.assertRaises(ValueError): m.validate(lock, alias, 'amd64')
+            remove_alias(alias)
             out = root/'image.gz'; receipt = root/'receipt.json'; out.write_bytes(b'KEEP')
             with self.assertRaises((ValueError, FileExistsError)): m.publish(out, receipt, b'NEW', {})
             self.assertEqual(out.read_bytes(), b'KEEP'); self.assertFalse(receipt.exists())

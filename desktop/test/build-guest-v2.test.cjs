@@ -6,12 +6,13 @@ const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const script = path.join(__dirname, 'build_guest_v2_test.py');
 const python = process.env.FOUNDRY_BUILD_PYTHON;
+const missing = path.join(fs.realpathSync(require('node:os').tmpdir()),'foundry-v2-missing-'+process.pid);
 
 test('v2 builder requires an explicitly chosen trusted host Python', () => {
   const {buildGuestV2} = require('../sandbox/build-guest-v2.cjs');
-  assert.throws(() => buildGuestV2({inputs:'/missing', arch:'amd64', validateOnly:true}), /explicit.*Python/);
-  assert.throws(() => buildGuestV2({python:'python3', inputs:'/missing', arch:'amd64', validateOnly:true}), /absolute/);
-  assert.throws(() => buildGuestV2({python, inputs:'/missing', arch:'amd64', command:'npm test'}), /unknown/);
+  assert.throws(() => buildGuestV2({inputs:missing, arch:'amd64', validateOnly:true}), /explicit.*Python/);
+  assert.throws(() => buildGuestV2({python:'python3', inputs:missing, arch:'amd64', validateOnly:true}), /absolute/);
+  assert.throws(() => buildGuestV2({python, inputs:missing, arch:'amd64', command:'npm test'}), /unknown/);
 });
 
 test('trusted host Python exercises synthetic offline assembly and decoder rejection cases', () => {
@@ -19,15 +20,15 @@ test('trusted host Python exercises synthetic offline assembly and decoder rejec
   assert.ok(fs.statSync(python).isFile());
   const version = spawnSync(python, ['-I','-B','-c','import sys; assert sys.version_info >= (3,13), "Python >=3.13 required"'], {encoding:'utf8',shell:false});
   assert.equal(version.status,0,version.stderr);
-  const result = spawnSync(python, ['-I','-B',script], {encoding:'utf8',shell:false,maxBuffer:1024*1024});
+  const result = spawnSync(python, ['-I','-B','-m','unittest','discover','-s',__dirname,'-p','build_guest_v2*_test.py'], {encoding:'utf8',shell:false,maxBuffer:1024*1024});
   assert.equal(result.status,0,result.stderr || result.stdout);
   assert.match(result.stderr,/Ran \d+ tests/);
 });
 
 test('Node wrapper invokes trusted Python with literal arguments and surfaces validation failures', () => {
   const {buildGuestV2} = require('../sandbox/build-guest-v2.cjs');
-  assert.throws(() => buildGuestV2({python, inputs:'/missing ; echo injected', arch:'amd64', validateOnly:true}), /missing input path/);
-  assert.throws(() => buildGuestV2({python, inputs:'/missing', arch:'amd64', validateOnly:true, output:'/tmp/no'}), /validate-only/);
+  assert.throws(() => buildGuestV2({python, inputs:missing+' ; echo injected', arch:'amd64', validateOnly:true}), /missing input path/);
+  assert.throws(() => buildGuestV2({python, inputs:missing, arch:'amd64', validateOnly:true, output:path.join(missing,'no')}), /validate-only/);
 });
 
 test('Node interface builds from literal owned inputs and publishes a matching receipt', () => {
