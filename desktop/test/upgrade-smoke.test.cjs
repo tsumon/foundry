@@ -1,0 +1,86 @@
+"use strict";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { exactCopy, inventory, snapshot } = require("../upgrade-smoke.cjs");
+
+test("consistent backup copies exact files and rejects links and reused destinations", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "foundry-upgrade-copy-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = path.join(root, "source"), target = path.join(root, "target");
+  fs.mkdirSync(path.join(source, "evidence"), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(source, "evidence", "sealed"), "synthetic evidence", { mode: 0o600 });
+  exactCopy(source, target);
+  assert.deepEqual(inventory(target), inventory(source));
+  assert.throws(() => exactCopy(source, target), /fresh/);
+  fs.symlinkSync(path.join(source, "evidence"), path.join(source, "linked-evidence"), "junction");
+  assert.throws(() => exactCopy(source, path.join(root, "another")), /assert|symlink/i);
+});
+
+test("stopped synthetic ledger snapshot preserves sealed budget and rejects incomplete journal", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "foundry-upgrade-snapshot-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const data = path.join(root, "coding");
+  fs.mkdirSync(path.join(data, "evidence"), { recursive: true });
+  fs.mkdirSync(path.join(data, "missions"));
+  const { DatabaseSync } = require("node:sqlite");
+  const dbFile = path.join(data, "foundry.db"), db = new DatabaseSync(dbFile);
+  db.exec("CREATE TABLE missions(id TEXT, revision INTEGER, state TEXT, data TEXT); CREATE TABLE invocations(mission_id TEXT, ordinal INTEGER, status TEXT); CREATE TABLE model_accounts(id TEXT, name TEXT); CREATE TABLE model_credential_versions(account_id TEXT, version INTEGER, secret_ref TEXT); CREATE TABLE model_routes(id TEXT, account_id TEXT)");
+  const mission = { budget: { max_calls: 7, used_calls: 2, usage_unknown: true }, model_snapshot: { digest: "sealed" }, c4_operations: [{ result: { class: "passed" }, cleanup: [{ state: "confirmed" }] }] };
+  db.prepare("INSERT INTO missions VALUES(?,?,?,?)").run("synthetic", 4, "blocked", JSON.stringify(mission));
+  db.prepare("INSERT INTO invocations VALUES(?,?,?)").run("synthetic", 1, "outcome_unknown");
+  db.prepare("INSERT INTO invocations VALUES(?,?,?)").run("synthetic", 2, "outcome_unknown");
+  db.prepare("INSERT INTO model_accounts VALUES(?,?)").run("synthetic-account", "unchanged");
+  db.prepare("INSERT INTO model_credential_versions VALUES(?,?,?)").run("synthetic-account", 1, "inert-secret-reference");
+  db.prepare("INSERT INTO model_routes VALUES(?,?)").run("synthetic-route", "synthetic-account");
+  db.close();
+  const fixture = { data_root: root, mission_id: "synthetic" };
+  const first = snapshot(fixture);
+  assert.deepEqual(snapshot(fixture), first);
+  assert.doesNotMatch(JSON.stringify(first), /inert-secret-reference/);
+  const changed = new DatabaseSync(dbFile);
+  changed.prepare("UPDATE model_accounts SET name=? WHERE id=?").run("changed", "synthetic-account");
+  changed.close();
+  assert.notEqual(snapshot(fixture).model_accounts, first.model_accounts);
+  const changedCredential = new DatabaseSync(dbFile);
+  changedCredential.prepare("UPDATE model_credential_versions SET secret_ref=? WHERE account_id=?").run("other-inert-reference", "synthetic-account");
+  changedCredential.close();
+  assert.notEqual(snapshot(fixture).credential_versions, first.credential_versions);
+  fs.writeFileSync(dbFile + "-wal", "incomplete");
+  assert.throws(() => snapshot(fixture), /closed, checkpointed/);
+});
+
+test("native Windows workflow pins public source and installer, then over-installs the same target", () => {
+  const workflow = fs.readFileSync(path.join(__dirname, "../../.github/workflows/desktop.yml"), "utf8");
+  const smoke = fs.readFileSync(path.join(__dirname, "../windows-installed-smoke.ps1"), "utf8");
+  assert.match(workflow, /ref: 5237fc49bafe4c5d33d3d6fa117ac59c467ace16/);
+  assert.match(workflow, /persist-credentials: false/);
+  assert.match(workflow, /TestReleaseUpgradeSeed/);
+  assert.match(workflow, /023bf7e0c95b3ec90e76e429b145e9fbbe0b1d52103ec82e5ac4eb3968188327/);
+  assert.match(workflow, /upgrade-acceptance\.json/);
+  assert.match(smoke, /--probe-old \$resources \$UpgradeFixture/);
+  assert.match(smoke, /\$oldInstall = Start-Process -FilePath \$OldInstaller -ArgumentList @\('\/S', "\/D=\$installed"\)/);
+  assert.match(smoke, /\$install = Start-Process -FilePath \$installer -ArgumentList @\('\/S', "\/D=\$installed"\)/);
+  assert.match(smoke, /Candidate did not replace old installed app bytes/);
+  assert.match(smoke, /--verify-fresh \$freshResources/);
+  assert.match(smoke, /Fresh candidate uninstall left executable/);
+  assert.match(smoke, /Fresh install or uninstall changed retained evidence/);
+  assert.match(workflow, /fresh-candidate-integrity\.json/);
+  assert.match(workflow, /TestWindowsUpgradePrivateCopyAndRestore/);
+  assert.match(workflow, /FOUNDRY_UPGRADE_COPY/);
+  assert.doesNotMatch(workflow, /New-Item -ItemType Directory -Path \$seed/);
+  const parsed = require("../node_modules/js-yaml").load(workflow);
+  const steps = parsed.jobs["windows-installer"].steps;
+  const helper = steps.findIndex((step) => step.id === "upgrade-copy");
+  const nativeTests = steps.findIndex((step) => step.run === "./desktop/windows-test.ps1");
+  const installed = steps.findIndex((step) => step.id === "installed-contract");
+  assert(helper >= 0 && helper < nativeTests && nativeTests < installed);
+  assert.match(steps[helper].run, /FOUNDRY_UPGRADE_COPY=\$helper.*GITHUB_ENV/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../windows-test.ps1"), "utf8"),
+    /desktop\/test\/upgrade-smoke\.test\.cjs/);
+  const seed = fs.readFileSync(path.join(__dirname, "upgrade-seed.go.txt"), "utf8");
+  assert.match(seed, /platformfs\.PrivateDirectory\(root\)/);
+  assert.match(seed, /platformfs\.PrivateDirectory\(p\)/);
+});

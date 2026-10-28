@@ -978,6 +978,11 @@ desktop/test/windows-sandbox-assets.test.cjs
 desktop/test/windows-source-build.test.cjs
 desktop/test/windows-taskdialog-fixture.cjs
 desktop/test/windows-zlib.test.cjs
+desktop/upgrade-smoke.cjs
+desktop/upgrade-copy-windows.go
+desktop/upgrade-copy-windows_test.go
+desktop/test/upgrade-smoke.test.cjs
+desktop/test/upgrade-seed.go.txt
 desktop/windows-taskdialog-action.ps1
 desktop/windows-taskdialog-action.test.ps1
 desktop/windows-ui-mode.cjs

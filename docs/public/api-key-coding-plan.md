@@ -45,7 +45,7 @@ writes. No new provider gateway, database migration or credential representation
   protected repository requirements, budget semantics and real-call status.
 - [x] Run complete Go, web, desktop, security and source checks. Inspect the
   rendered settings with isolated fixture data; keep screenshots private.
-- [ ] Push reviewed source, check exact-commit Verify and Desktop packages CI,
+- [x] Push reviewed source, check exact-commit Verify and Desktop packages CI,
   build/update the Mac package without opening original data. Report the Windows
   artifact and distinguish installation checks from real provider verification.
 - [x] Use the explicitly authorized existing Magpie CPA/Grok configuration for
@@ -54,3 +54,6 @@ writes. No new provider gateway, database migration or credential representation
   [Real Mac acceptance completed](compatible-api-acceptance.md): five successful
   local CPA calls and two passing VM test runs. An earlier remote 401 remains
   consumed separately; combined consumption is six of seven, with no retry.
+
+Completed at `2345832`: Verify run `40655378745` and Desktop packages run
+`40655749857` passed. Later stable candidates retain separate exact-build gates.

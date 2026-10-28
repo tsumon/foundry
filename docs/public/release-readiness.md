@@ -1,9 +1,45 @@
 # Desktop release readiness
 
-FOUNDRY remains Alpha until the release candidate has evidence for the gates
-below. A version bump, source test pass or successful installer build alone does
-not satisfy these gates. Existing approval boundaries, consumed unknown calls
-and immutable task records apply to release acceptance as well as development.
+The first stable release is a bounded, serial Go coding workbench, not an
+unattended general-purpose developer. Its primary connection is an explicitly
+selected API Key / Responses route. Subscription sign-in stays experimental.
+A version number or successful installer build alone does not satisfy the gates
+below. Independent approvals, consumed unknown calls and immutable task records
+apply to release acceptance as well as development.
+
+## 0.1.0 design and implementation plan
+
+The existing controller, role router, native credential store and isolated VM
+remain the architecture. Do not replace them or widen execution capabilities.
+The supported outcome is a reviewed local patch and report for committed,
+standard-library Go repositories on Apple Silicon Mac or Windows x64.
+
+1. Keep development in one workspace with `source`, `build`, `evidence`,
+   `releases` and an archive. Preserve original task data and evidence. Remove
+   only identified regenerable caches, not task databases, retained runtimes,
+   protected inputs, private history or unknown user files.
+2. Update the desktop package and root lock metadata to `0.1.0`. Correct the
+   bilingual README, desktop guide, status and changelog to describe the API
+   route and actual supported scope. Preserve historical evidence as historical.
+3. Run full source/security checks, build the exact clean candidate, and run
+   native installation and upgrade checks with independent disposable data.
+   Use the previous public Alpha as the supported upgrade source. Verify
+   budgets, baselines, retained runtimes, restart and failure recovery.
+4. Run one separate, bounded CPA/Grok repair acceptance using the same explicit
+   receiver/model and a seven-call maximum. Use a transparent fault-injection
+   exercise: the first Worker candidate intentionally violates a protected test;
+   a real VM must detect it and the real Debugger must repair it. Record this as
+   injected failure, not a spontaneous model mistake. Keep protected tests and
+   the original repository unchanged; preserve every consumed call and stop on
+   an uncertain result. No automatic retries or provider fallback.
+5. Check the candidate on native Mac and Windows. Review the exact diff and
+   evidence, fix failures with regression coverage, push and require complete
+   successful Verify and Desktop packages runs. Do not substitute an old pass
+   for changed runtime bytes.
+6. Publish `v0.1.0` only after the applicable gates pass. Include accepted DMG
+   and EXE files, source/license sidecars, hashes, a clean source snapshot and
+   scoped acceptance evidence. Validate full asset downloads. Signing status
+   must be visible in the release and installation instructions.
 
 ## Source and dependency gates
 
@@ -21,8 +57,8 @@ database is inaccessible, identify any official snapshot used and report its
 age; a snapshot scan does not establish that a fresh live scan passed.
 
 Installer names come from `desktop/package.json`. Both package builders, native
-acceptance and artifact uploads must use that version. Keep the current Alpha
-version until the remaining release gates are met.
+acceptance and artifact uploads must use that version. Preparing a versioned
+candidate does not itself publish it or certify its acceptance.
 
 ## Exact-candidate native gates
 
@@ -46,11 +82,15 @@ evidence. Never substitute a real user's existing task or credentials.
 
 ## Real-account workflow gate
 
-The documented live attempt stopped at response media validation; real-model
-end-to-end coding acceptance remains incomplete. New acceptance needs its own
-explicit account and operation authority. It must demonstrate separate connection,
-catalog and task approvals, baseline, bounded role calls, candidate tests,
-confirmed-failure repair, independent reviews and explicit patch/report delivery.
+The Mac compatible-API path has completed a real code delivery; see
+[its scoped acceptance record](compatible-api-acceptance.md). The earlier OpenAI
+subscription attempt stopped at media validation and is not a successful route.
+New acceptance needs its own explicit account and operation authority. API Key
+setup must not perform OAuth or require a subscription catalog receipt. It must
+demonstrate explicit route/account/context consent, baseline, bounded role calls,
+candidate tests, confirmed-failure repair, independent reviews and explicit
+patch/report delivery. Subscription connection and catalog permissions remain
+separate whenever that experimental route is used.
 Record known failures, unknown outcomes, usage and consumed budgets honestly.
 Unknown calls must never be replayed to obtain a passing run. Run separately on
 each host for which real-account compatibility will be claimed.
@@ -75,6 +115,11 @@ Describe the supported host versions, known limits, upgrade/data-retention
 behavior and security-reporting route. Update the bilingual guides and Alpha
 status only to the extent supported by the candidate's evidence.
 
-Missing signing credentials, inaccessible release operations and unperformed
-native or real-account acceptance remain release blockers. See
-[Alpha status](alpha-status.md) for the current accepted scope.
+Production-signed distribution requires the owner's certificates; absent
+identities must never be replaced by borrowed identities or a false signing
+claim. A clearly labelled unsigned open-source release may be published with
+ad-hoc Mac integrity signing and an unsigned Windows installer. This is not
+Developer ID notarization, verified publisher status, or a reason to disable
+operating-system security protections. Inaccessible release operations and
+unperformed applicable native or real-account acceptance still block publication.
+See [supported scope](alpha-status.md) for the accepted boundary.

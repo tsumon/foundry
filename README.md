@@ -10,159 +10,106 @@
 
 [![Verify](https://github.com/tsumon/foundry/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/verify.yml)
 [![Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)
-[![Alpha](https://img.shields.io/badge/stage-desktop%20alpha-F0A44B)](docs/public/alpha-status.md)
+[![Version](https://img.shields.io/badge/version-0.1.0-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
 [![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2C56F5)](LICENSE)
 
 [简体中文](README.md) · [English](README.en.md) · [安装与使用](docs/public/desktop-guide.md) · [架构](docs/public/architecture.md) · [安全边界](docs/public/safety.md)
 
-[![下载 Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-下载_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-arm64.dmg)
-[![下载 Windows EXE](https://img.shields.io/badge/Windows_x64-下载_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe)
+[![下载 Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-下载_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-arm64.dmg)
+[![下载 Windows EXE](https://img.shields.io/badge/Windows_x64-下载_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-x64.exe)
 
-[v0.1.0-alpha.3 · 预发布说明与全部文件](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3) · [SHA-256 校验值](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/SHA256SUMS)
+[v0.1.0 · 发行说明与全部文件](https://github.com/tsumon/foundry/releases/tag/v0.1.0) · [SHA-256 校验值](https://github.com/tsumon/foundry/releases/download/v0.1.0/SHA256SUMS)
 
 </div>
 
-<p align="center">
-  <img src="docs/media/desktop-delivery.jpg" alt="实际安装后的 Foundry：独立审批完成的模拟交付与 patch、报告导出" width="100%">
-</p>
-<p align="center"><sub>真实工作台截图，使用一次性合成数据。界面中的计划和状态不是对真实模型或 Docker 执行的认证。</sub></p>
+<p align="center"><img src="docs/media/desktop-delivery.jpg" alt="实际安装后的 Foundry：独立审批完成的模拟交付与补丁、报告导出" width="100%"></p>
+<p align="center"><sub>真实工作台截图，使用一次性合成数据。截图本身不是模型或沙盒执行证据。</sub></p>
 
-Foundry 是面向一人团队的软件交付工作台：读取已提交的 Git 快照，把计划、候选修改、失败记录、复验和最终交付放在同一个可核对的流程里。原仓库保持只读，最后得到的是 **patch 与 Markdown 报告**，而不是一次未经审阅的自动推送。
+Foundry 是面向一人团队的 **Go 软件交付工作台**。接入你选定的 API 模型，从已提交的 Git 快照出发，生成计划、修改独立候选、在内置虚拟机中测试、修复明确的失败，再交付可审阅的 **patch 和 Markdown 报告**。原仓库不动，部署与应用补丁由你控制。
 
 > [!IMPORTANT]
-> **这是有审批边界的 Coding Alpha，不是无人值守的自主开发产品。** 受控编程任务默认使用随应用安装的 Linux 轻量虚拟机，Docker 是显式可选项；不需要 Docker Desktop，也不会悄悄在宿主机执行仓库代码。模型接入与测试权限分别控制，安装和打开入口都不等于授权调用。原生沙盒验收使用本地模型协议响应，**不宣称真实账号端到端验收通过**；原纯模拟入口仍明确标记为 `synthetic_stub`。
+> **0.1.0 的正式支持范围是标准库 Go 项目的串行交付闭环。** 它不承诺任意语言、无人值守开发或自动部署。默认沙盒随应用安装，不需要 Docker Desktop；虚拟化不可用时停止，不降级到宿主机执行。API 模型是推荐路径，ChatGPT 订阅登录仍为实验性功能。
 
-## 先看到结果，再决定是否交付
+## 三件事放在同一个工作台
 
-| 看清计划 | 隔离修改 | 留住证据 |
+| 看清计划 | 验证修改 | 留住证据 |
 | :--- | :--- | :--- |
-| 上下文与执行分别审批；计划可修订，保存不等于批准。 | 从固定 commit 创建独立候选；保护测试，原仓库不动。 | 保留失败、Debugger 修复、复验与 QA/Auditor 审查；交付再单独批准。 |
+| Researcher 调研，Planner 规划；发送上下文和执行计划分别审批。计划可以修订。 | Worker 生成独立候选，受保护测试交给真实 VM；明确失败后由 Debugger 最多修复两轮。 | QA 与 Auditor 审查同一份候选和测试结果；最后单独批准导出，失败和已用预算仍保留。 |
 
-## 安装桌面版
-
-从 [v0.1.0-alpha.3 Release](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3) 下载。**这是预发布版本，不是稳定正式版。** 两个安装包固定来自同一次成功 CI 的公开提交 [`5237fc4`](https://github.com/tsumon/foundry/commit/5237fc49bafe4c5d33d3d6fa117ac59c467ace16)，未重新打包或替换；不是默认分支的滚动构建，也不表示草稿 PR 已合并。
+## 下载与安装
 
 | 平台 | 安装包 | 对应第三方源码 |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | [DMG · 220 MiB](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-arm64.dmg) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-macos-sources.tar.gz) |
-| Windows x64 | [EXE · 193 MiB](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-windows-sources.tar.gz) |
+| Apple Silicon Mac | [Foundry-0.1.0-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-arm64.dmg) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-macos-sources.tar.gz) |
+| Windows x64 | [Foundry-0.1.0-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-x64.exe) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-windows-sources.tar.gz) |
 
-下载后核对 [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/SHA256SUMS)。Release 同时提供干净的 Foundry 源码快照和公开 CI 回执；再分发安装包时须一并保留对应源码及第三方声明。源码与安装包的许可不同，不能把 Linux、QEMU 或 Electron 统称为 Apache-2.0。
+下载后核对 [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.1.0/SHA256SUMS)。[Release](https://github.com/tsumon/foundry/releases/tag/v0.1.0) 保留对应提交、安装与升级验收、真实调用范围、干净源码和第三方许可材料；它是固定版本，不随 main 滚动替换。
 
-### 本次验收 · 2026-10-26
+**签名状态：** Mac 使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Windows 安装包未签名，没有已验证发布者。校验值不等于发布者认证。不要关闭 Gatekeeper、SmartScreen 或杀毒软件；组织策略不允许时请采用审阅过的源码工作流。正式版本号不代表已获平台公证或商业服务承诺。
 
-| 验收对象 | 已验证 | 不代表 |
-| :--- | :--- | :--- |
-| 本次 Mac DMG | CI 安装后端契约、重启与数据保持、完整性签名和 DMG 校验 | 未对这个 CI DMG 重跑本机硬件 VM；同源码树的既有本机 VM 结果不是同一安装包的验收 |
-| 本次 Windows EXE | 中文路径安装、跨盘数据目录、原生 UI、重启、卸载后保留证据；真实 WHPX 基线通过 → 候选失败 → 修复后通过 | 模型角色使用本地协议 fixture，不是真实 OpenAI 调用 |
-| 同一源码提交 | [Verify](https://github.com/tsumon/foundry/actions/runs/40213498354) 与 [Desktop packages](https://github.com/tsumon/foundry/actions/runs/40213498361) 全绿，安全检查未跳过 | 不等于任意项目、真实账号或生产级认证 |
+应用内置控制器、前端、Linux 客户系统和 Go 工具链，无需另外安装 Go、Node.js、npm 或 Docker。仓库导入需要本机受支持的 Git；Windows 还需已启用的硬件虚拟化及 Windows Hypervisor Platform。不会自动启用系统功能、安装服务或重启系统。Intel Mac、Windows ARM 和 Linux 桌面包暂不支持。详见[桌面指南](docs/public/desktop-guide.md)。
 
-<details>
-<summary>历史原生验收记录（不是当前下载入口）</summary>
+## 用自己的模型完成一次交付
 
-### 已验收构建 · 2026-10-24
+在应用菜单选择 **Controlled Coding Workbench**：
 
-| 平台 / 提交 | 下载包 | 实际通过的验收 |
-| :--- | :--- | :--- |
-| Apple Silicon Mac · `46e1247` | [DMG + 校验值 + 运行时源码](https://github.com/tsumon/foundry/actions/runs/39964561670/artifacts/12506990609) | 本机安装、原生界面、重启；真实 Apple Virtualization 测试失败 → 修复 → 复验 |
-| Windows x64 · `0c87188` | [EXE + 校验值 + 测试报告与截图](https://github.com/tsumon/foundry/actions/runs/39983328865/artifacts/12515976175) | 中文路径安装、跨盘数据目录、真实 WHPX 闭环；原生 UI 自动验收、重启、卸载后证据保留 |
+1. **配置 API。** 在模型设置创建 OpenAI 或兼容 Responses 网关账户，保存 Key。用「API 快速配置」填入该服务的模型 ID，确认计费方式，再分配给新任务的角色。兼容 Magpie/CPA 的显式 Responses 端点；不需要 ChatGPT 登录，不在保存时查询目录或推理。[接入说明](docs/public/api-key-coding.md)
+2. **导入仓库。** 选择已提交的标准库 Go 仓库，填写需求、允许修改的文件与受保护测试，确认模型、调用次数上限和沙盒。
+3. **建立基线。** 分别审批并执行 VM 就绪检查、基线测试。基线必须通过；不会让模型顺带修复原本已失败的仓库。
+4. **审批计划。** 确认发送的文件与接收端，授权 Researcher / Planner 生成计划。审阅或修订后，再单独批准执行。
+5. **检验结果。** Worker 修改独立候选；真实测试明确失败时，Debugger 根据错误修复并复验。QA / Auditor 分别审查证据。网络、基础设施和结果不明的失败直接停止。
+6. **交付。** 审批导出 patch 与报告，在产品外审查并应用。Foundry 不自动提交、推送、部署或修改原仓库。
 
-核对 [Mac Verify](https://github.com/tsumon/foundry/actions/runs/39964561514)、[Windows Verify](https://github.com/tsumon/foundry/actions/runs/39983328874) 和[Windows 原生安装验收](https://github.com/tsumon/foundry/actions/runs/39983328865/job/120516374476)。以上证据只覆盖表中提交，**不是后续构建自动通过的保证**。两个平台均由真实虚拟机执行测试；角色响应为本地协议测试数据，未调用真实模型账号。
+API Key 在 Mac 存入 Keychain，在 Windows 存入 Credential Manager，不写入浏览器存储或明文配置。任务固定接收地址、账户和模型，不自动重试调用或切换收费 API。调用次数和超时 **不是金额上限**，请同时设置供应商支出限额。已发送但结果不明的调用也消耗预算，不会在重启后自动重放。
 
-</details>
+测试在 Linux 客户系统中执行，不等于验证原生 DMG、EXE、网页或移动应用。客户系统无网络、无主机共享，不安装外部依赖。已有 Docker 的 Mac 用户可为新任务显式选择固定本地镜像，仍需独立审批；它不是内置 VM 的自动兜底。
 
-Mac 包使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Windows 是未签名的当前用户安装包。Windows 需要硬件虚拟化和已启用的 Windows Hypervisor Platform，不会自动安装或启用这些系统功能。
+## 验收证据怎样读
 
-应用内置前端、控制器、Linux 客户系统和 Go 工具链，不需要另装 Go、Node.js、npm、MSYS2 或 Docker。仓库功能仍需要受支持的本机 Git。虚拟化不可用时明确阻断，不启用系统功能、不自动重启，不降级到主机、软件模拟或 Docker。Release 是版本化下载入口；Actions artifact 仅作构建证据，可能要求登录且会过期。不要关闭系统安全保护来绕过未签名提示。平台限制、数据位置与卸载说明见[桌面使用指南](docs/public/desktop-guide.md)。
-
-## 从需求到可审阅补丁
-
-在应用菜单中选择 **Controlled Coding Workbench**，进入与普通工作台、演示数据隔离的持久编程空间：
-
-1. **推荐 API Key 直连，无需 ChatGPT 登录。** 在模型设置创建 OpenAI 或兼容 Responses 网关账户并保存 Key；使用「API 快速配置」填写该服务可用的模型 ID、确认 API 计费，保存后分配给新任务的角色。支持显式配置的 Magpie/CPA 端点，固定接收地址和模型，不自动改路。保存不会查询目录或发送推理；API 额度与 ChatGPT 订阅不同。此快捷入口属于最新源码，下面固定版本的 Release 安装包不会随源码更新。见 [API 接入说明](docs/public/api-key-coding.md)。已有订阅登录保留为实验性兼容入口，不会自动转成收费 API。
-2. 填写需求、已提交的 Go 仓库、可修改文件和受保护文件。默认内置沙盒，运行时摘要随任务冻结；创建任务不调用模型，也不启动虚拟机。
-3. 分别审批并执行沙盒就绪检查、基线测试；基线通过后，再审批发送上下文，由 Researcher 和 Planner 生成计划。
-4. 审阅或修订计划，单独批准执行。Worker 提出候选补丁；真实验证器发现明确的测试失败后，Debugger 最多修复两轮，再复验。
-5. QA、Auditor 审查当前候选和测试证据；交付仍需独立批准，最后导出 patch 与报告。
-
-**当前范围是使用标准库的受限 Go 项目，不是任意技术栈。** Mac 和 Windows 都运行 Linux 客户系统中的测试，不等于验证原生 DMG、EXE、浏览器或移动应用。没有依赖安装、主机共享目录或客户系统网络，不改原仓库或受保护测试。凭据过期、额度不足、结果不明或沙盒关闭未确认就停止；不会自动重试、刷新或改用收费 API。调用次数与超时不是费用硬上限。见[内置沙盒设计](docs/public/embedded-sandbox.md)和[使用指南](docs/public/desktop-guide.md)。
-
-**已验证的真实路径（2026-10-28）：** Mac 上通过 Magpie 中配置的本地 CPA，使用 `grok-4.6` 完成调研 → 计划 → 代码修改 → 内置 VM 测试 → QA/审计 → 补丁交付。5 次真实模型调用，基线与候选各 14 项测试通过；受保护测试和原仓库未改。首版候选通过，未触发真实 Debugger；失败修复复验有本地协议回归。[查看验收范围与证据摘要](docs/public/compatible-api-acceptance.md)。
-
-API Key 在 Mac 保存到 Keychain、Windows 保存到 Credential Manager，不落明文文件或浏览器存储。调用预算限制发送次数，不是金额硬上限；请同时设置供应商项目支出限额。既有订阅任务、预算及证据原样保留，使用 API 应创建独立任务。实验性登录见[订阅工作台](docs/public/mac-subscription-workbench.md)。
-
-### 升级应用，不重写你的任务
-
-Mac / Windows 受控桌面支持[独立会话续期](docs/public/session-renewal.md)：现有账户默认关闭。在模型账户卡先准备十分钟有效的材料，再单独批准开启；关闭不会退出登录。开启后仅在桌面运行时维护该注册的凭据，不重试模型调用，也不延长目录、任务或预算审批。更新与读取状态不授予续期权限。本轮续期验收仅为本地合成测试，未执行真实账户刷新。
-
-| 保留什么 | 升级后的行为 |
+| 证据 | 覆盖范围 |
 | :--- | :--- |
-| 原任务、计划、基线和证据 | 原始记录不改写，历史结果不冒充新版本结果 |
-| 已消耗调用预算 | 不归零、不自动补回未知结果的调用 |
-| 冻结的沙盒 | 按完整摘要保留和匹配原版本；新任务使用新版默认沙盒 |
-| 每一道审批 | 归档不是授权；过期、缺失或损坏即阻断，不自动刷新或回退 |
+| [Mac CPA/Grok 真实交付](docs/public/compatible-api-acceptance.md) | 5 次真实角色调用；基线和候选各 14 项真实 VM 测试通过，原仓库与受保护测试未改。首版通过，未触发真实 Debugger。 |
+| 版本 Release 的验收回执 | 明确区分真实供应商调用、故障注入、协议 fixture、安装升级与 VM 执行；按提交和安装包摘要绑定。 |
+| Windows 原生安装与 WHPX 验收 | 真实安装、界面、重启及 VM 失败→修复→复验；角色协议 fixture 不能冒充 Windows 真实供应商调用。 |
+| 本地演示 | `SYNTHETIC` / `synthetic_stub`，不调用云模型，也不执行 Go 编译器。 |
 
-首次引入归档之前的旧任务，可从已核验的本地旧安装包精确恢复对应沙盒；不会降级整个应用或修改数据库。见[升级兼容设计](docs/public/desktop-parity-upgrade.md)。
+OpenAI 订阅的历史响应失败仍保留，不因 API/Grok 路径成功而改写。每次真实验收只证明对应接收端、模型、项目及宿主机的结果。完整支持范围见[能力状态](docs/public/alpha-status.md)。
 
-需要已有 Docker 环境时，可在**新任务**中明确选择 Docker（当前仅 Mac 受控路径）。它有自己的固定镜像、就绪检查和审批材料，不继承内置沙盒的批准。
+## 升级与恢复
 
-## 不用账号，也能体验流程
+更新应用不重置任务预算，不重写历史基线和证据。已有任务按完整摘要选择保留的旧沙盒，新任务使用当前默认沙盒。旧资源丢失或损坏就阻断，不偷偷换运行时。卸载应用保留任务数据；升级前请备份，恢复用一致性备份，不直接把旧程序指向已升级的数据。
 
-打开应用菜单 **Foundry → New Isolated Local Repository Simulation**，选择一个标有 `SYNTHETIC` 的任务：
+订阅登录、目录查询和持续续期是独立的实验性授权；API 快速配置不需要它们。历史订阅任务不会被悄悄迁移到收费 API。详见[升级兼容](docs/public/desktop-parity-upgrade.md)和[会话续期](docs/public/session-renewal.md)。
 
-1. 检查基线材料，分别点击**批准**和**执行模拟基线**。
-2. 核对上下文文件与模拟端点，再授权生成计划。
-3. 审阅或修订计划，然后批准执行。Worker 只修改独立候选。
-4. 在“验证”里检查**失败 → Debugger 修复 → 模拟复验 → QA/Auditor**的完整记录。
-5. 单独批准交付，保存 patch 与报告。应用补丁前，在 Foundry 外再次审查。
+## 不用账号也能体验
 
-每次模拟创建独立输入和数据库，退出后保留证据。**Persistent Workbench** 是另一个持久工作台入口，不会把演示数据混入其中，也不会自动为你连接模型。
+选择 **Foundry → New Isolated Local Repository Simulation**，打开 `SYNTHETIC` 任务，按基线 → 上下文 → 计划 → 修改/失败修复 → 交付的顺序审批。每次演示使用独立输入与数据库，退出后保留证据。**Persistent Workbench** 则提供项目、交付目标、环境、共享资源台账与任务关联，不混入演示数据。
 
-已有一次性仓库？用 **Open Committed Descriptor Repository…** 选择包含已提交 `foundry.task.json` 的仓库。它支持有边界的多文件提案、新文件和依赖步骤；未提交内容不参与任务。描述符仍是预设提案，不是模型自主理解任意仓库。参阅[任务格式与限制](docs/public/repository-task-orchestration.md)。
-
-## 哪些能用，哪些仍关闭
-
-| 能力 | 当前真实边界 |
-| :--- | :--- |
-| 项目与资产工作台 | 项目、交付目标、环境、共享资源台账与任务关联 |
-| 模型驱动仓库任务 | 单独启用的编程入口；OpenAI 冻结账户/模型快照、已提交 Go 仓库、独立候选、修复与导出 |
-| 默认内置沙盒 | Mac Virtualization / Windows WHPX；无客户系统网络和主机共享，Go 测试由独立客户系统执行；原生验收与模拟分开记录 |
-| 演示 Agent / 验证 | 本地脚本响应与内容断言；**不是**真实模型推理或编译器测试 |
-| 审批与恢复 | 控制器绑定 revision/digest；重启不自动重放未知结果或扩大授权 |
-| MCP / Skills / hooks | 管理、发现与静态说明；源码 CLI 有单独获批的本地 MCP fixture。桌面演示不启用外部工具执行 |
-| 可选 Docker | Mac 显式选择已有固定镜像，独立就绪、基线和候选审批；Windows Docker 仍关闭，不作为兜底 |
-| 真实模型 / 订阅 | Mac 本地 CPA/Grok 已完成真实代码交付验收；OpenAI 订阅仍为实验性。任务不隐式登录、查目录、刷新、重试或切换收费 API |
-| 自动 apply / Git 写入 / 部署 / 数据库迁移 | **不提供**；导出的 patch 由你在产品外处理 |
-
-角色是职责，不是权限来源。模型审查不等于测试证据，模拟通过不等于真实项目已验证。完整范围见 [Alpha 状态](docs/public/alpha-status.md)。
+MCP、Skills 和观察型 hooks 提供管理、发现和静态说明；桌面不开放外部脚本或任意工具执行。数据库迁移、部署、自动 apply 和 Git 写入不属于本版能力。
 
 ## 从源码运行
 
-Mac 开发基线：Go **1.27.3**、Node.js **22.23.2**、npm **10.9.8**、cgo/C 编译器。系统 `/usr/bin/git --no-lazy-fetch --version` 必须成功。
+开发基线：Go **1.27.3**、Node.js **22.23.2**、npm **10.9.8**、cgo/C 编译器和受支持的本机 Git。
 
 ```sh
-git clone --branch v0.1.0-alpha.3 --depth 1 https://github.com/tsumon/foundry.git
+git clone --branch v0.1.0 --depth 1 https://github.com/tsumon/foundry.git
 cd foundry
 npm ci --prefix web
 ./scripts/build.sh
 go run ./cmd/foundry-acceptance --repository-tasks-fixture --web-dir web/dist
 ```
 
-打开命令输出的随机回环 URL。这个入口使用一次性数据，不读取真实凭据、不执行 Docker。普通 CLI 与专用操作员模式有不同能力，不能由演示的隔离性推断全部 CLI 都离线。不要复用个人运行数据或在评估中填入真实凭据。
-
-开发、验证和桌面构建步骤见[贡献指南](CONTRIBUTING.md)与[桌面设计](docs/public/desktop-delivery.md)。
-
-## 深入了解
+打开输出的随机回环 URL。此示例使用一次性数据和本地模拟，不读取真实凭据；其他 CLI 操作员模式的权限以各自配置为准。
 
 | 使用 | 工程与安全 |
 | :--- | :--- |
-| [桌面安装、演示、排障](docs/public/desktop-guide.md) | [架构与批准边界](docs/public/architecture.md) |
-| [模型驱动编程与权限](docs/public/live-coding.md) | [安全模型](docs/public/safety.md) |
-| [能力与验收范围](docs/public/alpha-status.md) | [第三方声明与运行时源码](THIRD_PARTY_NOTICES.md) |
-| [变更记录](CHANGELOG.md) | [模型门禁设计（不代表真实接入）](docs/public/model-acceptance.md) |
+| [安装、演示与排障](docs/public/desktop-guide.md) | [架构与审批](docs/public/architecture.md) |
+| [API 配置与调用边界](docs/public/api-key-coding.md) | [安全模型](docs/public/safety.md) |
+| [版本能力与限制](docs/public/alpha-status.md) | [第三方声明](THIRD_PARTY_NOTICES.md) |
+| [变更记录](CHANGELOG.md) | [开发与贡献](CONTRIBUTING.md) |
 
-发现安全问题请使用 [GitHub 私密漏洞报告](https://github.com/tsumon/foundry/security/advisories/new)，不要公开发布凭据或利用细节。
+安全问题请使用 [GitHub 私密漏洞报告](https://github.com/tsumon/foundry/security/advisories/new)，不要公开凭据。
 
 ---
 
-Copyright © 2026 [tsumon](https://github.com/tsumon). Foundry 源码采用 [Apache-2.0](LICENSE)，允许遵守许可条件的商业使用；第三方组件保留各自许可证。没有生产支持或服务等级承诺。
+Copyright © 2026 [tsumon](https://github.com/tsumon). Foundry 源码采用 [Apache-2.0](LICENSE)，允许遵守许可条件的商业使用。Linux、QEMU、Electron 等第三方组件保留各自许可证，再分发时须保留相应源码和声明。无商业支持或服务等级承诺。

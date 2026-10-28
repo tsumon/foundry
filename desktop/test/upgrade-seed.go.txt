@@ -1,0 +1,201 @@
+package engine
+
+// Release acceptance fixture overlaid into the pinned old source checkout.
+// Journal facts below are synthetic, never evidence of a provider or VM call.
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"foundry/internal/domain"
+	"foundry/internal/model"
+	"foundry/internal/platformfs"
+	"foundry/internal/store"
+	"foundry/internal/vmruntime"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestReleaseUpgradeSeed(t *testing.T) {
+	root := os.Getenv("FOUNDRY_UPGRADE_SEED_ROOT")
+	if !filepath.IsAbs(root) {
+		t.Fatal("explicit isolated root required")
+	}
+	dataRoot := filepath.Join(root, "data")
+	if _, err := os.Lstat(root); !os.IsNotExist(err) {
+		t.Fatal("fresh fixture root required")
+	}
+	if err := platformfs.PrivateDirectory(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dataRoot); !os.IsNotExist(err) {
+		t.Fatal("fresh fixture required")
+	}
+	data := filepath.Join(dataRoot, "coding")
+	for _, p := range []string{dataRoot, data} {
+		if err := platformfs.PrivateDirectory(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	database := filepath.Join(data, "foundry.db")
+	s, err := store.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var providerCalls atomic.Int64
+	trap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		providerCalls.Add(1)
+		http.Error(w, "forbidden acceptance effect", 503)
+	}))
+	defer trap.Close()
+	e, _, q, driver, lease := codingImportWithStore(t, trap.URL+"/v1", s)
+	e.options.DataDir = data
+	vm, instances, identity, bundle := releaseInertVMRuntimeBundle(t, root)
+	archived, err := vmruntime.Retain(bundle, filepath.Join(data, "vm-bundles"), identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cap, err := NewCodingVMCapability(e.gateway.(*model.Router), vm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.options.C4Controlled = cap
+	profile, ok := e.CodingVMProfile()
+	if !ok {
+		t.Fatal("profile absent")
+	}
+	q.Spec.C4 = &profile
+	q.Spec.MaxCalls = 7
+	q.Title = "SYNTHETIC UPGRADE ONLY - never executed"
+	m, err := e.Create(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = seedInertVMBaseline(t, e, m)
+	m.Budget.UsedCalls = 2
+	m.Budget.UsageUnknown = true
+	m.Epoch = 1
+	m.State = "blocked"
+	m.Stage = "plan"
+	db, err := sql.Open("sqlite3", database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec("UPDATE missions SET state=?,data=? WHERE id=?", m.State, raw, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	when := time.Now().UTC().Format(time.RFC3339Nano)
+	for i := 1; i <= 2; i++ {
+		id := fmt.Sprintf("synthetic-unknown-%d", i)
+		binding, authority := m.ModelSnapshot.Digest, strings.Repeat("b", 64)
+		selection := m.ModelSnapshot.Roles[domain.Researcher]
+		content, err := json.Marshal(controlledInput{SnapshotSchema: 2, Selection: &selection, Profile: selection.Profile, Role: domain.Researcher, System: "SYNTHETIC - NEVER SENT", Prompt: "Independent upgrade fixture", MaxOutputTokens: 128})
+		if err != nil {
+			t.Fatal(err)
+		}
+		input, err := e.evidenceStore().Put(domain.EvidenceEnvelope{SchemaVersion: 1, Kind: "model_input", InvocationID: id, MissionID: m.ID, Epoch: m.Epoch, Producer: "release-upgrade-fixture", CapturedAt: when, ContentType: "application/json", BindingDigest: binding}, content)
+		if err != nil {
+			t.Fatal(err)
+		}
+		intent := map[string]any{"id": id, "mission_id": m.ID, "epoch": m.Epoch, "session_id": "synthetic-session", "ordinal": i, "kind": "model", "role": "researcher", "name": "model.complete", "binding_digest": binding, "authority_digest": authority, "input": input, "reserved_result_bytes": 0, "created_at": when}
+		encoded, _ := json.Marshal(intent)
+		_, err = db.Exec(`INSERT INTO invocations(id,mission_id,epoch,session_id,ordinal,kind,role,name,binding_digest,authority_digest,intent,status,reserved_result_bytes,created_at) VALUES(?,?,?,'synthetic-session',?,'model','researcher','model.complete',?,?,?,'authorized_pending',0,?)`, id, m.ID, m.Epoch, i, binding, authority, encoded, when)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec("UPDATE invocations SET status='dispatching',dispatched_at=? WHERE id=?", when, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec("UPDATE invocations SET status='outcome_unknown',error_code='synthetic_unknown',finished_at=? WHERE id=?", when, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := s.ListInvocations(m.ID, 0, 100); err != nil || len(got) != 2 {
+		t.Fatal("invalid fixture invocation ledger", err)
+	}
+	if got, err := e.verifiedInvocations(m.ID); err != nil || len(got) != 2 {
+		t.Fatal("fixture evidence validation", err)
+	}
+	if err = CheckCodingRecoveryModelSnapshots(s); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.CheckC4ControlledRecovery(); err != nil {
+		t.Fatal(err)
+	}
+	if lease.reads != 0 || driver.creates != 0 || driver.starts != 0 || driver.inspects != 0 || driver.removes != 0 {
+		t.Fatal("fixture performed an external effect")
+	}
+	if entries, err := os.ReadDir(instances); err != nil || len(entries) != 0 {
+		t.Fatal("fixture allocated VM", err)
+	}
+	e.Close()
+	db.Close()
+	s.Close()
+	metadata := map[string]any{"mission_id": m.ID, "data_root": dataRoot, "repo_path": q.RepoPath, "archive": archived, "identity": identity, "baseline": "synthetic journal only; no test execution", "budget": "synthetic 2/7; no model calls", "credential_reads": lease.reads, "vm_operations": 0}
+	encoded, _ := json.MarshalIndent(metadata, "", "  ")
+	if err = os.WriteFile(filepath.Join(root, "fixture.json"), encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if providerCalls.Load() != 0 {
+		t.Fatal("unsolicited provider access", providerCalls.Load())
+	}
+}
+
+func releaseInertVMRuntimeBundle(t *testing.T, root string) (*vmruntime.Runtime, string, domain.C4VMIdentity, string) {
+	t.Helper()
+	host, guest, executable := "darwin/arm64", "linux/arm64", "runtime/foundry-vm-helper"
+	if runtime.GOOS == "windows" && runtime.GOARCH == "amd64" {
+		host, guest, executable = "windows/amd64", "linux/amd64", "runtime/qemu-system-x86_64.exe"
+	} else if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
+		t.Fatal("unsupported release fixture host")
+	}
+	bundle, instances := filepath.Join(root, "inert-bundle"), filepath.Join(root, "inert-instances")
+	for _, p := range []string{bundle, instances} {
+		if err := platformfs.PrivateDirectory(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := vmruntime.Manifest{SchemaVersion: 1, HostPlatform: host, GuestPlatform: guest, Protocol: "foundry-vm-v1", PolicyVersion: "go-vm-v1", Runtime: executable, Kernel: "kernel", RootFS: "initramfs.cpio.gz", Verifier: "foundry-vm-guest"}
+	body := []byte("SYNTHETIC INERT RELEASE UPGRADE FIXTURE")
+	sum := sha256.Sum256(body)
+	digest := hex.EncodeToString(sum[:])
+	for _, p := range []string{m.Runtime, m.Kernel, m.RootFS, m.Verifier} {
+		full := filepath.Join(bundle, p)
+		if err := os.MkdirAll(filepath.Dir(full), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		m.Assets = append(m.Assets, vmruntime.Asset{Path: p, SHA256: digest, Size: int64(len(body))})
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundle, "manifest.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	vm, err := vmruntime.Load(bundle, instances)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestSum := sha256.Sum256(raw)
+	identity := domain.C4VMIdentity{SchemaVersion: 1, ManifestDigest: hex.EncodeToString(manifestSum[:]), HostPlatform: host, GuestPlatform: guest, RuntimeDigest: digest, KernelDigest: digest, RootFSDigest: digest, VerifierDigest: digest, Protocol: "foundry-vm-v1", PolicyVersion: "go-vm-v1"}
+	return vm, instances, identity, bundle
+}

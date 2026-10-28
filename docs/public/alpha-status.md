@@ -1,179 +1,63 @@
-# Alpha status
+# Supported scope — 0.1.0
 
-FOUNDRY is an experimental local-workflow Alpha. It provides source and native
-desktop packaging for macOS arm64 (Apple Silicon) and Windows x64. A successful
-**Desktop packages** platform job for the exact source commit and its native
-acceptance evidence are required before treating its artifact as accepted;
-build configuration alone is not a pass. See the
-[desktop guide](desktop-guide.md) for installation and actual capabilities.
+Foundry's first stable scope is a serial, approval-bound coding workflow for
+committed standard-library Go repositories. This path remains available under the
+historical `alpha-status.md` URL so older links keep working.
 
-The [release readiness gates](release-readiness.md) describe the source, native,
-real-account and distribution evidence required before promotion out of Alpha.
+## Supported
 
-2026-10-24 desktop acceptance snapshot: `61cb519` passed
-[Verify](https://github.com/tsumon/foundry/actions/runs/40085553607) and both
-[Desktop packages jobs](https://github.com/tsumon/foundry/actions/runs/40085553628).
-The Mac CI job validates installation and backend contracts, not VM execution.
-Physical-Mac VM failure/repair/recheck evidence remains scoped to historical
-build `46e1247`; later installation and retained-runtime checks do not renew it.
-Windows passed Unicode-path
-installation, cross-drive data, real WHPX failure/repair/recheck, native UI,
-restart and uninstall with persistent evidence retained. Earlier builds in the
-[README table](../../README.en.md#verified-builds--2026-10-24) are historical evidence.
-Mac GUI evidence is local; Windows GUI evidence is native automation and captured
-painted windows, not a claim of manual interactive testing. Roles use local
-model-protocol fixtures on both platforms. Newer revisions require their own
-gates; real-account end-to-end acceptance is not established by these results.
+- Apple Silicon Mac and Windows x64 desktop installers, bundled Linux VM and Go
+  verifier; local Git is required. Windows requires already-enabled WHPX.
+- Explicit API Key setup for OpenAI or compatible Responses endpoints, native
+  credential storage and immutable per-role account/model snapshots.
+- Read-only repository import, bounded outgoing context, separately approved
+  plans, isolated candidate edits, protected tests and real guest verification.
+- At most two repairs of confirmed test failures, separate QA/Auditor review,
+  explicit local patch/report delivery and retained invocation evidence.
+- Persistent project, target, environment and resource records; separately
+  labeled disposable demonstrations.
+- Upgrade retention of exact sandbox identities, baselines, original evidence and
+  consumed budgets; uncertain operations stop without replay or host fallback.
 
-A separately authorized Mac real-account attempt on the same revision completed
-subscription connection, one catalog query containing the selected model,
-same-identity task continuation and native VM readiness with confirmed shutdown.
-The first new Researcher invocation stopped at HTTP media validation: HTTP 200
-with an absent or empty Content-Type, before reading any SSE events. Its outcome and usage remain
-unknown; the reservation stays consumed and no retry occurred. Planner, Worker,
-candidate tests, repair and delivery did not run in that attempt. This is not a
-successful real-model coding-loop acceptance or a claim about Windows real-account
-behavior. See [response diagnostics](model-response-diagnostics.md).
+## Evidence and limits
 
-## Implemented
+[Mac CPA/Grok acceptance](compatible-api-acceptance.md) records a real API-driven
+code delivery with five role calls and passing baseline/candidate VM tests. That
+first candidate passed, so it does not prove real Debugger execution. Release
+receipts record subsequent acceptance separately, including whether a failure
+was deliberately injected. Windows native installation and WHPX tests use local
+model protocol fixtures; do not present them as Windows real-provider acceptance.
+The [release](https://github.com/tsumon/foundry/releases/tag/v0.1.0) records exact
+commits, package hashes and scoped checks. Tests on a prior build are historical,
+not automatic acceptance of a later binary.
 
-- [Desktop subscription account workbench](mac-subscription-workbench.md): the trusted
-  Mac and Windows coding desktops can explicitly prepare native credential readiness, then
-  separately propose/approve/execute connection and catalog operations. A manual
-  browser handoff is checked against its current owned waiting session. Locally
-  recorded catalog evidence binds an explicit profile choice to account, route,
-  authorization generation and expiry for future tasks; no catalog receipt grants
-  inference. Normal desktop remains closed. Local protocol fixtures and isolated
-  native diagnostic items do not certify real sign-in, catalog/model use or
-  account-driven task acceptance. Windows stores bounded large bundles through
-  exact-owned Credential Manager segments, never plaintext files.
+The Go guest has no network or host shares. It cannot install dependencies or
+validate native Mac/Windows applications, websites or arbitrary language stacks.
+Only supported regular committed files are imported; source/protected files are
+not changed. Windows repositories must share the drive used by Foundry data.
+Call ceilings and timeouts are not financial caps. Set provider spending limits.
 
-- [Upgrade compatibility](desktop-parity-upgrade.md): verified native runtimes
-  are retained privately by complete identity. Old tasks keep their original
-  records, baselines, evidence and consumed budgets; new tasks use the installed
-  default. Missing or tampered old assets block. Retention does not approve
-  execution, refresh credentials or retry calls.
+## Experimental or unavailable
 
-- [Model-driven coding workbench](live-coding.md): a native opt-in composes OpenAI
-  account-backed role calls, committed Go imports, immutable candidates, controlled
-  sandbox verification, at most two confirmed-failure repairs and final review/
-  delivery. Each model send needs an exact durable claimed invocation under the
-  current independent approval. It uses no descriptor-supplied solution. Tests
-  exercise the production protocol with owned loopback services; synthetic tests
-  and native-VM tests have separate evidence. Real-account end-to-end acceptance
-  remains incomplete; each real operation still requires explicit authority.
-  Windows Docker remains unavailable.
+- ChatGPT subscription sign-in, catalogs and separately approved renewal remain
+  experimental. Historical subscription media-validation failures are unresolved
+  by the success of a different API endpoint. No automatic provider/billing switch.
+- Docker is an explicit Mac-only option using an existing fixed local image; it
+  is not a fallback. Windows Docker remains unavailable.
+- MCP/Skills/hooks management and discovery do not authorize arbitrary desktop
+  execution. Script hooks, external webhooks, deployment, migration and Git writes
+  are not offered by this desktop release.
+- No parallel autonomous workers, automatic patch application or unattended
+  general-purpose software development guarantee.
+- No Intel Mac, Windows ARM or Linux desktop package.
 
-- [Built-in sandbox](embedded-sandbox.md): the default for new controlled coding
-  tasks is a bundled Linux VM (Apple Virtualization on Mac arm64; headless
-  QEMU/WHPX on Windows x64), with separate readiness/baseline/execute approvals.
-  Standard-library Go tests run without a guest NIC or host filesystem share.
-  Docker is explicitly optional on the supported Mac path. Missing hardware,
-  changed assets and uncertain shutdown block; no host, TCG or automatic Docker
-  fallback. Native installed acceptance is required, not inferred from unit tests.
+## Distribution
 
-- Native desktop packaging of the unchanged workbench and Go controller: a Mac
-  DMG and Windows per-user EXE. Runtime Go/Node/compiler installation is not
-  required. The native menu distinguishes persistent empty data from disposable,
-  retained **local simulation** runs. Patch/report exports use bounded native
-  save dialogs; installation never grants pending approvals or real effects.
-  A separate coding menu enables configuration, not account/sandbox execution.
-  The Mac artifact has an ad-hoc
-  integrity signature only; the Windows installer is unsigned. Neither is a
-  production-signed, notarized or auto-updating release.
+Versioned releases include installers, SHA-256 sums, clean Foundry source and
+third-party corresponding-source/license archives. Mac has an ad-hoc integrity
+signature, not Developer ID/notarization. Windows is unsigned. Stable scope does
+not imply verified publisher status, commercial support or platform certification.
+Do not disable operating-system security to run the app.
 
-- [C4 approval-bound Go verification](coding-verification-c4.md): immutable profile, independent baseline approval/execution, append-only lifecycle, exact-owned cleanup, failure/repair and bound reviews. Production remains default-closed with strict controlled activation and no HTTP/environment bypass or legacy fallback. A separately approved, bounded Double-project C4-C Docker acceptance completed baseline pass → candidate failure → repaired pass with confirmed cleanup. Roles remained simulated; retained historical evidence is not future authority or a general isolation guarantee.
-- [Repository-task orchestration](repository-task-orchestration.md): isolated accountless, descriptor-driven local proposals and exact-content checks for arbitrary bounded goals/nested paths, including declared new source files and dependent multifile edits. Existing controller approvals, immutable generations, repair limits, failure replanning, reviews and patch export are reused. This is not autonomous reasoning, compilation or real repository Docker execution. Existing-path import consumes committed HEAD only and preserves uncommitted work; its descriptor must match the commit.
-
-- C3 local repository admission in the ordinary recoverable-task form: explicit inspection consent, exact receipt binding, input/race invalidation, registered project entry, durable import history (including attempts without a task), and frozen source provenance.
-- Manual read-only recovery diagnosis in the existing candidate/local-operation view. It reports independently checked dimensions and stale revisions without repairing, retrying, polling, or changing the separate context/execution/delivery approvals.
-
-- Buildable Go controller and React UI with a loopback-only HTTP server.
-- Local SQLite state, exclusive data-directory ownership, immutable source/model/policy snapshots, and controller-owned candidate generations.
-- Separate context, exact single-MCP-call, plan-execution, and delivery approvals.
-- Serial planning, bounded candidate edits, Docker acceptance commands, QA/Auditor review, and local patch/report export.
-- Explicit MCP catalog discovery and a controller-owned synthetic task-time MCP fixture behind `--local-mcp-test`.
-- Synthetic acceptance harness with fresh temporary state, fake in-memory credentials, local protocol fixtures, and a random loopback port.
-- A [content-driven C1 coding-loop fixture](coding-loop-c1.md) exercises an intentionally failing Worker edit, Debugger repair, deterministic simulated verification, independent reviews, and explicit patch export through the production controller. It remains a local simulation and does not execute a shell, Docker, or a cloud model.
-- [C2 traceable failure and explicit replanning](coding-loop-c2.md) adds version-one controller traces, sealed failure-to-plan adjustments, distinct evidence-backed QA/Auditor checklists and integrity-bound reports. The `coding_loop_replan` draft scenario exercises separate approvals through local content-check simulation only; it does not certify real project commands, accounts, Keychain, providers or Docker.
-- Read-only model-account acceptance inspection over local account, route, credential-generation, and authorization metadata, plus three separately proposed, approved, and explicitly executed connection, catalog, and inference gates against process-owned local fixtures. They do not read real secret values or grant live access; real login, catalog discovery, and inference remain blocked.
-- An optional OpenAI identity-only local simulation route requests the fixed `openid profile email` identity scope set through the same separate proposal, approval, and explicit execution gate. It is regression coverage, not a prerequisite for subscription onboarding. It records identity proof only: it does not establish model access, account/workspace selection, entitlement, quota, billing, catalog discovery, inference, or live-login readiness. See [identity-only simulation](openai-identity-connection.md) and [subscription connection direction](openai-stage0.md#current-subscription-connection-direction).
-- A dedicated OpenAI subscription connection-only local fixture freezes all six requested scopes and the protocol resource in its approval digest. It requires fresh matching authorization evidence and retains single-attempt/unknown-outcome recovery. Catalog, inference and refresh are unavailable for that account, including through legacy shortcuts; the official resource is an audience, not an external transport destination. See [subscription connection preparation](openai-subscription-connection.md).
-- A separate synthetic browser-connection fixture connects the same approval ledger to a process-owned SIWC session: ten-minute human-login lifetime, thirty-second network bound, explicit status reads/cancellation, joined shutdown and consumed/unknown restart recovery. Temporary session handles are released after completion; durable receipts remain. This prepares the [connection handoff](openai-connection-handoff.md), not live admission or a native Keychain acceptance claim.
-- OpenAI subscription accounts receive an optional stage-0 metadata projection: account-base address policy, Keychain `not_checked`, remote billing `unverified`, quota `unknown`, and connection/catalog/inference `blocked`. A canonical account base does not prove that every route or endpoint ownership check passed.
-- A separate local `foundry-keychain-check` command can exercise generated diagnostic data in an isolated Keychain service with a private recovery journal. It is noninteractive, has no plaintext fallback, does not accept a credential value or enumerate account credentials, and does not update the browser report.
-
-The [OpenAI operator entry](openai-operator-entry.md) is implemented and default-closed, with a paired startup opt-in, fresh journaled native readiness prerequisite and independent workbench connection approval. This is locally simulated implementation evidence, not real-provider acceptance. Installing or starting the default build never grants real-login permission.
-
-The [independent OpenAI catalog gate](openai-catalog-gate.md) adds a separate default-closed operator mode for one approved `GET /v1/models`. It requires a current successful real connection receipt and unexpired matching authorization; connection permission never implies catalog permission. Preparation is metadata-only. Inference, automatic refresh/retry and paid fallback remain closed. Local synthetic tests are implementation evidence only; actual catalog/entitlement/quota acceptance remains unverified.
-
-The [independent single-inference gate](openai-inference-gate.md) adds a mutually exclusive, default-closed operator mode for one separately approved fixed-text `gpt-6.1-sol` request. It requires current connection and same-credential catalog evidence. Preparation/approval are metadata-only; execution reserves one dispatch before leasing its credential. Bounded SSE completion, expected-output match and actual supplied usage are recorded separately, without retaining arbitrary output. Unknown outcomes are consumed, never replayed. Expiry stops without refresh, retry or paid fallback; the timeout/receive bound is not a token or monetary cap. Validation is synthetic only, and does not certify real inference or grant task/role access.
-
-## Deliberately not implemented
-
-- Automatic patch application, source-repository writes, commits, pushes, releases, deployment, or database migration.
-- Multi-worker scheduling or autonomous background execution.
-- Generic external MCP `tools/call`, MCP stdio/OAuth, Skill/script execution, hook scripts/webhooks, or Git hooks.
-- Automatic provider fallback, paid fallback, retry/replay of unknown remote outcomes, or automatic Docker image pulls.
-- Ordinary-browser, normal-desktop or default-CLI native credential probing, and ordinary-startup real-login, live catalog or live-inference actions. Explicit Mac/Windows coding-workbench preparation may initiate the host-owned Foundry-only native diagnostic through desktop-capability and same-origin protected requests; its private journals are anchored to the installed data directory, not the build checkout. The separate operator CLI retains its source-checkout path safeguards. Preparation does not start login or catalog discovery: each still requires its independent approval. Coding task inference has a separate claimed-invocation capability; it does not open login, catalog or single-inference operator gates.
-- A production code-signing/notarization service, automatic updater, package
-  manager formula, or GitHub Release. Installers are versioned CI artifacts with
-  finite retention, not a permanent release channel.
-
-## Support boundary
-
-The desktop targets are macOS arm64 and Windows x64, subject to each exact
-commit's native CI acceptance. Intel macOS, Windows ARM and Linux desktop
-installers are not supported by this milestone. Windows repository admission is
-deliberately narrower: committed regular `100644` files only, no executable-bit
-entries, symlinks, junctions, aliases or alternate data streams. Windows storage
-uses protected per-user DACLs and native held locks, not POSIX chmod emulation.
-
-Native credential backends are macOS Keychain with cgo and Windows Credential
-Manager. Normal desktop/simulation modes keep credential access disabled; coding
-mode uses native storage only for explicit operations. Windows preserves the native
-2,560-byte per-record ceiling and supports bounded larger subscription bundles
-through exact-owned segments and an integrity-checked commit record. Partial,
-tampered or oversized bundles fail closed; there is no plaintext fallback.
-Windows real Docker stays
-closed. Compilation alone does not establish native or real-provider acceptance.
-
-The expected validation toolchain is Go 1.27.3, Node.js 22.23.2, and npm 10.9.8. The trusted system `/usr/bin/git` must pass `/usr/bin/git --no-lazy-fetch --version`; a newer Git elsewhere on `PATH` does not substitute for it. CI targets the public-repository arm64 `macos-26` image and retains that feature check. The initial public snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) completed both macOS verification and security checks in [public workflow run 39188374585](https://github.com/tsumon/foundry/actions/runs/39188374585). That evidence is commit-scoped; it does not cover later commits or any skipped Docker, Keychain, real-provider, or independent-machine check. Docker-dependent behavior requires a running local daemon and a preloaded trusted image. A skipped Docker smoke test is unverified, not passed.
-
-Legacy accountless model profiles preserve their network capability. Live account
-routes stay blocked outside the exact controlled-coding invocation capability;
-the product is not globally offline. See [safety](safety.md).
-
-## Not yet verified or claimed
-
-- C3 synthetic acceptance does not execute compiler commands or Docker. Separate
-  C4 Docker and native-VM results above cover only their exact accepted inputs;
-  they do not establish readiness for another project, image or host.
-
-- The explicitly reported Mac subscription connection and catalog attempt does
-  not certify real-model task completion, general account compatibility,
-  entitlement, quota, billing, balance or reset-time behavior. Native diagnostics
-  are exact-item and host-scoped; an implementation alone is not a passed check.
-- No external MCP implementation is certified for task execution.
-- No independent fresh Apple Silicon Mac acceptance run is claimed.
-- No security audit, penetration test, dependency legal review, or production-readiness assessment is claimed.
-- No tag, GitHub Release or support SLA is included. Installer availability and
-  verification are tied to successful, retained CI artifacts for a precise commit.
-
-Synthetic local tests validate protocol and controller behavior only. They are not evidence that a real provider, account, MCP server, Docker environment, or user repository is compatible or safe.
-
-## Publication scope and remaining limits
-
-The approved public source repository is [tsumon/foundry](https://github.com/tsumon/foundry). Public attribution is **tsumon**, and commits use a GitHub noreply address. The first public commit is a clean source snapshot, not a copy of private development history. Internal research, preparation records, runtime data, and private credentials are not part of the public tree.
-
-Security reports go to GitHub private vulnerability reporting and are received by **tsumon**. See [SECURITY.md](../../SECURITY.md) for the reporting link and safe handling guidance. The canonical Apache-2.0 license text, including its standard example appendix, is preserved unchanged.
-
-The source snapshot does not resolve every release-readiness question:
-
-1. Third-party notices are byte-level attribution evidence, not blanket legal/compliance clearance. Optional packages for unsupported platforms remain unverified; see [third-party notices](../../THIRD_PARTY_NOTICES.md).
-2. GitHub-hosted evidence is commit-scoped. The [initial successful run](https://github.com/tsumon/foundry/actions/runs/39188374585) covers commit `3d30e5d`; each later commit requires its own successful run. A local pass does not certify a hosted run.
-3. Docker, real Keychain, real-provider, and independent-machine acceptance must each be reported as run, failed, or skipped based on evidence.
-
-Publishing source or a CI installer does not create a GitHub Release or certify
-production readiness. Real model/subscription operations remain individually
-approval-bound; the failed real task attempt is not replayed automatically.
+See the [desktop guide](desktop-guide.md), [safety model](safety.md),
+[release gates](release-readiness.md) and [changelog](../../CHANGELOG.md).

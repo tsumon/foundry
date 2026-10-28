@@ -1,37 +1,32 @@
-# Desktop Alpha guide
+# Desktop guide — 0.1.0
 
 Foundry Desktop packages the existing workbench and local Go controller. It does
 not require a separately installed Node.js, npm, Go toolchain or compiler to run.
-Git is a separate prerequisite for repository operations. This is an experimental
-local-workflow Alpha, not a production-ready autonomous coding service.
+Git is a separate prerequisite for repository operations. The stable scope is serial, approval-bound delivery for committed standard-library
+Go repositories; arbitrary-language autonomous development is not supported.
 
 ## Get the right artifact
 
-Use the [v0.1.0-alpha.3 prerelease](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3)
-for versioned downloads. Both installers are unchanged CI outputs from public
-commit `5237fc49bafe4c5d33d3d6fa117ac59c467ace16`, not rolling builds of `main`.
-Download the matching installer and `SHA256SUMS`; retain its platform source
-archive containing `runtime-sources` and `sandbox-sources` when redistributing.
-The release includes the clean Foundry source and public CI receipts. Actions
-artifacts remain build evidence, may require sign-in and expire. Neither channel
-enables automatic updates or makes this Alpha a stable release.
+Use the [v0.1.0 release](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
+for fixed versioned installers, checksums, corresponding runtime/sandbox source,
+clean Foundry source and exact-commit acceptance receipts. Actions artifacts are
+build evidence and can expire; they are not the durable download channel. There
+is no automatic updater. Keep the corresponding source/notices when redistributing.
 
-The [release acceptance table](../../README.en.md#release-acceptance--2026-10-26)
-links the exact successful Verify and Desktop runs. This Mac CI DMG passed
-installed-backend contracts and persistence, not a physical-Mac VM rerun. Existing
-same-source-tree hardware evidence is not acceptance of that exact installer.
-This Windows EXE passed Unicode-path install, cross-drive data, native UI, restart,
-evidence-preserving uninstall and a real WHPX failure/repair/recheck loop.
-Model responses remain local protocol fixtures, not real-account calls. Historical
-builds remain listed separately; compilation alone is not acceptance.
+Release evidence distinguishes native installation and upgrade checks, real VM
+execution, local model fixtures and real provider calls. A successful build or a
+past package's result is not acceptance of a different installer. The recommended
+API route has [real Mac CPA/Grok delivery evidence](compatible-api-acceptance.md);
+Windows provider compatibility is covered by protocol fixtures, not a real-account
+claim. Subscription integration remains experimental.
 
 | Target | Package | Trust status |
 | --- | --- | --- |
-| macOS Apple Silicon | `Foundry-0.1.0-alpha.3-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
-| Windows x64 | `Foundry-0.1.0-alpha.3-x64.exe` | Unsigned per-user installer; no verified publisher |
+| macOS Apple Silicon | `Foundry-0.1.0-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
+| Windows x64 | `Foundry-0.1.0-x64.exe` | Unsigned per-user installer; no verified publisher |
 
 Do not treat a checksum as publisher authentication. Do not disable Gatekeeper,
-SmartScreen, antivirus or other OS protections to install the Alpha. If your
+SmartScreen, antivirus or other OS protections to install the app. If your
 machine rejects the unsigned application, stop and use the reviewed source
 workflow instead. Intel Macs, Windows ARM and Linux desktop packages are not
 supported in this milestone.
@@ -40,7 +35,7 @@ On macOS, open the DMG and copy Foundry to Applications (or your user Applicatio
 folder). Run the installed copy, not the mounted image. On Windows, use the
 per-user installer; administrator access, startup services and an automatic
 updater are not needed. Interactive installation opens Foundry when finished;
-silent installation does not. This Alpha creates no Start-menu or desktop
+silent installation does not. This version creates no Start-menu or desktop
 shortcuts. To launch it again, open `Foundry.exe` in the OS per-user Programs
 folder, normally `%LOCALAPPDATA%\Programs\Foundry\Foundry.exe` (or the explicit
 installation path supplied with `/D`). Uninstalling the app must not remove task data or
@@ -100,14 +95,13 @@ host-script fallback is provided. The source repository and protected tests rema
 untouched. If you explicitly choose Docker on Mac, supply an existing immutable
 local image matching the verifier contract; Foundry does not pull or build it.
 
-1. Open **Controlled Coding Workbench**. In the latest source, the recommended
+1. Open **Controlled Coding Workbench**. The recommended
    path is **API quick setup**: create an OpenAI or compatible gateway API Key
    account, save the key in native storage, enter its model ID, acknowledge billing,
    and save the model connection. Choose it in role settings for new tasks.
    Neither login nor catalog discovery is required. Saving metadata does not
    send inference. API and experimental subscription routes are never automatic
-   fallbacks for one another. See [API setup](api-key-coding.md); pinned Release
-   binaries reflect their recorded source revision, not the latest source UI.
+   fallbacks for one another. See [API setup](api-key-coding.md).
 2. In task creation, inspect the repository and freeze its committed base, file
    scope, model selections, call budget and immutable local verification profile.
    Creation grants neither network nor execution permission.
@@ -157,7 +151,7 @@ already-sent work in another process may remain in progress until its bounded
 deadline. Unknown outcomes require explicit recovery, never automatic replay.
 Renewal does not refresh catalog evidence, readiness, task continuation approvals
 or call budgets. A new sign-in needs fresh consent. See [session renewal](session-renewal.md).
-Only synthetic local renewal has been tested; real renewal remains separately approved.
+Renewal requires its own authorization and is outside the stable API-route claim.
 
 Windows Credential Manager keeps its native 2,560-byte per-record ceiling. A
 bounded segmented representation supports subscription bundles up to 256 KiB,
@@ -204,7 +198,7 @@ On macOS, `/usr/bin/git --no-lazy-fetch --version` must work. A different Git on
 PATH does not replace the trusted system path. On Windows, install official Git
 for Windows in the OS **Program Files** directory: normally
 `C:\Program Files\Git\cmd\git.exe`. Foundry does not search PATH, install Git or
-use a portable copy automatically. For this Alpha, Windows repositories must be
+use a portable copy automatically. For this version, Windows repositories must be
 on the **same drive as Foundry data**; cross-drive/aliased-drive imports fail
 closed. Only regular committed `100644` files are supported; executable-bit
 entries, symlinks, junctions, case aliases and alternate streams are rejected.

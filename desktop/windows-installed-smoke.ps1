@@ -1,4 +1,8 @@
-param([Parameter(Mandatory=$true)][string]$Output)
+param(
+  [Parameter(Mandatory=$true)][string]$Output,
+  [Parameter(Mandatory=$true)][string]$OldInstaller,
+  [Parameter(Mandatory=$true)][string]$UpgradeFixture
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'Native Windows required' }
@@ -10,11 +14,25 @@ $testRoot = Join-Path $env:RUNNER_TEMP ('Foundry 验收 ' + [Guid]::NewGuid().To
 $installed = Join-Path $testRoot '用户安装 Foundry'
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 if (Test-Path $installed) { throw 'Install target must be fresh' }
-$install = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installed") -Wait -PassThru
-if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
+if (-not (Test-Path -LiteralPath $OldInstaller) -or (Get-FileHash -LiteralPath $OldInstaller -Algorithm SHA256).Hash.ToLowerInvariant() -cne '023bf7e0c95b3ec90e76e429b145e9fbbe0b1d52103ec82e5ac4eb3968188327') { throw 'Pinned alpha.3 installer digest mismatch' }
+$oldInstall = Start-Process -FilePath $OldInstaller -ArgumentList @('/S', "/D=$installed") -Wait -PassThru
+if ($oldInstall.ExitCode -ne 0) { throw "Old installer failed: $($oldInstall.ExitCode)" }
 $app = Join-Path $installed 'Foundry.exe'
 $resources = Join-Path $installed 'resources'
-if (-not (Test-Path $app)) { throw 'Installed native app missing' }
+if (-not (Test-Path $app) -or -not (Test-Path (Join-Path $resources 'app.asar'))) { throw 'Old installed native app missing' }
+$oldAsarHash = (Get-FileHash (Join-Path $resources 'app.asar') -Algorithm SHA256).Hash
+$oldProbeRaw = & $node (Join-Path $PSScriptRoot 'upgrade-smoke.cjs') --probe-old $resources $UpgradeFixture (Join-Path $Output 'upgrade-old-installed.json')
+if ($LASTEXITCODE -ne 0) { throw 'Installed alpha.3 controller seed probe failed' }
+$oldProbe = ($oldProbeRaw -join "`n") | ConvertFrom-Json
+if ($oldProbe.result -cne 'PASS' -or $oldProbe.source_version -cne 'v0.1.0-alpha.3') { throw 'Invalid old installed controller receipt' }
+$oldResources = Join-Path $testRoot 'alpha3-installed-resources'
+Copy-Item -LiteralPath $resources -Destination $oldResources -Recurse
+if ((Get-FileHash (Join-Path $oldResources 'app.asar') -Algorithm SHA256).Hash -cne $oldAsarHash) { throw 'Old installed resource copy changed' }
+$install = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installed") -Wait -PassThru
+if ($install.ExitCode -ne 0) { throw "Candidate over-install failed: $($install.ExitCode)" }
+if (-not (Test-Path $app) -or -not (Test-Path (Join-Path $resources 'app.asar'))) { throw 'Candidate installed native app missing' }
+$candidateAsarHash = (Get-FileHash (Join-Path $resources 'app.asar') -Algorithm SHA256).Hash
+if ($candidateAsarHash -ceq $oldAsarHash) { throw 'Candidate did not replace old installed app bytes' }
 $shipping = & $node (Join-Path $PSScriptRoot 'windows-provenance.cjs') (Join-Path $Output 'runtime-sources') (Join-Path $resources 'legal')
 if ($LASTEXITCODE -ne 0) { throw 'Installed legal/source sidecar integrity failed' }
 $shipping | Set-Content (Join-Path $Output 'shipping-provenance.json') -Encoding utf8
@@ -156,6 +174,11 @@ public static class FoundryWindow {
       if ($null -eq $uiFailure) { throw 'UI acceptance required forced cleanup; gate failed' }
     }
   }
+  $upgradeRaw = & $node (Join-Path $PSScriptRoot 'upgrade-smoke.cjs') $oldResources $resources $UpgradeFixture (Join-Path $Output 'upgrade-acceptance.json')
+  if ($LASTEXITCODE -ne 0) { throw 'Installed cross-version upgrade acceptance failed' }
+  $upgrade = ($upgradeRaw -join "`n") | ConvertFrom-Json
+  if ($upgrade.result -cne 'PASS' -or $upgrade.source_version -cne 'v0.1.0-alpha.3' -or $upgrade.host -cne 'windows/amd64') { throw 'Invalid cross-version upgrade receipt' }
+  if ($upgrade.old_manifest_sha256 -cne $oldProbe.old_manifest_sha256 -or $upgrade.frozen_history_sha256 -cne $oldProbe.frozen_history_sha256) { throw 'Installed old probe and upgrade history disagree' }
   $uninstaller = Join-Path $installed 'Uninstall Foundry.exe'
   if (-not (Test-Path $uninstaller)) { throw 'Per-user uninstaller missing' }
   $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
@@ -164,5 +187,22 @@ public static class FoundryWindow {
   while ((Test-Path $app) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
   if (Test-Path $app) { throw 'Uninstall left installed executable' }
   if (-not (Test-Path $profileDB) -or -not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash -or -not (Test-Path $runtimeCodingDB) -or (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash -ne $runtimeCodingHash -or (Get-FileHash $evidenceDB -Algorithm SHA256).Hash -ne $evidenceHash) { throw 'Uninstall changed persistent evidence' }
-  @{ result='PASS'; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; nativeUI='OS UI Automation opened the fixed native coding menu and confirmation, observed configurable VM metadata with opt-in unchecked and independent approvals, returned to persistent mode, and captured painted clients; no manual interactive acceptance claimed'; firstUI=$firstReady; codingAction=$codingAction; codingUI=$codingReady; persistentAction=$persistentAction; switchedUI=$switchedReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS; defaulted to persistent mode and retained coding data'; uninstall='PASS; persistent, coding, and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
+  $freshInstalled = Join-Path $testRoot 'fresh-candidate-install'
+  if (Test-Path $freshInstalled) { throw 'Fresh candidate install target occupied' }
+  $freshInstall = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$freshInstalled") -Wait -PassThru
+  if ($freshInstall.ExitCode -ne 0) { throw 'Fresh candidate installer failed' }
+  $freshApp = Join-Path $freshInstalled 'Foundry.exe'
+  $freshResources = Join-Path $freshInstalled 'resources'
+  if (-not (Test-Path $freshApp) -or (Get-FileHash (Join-Path $freshResources 'app.asar') -Algorithm SHA256).Hash -cne $candidateAsarHash) { throw 'Fresh candidate installed bytes differ from upgraded candidate' }
+  $freshRaw = & $node (Join-Path $PSScriptRoot 'upgrade-smoke.cjs') --verify-fresh $freshResources (Join-Path $Output 'fresh-candidate-integrity.json')
+  if ($LASTEXITCODE -ne 0) { throw 'Fresh candidate resource integrity failed' }
+  $fresh = ($freshRaw -join "`n") | ConvertFrom-Json
+  if ($fresh.result -cne 'PASS' -or $fresh.manifest_sha256 -cne $upgrade.current_manifest_sha256) { throw 'Fresh candidate manifest differs from upgraded candidate' }
+  $freshUninstall = Start-Process -FilePath (Join-Path $freshInstalled 'Uninstall Foundry.exe') -ArgumentList '/S' -Wait -PassThru
+  if ($freshUninstall.ExitCode -ne 0) { throw 'Fresh candidate uninstaller failed' }
+  $freshDeadline = [DateTime]::UtcNow.AddSeconds(30)
+  while ((Test-Path $freshApp) -and [DateTime]::UtcNow -lt $freshDeadline) { Start-Sleep -Milliseconds 200 }
+  if (Test-Path $freshApp) { throw 'Fresh candidate uninstall left executable' }
+  if (-not (Test-Path $profileDB) -or -not (Test-Path $codingDB) -or (Get-FileHash $codingDB -Algorithm SHA256).Hash -ne $codingHash -or -not (Test-Path $runtimeCodingDB) -or (Get-FileHash $runtimeCodingDB -Algorithm SHA256).Hash -ne $runtimeCodingHash -or (Get-FileHash $evidenceDB -Algorithm SHA256).Hash -ne $evidenceHash) { throw 'Fresh install or uninstall changed retained evidence' }
+  @{ result='PASS'; platform='native Windows x64'; installed=$installed; unsigned=$true; runtime=$runtime; upgrade=$upgrade; freshInstall=$fresh; nativeUI='OS UI Automation opened the fixed native coding menu and confirmation, observed configurable VM metadata with opt-in unchecked and independent approvals, returned to persistent mode, and captured painted clients; no manual interactive acceptance claimed'; firstUI=$firstReady; codingAction=$codingAction; codingUI=$codingReady; persistentAction=$persistentAction; switchedUI=$switchedReady; restartUI=$restartReady; secondInstance='PASS'; restart='PASS; defaulted to persistent mode and retained coding data'; uninstall='PASS; persistent, coding, and simulation evidence retained'; powerLossCertified=$false } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'native-smoke.json') -Encoding utf8
 } finally { $env:PATH=$oldPath }

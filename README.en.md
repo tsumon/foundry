@@ -10,167 +10,106 @@ Plans · Isolated candidates · Built-in sandbox · Repairs · Approvals · Loca
 
 [![Verify](https://github.com/tsumon/foundry/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/verify.yml)
 [![Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)
-[![Alpha](https://img.shields.io/badge/stage-desktop%20alpha-F0A44B)](docs/public/alpha-status.md)
+[![Version](https://img.shields.io/badge/version-0.1.0-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
 [![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2C56F5)](LICENSE)
 
 [简体中文](README.md) · [English](README.en.md) · [Install & use](docs/public/desktop-guide.md) · [Architecture](docs/public/architecture.md) · [Safety](docs/public/safety.md)
 
-[![Download Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-Download_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-arm64.dmg)
-[![Download Windows EXE](https://img.shields.io/badge/Windows_x64-Download_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe)
+[![Download Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-Download_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-arm64.dmg)
+[![Download Windows EXE](https://img.shields.io/badge/Windows_x64-Download_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-x64.exe)
 
-[v0.1.0-alpha.3 · Release notes & all files](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3) · [SHA-256 checksums](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/SHA256SUMS)
+[v0.1.0 · Release notes & all files](https://github.com/tsumon/foundry/releases/tag/v0.1.0) · [SHA-256 checksums](https://github.com/tsumon/foundry/releases/download/v0.1.0/SHA256SUMS)
 
 </div>
 
-<p align="center">
-  <img src="docs/media/desktop-delivery.jpg" alt="Installed Foundry desktop: independently approved synthetic delivery with patch and report export" width="100%">
-</p>
-<p align="center"><sub>Actual workbench, shown in Chinese with disposable synthetic data. Visible plans and states do not certify real model or Docker execution.</sub></p>
+<p align="center"><img src="docs/media/desktop-delivery.jpg" alt="Installed Foundry: independently approved synthetic delivery with patch and report exports" width="100%"></p>
+<p align="center"><sub>Actual workbench with disposable synthetic data. A screenshot is not evidence of model or sandbox execution.</sub></p>
 
-Foundry is a software-delivery workbench for a one-person team. It reads a committed Git snapshot and keeps plans, candidate changes, failures, rechecks and delivery in one inspectable workflow. Your source repository stays read-only. The output is a **patch and Markdown report**, not an unreviewed automatic push.
+Foundry is a **Go software-delivery workbench** for a one-person team. Connect an explicitly chosen API model, start from a committed Git snapshot, plan changes, edit isolated candidates, test in a bundled VM, repair confirmed failures and deliver a reviewable **patch and Markdown report**. Your source repository stays untouched; applying and deploying the patch remain your decisions.
 
 > [!IMPORTANT]
-> **This is an approval-bound coding Alpha, not an unattended autonomous developer.** Coding tasks default to a bundled lightweight Linux VM; Docker is an explicit alternative. Docker Desktop is not required, and repository code never silently runs on the host. Model access and test execution have separate approvals; installation grants neither. Native sandbox acceptance uses local model-protocol responses—**real-account end-to-end acceptance is not claimed**. The original fully synthetic workflow remains labeled `synthetic_stub`.
+> **Stable 0.1.0 supports serial delivery for standard-library Go projects.** It does not promise arbitrary languages, unattended development or automatic deployment. The default sandbox ships with the app and needs no Docker Desktop. If virtualization is unavailable, execution stops; it never falls back to the host. API models are the recommended path; ChatGPT subscription sign-in remains experimental.
 
-## Inspect the outcome before you deliver
+## One workbench, three connected views
 
-| Understand the plan | Isolate the changes | Keep the evidence |
+| Understand the plan | Verify the changes | Keep the evidence |
 | :--- | :--- | :--- |
-| Approve context and execution separately. Plans are editable; saving is not approval. | Create candidates from a fixed commit. Protect tests and leave the source repository untouched. | Retain failures, Debugger repairs, rechecks and QA/Auditor reviews. Delivery has its own approval. |
+| Researcher investigates and Planner proposes. Context sharing and plan execution have separate approvals; plans are editable. | Worker builds an isolated candidate. Protected tests run in a real VM. Confirmed failures can enter at most two Debugger rounds. | QA and Auditor review the same candidate and test evidence. Export requires separate approval; failures and spent calls remain recorded. |
 
-## Install the desktop app
+## Download and install
 
-Download from the [v0.1.0-alpha.3 Release](https://github.com/tsumon/foundry/releases/tag/v0.1.0-alpha.3). **This is a prerelease, not a stable release.** Both installers come unchanged from the same successful CI run at public commit [`5237fc4`](https://github.com/tsumon/foundry/commit/5237fc49bafe4c5d33d3d6fa117ac59c467ace16). These are pinned binaries, not rolling builds of the default branch; publication does not mean the draft PR was merged.
-
-| Platform | Installer | Corresponding third-party sources |
+| Platform | Installer | Corresponding third-party source |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | [DMG · 220 MiB](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-arm64.dmg) | [Runtime & sandbox sources](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-macos-sources.tar.gz) |
-| Windows x64 | [EXE · 193 MiB](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe) | [Runtime & sandbox sources](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-windows-sources.tar.gz) |
+| Apple Silicon Mac | [Foundry-0.1.0-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-arm64.dmg) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-macos-sources.tar.gz) |
+| Windows x64 | [Foundry-0.1.0-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-x64.exe) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.1.0/Foundry-0.1.0-windows-sources.tar.gz) |
 
-Verify downloads against [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/SHA256SUMS). The release also includes a clean Foundry source snapshot and public CI receipts. Keep the corresponding sources and notices when redistributing installers. Linux, QEMU and Electron retain their own licenses; they are not all Apache-2.0.
+Check [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.1.0/SHA256SUMS) after downloading. The [Release](https://github.com/tsumon/foundry/releases/tag/v0.1.0) retains the exact commit, installation/upgrade acceptance, real-call scope, clean source and third-party materials. These are fixed versioned files, not rolling builds of main.
 
-### Release acceptance · 2026-10-26
+**Signing status:** Mac uses an ad-hoc integrity signature, without Developer ID signing or notarization. Windows is unsigned, with no verified publisher. Checksums do not authenticate the publisher. Do not disable Gatekeeper, SmartScreen or antivirus; use the reviewed source workflow if your organization's policy rejects unsigned apps. A stable version number does not mean platform notarization or a commercial support promise.
 
-| Subject | Verified | Not claimed |
-| :--- | :--- | :--- |
-| This Mac DMG | CI installed-backend contracts, restart/persistence, integrity signing and DMG verification | No physical-Mac VM rerun of this CI DMG; existing same-source-tree hardware evidence is not acceptance of this exact installer |
-| This Windows EXE | Unicode-path install, cross-drive data, native UI, restart, evidence-preserving uninstall; real WHPX passing baseline → failing candidate → passing repair | Role responses use local protocol fixtures, not real OpenAI calls |
-| Same source commit | Green [Verify](https://github.com/tsumon/foundry/actions/runs/40213498354) and [Desktop packages](https://github.com/tsumon/foundry/actions/runs/40213498361), without skipping security gates | Not arbitrary-project, real-account or production certification |
+The controller, frontend, Linux guest and Go toolchain are bundled. You do not need separate Go, Node.js, npm or Docker installations. Repository imports require supported local Git. Windows also requires hardware virtualization and Windows Hypervisor Platform already enabled. Foundry does not enable OS features, install services or reboot the machine. Intel Mac, Windows ARM and Linux desktop packages are not supported. See the [desktop guide](docs/public/desktop-guide.md).
 
-<details>
-<summary>Historical native acceptance (not current downloads)</summary>
+## Deliver with your own model
 
-### Verified builds · 2026-10-24
+Choose **Controlled Coding Workbench** in the app menu:
 
-| Platform / revision | Download | Acceptance actually performed |
-| :--- | :--- | :--- |
-| Apple Silicon Mac · `46e1247` | [DMG + checksums + runtime sources](https://github.com/tsumon/foundry/actions/runs/39964561670/artifacts/12506990609) | Physical-Mac installation, native UI, restart; real Apple Virtualization failure → repair → recheck |
-| Windows x64 · `0c87188` | [EXE + checksums + reports and screenshots](https://github.com/tsumon/foundry/actions/runs/39983328865/artifacts/12515976175) | Unicode-path installation, cross-drive user data, real WHPX loop; native UI automation, restart, uninstall with evidence retained |
+1. **Configure an API.** Create an OpenAI or compatible Responses-gateway API Key account and save its key. Use **API quick setup** to enter an available model ID, acknowledge billing and assign it to roles for new tasks. Explicit Magpie/CPA Responses endpoints are supported. No ChatGPT login is needed; saving does not query a catalog or run inference. [Setup guide](docs/public/api-key-coding.md)
+2. **Import a repository.** Choose a committed standard-library Go repository, describe the goal, specify editable files and protected tests, and confirm models, the call ceiling and sandbox.
+3. **Establish the baseline.** Separately approve and run VM readiness and baseline tests. The baseline must pass; this workflow does not ask the model to repair an already-failing repository.
+4. **Approve the plan.** Confirm the outgoing files and receiver, authorize Researcher / Planner, then review or revise their plan before separately approving execution.
+5. **Check the outcome.** Worker edits an isolated candidate. Confirmed test failures trigger bounded Debugger repair and recheck. QA / Auditor independently review the evidence. Network, infrastructure and unknown-outcome failures stop.
+6. **Deliver.** Approve patch/report export and review/apply it outside the product. Foundry does not automatically commit, push, deploy or edit the source repository.
 
-Check [Mac Verify](https://github.com/tsumon/foundry/actions/runs/39964561514), [Windows Verify](https://github.com/tsumon/foundry/actions/runs/39983328874), and [native Windows installation acceptance](https://github.com/tsumon/foundry/actions/runs/39983328865/job/120516374476). Evidence is bound to the revisions above—**it does not automatically certify later builds**. Both platforms execute tests in real VMs; role responses are local protocol fixtures. No real model accounts were called.
+API keys live in macOS Keychain or Windows Credential Manager, not browser storage or plaintext configuration. Tasks pin the receiver, account and model, with no automatic call retry or paid-provider fallback. Call counts and timeouts **are not monetary caps**; also configure provider spending limits. A dispatched call with an unknown result still consumes budget and is never replayed on restart.
 
-</details>
+Tests run in a Linux guest; they do not certify native DMG, EXE, web or mobile apps. The guest has no network or host share and installs no external dependencies. Mac users with an existing Docker setup may explicitly choose an immutable local image for a new task, with separate approvals; Docker is never an automatic VM fallback.
 
-The Mac package has an ad-hoc integrity signature, not Developer ID signing or notarization. Windows uses an unsigned per-user installer. Hardware virtualization and Windows Hypervisor Platform must already be enabled; Foundry does not install or enable those system features.
+## Read the evidence by scope
 
-The app bundles its frontend, controller, Linux guest and Go toolchain. No separate Go, Node.js, npm, MSYS2 or Docker installation is needed. Repository operations still require supported local Git. Missing virtualization blocks execution: no automatic OS feature enablement, reboot, host execution, software emulation or Docker fallback. Releases provide versioned downloads; Actions artifacts remain build evidence and may require sign-in or expire. Do not disable OS security protections to bypass unsigned-app warnings. See the [desktop guide](docs/public/desktop-guide.md) for prerequisites, storage and uninstall behavior.
+| Evidence | What it covers |
+| :--- | :--- |
+| [Real Mac CPA/Grok delivery](docs/public/compatible-api-acceptance.md) | Five real role calls; baseline and candidate each passed 14 real VM tests, with source and protected tests unchanged. The first candidate passed, so no real Debugger call occurred. |
+| Versioned Release receipts | Distinguish real provider calls, injected failures, protocol fixtures, installation/upgrade and VM execution, bound to commits and installer hashes. |
+| Native Windows installation and WHPX acceptance | Actual installation, UI, restart and VM failure→repair→recheck. Protocol-fixture roles are not real Windows provider calls. |
+| Local demonstration | Labeled `SYNTHETIC` / `synthetic_stub`; no cloud calls or Go compiler execution. |
 
-## From a request to a reviewable patch
+Historical OpenAI subscription response failures remain recorded; success on the API/Grok route does not rewrite them. Each live acceptance proves only its receiver, model, project and host. See [supported scope](docs/public/alpha-status.md).
 
-Choose **Controlled Coding Workbench** in the application menu. It has its own persistent data, separate from the ordinary workbench and demonstrations:
+## Upgrade and recover
 
-1. **Use an API Key directly; no ChatGPT login required.** Create an OpenAI or compatible Responses gateway account in model settings and save the key. Use **API quick setup** to enter a model available to that service, acknowledge API billing, then assign the saved profile to roles for new tasks. Explicit Magpie/CPA endpoints are supported with a fixed receiver and model, without automatic route changes. Saving does not query a catalog or send inference; API billing is separate from ChatGPT subscriptions. Quick setup is in the latest source; the pinned Release installers below do not update with the source branch. See [API setup](docs/public/api-key-coding.md). Existing subscription sign-in remains experimental and never falls back to paid API.
-2. Provide a goal, committed Go repository and editable/protected file scope. The built-in sandbox is selected by default and its identity is frozen with the task. Creation neither calls a model nor boots a VM.
-3. Separately approve and execute sandbox readiness and baseline verification. After a passing baseline, approve context sharing for Researcher and Planner to produce the plan.
-4. Review or revise the plan, then approve execution. Workers propose isolated changes. A confirmed test failure can trigger at most two Debugger repairs, each followed by verification.
-5. QA and Auditor review the current candidate and test evidence. Independently approve delivery to export the patch/report.
+Upgrading does not reset consumed budgets or rewrite historical baselines and evidence. Existing tasks select their retained sandbox by its complete frozen identity; new tasks use the current default. Missing or damaged old assets block execution rather than selecting a replacement. Uninstall preserves task data. Back up before upgrading; recover from a consistent backup instead of pointing an older program at upgraded data.
 
-**The current scope is bounded, standard-library Go projects—not arbitrary stacks.** Both hosts test inside Linux; this does not validate native DMG/EXE, browser or mobile applications. There is no package installation, guest networking, host filesystem share, source-checkout write or protected-test edit. Credential expiry, quota exhaustion, ambiguous outcomes and unconfirmed shutdown stop the task: no automatic retry, refresh or paid-API substitution. Call-count and time limits are not monetary caps. See the [sandbox design](docs/public/embedded-sandbox.md) and [desktop guide](docs/public/desktop-guide.md).
-
-**Verified real path (2026-10-28):** On Mac, the local CPA entry configured in Magpie served `grok-4.6` for research → planning → code change → built-in VM tests → QA/audit → patch delivery. Five real model calls; baseline and candidate each passed 14 tests. Protected tests and the source checkout stayed unchanged. The first candidate passed, so real Debugger repair was not exercised; failure/repair/recheck has local protocol regression coverage. [Read the acceptance scope and evidence summary](docs/public/compatible-api-acceptance.md).
-
-An existing Docker environment can be explicitly selected for a **new task** on the supported Mac path. Its immutable image, readiness and approval material are separate; a VM approval never authorizes Docker.
+Subscription login, catalog discovery and standing renewal remain independent experimental permissions; API quick setup requires none of them. Historical subscription tasks are never silently migrated to a paid API. See [upgrade compatibility](docs/public/desktop-parity-upgrade.md) and [session renewal](docs/public/session-renewal.md).
 
 ## Try the workflow without an account
 
-Choose **Foundry → New Isolated Local Repository Simulation**, then open a task labeled `SYNTHETIC`:
+Choose **Foundry → New Isolated Local Repository Simulation**, open a `SYNTHETIC` task and follow baseline → context → plan → edit/failure repair → delivery approvals. Each demonstration has independent inputs and a database; evidence survives exit. **Persistent Workbench** separately manages projects, delivery targets, environments, shared resources and task links, without mixing in demo data.
 
-1. Inspect the baseline material. **Approve it**, then separately **execute the simulated baseline**.
-2. Check the context files and synthetic endpoint; authorize planning.
-3. Review or revise the plan, then approve execution. Workers change only an isolated candidate.
-4. In Verification, inspect **failure → Debugger repair → simulated recheck → QA/Auditor** records.
-5. Approve delivery separately and save the patch/report. Review the patch outside Foundry before applying it.
-
-Each simulation has fresh inputs and a retained separate database. **Persistent Workbench** is a different entrypoint for your persistent records; demonstration data is not mixed into it, and it does not silently connect a model.
-
-Have a disposable repository? **Open Committed Descriptor Repository…** accepts one with a committed `foundry.task.json`. The bounded workflow supports multiple files, declared new files and dependent steps; uncommitted changes are excluded. A descriptor supplies preset proposals—it is not autonomous understanding of an arbitrary repository. Read the [contract and limits](docs/public/repository-task-orchestration.md).
-
-## What works—and what stays closed
-
-Both desktop platforms share the subscription approval flow. Mac uses Keychain;
-Windows uses Credential Manager with bounded segmented storage for complete large
-bundles, never plaintext files. Protocol acceptance uses local synthetic services;
-native credential diagnostics use Foundry-only test items. **Neither certifies a
-real-account model loop.** Catalog selections pin account, route, authorization
-generation/expiry and receipt. A catalog receipt never approves inference.
-See the [subscription workbench](docs/public/mac-subscription-workbench.md).
-
-### Upgrade the app, preserve the task
-
-Mac and Windows coding desktops support [independently approved session renewal](docs/public/session-renewal.md). Existing accounts start disabled: prepare ten-minute material in the account card, then explicitly approve enabling it. Disabling does not sign out. While the desktop runs, this maintains that registration's credentials only; it never retries model calls or extends catalog, task or budget approvals. Installation and status reads grant no consent. Renewal acceptance is local synthetic testing only; no real-account refresh was performed.
-
-| Retained state | Upgrade behavior |
-| :--- | :--- |
-| Original task, plan, baseline and evidence | Original records are not rewritten or relabeled as new-build results |
-| Consumed model budget | Never reset; unknown-outcome calls remain consumed |
-| Frozen sandbox | Retain and select by complete identity; new tasks use the current default |
-| Independent approvals | Retention grants no authority; expired, missing or damaged inputs block, without refresh or fallback |
-
-Tasks predating runtime retention can recover their exact sandbox from an explicitly
-verified local previous installation, without downgrading the app or rewriting its
-database. See the [upgrade compatibility design](docs/public/desktop-parity-upgrade.md).
-
-| Capability | Actual boundary |
-| :--- | :--- |
-| Project and asset workbench | Projects, delivery targets, environments, shared-resource ledger and task associations |
-| Model-driven repository tasks | Opt-in coding entry; frozen OpenAI account/model selection, committed Go inputs, isolated candidates, repairs and export |
-| Default built-in sandbox | Mac Virtualization / Windows WHPX; independent Linux Go tests, no guest network or host shares; native and synthetic evidence recorded separately |
-| Demonstration agents / verification | Scripted local responses and content assertions; **not** real model reasoning or compiler tests |
-| Approvals and recovery | Controller-bound revisions/digests; restart never replays unknown outcomes or widens permission |
-| MCP / Skills / hooks | Management, discovery and static descriptions; source CLI has an independently approved local MCP fixture. Desktop simulation enables no external tool execution |
-| Optional Docker | Explicit Mac selection of an existing immutable image, separate readiness/baseline/candidate approvals; Windows Docker remains closed, never a fallback |
-| Real models / subscriptions | Mac local CPA/Grok real code delivery accepted; OpenAI subscriptions remain experimental. Tasks never implicitly log in, query catalogs, refresh, retry or switch to paid APIs |
-| Automatic apply / Git writes / deployment / migrations | **Not provided**; exported patches are handled outside the product |
-
-Roles assign responsibilities, not permissions. Model reviews are not test evidence, and a synthetic pass does not verify a real project. See [Alpha status](docs/public/alpha-status.md) for the full support boundary.
+MCP, Skills and observation hooks provide management, discovery and static descriptions. The desktop does not allow arbitrary external tools or scripts. Database migration, deployment, automatic apply and Git writes are outside this version's scope.
 
 ## Run from source
 
-Mac development baseline: Go **1.27.3**, Node.js **22.23.2**, npm **10.9.8**, cgo/a C compiler. The system `/usr/bin/git --no-lazy-fetch --version` must succeed.
+Development baseline: Go **1.27.3**, Node.js **22.23.2**, npm **10.9.8**, cgo/a C compiler and supported local Git.
 
 ```sh
-git clone --branch v0.1.0-alpha.3 --depth 1 https://github.com/tsumon/foundry.git
+git clone --branch v0.1.0 --depth 1 https://github.com/tsumon/foundry.git
 cd foundry
 npm ci --prefix web
 ./scripts/build.sh
 go run ./cmd/foundry-acceptance --repository-tasks-fixture --web-dir web/dist
 ```
 
-Open the printed random loopback URL. This entry uses disposable data, no real credentials and no Docker execution. Ordinary CLI and dedicated operator modes have different capabilities: do not infer that every CLI configuration is offline. Do not reuse personal runtime data or enter real credentials during evaluation.
-
-See [Contributing](CONTRIBUTING.md) and the [desktop design](docs/public/desktop-delivery.md) for development, verification and package builds.
-
-## Explore further
+Open the printed random loopback URL. This example uses disposable data and local simulation, without reading real credentials. Other CLI operator modes have their own configured capabilities.
 
 | Using Foundry | Engineering & safety |
 | :--- | :--- |
-| [Install, demonstrate, troubleshoot](docs/public/desktop-guide.md) | [Architecture and approval boundaries](docs/public/architecture.md) |
-| [Model-driven coding and authority](docs/public/live-coding.md) | [Safety model](docs/public/safety.md) |
-| [Capabilities and acceptance scope](docs/public/alpha-status.md) | [Third-party notices and runtime source](THIRD_PARTY_NOTICES.md) |
-| [Changelog](CHANGELOG.md) | [Model-gate design, not live-access certification](docs/public/model-acceptance.md) |
+| [Install, demonstrate, troubleshoot](docs/public/desktop-guide.md) | [Architecture and approvals](docs/public/architecture.md) |
+| [API setup and call boundaries](docs/public/api-key-coding.md) | [Safety model](docs/public/safety.md) |
+| [Version capabilities and limits](docs/public/alpha-status.md) | [Third-party notices](THIRD_PARTY_NOTICES.md) |
+| [Changelog](CHANGELOG.md) | [Development and contributions](CONTRIBUTING.md) |
 
-Report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/tsumon/foundry/security/advisories/new), never by publishing credentials or exploit details in an issue.
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/tsumon/foundry/security/advisories/new), never by publishing credentials.
 
 ---
 
-Copyright © 2026 [tsumon](https://github.com/tsumon). Foundry source is [Apache-2.0](LICENSE), permitting commercial use subject to its terms. Third-party components retain their own licenses. No production support or service-level commitment is offered.
+Copyright © 2026 [tsumon](https://github.com/tsumon). Foundry source is [Apache-2.0](LICENSE), permitting commercial use under its terms. Linux, QEMU, Electron and other third-party components retain their own licenses; redistribute corresponding source and notices with the installers. No commercial support or service-level commitment is offered.

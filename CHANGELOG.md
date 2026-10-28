@@ -2,7 +2,27 @@
 
 All notable public-facing changes will be recorded here.
 
-## Unreleased
+## 0.1.0 — 2026-10-28
+
+- Make API Key / Responses configuration the primary desktop model path, with
+  explicit endpoint/model/billing confirmation and native credential storage.
+  Compatible CPA/Grok gateways no longer depend on ChatGPT subscription login.
+- Support bounded serial standard-library Go tasks: research, plan, isolated
+  edits, guest tests, confirmed-failure repair, QA/Auditor review and local export.
+- Bundle the default isolated Linux VM on Apple Silicon Mac and Windows x64;
+  unavailable virtualization stops without host execution or provider fallback.
+- Preserve task snapshots, baseline/evidence and consumed calls across upgrades;
+  existing tasks use their exact retained runtime. Keep all approvals independent.
+- Publish versioned DMG/EXE, hashes, corresponding source and scoped acceptance
+  receipts. Mac remains ad-hoc signed (not notarized); Windows remains unsigned.
+- Correct bilingual documentation to distinguish the stable Go/API scope,
+  experimental subscription features, real provider evidence and local fixtures.
+
+The release receipts identify the exact accepted source and packages. This
+version does not add arbitrary-language support, automatic apply, Git writes,
+deployment or production signing.
+
+## Earlier Alpha development
 
 - Make development watcher cleanup target the actual Vite process and remove a
   launcher-test scheduling race. Verify cleanup and preserve the controller's
@@ -81,4 +101,6 @@ All notable public-facing changes will be recorded here.
 
 ### Release status
 
-The public source destination is [tsumon/foundry](https://github.com/tsumon/foundry), with attribution to tsumon and private security reports handled through GitHub. This is a clean source snapshot, not a public copy of private development history. The initial snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) passed [public GitHub-hosted macOS verification and security checks](https://github.com/tsumon/foundry/actions/runs/39188374585); that evidence is commit-scoped. Current desktop artifacts require successful native **Desktop packages** and **Verify** runs for their precise commit. Distribution uses expiring CI artifacts, not a GitHub Release or tag. Mac packages are ad-hoc signed, not notarized; Windows installers are unsigned. No real-provider, independent end-user-machine, production-readiness or blanket legal/compliance certification is claimed. See [alpha status](docs/public/alpha-status.md).
+The public source destination is [tsumon/foundry](https://github.com/tsumon/foundry), with attribution to tsumon and private security reports handled through GitHub. This is a clean source snapshot, not a public copy of private development history. The initial snapshot at commit [`3d30e5d`](https://github.com/tsumon/foundry/commit/3d30e5d) passed [public GitHub-hosted macOS verification and security checks](https://github.com/tsumon/foundry/actions/runs/39188374585); that evidence is commit-scoped. Current desktop artifacts require successful native **Desktop packages** and **Verify** runs for their precise commit. Historical Alpha and current stable releases provide fixed versioned downloads;
+CI artifacts remain supplementary and can expire. Mac packages are ad-hoc signed, not notarized; Windows installers are unsigned. The real Mac API acceptance is separately scoped; no independent end-user-machine
+or blanket legal/compliance certification is claimed. See [alpha status](docs/public/alpha-status.md).

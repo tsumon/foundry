@@ -230,6 +230,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Electron runtime install failed' }
           go mod download
           if ($LASTEXITCODE -ne 0) { throw 'Go dependencies failed' }
+      - name: Build and verify native private upgrade copy helper
+        id: upgrade-copy
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $helper = Join-Path $env:RUNNER_TEMP 'foundry-upgrade-copy.exe'
+          if (Test-Path $helper) { throw 'Upgrade copy helper output must be fresh' }
+          $env:CGO_ENABLED = '0'
+          go build -o $helper ./desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Native private upgrade copy helper build failed' }
+          go test -count=1 -run '^TestWindowsUpgradePrivateCopyAndRestore$' ./desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Native private upgrade copy/restore regression failed' }
+          "FOUNDRY_UPGRADE_COPY=$helper" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Native CGO commands and Windows boundary/integration gates
         run: ./desktop/windows-test.ps1
       - name: Isolated Windows Credential Manager diagnostic lifecycle
@@ -284,9 +296,31 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed' }
           Copy-Item (Join-Path $env:RUNNER_TEMP 'foundry-runtime-sources') (Join-Path $env:FOUNDRY_DESKTOP_OUTPUT 'runtime-sources') -Recurse
           Copy-Item (Join-Path $env:RUNNER_TEMP 'foundry-windows-sandbox/sandbox-sources') (Join-Path $env:FOUNDRY_DESKTOP_OUTPUT 'sandbox-sources') -Recurse
-      - name: Fresh install, mandatory WHPX guest, native UI, restart, and uninstall
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 5237fc49bafe4c5d33d3d6fa117ac59c467ace16
+          path: release-alpha3-source
+          persist-credentials: false
+      - name: Seed independent synthetic alpha.3 task and fetch pinned public installer
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $seed = Join-Path $env:RUNNER_TEMP 'foundry-upgrade-seed'
+          if (Test-Path $seed) { throw 'Upgrade seed root must be fresh' }
+          Copy-Item desktop/test/upgrade-seed.go.txt release-alpha3-source/internal/engine/release_upgrade_seed_test.go
+          Push-Location release-alpha3-source
+          try {
+            $env:FOUNDRY_UPGRADE_SEED_ROOT = $seed
+            go test -count=1 -run '^TestReleaseUpgradeSeed$' ./internal/engine
+            if ($LASTEXITCODE -ne 0) { throw 'Pinned alpha.3 synthetic seed failed' }
+          } finally { Pop-Location; Remove-Item Env:FOUNDRY_UPGRADE_SEED_ROOT -ErrorAction SilentlyContinue }
+          if (-not (Test-Path (Join-Path $seed 'fixture.json'))) { throw 'Synthetic upgrade fixture missing' }
+          $oldInstaller = Join-Path $env:RUNNER_TEMP 'Foundry-0.1.0-alpha.3-x64.exe'
+          if (Test-Path $oldInstaller) { throw 'Old installer output must be fresh' }
+          Invoke-WebRequest 'https://github.com/tsumon/foundry/releases/download/v0.1.0-alpha.3/Foundry-0.1.0-alpha.3-x64.exe' -OutFile $oldInstaller
+          if ((Get-FileHash $oldInstaller -Algorithm SHA256).Hash.ToLowerInvariant() -cne '023bf7e0c95b3ec90e76e429b145e9fbbe0b1d52103ec82e5ac4eb3968188327') { throw 'Pinned alpha.3 installer digest mismatch' }
+      - name: Alpha.3 over-install, mandatory WHPX guest, native UI, restart, and uninstall
         id: installed-contract
-        run: ./desktop/windows-installed-smoke.ps1 -Output (Join-Path $env:RUNNER_TEMP 'foundry-windows-output')
+        run: ./desktop/windows-installed-smoke.ps1 -Output (Join-Path $env:RUNNER_TEMP 'foundry-windows-output') -OldInstaller (Join-Path $env:RUNNER_TEMP 'Foundry-0.1.0-alpha.3-x64.exe') -UpgradeFixture (Join-Path $env:RUNNER_TEMP 'foundry-upgrade-seed/fixture.json')
       - name: Upload only after every native gate passes
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -297,6 +331,9 @@ jobs:
             ${{ runner.temp }}/foundry-windows-output/SHA256SUMS
             ${{ runner.temp }}/foundry-windows-output/build-inputs.json
             ${{ runner.temp }}/foundry-windows-output/native-smoke.json
+            ${{ runner.temp }}/foundry-windows-output/upgrade-old-installed.json
+            ${{ runner.temp }}/foundry-windows-output/upgrade-acceptance.json
+            ${{ runner.temp }}/foundry-windows-output/fresh-candidate-integrity.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-acceptance.json
             ${{ runner.temp }}/foundry-windows-output/windows-ui.png
             ${{ runner.temp }}/foundry-windows-output/windows-ui-coding.png
