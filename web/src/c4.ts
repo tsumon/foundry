@@ -1,4 +1,11 @@
 import type { GenerationRef, Mission } from "./types";
+import {
+  identityV2Valid,
+  identityKeys,
+  materialEqual,
+  profileV2Valid,
+  type C4ProfileV2,
+} from "./codingV2";
 
 export interface C4VMIdentity {
   schema_version: number;
@@ -23,6 +30,7 @@ export interface C4Profile {
   endpoint: string;
   verifier: string;
   embedded_vm?: C4VMIdentity;
+  v2?: C4ProfileV2;
 }
 export interface C4Fact {
   revision: number;
@@ -193,9 +201,8 @@ export function c4ReadinessFresh(
 export const hasC4 = (m: Mission) => !!m.spec.c4 || !!m.c4_operations?.length;
 export const isModelBackedC4 = (m: Mission) =>
   c4Supported(m) &&
-  m.spec.c4?.schema_version === 1 &&
-  m.spec.c4.control_version === 1 &&
-  m.spec.c4.id === "c4_go_model_v1" &&
+  m.spec.c4?.control_version === 1 &&
+  (m.spec.c4.schema_version === 2 || m.spec.c4.id === "c4_go_model_v1") &&
   (m.spec.c4.mode === "docker" || m.spec.c4.mode === "embedded_vm");
 export const isTerminalModelBackedDelivery = (m: Mission) =>
   isModelBackedC4(m) && m.delivery !== null;
@@ -260,6 +267,7 @@ function c4LifecycleOrdered(o: C4Operation): boolean {
 
 export function c4VMIdentityValid(value: unknown): value is C4VMIdentity {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (identityV2Valid(value)) return true;
   const v = value as C4VMIdentity;
   return (
     v.schema_version === 1 &&
@@ -281,7 +289,7 @@ export function c4VMIdentityValid(value: unknown): value is C4VMIdentity {
 export const c4Supported = (m: Mission) => c4ProfileSupported(m.spec.c4);
 
 // A response-only display assertion from the controller, not execution consent.
-// Compare every version-1 profile field, independent of JSON property order.
+// Compare the complete supported profile, independent of JSON property order.
 export function c4VMProfileBound(m: Mission, recordedDigest?: string): boolean {
   const p = m.spec.c4;
   if (p?.mode !== "embedded_vm") return true;
@@ -301,6 +309,7 @@ export function c4VMProfileBound(m: Mission, recordedDigest?: string): boolean {
     (recordedDigest !== undefined && recordedDigest !== binding.digest)
   )
     return false;
+  if (p.schema_version === 2) return materialEqual(p, q);
   return (
     (
       [
@@ -315,25 +324,16 @@ export function c4VMProfileBound(m: Mission, recordedDigest?: string): boolean {
         "verifier",
       ] as const
     ).every((key) => p[key] === q[key]) &&
-    (
-      [
-        "schema_version",
-        "manifest_digest",
-        "host_platform",
-        "guest_platform",
-        "runtime_digest",
-        "kernel_digest",
-        "rootfs_digest",
-        "verifier_digest",
-        "protocol",
-        "policy_version",
-      ] as const
-    ).every((key) => p.embedded_vm![key] === q.embedded_vm?.[key])
+    (identityKeys as Array<keyof C4VMIdentity>).every(
+      (key) => p.embedded_vm![key] === q.embedded_vm?.[key],
+    )
   );
 }
 
 export const c4ProfileSupported = (p?: C4Profile) => {
-  if (!p) return false;
+  if (!p || typeof p !== "object") return false;
+  if (p.schema_version === 2) return profileV2Valid(p);
+  if (p.v2 !== undefined) return false;
   if (p.mode === "embedded_vm")
     return (
       p.schema_version === 1 &&
@@ -343,6 +343,7 @@ export const c4ProfileSupported = (p?: C4Profile) => {
       p.docker_path === "" &&
       p.endpoint === "" &&
       p.verifier === "/opt/foundry/verify-go-v1" &&
+      p.embedded_vm?.schema_version === 1 &&
       c4VMIdentityValid(p.embedded_vm) &&
       p.platform === p.embedded_vm.guest_platform
     );
@@ -406,6 +407,11 @@ function c4MissionOperationBindings(m: Mission, o: C4Operation): boolean {
   return (
     c4Supported(m) &&
     c4OperationBindings(o) &&
+    (m.spec.c4?.schema_version !== 2 ||
+      !o.result ||
+      (Number.isSafeInteger(o.result.tests) &&
+        o.result.tests >= 0 &&
+        o.result.tests <= 4096)) &&
     c4VMProfileBound(m, o.profile_digest) &&
     (m.spec.c4?.mode !== "embedded_vm" ||
       !o.result ||
@@ -543,6 +549,21 @@ export function c4OperationLabel(m: Mission, o: C4Operation): string {
       : m.spec.c4?.mode === "docker"
         ? "Docker 验证通过 · 已记录隔离执行"
         : "模拟验证通过 · 非真实执行";
+  if (o.result && m.spec.c4?.schema_version === 2) {
+    const tests = o.result.tests;
+    const reason =
+      o.result.class === "timeout"
+        ? "超时 · 基础设施失败"
+        : o.result.class === "infrastructure_failed" ||
+            !Number.isSafeInteger(tests) ||
+            tests < 1 ||
+            tests > 4096
+          ? "基础设施失败 · 无完整测试通过证据"
+          : o.result.class === "test_failed"
+            ? "测试断言失败 · 已记录完成用例"
+            : o.result.class;
+    return `${reason} · ${c4CleanupState(o) === "confirmed" ? "清理已确认，结果不变" : "清理未确认，不能继续"}`;
+  }
   if (o.result)
     return `${o.result.class} · ${c4CleanupState(o) === "confirmed" ? "清理已确认，结果不变" : "清理未确认，不能继续"}`;
   if (o.state === "prepared" && !o.approval) return "待批准基线材料 · 未执行";

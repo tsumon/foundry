@@ -3,10 +3,20 @@ import { errorMessage } from "../api";
 import { codingTaskApi, type CodingTaskCapability } from "../codingTaskApi";
 import { c4BackendLabel, c4ProfileSupported, type C4Profile } from "../c4";
 import { C4VMIdentityFacts } from "./C4VMIdentityFacts";
+import { CodingDependencies } from "./CodingDependencies";
+import {
+  languageContracts,
+  languageProfileID,
+  type DependencyAdmission,
+  type ImportSelectionV2,
+  type RepositorySelector,
+} from "../codingV2";
 
 export interface CodingTaskSelection {
   capability: CodingTaskCapability;
-  profile: C4Profile;
+  profile: C4Profile | { schema_version: 2; id: string; mode: "embedded_vm" };
+  verificationV2?: ImportSelectionV2;
+  admission?: DependencyAdmission;
 }
 
 const immutableImage = /^sha256:[a-f0-9]{64}$/;
@@ -31,7 +41,11 @@ export function CodingTaskSetup({
   onRequestedChange,
   value,
   onChange,
+  source,
+  onProfileChange,
 }: {
+  source?: RepositorySelector;
+  onProfileChange?: (id: string) => void;
   disabled: boolean;
   requested: boolean;
   onRequestedChange: (requested: boolean) => void;
@@ -43,6 +57,8 @@ export function CodingTaskSetup({
   );
   const [imageID, setImageID] = useState("");
   const [backend, setBackend] = useState("embedded_vm");
+  const [profileID, setProfileID] = useState("c4_go_model_v1");
+  const explicitProfile = useRef("c4_go_model_v1");
   const [dockerPath, setDockerPath] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [loading, setLoading] = useState(true);
@@ -55,16 +71,22 @@ export function CodingTaskSetup({
     const epoch = ++requestEpoch.current;
     onChange(null);
     setLoading(true);
+    setCapability(null);
     setError("");
     try {
       const next = await codingTaskApi.capability();
       if (!mounted.current || requestEpoch.current !== epoch) return;
       const mode =
-        explicitBackend.current ?? next.default_backend ?? next.profile.mode;
+        explicitProfile.current !== "c4_go_model_v1"
+          ? "embedded_vm"
+          : (explicitBackend.current ??
+            next.default_backend ??
+            next.profile.mode);
       const frozen =
         next.backends?.find((item) => item.mode === mode)?.profile ??
         (next.profile.mode === mode ? next.profile : null);
       if (!frozen) throw new Error("已选后端不可用；不会自动更换后端");
+      setProfileID(explicitProfile.current);
       setCapability(next);
       setBackend(mode);
       setImageID(frozen.image_id);
@@ -88,15 +110,25 @@ export function CodingTaskSetup({
     };
   }, [read]);
 
+  const v2Requested = profileID !== "c4_go_model_v1";
+  const template = capability?.profiles?.find(
+    (p) => p.profile_id === profileID,
+  );
+  useEffect(() => {
+    onProfileChange?.(profileID);
+  }, [profileID, onProfileChange]);
   const selectedBackend = capability?.backends?.find(
     (item) => item.mode === backend,
   );
   const selectedProfile = selectedBackend?.profile ?? capability?.profile;
   const available =
     capability?.enabled === true &&
-    (selectedBackend?.available ?? capability?.available) === true;
+    (v2Requested
+      ? template?.available === true
+      : (selectedBackend?.available ?? capability?.available) === true);
 
   useEffect(() => {
+    if (v2Requested) return;
     if (loading || !requested || !capability?.enabled || !available) {
       if (value) onChange(null);
       return;
@@ -122,6 +154,7 @@ export function CodingTaskSetup({
       return;
     onChange({ capability, profile });
   }, [
+    v2Requested,
     capability,
     dockerPath,
     endpoint,
@@ -159,15 +192,47 @@ export function CodingTaskSetup({
       {!loading && capability && !available && (
         <p className="warning-copy">
           账户模型编码不可用：
-          {!capability.default_backend || backend === capability.default_backend
-            ? capability.reason || "运行时未启用"
-            : "所选后端不可用"}
+          {v2Requested
+            ? template?.reason || "所选语言配置已从目录移除"
+            : !capability.default_backend ||
+                backend === capability.default_backend
+              ? capability.reason || "运行时未启用"
+              : "所选后端不可用"}
           。配置记录不是授权或成功证据。
+        </p>
+      )}
+      {error && v2Requested && (
+        <p>
+          已选语言配置：<code>{profileID}</code>；保持原选择，需手动刷新核对。
         </p>
       )}
       {capability && (
         <>
-          {capability.backends && (
+          <label htmlFor="coding-language">语言 / 固定测试配置</label>
+          <select
+            id="coding-language"
+            value={profileID}
+            disabled={disabled || loading}
+            onChange={(event) => {
+              const id = event.target.value;
+              explicitProfile.current = id;
+              onChange(null);
+              setProfileID(id);
+              if (id !== "c4_go_model_v1") setBackend("embedded_vm");
+            }}
+          >
+            <option value="c4_go_model_v1">Go · 现有 VM / Docker 配置</option>
+            {capability.profiles?.map((p) => (
+              <option key={p.profile_id} value={p.profile_id}>
+                {languageContracts[p.profile_id].label} ·{" "}
+                {p.available ? "可配置" : p.reason}
+              </option>
+            ))}
+            {v2Requested && !template && (
+              <option value={profileID}>{profileID} · 所选配置不可用</option>
+            )}
+          </select>
+          {!v2Requested && capability.backends && (
             <>
               <label htmlFor="coding-backend">测试沙箱后端</label>
               <select
@@ -201,7 +266,13 @@ export function CodingTaskSetup({
             </>
           )}
           {backend === "embedded_vm" && (
-            <C4VMIdentityFacts identity={selectedProfile?.embedded_vm} />
+            <C4VMIdentityFacts
+              identity={
+                v2Requested
+                  ? template?.embedded_vm
+                  : selectedProfile?.embedded_vm
+              }
+            />
           )}
           <dl className="metadata">
             <dt>运行时 / 提供商</dt>
@@ -211,11 +282,21 @@ export function CodingTaskSetup({
             </dd>
             <dt>固定配置</dt>
             <dd>
-              <code>{selectedProfile?.id}</code> · {selectedProfile?.platform}
+              <code>{v2Requested ? profileID : selectedProfile?.id}</code> ·{" "}
+              {v2Requested
+                ? template?.embedded_vm?.guest_platform
+                : selectedProfile?.platform}
             </dd>
             <dt>固定验证命令</dt>
             <dd>
-              <code>go test -json -count=1 -timeout=90s ./...</code>
+              {v2Requested && languageProfileID(profileID) ? (
+                <>
+                  {languageContracts[profileID].framework} ·{" "}
+                  <code>{languageContracts[profileID].command}</code>
+                </>
+              ) : (
+                <code>go test -json -count=1 -timeout=90s ./...</code>
+              )}
             </dd>
             <dt>调用与修复限制</dt>
             <dd>
@@ -248,7 +329,7 @@ export function CodingTaskSetup({
           : "启用账户模型与受控 Docker"}
         （仅创建配置，不批准或执行）
       </label>
-      {requested && capability && backend === "docker" && (
+      {requested && capability && !v2Requested && backend === "docker" && (
         <div className="form-columns">
           <div>
             <label htmlFor="coding-image-id">不可变本地镜像 ID</label>
@@ -285,6 +366,18 @@ export function CodingTaskSetup({
             />
           </div>
         </div>
+      )}
+      {v2Requested && capability && template && (
+        <CodingDependencies
+          key={profileID}
+          template={template}
+          capability={capability}
+          source={source}
+          requested={requested}
+          disabled={disabled || loading}
+          value={value}
+          onChange={onChange}
+        />
       )}
       <button
         type="button"

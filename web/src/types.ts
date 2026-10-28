@@ -1024,7 +1024,9 @@ export interface CreateRequest {
   title: string;
   goal: string;
   repo_path: string;
-  spec: Spec;
+  spec: Omit<Spec, "c4"> & {
+    c4?: Spec["c4"] | { schema_version: 2; id: string; mode: "embedded_vm" };
+  };
   workspace_mode?:
     | "generations_v1"
     | "generations_controlled_read_v1"

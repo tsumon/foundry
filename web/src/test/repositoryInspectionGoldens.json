@@ -1,0 +1,497 @@
+[
+  {
+    "schema_version": 1,
+    "id": "inspection",
+    "root": "/tmp/repo",
+    "branch": "main",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "spec": {
+      "scope": ["file.txt"],
+      "protected": null,
+      "acceptance": ["test -f file.txt"],
+      "image": ""
+    },
+    "policy_version": "committed_text_v1",
+    "status": "ready",
+    "stage": "complete",
+    "code": "",
+    "checked_at": "2026-10-21T00:00:00Z",
+    "working_tree_status": "not_checked",
+    "file_count": 1,
+    "total_bytes": 7,
+    "context_file_count": 1,
+    "context_bytes": 7,
+    "context_manifest": [
+      {
+        "path": "file.txt",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "bytes": 7
+      }
+    ],
+    "protected_inputs": [],
+    "digest": "5275dd2cbbdb6b3f51f4fdd7a88516571ce2ab38254ac1618cccf7e3df60838a"
+  },
+  {
+    "schema_version": 1,
+    "id": "inspection",
+    "root": "/synthetic/中文\u003c\u0026\u003e",
+    "branch": "分支\u003c\u0026\u003e\u2028\u2029",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "spec": {
+      "scope": ["file.txt"],
+      "protected": null,
+      "acceptance": ["test -f 中文\u003c\u0026\u003e\u2028\u2029"],
+      "image": ""
+    },
+    "policy_version": "committed_text_v1",
+    "status": "ready",
+    "stage": "complete",
+    "code": "",
+    "checked_at": "2026-10-21T00:00:00Z",
+    "working_tree_status": "not_checked",
+    "file_count": 1,
+    "total_bytes": 7,
+    "context_file_count": 1,
+    "context_bytes": 7,
+    "context_manifest": [
+      {
+        "path": "file.txt",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "bytes": 7
+      }
+    ],
+    "protected_inputs": [],
+    "digest": "0489f3e0fde93fc638694c9f8e901beffa9f2e6c1b7e177bbdf768703ace0f20"
+  },
+  {
+    "schema_version": 1,
+    "id": "inspection",
+    "root": "/tmp/repo",
+    "branch": "main",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "spec": {
+      "scope": ["file.txt"],
+      "protected": null,
+      "acceptance": ["test -f file.txt"],
+      "image": ""
+    },
+    "policy_version": "committed_text_v1",
+    "status": "blocked",
+    "stage": "tree",
+    "code": "binary_file",
+    "checked_at": "2026-10-21T00:00:00Z",
+    "working_tree_status": "not_checked",
+    "file_count": null,
+    "total_bytes": null,
+    "context_file_count": null,
+    "context_bytes": null,
+    "context_manifest": null,
+    "protected_inputs": null,
+    "digest": "1c08f5003c0988089bdf289425106adcb64d18623607f4e686b29300a23e64b4"
+  },
+  {
+    "schema_version": 2,
+    "id": "inspection",
+    "root": "/tmp/repo",
+    "branch": "main",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "spec": {
+      "scope": ["file.txt"],
+      "protected": null,
+      "acceptance": ["/opt/foundry/verify-node-v2"],
+      "image": "",
+      "verification_v2": {
+        "schema_version": 2,
+        "profile_id": "c4_node_model_v2",
+        "embedded_vm": {
+          "schema_version": 2,
+          "manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "host_platform": "darwin/arm64",
+          "guest_platform": "linux/arm64",
+          "runtime_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kernel_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rootfs_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verifier_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "protocol": "foundry-vm-v2",
+          "policy_version": "multilang-vm-v2"
+        },
+        "runtime_inventory_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "admission_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "dependencies": {
+          "schema_version": 1,
+          "ecosystem": "node",
+          "bundle_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "file_count": 0,
+          "total_bytes": 0
+        },
+        "source_root": "src",
+        "test_root": "tests",
+        "test_support_prefixes": []
+      }
+    },
+    "policy_version": "committed_text_c4_v2",
+    "status": "ready",
+    "stage": "complete",
+    "code": "",
+    "checked_at": "2026-10-21T00:00:00Z",
+    "working_tree_status": "not_checked",
+    "file_count": 5,
+    "total_bytes": 100,
+    "context_file_count": 1,
+    "context_bytes": 7,
+    "context_manifest": [
+      {
+        "path": "file.txt",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "bytes": 7
+      }
+    ],
+    "protected_inputs": [
+      "package-lock.json",
+      "package.json",
+      "tests/a.test.js",
+      "tests/helper.txt"
+    ],
+    "digest": "5288ba2562b7b66aafd4991abd6c6d2a40fb1f62693b4312275af16342945660",
+    "verification_v2": {
+      "schema_version": 2,
+      "profile_id": "c4_node_model_v2",
+      "dependencies": {
+        "schema_version": 1,
+        "ecosystem": "node",
+        "bundle_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "manifest_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "file_count": 0,
+        "total_bytes": 0
+      },
+      "admission_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "source_files": [
+        {
+          "path": "package-lock.json",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "path": "package.json",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "protected": [
+        {
+          "path": "package-lock.json",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "lock"
+        },
+        {
+          "path": "package.json",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "manifest"
+        },
+        {
+          "path": "tests/a.test.js",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "test"
+        },
+        {
+          "path": "tests/helper.txt",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "helper"
+        }
+      ],
+      "protected_prefixes": [
+        ".foundry-build",
+        ".venv",
+        "node_modules",
+        "site-packages",
+        "tests"
+      ],
+      "test_files": ["tests/a.test.js"],
+      "source_roots": ["src"],
+      "harness_version": "foundry-test-v2",
+      "protected_inputs_digest": "ebb129376bd87deec2cb8e4f3c8c9a15260186b5ab7ac0675ca8d683f2deacdf",
+      "execution_contract_digest": "0d7c24fbcf3c568d36e55e3e2f24b48030fe915db273801200f5aacca9c697c7"
+    }
+  },
+  {
+    "schema_version": 2,
+    "id": "inspection",
+    "root": "/tmp/repo",
+    "branch": "main",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "spec": {
+      "scope": ["file.txt"],
+      "protected": null,
+      "acceptance": ["/opt/foundry/verify-typescript-v2"],
+      "image": "",
+      "verification_v2": {
+        "schema_version": 2,
+        "profile_id": "c4_typescript_model_v2",
+        "embedded_vm": {
+          "schema_version": 2,
+          "manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "host_platform": "darwin/arm64",
+          "guest_platform": "linux/arm64",
+          "runtime_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kernel_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rootfs_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verifier_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "protocol": "foundry-vm-v2",
+          "policy_version": "multilang-vm-v2"
+        },
+        "runtime_inventory_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "admission_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "dependencies": {
+          "schema_version": 1,
+          "ecosystem": "node",
+          "bundle_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "file_count": 0,
+          "total_bytes": 0
+        },
+        "source_root": "src",
+        "test_root": "tests",
+        "test_support_prefixes": []
+      }
+    },
+    "policy_version": "committed_text_c4_v2",
+    "status": "ready",
+    "stage": "complete",
+    "code": "",
+    "checked_at": "2026-10-21T00:00:00Z",
+    "working_tree_status": "not_checked",
+    "file_count": 5,
+    "total_bytes": 100,
+    "context_file_count": 1,
+    "context_bytes": 7,
+    "context_manifest": [
+      {
+        "path": "file.txt",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "bytes": 7
+      }
+    ],
+    "protected_inputs": [
+      "package-lock.json",
+      "package.json",
+      "tests/a.test.ts",
+      "tests/helper.txt",
+      "tsconfig.json"
+    ],
+    "digest": "5ae8845416adb2755771d6fe734cd43a2301f1e113239b54c37c9958714973d4",
+    "verification_v2": {
+      "schema_version": 2,
+      "profile_id": "c4_typescript_model_v2",
+      "dependencies": {
+        "schema_version": 1,
+        "ecosystem": "node",
+        "bundle_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "manifest_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "file_count": 0,
+        "total_bytes": 0
+      },
+      "admission_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "source_files": [
+        {
+          "path": "package-lock.json",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "path": "package.json",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "path": "tsconfig.json",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "protected": [
+        {
+          "path": "package-lock.json",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "lock"
+        },
+        {
+          "path": "package.json",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "manifest"
+        },
+        {
+          "path": "tests/a.test.ts",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "test"
+        },
+        {
+          "path": "tests/helper.txt",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "helper"
+        },
+        {
+          "path": "tsconfig.json",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "config"
+        }
+      ],
+      "protected_prefixes": [
+        ".foundry-build",
+        ".venv",
+        "node_modules",
+        "site-packages",
+        "tests"
+      ],
+      "test_files": ["tests/a.test.ts"],
+      "source_roots": ["src"],
+      "harness_version": "foundry-test-v2",
+      "typescript": {
+        "config_path": "tsconfig.json",
+        "config_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "input_files": ["src/a.ts", "src/types.d.ts", "tests/a.test.ts"],
+        "output_root": "/foundry-build/compiled"
+      },
+      "protected_inputs_digest": "975fac6173da52315b5e73041bee6240799845eacb4927841ca1765e437c77b5",
+      "execution_contract_digest": "baae939953b39bfa02ea0fd53820c7aeeb74e2ee9f44491b5924c21e3ad503a9"
+    }
+  },
+  {
+    "schema_version": 2,
+    "id": "inspection",
+    "root": "/tmp/repo",
+    "branch": "main",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "spec": {
+      "scope": ["file.txt"],
+      "protected": null,
+      "acceptance": ["/opt/foundry/verify-python-v2"],
+      "image": "",
+      "verification_v2": {
+        "schema_version": 2,
+        "profile_id": "c4_python_model_v2",
+        "embedded_vm": {
+          "schema_version": 2,
+          "manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "host_platform": "darwin/arm64",
+          "guest_platform": "linux/arm64",
+          "runtime_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kernel_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rootfs_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verifier_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "protocol": "foundry-vm-v2",
+          "policy_version": "multilang-vm-v2"
+        },
+        "runtime_inventory_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "admission_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "dependencies": {
+          "schema_version": 1,
+          "ecosystem": "python",
+          "bundle_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "file_count": 0,
+          "total_bytes": 0
+        },
+        "source_root": "src",
+        "test_root": "tests",
+        "test_support_prefixes": []
+      }
+    },
+    "policy_version": "committed_text_c4_v2",
+    "status": "ready",
+    "stage": "complete",
+    "code": "",
+    "checked_at": "2026-10-21T00:00:00Z",
+    "working_tree_status": "not_checked",
+    "file_count": 5,
+    "total_bytes": 100,
+    "context_file_count": 1,
+    "context_bytes": 7,
+    "context_manifest": [
+      {
+        "path": "file.txt",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "bytes": 7
+      }
+    ],
+    "protected_inputs": [
+      "foundry.python.lock.json",
+      "tests/helper.txt",
+      "tests/test_a.py"
+    ],
+    "digest": "ecdf9496e88c1094931e38c96d4c36af5a6f4120f89aec8b12f30cb13ff92cb2",
+    "verification_v2": {
+      "schema_version": 2,
+      "profile_id": "c4_python_model_v2",
+      "dependencies": {
+        "schema_version": 1,
+        "ecosystem": "python",
+        "bundle_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "manifest_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "file_count": 0,
+        "total_bytes": 0
+      },
+      "admission_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "source_files": [
+        {
+          "path": "foundry.python.lock.json",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "protected": [
+        {
+          "path": "foundry.python.lock.json",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "lock"
+        },
+        {
+          "path": "tests/helper.txt",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "helper"
+        },
+        {
+          "path": "tests/test_a.py",
+          "mode": 420,
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "test"
+        }
+      ],
+      "protected_prefixes": [
+        ".foundry-build",
+        ".venv",
+        "node_modules",
+        "site-packages",
+        "tests"
+      ],
+      "test_files": ["tests/test_a.py"],
+      "source_roots": ["src"],
+      "harness_version": "foundry-test-v2",
+      "protected_inputs_digest": "4eb90b1b76af306bc9c1a1835ba01e811ee68084005905ecf3a71e4a678eb0b1",
+      "execution_contract_digest": "412d7e0ac1d5b674e1b3240fbdebd7a71d0270d385d6d4b4ebf39a059fcb81f7"
+    }
+  }
+]

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
 import { activeStates, type Mission } from "../types";
 import { C4VMIdentityFacts } from "./C4VMIdentityFacts";
+import { C4LanguageFacts } from "./C4LanguageFacts";
 import {
   c4CleanupState,
   c4BackendLabel,
@@ -318,9 +319,14 @@ export function C4Controls({
         {status?.control?.expires_at ?? "未配置"}
       </p>
       <p className="muted small">
-        {m.spec.c4?.id} · {m.spec.c4?.platform} · Go 1.27.3 ·{" "}
-        <code>{m.spec.c4?.image_id}</code> · <code>{m.spec.c4?.verifier}</code>
+        {m.spec.c4?.id} · {m.spec.c4?.platform} ·{" "}
+        {m.spec.c4?.schema_version === 2
+          ? m.spec.c4.v2?.runner_id
+          : "Go 1.27.3"}{" "}
+        · <code>{m.spec.c4?.image_id}</code> ·{" "}
+        <code>{m.spec.c4?.verifier}</code>
       </p>
+      <C4LanguageFacts profile={m.spec.c4} compact />
       {m.spec.c4?.mode === "embedded_vm" && (
         <C4VMIdentityFacts identity={m.spec.c4.embedded_vm} />
       )}

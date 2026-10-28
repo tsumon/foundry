@@ -3,6 +3,7 @@ import { errorMessage } from "../api";
 import { repositoryImportApi } from "../repositoryImportApi";
 import type { RecoveryDiagnosticDTO } from "../repositoryImportTypes";
 import type { Mission } from "../types";
+import { C4LanguageFacts } from "./C4LanguageFacts";
 const dimensions: Record<string, string> = {
   candidate_record: "候选选择",
   candidate: "候选完整性",
@@ -145,6 +146,7 @@ export function RepositorySource({ mission }: { mission: Mission }) {
   return (
     <section className="note" aria-label="任务导入来源">
       <h3>任务导入来源</h3>
+      <C4LanguageFacts profile={mission.spec.c4} compact />
       {!source ? (
         <p>
           {mission.import_version

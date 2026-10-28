@@ -1,9 +1,11 @@
 import type { FileMeta, GenerationRef } from "./types";
+import type { ImportSelectionV2, InputContractV2 } from "./codingV2";
 export interface ImportSpec {
   scope: string[];
-  protected: string[];
+  protected: string[] | null;
   acceptance: string[];
   image: string;
+  verification_v2?: ImportSelectionV2;
 }
 export interface ImportSelection {
   inspection_id: string;
@@ -35,9 +37,10 @@ export interface RepositoryInspection {
   total_bytes: number | null;
   context_file_count: number | null;
   context_bytes: number | null;
-  context_manifest: FileMeta[];
-  protected_inputs: string[];
+  context_manifest: FileMeta[] | null;
+  protected_inputs: string[] | null;
   digest: string;
+  verification_v2?: InputContractV2;
 }
 export interface RepositoryImportBinding {
   schema_version: number;

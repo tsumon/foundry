@@ -1,3 +1,4 @@
+import { C4LanguageFacts } from "./C4LanguageFacts";
 import { useEffect, useState } from "react";
 import {
   c4AdvanceAllowed,
@@ -113,6 +114,7 @@ export function DecisionPanel({
         任务 r{mission.revision}
         {mission.plan && ` · 计划 v${mission.plan.revision}`}
       </p>
+      <C4LanguageFacts profile={mission.spec.c4} compact />
       {demo ? (
         <div className="note">
           这里只展示工作产物的组织方式。演示不会调用模型、执行命令或生成真实交付。

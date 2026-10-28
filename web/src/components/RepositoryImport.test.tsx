@@ -1,3 +1,4 @@
+import { legacyReceipt, sealReceipt } from "../test/codingV2Fixtures";
 import {
   act,
   fireEvent,
@@ -9,32 +10,13 @@ import { expect, it, vi } from "vitest";
 import { CreateMission } from "./CreateMission";
 import { mission, profile, response } from "../test/fixtures";
 
-const receipt = {
-  schema_version: 1,
-  id: "inspection-1",
-  root: "/tmp/source",
-  branch: "main",
-  commit: "a".repeat(40),
-  spec: {
-    scope: ["src/"],
-    protected: [],
-    acceptance: ["test -f src/main.txt"],
-    image: "local",
-  },
-  policy_version: "committed_text_v1",
-  status: "ready",
-  stage: "complete",
-  code: "",
-  checked_at: "2026-10-21T00:00:00Z",
-  working_tree_status: "not_checked",
-  file_count: 1,
-  total_bytes: 10,
-  context_file_count: 1,
-  context_bytes: 10,
-  context_manifest: [],
-  protected_inputs: [],
-  digest: "b".repeat(64),
-};
+const receipt = legacyReceipt({
+  scope: ["src/"],
+  protected: [],
+  acceptance: ["test -f src/main.txt"],
+  image: "local",
+});
+
 function setup(
   inspect = async () => response(receipt),
   createFails = false,
@@ -73,7 +55,17 @@ function setup(
           },
         ]);
       if (path === "/api/repository-imports/inspections")
-        return init?.method === "POST" ? inspect() : response([]);
+        return init?.method === "POST"
+          ? repository
+            ? response(
+                sealReceipt({
+                  ...receipt,
+                  repository_id: repository.id,
+                  repository_revision: repository.revision,
+                }),
+              )
+            : inspect()
+          : response([]);
       if (path === "/api/missions")
         return createFails
           ? response(
@@ -125,7 +117,7 @@ it("requires explicit inspection and binds the exact receipt only on creation co
   await waitFor(() => expect(created).toHaveBeenCalledWith(mission));
   expect(requests[1].body).toMatchObject({
     import_version: 1,
-    import_selection: { inspection_id: "inspection-1", digest: "b".repeat(64) },
+    import_selection: { inspection_id: "inspection-1", digest: receipt.digest },
   });
 });
 it.each([
@@ -216,7 +208,7 @@ it("never labels an unsupported inspection schema ready", async () => {
   setup(async () => response({ ...receipt, schema_version: 2 }));
   await fill();
   fireEvent.click(screen.getByRole("button", { name: "检查可导入性" }));
-  await screen.findByText("inspection-1");
+  await screen.findByRole("alert");
   expect(screen.queryByText("可创建任务")).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "创建任务并检查上下文" }),
@@ -234,6 +226,12 @@ it("prefills registered project identity but requires fresh consent and excludes
   };
   const { requests } = setup(undefined, false, repository);
   await screen.findByRole("option", { name: "Project source · 登记 v3" });
+  for (const [label, value] of [
+    ["允许修改范围（每行一项）", "src/"],
+    ["验收命令（每行一条）", "test -f src/main.txt"],
+    ["本地 Docker 镜像", "local"],
+  ])
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
   expect(screen.getByLabelText("Git 仓库绝对路径")).toHaveValue("/tmp/source");
   expect(
     screen.getByRole("button", { name: "创建任务并检查上下文" }),

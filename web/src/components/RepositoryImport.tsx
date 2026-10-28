@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { errorMessage } from "../api";
+import { languageContracts } from "../codingV2";
 import { repositoryImportApi } from "../repositoryImportApi";
 import type {
   InspectionRequest,
@@ -9,7 +10,10 @@ import type {
 
 const selectable = (receipt: RepositoryInspection | null) =>
   receipt?.status === "ready" &&
-  receipt.schema_version === 1 &&
+  (receipt.schema_version === 1 ||
+    (receipt.schema_version === 2 &&
+      !!receipt.verification_v2 &&
+      !!receipt.spec.verification_v2)) &&
   !!receipt.id &&
   !!receipt.digest;
 
@@ -61,7 +65,7 @@ export function RepositoryImport({
     <section className="note" aria-label="仓库导入检查">
       <h2>C3 · 仓库导入</h2>
       <p className="field-help">
-        点击即同意一次本地已提交文件检查；登记不等于许可。检查不调用模型、不授权上下文、执行或交付。
+        点击即同意一次只读的本地已提交文件检查；登记不等于许可。检查不调用模型、不授权上下文、执行或交付。
       </p>
       <button
         type="button"
@@ -98,6 +102,57 @@ export function RepositoryImport({
             {receipt.total_bytes ?? "未知"} bytes ·{" "}
             {receipt.context_file_count ?? "未知"} 文件 /{" "}
             {receipt.context_bytes ?? "未知"} bytes
+          </dd>
+          {receipt.verification_v2 && (
+            <>
+              <dt>固定框架 / 选择的测试文件</dt>
+              <dd>
+                {
+                  languageContracts[receipt.verification_v2.profile_id]
+                    .framework
+                }{" "}
+                · {receipt.verification_v2.harness_version} ·{" "}
+                {receipt.verification_v2.profile_id} ·{" "}
+                {receipt.verification_v2.test_files.length} 个测试文件（未执行）
+                <ul>
+                  {receipt.verification_v2.test_files.map((p) => (
+                    <li key={p}>
+                      <code>{p}</code>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+              <dt>源代码根 / 测试根</dt>
+              <dd>
+                {receipt.spec.verification_v2?.source_root} /{" "}
+                {receipt.spec.verification_v2?.test_root}；不扩大允许修改范围
+              </dd>
+              <dt>保护目录前缀</dt>
+              <dd>{receipt.verification_v2.protected_prefixes.join(" · ")}</dd>
+              <dt>输入合约 / 保护输入摘要</dt>
+              <dd>
+                <code>{receipt.verification_v2.execution_contract_digest}</code>
+                <br />
+                <code>{receipt.verification_v2.protected_inputs_digest}</code>
+              </dd>
+              <dt>依赖准入 / 依赖包摘要</dt>
+              <dd>
+                <code>{receipt.verification_v2.admission_digest}</code>
+                <br />
+                <code>
+                  {receipt.verification_v2.dependencies.bundle_digest}
+                </code>
+              </dd>
+              <dt>依赖文件 / bytes</dt>
+              <dd>
+                {receipt.verification_v2.dependencies.file_count} /{" "}
+                {receipt.verification_v2.dependencies.total_bytes}；非测试用例数
+              </dd>
+            </>
+          )}
+          <dt>回执摘要</dt>
+          <dd>
+            <code>{receipt.digest}</code>
           </dd>
           <dt>保护输入</dt>
           <dd>

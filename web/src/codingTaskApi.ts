@@ -1,6 +1,13 @@
 import { request } from "./api";
 import { c4ProfileSupported, type C4Profile } from "./c4";
 import type { CreateRequest, Mission } from "./types";
+import {
+  admissionValid,
+  templateV2Valid,
+  type CodingProfileTemplateV2,
+  type DependencyImportRequest,
+  type DependencyAdmission,
+} from "./codingV2";
 
 export type CodingTaskApproval =
   "readiness" | "baseline" | "context" | "execute" | "delivery";
@@ -17,6 +24,7 @@ export interface CodingTaskCapability {
     profile: C4Profile;
     prerequisite: string;
   }>;
+  profiles?: CodingProfileTemplateV2[];
   limits: { max_calls: number; max_repairs: number };
   provider_families: string[];
   approval_required: CodingTaskApproval[];
@@ -120,6 +128,15 @@ export function parseCodingTaskCapability(
     )
       return null;
   }
+  if (
+    value.profiles !== undefined &&
+    (!Array.isArray(value.profiles) ||
+      value.profiles.length !== 3 ||
+      !value.profiles.every(templateV2Valid) ||
+      value.profiles.map((p) => p.profile_id).join(",") !==
+        "c4_node_model_v2,c4_typescript_model_v2,c4_python_model_v2")
+  )
+    return null;
   return value as unknown as CodingTaskCapability;
 }
 
@@ -129,6 +146,19 @@ export const codingTaskApi = {
     const capability = parseCodingTaskCapability(value);
     if (!capability) throw new Error("编码能力元数据缺失或格式不受支持");
     return capability;
+  },
+  importDependencies: async (
+    body: DependencyImportRequest,
+  ): Promise<DependencyAdmission> => {
+    const value = await request<unknown>("/api/coding-dependencies", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    if (!admissionValid(value, body.profile_id))
+      throw new Error(
+        "依赖导入未返回完整、匹配的已保留准入结果；不能用于检查或创建",
+      );
+    return value;
   },
   create: (body: CreateRequest) =>
     request<{ mission: Mission }>("/api/coding-tasks", {

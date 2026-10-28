@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
 import { C4Controls, C4ControlFacts } from "./C4Controls";
 import { C4VMIdentityFacts } from "./C4VMIdentityFacts";
+import { C4LanguageFacts } from "./C4LanguageFacts";
 import { activeStates, type Mission } from "../types";
 import {
   c4CleanupState,
@@ -79,21 +80,28 @@ function C4ProfileFacts({ mission }: { mission: Mission }) {
             <dt>只读与隔离声明</dt>
             <dd>
               {vm
-                ? "根与候选只读；无网卡、主机共享、USB、剪贴板或继承凭据；no-new-privileges"
+                ? p?.schema_version === 2
+                  ? "根、源代码与保护依赖只读；无网卡、主机共享、USB、剪贴板或继承凭据；no-new-privileges"
+                  : "根与候选只读；无网卡、主机共享、USB、剪贴板或继承凭据；no-new-privileges"
                 : "根与候选只读；无网络、端口、拉取或 capabilities；no-new-privileges；禁用 healthcheck / logging"}
             </dd>
-            <dt>
-              {docker || vm ? "固定 Go 合约声明" : "固定 Go 合约（未执行）"}
-            </dt>
-            <dd>
-              Go 1.27.3 · <code>go test -json -count=1 -timeout=90s ./...</code>{" "}
-              ·
-              GOPROXY/GOSUMDB/GOENV/GOWORK=off，GOTOOLCHAIN=local，CGO_ENABLED=0；缓存仅
-              scratch
-            </dd>
+            {p?.schema_version !== 2 && (
+              <>
+                <dt>
+                  {docker || vm ? "固定 Go 合约声明" : "固定 Go 合约（未执行）"}
+                </dt>
+                <dd>
+                  Go 1.27.3 ·{" "}
+                  <code>go test -json -count=1 -timeout=90s ./...</code> ·
+                  GOPROXY/GOSUMDB/GOENV/GOWORK=off，GOTOOLCHAIN=local，CGO_ENABLED=0；缓存仅
+                  scratch
+                </dd>
+              </>
+            )}
           </>
         )}
       </dl>
+      <C4LanguageFacts profile={p} />
       {vm && <C4VMIdentityFacts identity={p?.embedded_vm} />}
     </>
   );
@@ -425,7 +433,9 @@ function OperationFacts({
         <dt>
           {mission.spec.c4?.mode === "docker" ||
           mission.spec.c4?.mode === "embedded_vm"
-            ? "结果 / 退出码 / 测试数"
+            ? mission.spec.c4.schema_version === 2
+              ? "结果 / 退出码 / 完成测试用例数"
+              : "结果 / 退出码 / 测试数"
             : "结果 / 退出码 / 模拟测试数"}
         </dt>
         <dd>

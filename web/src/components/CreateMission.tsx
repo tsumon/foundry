@@ -21,6 +21,7 @@ import { ImportHistory, RepositoryImport } from "./RepositoryImport";
 import type { RepositoryInspection } from "../repositoryImportTypes";
 import type { GitRepository } from "../capabilityTypes";
 import { codingTaskApi } from "../codingTaskApi";
+import { languageContracts, languageProfileID } from "../codingV2";
 import { CodingTaskSetup, type CodingTaskSelection } from "./CodingTaskSetup";
 const lines = (text: string) =>
   text
@@ -75,6 +76,11 @@ export function CreateMission({
   const [controlled, setControlled] = useState(false);
   const [mcpControlled, setMCPControlled] = useState(false);
   const [codingRequested, setCodingRequested] = useState(false);
+  const [codingProfileID, setCodingProfileID] = useState("c4_go_model_v1");
+  const v2Contract =
+    codingRequested && languageProfileID(codingProfileID)
+      ? languageContracts[codingProfileID]
+      : null;
   const [codingSelection, setCodingSelection] =
     useState<CodingTaskSelection | null>(null);
   const controlledMode = controlled || mcpControlled;
@@ -83,6 +89,9 @@ export function CreateMission({
   const importKey = JSON.stringify([
     importAttempt,
     importing,
+    codingRequested,
+    codingProfileID,
+    codingSelection,
     repo,
     scope,
     protectedPaths,
@@ -370,9 +379,12 @@ export function CreateMission({
         spec: {
           scope: lines(scope),
           protected: lines(protectedPaths),
-          acceptance: lines(commands),
-          image: image.trim(),
-          image_id: codingSelection?.profile.image_id ?? "",
+          acceptance: selectedInspection?.spec.acceptance ?? lines(commands),
+          image: selectedInspection?.spec.image ?? image.trim(),
+          image_id:
+            codingSelection && "image_id" in codingSelection.profile
+              ? codingSelection.profile.image_id
+              : "",
           profile_id: profileID,
           research: controlledMode ? true : research,
           max_calls: budget,
@@ -549,31 +561,50 @@ export function CreateMission({
           <label htmlFor="mission-commands">验收命令（每行一条）</label>
           <textarea
             id="mission-commands"
-            value={commands}
+            value={v2Contract ? v2Contract.verifier : commands}
+            readOnly={!!v2Contract}
             onChange={(e) => setCommands(e.target.value)}
             required
             rows={3}
             placeholder="/opt/foundry/verify"
           />
-          <p className="field-help">
-            V1 仅支持受限 grep / test、使用相同受限语法的已提交 sh
-            脚本，或可信镜像内 /opt/foundry/ 下的验收器（也可用 sh
-            调用）。只允许字面参数，禁止 shell 组合与替换，不直接支持 npm /
-            python / make。镜像验收器必须自带验收逻辑，
-            不得把判定逻辑委托给可编辑的仓库脚本。不支持的语法会在模型调用前拒绝。
-          </p>
+          {v2Contract ? (
+            <p className="field-help">
+              固定 {v2Contract.framework}{" "}
+              验证器；命令由内置运行时提供，不能编辑，不执行安装脚本。
+            </p>
+          ) : (
+            <p className="field-help">
+              V1 仅支持受限 grep / test、使用相同受限语法的已提交 sh
+              脚本，或可信镜像内 /opt/foundry/ 下的验收器（也可用 sh
+              调用）。只允许字面参数，禁止 shell 组合与替换，不直接支持 npm /
+              python / make。镜像验收器必须自带验收逻辑，
+              不得把判定逻辑委托给可编辑的仓库脚本。不支持的语法会在模型调用前拒绝。
+            </p>
+          )}
           <label htmlFor="mission-image">本地 Docker 镜像</label>
           <input
             id="mission-image"
-            value={image}
+            value={v2Contract ? "" : image}
+            disabled={!!v2Contract}
             onChange={(e) => setImage(e.target.value)}
-            required
-            placeholder="输入已有的可信本地镜像名称或 ID"
+            required={!v2Contract}
+            placeholder={
+              v2Contract
+                ? "内置 VM 固定配置；不使用 Docker 镜像"
+                : "输入已有的可信本地镜像名称或 ID"
+            }
           />
-          <p className="field-help">
-            仅使用本机已有镜像；不自动拉取、不联网、不回退到宿主机执行。命令需兼容只读
-            /workspace 与可写 /tmp。
-          </p>
+          {v2Contract ? (
+            <p className="field-help">
+              语言 v2 仅内置 VM，无宿主机或 Docker 回退；选择配置不启动运行时。
+            </p>
+          ) : (
+            <p className="field-help">
+              仅使用本机已有镜像；不自动拉取、不联网、不回退到宿主机执行。命令需兼容只读
+              /workspace 与可写 /tmp。
+            </p>
+          )}
           <div className="form-columns">
             <div>
               <label htmlFor="mission-profile">任务默认模型连接</label>
@@ -718,6 +749,15 @@ export function CreateMission({
               " 普通任务的可恢复候选选择与受控模式互斥，当前显示关闭；切回普通模式时恢复草稿选择。"}
           </p>
           <CodingTaskSetup
+            onProfileChange={setCodingProfileID}
+            source={
+              importRepository
+                ? {
+                    repository_id: importRepository.id,
+                    repository_revision: importRepository.revision,
+                  }
+                : { repo_path: repo.trim() }
+            }
             disabled={
               busy || loading || readOnly || controlledMode || !recoverable
             }
@@ -983,7 +1023,9 @@ export function CreateMission({
         {importing ? (
           <RepositoryImport
             key={epoch}
-            disabled={busy || loading || readOnly}
+            disabled={
+              busy || loading || readOnly || (!!v2Contract && !codingSelection)
+            }
             request={{
               ...(importRepository
                 ? {
@@ -994,8 +1036,19 @@ export function CreateMission({
               spec: {
                 scope: lines(scope),
                 protected: lines(protectedPaths),
-                acceptance: lines(commands),
-                image: image.trim(),
+                acceptance: codingSelection?.verificationV2
+                  ? [
+                      codingSelection.capability.profiles!.find(
+                        (p) =>
+                          p.profile_id ===
+                          codingSelection.verificationV2!.profile_id,
+                      )!.verifier,
+                    ]
+                  : lines(commands),
+                image: codingSelection?.verificationV2 ? "" : image.trim(),
+                ...(codingSelection?.verificationV2
+                  ? { verification_v2: codingSelection.verificationV2 }
+                  : {}),
               },
               consent: true,
             }}
@@ -1029,6 +1082,7 @@ export function CreateMission({
               loading ||
               readOnly ||
               !profiles.length ||
+              (codingRequested && !codingSelection) ||
               (importing && !selectedInspection)
             }
           >

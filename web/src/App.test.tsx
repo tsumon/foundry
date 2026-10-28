@@ -1,3 +1,4 @@
+import { legacyReceipt, sealReceipt } from "./test/codingV2Fixtures";
 import {
   act,
   fireEvent,
@@ -308,32 +309,16 @@ it.each(["success", "failure", "conflict"])(
   },
 );
 
-const appInspection = {
-  schema_version: 1,
-  id: "app-receipt",
-  digest: "c".repeat(64),
-  root: "/tmp/new-mission",
-  branch: "main",
-  commit: "a".repeat(40),
-  spec: {
+const appInspection = legacyReceipt(
+  {
     scope: ["src/"],
     protected: [],
     acceptance: ["/opt/foundry/verify"],
     image: "fixture:local",
   },
-  policy_version: "committed_text_v1",
-  status: "ready",
-  stage: "complete",
-  code: "",
-  checked_at: "now",
-  working_tree_status: "not_checked",
-  file_count: 1,
-  total_bytes: 10,
-  context_file_count: 1,
-  context_bytes: 10,
-  context_manifest: [],
-  protected_inputs: [],
-};
+  "/tmp/new-mission",
+);
+
 async function submitNewMission(prefilled = false) {
   await screen.findByRole("option", { name: "测试连接 · fixture-model" });
   fireEvent.change(screen.getByLabelText("任务标题"), {
@@ -912,7 +897,11 @@ it("returns a task created from a selected project to its prior project task vie
           ? { ...emptyCapabilities, repositories: [registered] }
           : path === "/api/repository-imports/inspections" &&
               init?.method === "POST"
-            ? appInspection
+            ? sealReceipt({
+                ...appInspection,
+                repository_id: registered.id,
+                repository_revision: registered.revision,
+              })
             : path === "/api/missions" && init?.method === "POST"
               ? { mission: created }
               : path === "/api/missions"

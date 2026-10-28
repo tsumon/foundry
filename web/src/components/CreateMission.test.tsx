@@ -1,3 +1,4 @@
+import { legacyReceipt } from "../test/codingV2Fixtures";
 import {
   fireEvent,
   render,
@@ -16,15 +17,10 @@ vi.mock("../repositoryImportApi", () => ({
   repositoryImportApi: {
     operations: async () => [],
     inspections: async () => [],
-    inspect: async (input: { repo_path: string; spec: unknown }) => ({
-      schema_version: 1,
-      id: "receipt",
-      digest: "b".repeat(64),
-      root: input.repo_path,
-      spec: input.spec,
-      status: "ready",
-      protected_inputs: [],
-    }),
+    inspect: async (input: {
+      repo_path: string;
+      spec: import("../repositoryImportTypes").ImportSpec;
+    }) => legacyReceipt(input.spec, input.repo_path),
   },
 }));
 async function inspectOrdinary() {
@@ -180,9 +176,9 @@ it("never falls back to ordinary creation while model-backed coding is explicitl
   await inspectOrdinary();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    /账户模型编码已明确启用.*配置无效/,
-  );
+  expect(
+    screen.getByRole("button", { name: "创建任务并检查上下文" }),
+  ).toBeDisabled();
   expect(
     fetcher.mock.calls.filter(([path]) => path === "/api/missions"),
   ).toHaveLength(0);
@@ -194,6 +190,7 @@ it("never falls back to ordinary creation while model-backed coding is explicitl
   expect(screen.getByLabelText(/启用账户模型与受控 Docker/)).toBeChecked();
 
   fireEvent.click(screen.getByLabelText(/启用账户模型与受控 Docker/));
+  await inspectOrdinary();
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
   await waitFor(() => expect(onCreated).toHaveBeenCalledWith(mission));
   expect(
@@ -236,9 +233,9 @@ it("preserves explicit model-backed intent after metadata refresh fails and bloc
   expect(screen.getByLabelText(/启用账户模型与受控 Docker/)).toBeChecked();
 
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    /账户模型编码已明确启用.*配置无效/,
-  );
+  expect(
+    screen.getByRole("button", { name: "创建任务并检查上下文" }),
+  ).toBeDisabled();
   expect(
     fetcher.mock.calls.filter(
       ([path, init]) => path === "/api/missions" || init?.method === "POST",
@@ -285,9 +282,9 @@ it("invalidates model-backed creation for the full duration of a metadata refres
   await screen.findByText(/正在读取编码能力元数据/);
   fireEvent.click(screen.getByRole("button", { name: "创建任务并检查上下文" }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    /账户模型编码已明确启用.*配置无效/,
-  );
+  expect(
+    screen.getByRole("button", { name: "创建任务并检查上下文" }),
+  ).toBeDisabled();
   expect(screen.getByLabelText(/启用账户模型与受控 Docker/)).toBeChecked();
   expect(
     fetcher.mock.calls.filter(
@@ -761,7 +758,10 @@ it("creates an explicit bounded spec from newline fields without starting model 
   )!;
   expect(JSON.parse(String(createCall[1]?.body))).toEqual({
     import_version: 1,
-    import_selection: { inspection_id: "receipt", digest: "b".repeat(64) },
+    import_selection: {
+      inspection_id: "inspection-1",
+      digest: expect.stringMatching(/^[a-f0-9]{64}$/),
+    },
     coding_version: 1,
     title: "新任务",
     goal: "改进校验",
