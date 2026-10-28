@@ -195,18 +195,18 @@ func WriteResponseV2(w io.Writer, q WireRequestV2, checks SelfCheckV2, result c4
 // native process termination/cleanup before committing this result.
 func ReadResponseV2(r io.Reader, q WireRequestV2) (WireResponseV2, error) {
 	if ValidateRequestV2(q) != nil {
-		return WireResponseV2{}, ErrProtocolV2
+		return WireResponseV2{}, &protocolFailureV2{"request_binding_rejected"}
 	}
 	var v WireResponseV2
 	if _, e := readMetadataV2(r, MaxResponseBytesV2, &v); e != nil {
-		return WireResponseV2{}, ErrProtocolV2
+		return WireResponseV2{}, e
 	}
 	mac, e := hex.DecodeString(v.MAC)
 	if e != nil || !hexDigest(v.MAC) || !hmac.Equal(mac, responseMACV2(q, v)) {
-		return WireResponseV2{}, ErrProtocolV2
+		return WireResponseV2{}, &protocolFailureV2{"mac_rejected"}
 	}
 	if validateResponseV2(q, v) != nil {
-		return WireResponseV2{}, ErrProtocolV2
+		return WireResponseV2{}, &protocolFailureV2{"semantics_rejected"}
 	}
 	return v, nil
 }

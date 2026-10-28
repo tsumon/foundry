@@ -346,6 +346,7 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
         "stop_requested",
         "readiness",
         "readiness_prefix",
+        "exchange",
       ];
       keys(native, [
         "termination_confirmed",
@@ -368,6 +369,22 @@ function failureDiagnostic(receipt, dataDir, manifestDigest) {
         termination_confirmed: native.termination_confirmed,
         diagnostic_status: native.diagnostic_status,
       };
+      if (Object.hasOwn(native, "exchange")) {
+        const d = native.exchange;
+        keys(d, ["stage", "code", "context", "exchange_stop_requested"]);
+        const codes = {
+          request_transfer: ["failed"], start_record: ["persist_failed"],
+          response: ["rejected", "request_binding_rejected", "header_eof", "header_short", "header_read_failed", "header_invalid", "length_rejected", "body_eof", "body_short", "body_read_failed", "json_rejected", "mac_rejected", "semantics_rejected"],
+          transport_eof: ["trailing_data", "read_failed"],
+          native_wait: ["unsuccessful", "termination_unconfirmed"],
+          session_context: ["deadline", "canceled"],
+        };
+        assert.ok(Object.hasOwn(codes, d.stage) && codes[d.stage].includes(d.code));
+        assert.ok(["live", "canceled", "deadline"].includes(d.context));
+        assert.equal(typeof d.exchange_stop_requested, "boolean");
+        if (d.stage === "session_context") assert.equal(d.code, d.context);
+        facts.exchange = {stage: d.stage, code: d.code, context: d.context, exchange_stop_requested: d.exchange_stop_requested};
+      }
       if (Object.hasOwn(native, "stop_requested")) {
         assert.equal(typeof native.stop_requested, "boolean");
         facts.stop_requested = native.stop_requested;

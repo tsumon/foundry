@@ -316,26 +316,55 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 	var final error
 	startReported := false
 	readiness, readinessPrefix := "", ""
+	var exchange *exchangeDiagnostic
+	exchangeStopRequested := false
+	observe := func(stage, code string) {
+		// Pre-transfer failures already have primary readiness evidence. A later
+		// Wait/context failure must not invent a new first exchange boundary.
+		if exchange != nil || readiness != "matched" {
+			return
+		}
+		state := "live"
+		if ctx.Err() == context.DeadlineExceeded {
+			state = "deadline"
+		} else if ctx.Err() != nil {
+			state = "canceled"
+		}
+		exchange = &exchangeDiagnostic{Stage: stage, Code: code, Context: state}
+	}
 	defer func() {
 		if final != nil {
+			exchangeStopRequested = true
 			p.Stop()
 		}
 		waitErr := p.Wait()
 		p.Input().Close()
 		p.Output().Close()
 		if !p.Terminated() {
+			observe("native_wait", "termination_unconfirmed")
 			final = errors.Join(final, errors.New("native VM termination unconfirmed"))
 			valid = false
 		} else if waitErr != nil {
+			observe("native_wait", "unsuccessful")
 			final = errors.Join(final, errors.New("native VM exited unsuccessfully"))
 			valid = false
 		}
 		if ctx.Err() != nil {
+			code := "canceled"
+			if ctx.Err() == context.DeadlineExceeded {
+				code = "deadline"
+			}
+			observe("session_context", code)
 			final = errors.Join(final, ctx.Err())
 			valid = false
 		}
 		facts := processDiagnostics(p)
 		facts.Readiness, facts.ReadinessPrefix = readiness, readinessPrefix
+		if exchange != nil {
+			exchange.StopRequested = exchangeStopRequested
+		}
+		facts.Exchange = exchange
+		facts = safeNativeFacts(facts)
 		final = withNativeFacts(final, facts)
 		if e := s.receiptWithNative("terminal", &facts); e != nil {
 			final = errors.Join(final, e)
@@ -382,10 +411,12 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 		return
 	}
 	if e := s.writeRequest(ctx, p.Input()); e != nil {
+		observe("request_transfer", "failed")
 		final = errors.New("guest input transfer failed")
 		return
 	}
 	if e := s.receipt("started"); e != nil {
+		observe("start_record", "persist_failed")
 		final = e
 		return
 	}
@@ -393,12 +424,23 @@ func (s *Session) exchange(ctx context.Context, p nativeProcess, started chan<- 
 	started <- nil
 	response, e := s.readResponse(p.Output())
 	if e != nil {
+		code := "rejected"
+		var failure *protocolFailureV2
+		if errors.As(e, &failure) {
+			code = failure.code
+		}
+		observe("response", code)
 		final = e
 		return
 	}
 	var extra [1]byte
 	n, e := p.Output().Read(extra[:])
 	if n != 0 || e != io.EOF {
+		code := "read_failed"
+		if n != 0 {
+			code = "trailing_data"
+		}
+		observe("transport_eof", code)
 		final = errors.New("duplicate or trailing guest frame")
 		return
 	}

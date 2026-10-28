@@ -589,3 +589,27 @@ test("startup categories and capture failures remain diagnostic-only fixed enums
     assert.equal(diagnostic.terminals[0].qemu, undefined);
   }
 });
+
+
+test("host exchange diagnostics are closed failure facts with bounded projection", (t) => {
+ const exchange={stage:"response",code:"header_short",context:"live",exchange_stop_requested:true};
+ const write=(value)=>({instance,terminal})=>{
+  terminal.native.exchange=value;
+  fs.writeFileSync(path.join(instance,"terminal.json"),JSON.stringify(terminal));
+ };
+ const {diagnostic}=failureFixture(t,write(exchange));
+ assert.equal(diagnostic.terminal_status,"available");
+ assert.deepEqual(diagnostic.terminals[0].exchange,exchange);
+ assert.ok(JSON.stringify(diagnostic).length<2048);
+ assert.ok(!JSON.stringify(diagnostic).includes("PRIVATE_SENTINEL"));
+ for(const bad of [
+  {...exchange,stage:"PRIVATE_SENTINEL"}, {...exchange,code:"PRIVATE_SENTINEL"},
+  {...exchange,context:"PRIVATE_SENTINEL"},{...exchange,exchange_stop_requested:"yes"},
+  {...exchange,raw:"PRIVATE_SENTINEL"},{...exchange,stage:"transport_eof",code:"mac_rejected"},
+  {stage:"response",code:"header_short",context:"live"},null
+ ]){
+  const {diagnostic:rejected}=failureFixture(t,write(bad));
+  assert.equal(rejected.terminal_status,"rejected");
+  assert.ok(!JSON.stringify(rejected).includes("PRIVATE_SENTINEL"));
+ }
+});

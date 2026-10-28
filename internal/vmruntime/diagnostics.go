@@ -19,18 +19,52 @@ type helperDiagnostic struct {
 	ErrorDomain   string `json:"error_domain,omitempty"`
 	ErrorCode     *int64 `json:"error_code,omitempty"`
 }
+
+// Host-only first exchange observation; never authenticated guest evidence.
+type exchangeDiagnostic struct {
+	Stage         string `json:"stage"`
+	Code          string `json:"code"`
+	Context       string `json:"context"`
+	StopRequested bool   `json:"exchange_stop_requested"`
+}
+
+func validExchangeDiagnostic(d exchangeDiagnostic) bool {
+	if d.Context != "live" && d.Context != "canceled" && d.Context != "deadline" {
+		return false
+	}
+	switch d.Stage {
+	case "request_transfer":
+		return d.Code == "failed"
+	case "start_record":
+		return d.Code == "persist_failed"
+	case "response":
+		switch d.Code {
+		case "rejected", "request_binding_rejected", "header_eof", "header_short", "header_read_failed", "header_invalid", "length_rejected", "body_eof", "body_short", "body_read_failed", "json_rejected", "mac_rejected", "semantics_rejected":
+			return true
+		}
+	case "transport_eof":
+		return d.Code == "trailing_data" || d.Code == "read_failed"
+	case "native_wait":
+		return d.Code == "unsuccessful" || d.Code == "termination_unconfirmed"
+	case "session_context":
+		return (d.Code == "canceled" || d.Code == "deadline") && d.Context == d.Code
+	}
+	return false
+}
+
 type nativeFacts struct {
-	TerminationConfirmed bool              `json:"termination_confirmed"`
-	StopRequested        *bool             `json:"stop_requested,omitempty"`
-	Readiness            string            `json:"readiness,omitempty"`
-	ReadinessPrefix      string            `json:"readiness_prefix,omitempty"`
-	ExitCode             *int64            `json:"exit_code,omitempty"`
-	Signal               *int              `json:"signal,omitempty"`
-	AdmissionStage       string            `json:"admission_stage,omitempty"`
-	NativeErrorCode      *int64            `json:"native_error_code,omitempty"`
-	DiagnosticStatus     string            `json:"diagnostic_status"`
-	Helper               *helperDiagnostic `json:"helper,omitempty"`
-	QEMU                 *qemuDiagnostic   `json:"qemu,omitempty"`
+	TerminationConfirmed bool                `json:"termination_confirmed"`
+	StopRequested        *bool               `json:"stop_requested,omitempty"`
+	Readiness            string              `json:"readiness,omitempty"`
+	ReadinessPrefix      string              `json:"readiness_prefix,omitempty"`
+	ExitCode             *int64              `json:"exit_code,omitempty"`
+	Signal               *int                `json:"signal,omitempty"`
+	AdmissionStage       string              `json:"admission_stage,omitempty"`
+	NativeErrorCode      *int64              `json:"native_error_code,omitempty"`
+	DiagnosticStatus     string              `json:"diagnostic_status"`
+	Helper               *helperDiagnostic   `json:"helper,omitempty"`
+	QEMU                 *qemuDiagnostic     `json:"qemu,omitempty"`
+	Exchange             *exchangeDiagnostic `json:"exchange,omitempty"`
 }
 type diagnosticBuffer struct {
 	mu       sync.Mutex
@@ -90,6 +124,9 @@ func admissionStageAllowed(s string) bool {
 	return false
 }
 func safeNativeFacts(f nativeFacts) nativeFacts {
+	if f.Exchange != nil && !validExchangeDiagnostic(*f.Exchange) {
+		f.Exchange = nil
+	}
 	switch f.Readiness {
 	case "", "matched", "eof", "short_read", "read_failed", "deadline", "canceled", "marker_mismatch":
 	default:
@@ -144,6 +181,9 @@ func withNativeFacts(e error, f nativeFacts) error {
 	}
 	if f.Readiness != "" {
 		parts = append(parts, "readiness="+f.Readiness)
+	}
+	if d := f.Exchange; d != nil {
+		parts = append(parts, "exchange_stage="+d.Stage, "exchange_code="+d.Code, "exchange_context="+d.Context, fmt.Sprintf("exchange_stop_requested=%t", d.StopRequested))
 	}
 	if f.ReadinessPrefix != "" {
 		parts = append(parts, "readiness_prefix="+f.ReadinessPrefix)

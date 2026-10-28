@@ -1,13 +1,18 @@
 package vmruntime
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"foundry/internal/c4verify"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -43,6 +48,9 @@ func TestReadinessFailureReceiptClassifiesWithoutRetainingSerial(t *testing.T) {
 			}
 			if e = json.Unmarshal(raw, &record); e != nil {
 				t.Fatal(e)
+			}
+			if record.Native["exchange"] != nil {
+				t.Fatal("teardown overwrote the earlier readiness failure")
 			}
 			if record.Native["readiness"] != tc.outcome {
 				t.Fatalf("readiness=%v want %s", record.Native["readiness"], tc.outcome)
@@ -339,5 +347,320 @@ func TestNativeAdmissionFailureRecordsOnlyNumericStage(t *testing.T) {
 	}
 	if e = s.Close(context.Background()); e != nil {
 		t.Fatal(e)
+	}
+}
+
+// Only native I/O/process observations are inert; actual admission, request
+// framing, Session exchange/Wait/Close and response authority remain production.
+type exchangeObservedNative struct {
+	*fakeNative
+	waitErr     error
+	unconfirmed bool
+	stopped     chan struct{}
+	stopOnce    sync.Once
+	afterStop   func()
+	afterWait   func()
+}
+
+func (p *exchangeObservedNative) Stop() error {
+	p.stopOnce.Do(func() {
+		p.fakeNative.Stop()
+		if p.afterStop != nil {
+			p.afterStop()
+		}
+		close(p.stopped)
+	})
+	return nil
+}
+func (p *exchangeObservedNative) Wait() error {
+	<-p.done
+	if p.afterWait != nil {
+		p.afterWait()
+	}
+	return p.waitErr
+}
+func (p *exchangeObservedNative) Terminated() bool {
+	return !p.unconfirmed && p.fakeNative.Terminated()
+}
+func exchangeFrameV2Test(q WireRequestV2, kind string) ([]byte, error) {
+	r := responseV2Test(q)
+	header := func(n uint32) []byte { return binary.BigEndian.AppendUint32([]byte(HeaderV2), n) }
+	rawError := errors.New("PRIVATE_SENTINEL raw transport")
+	switch kind {
+	case "header_eof":
+		return nil, nil
+	case "header_short":
+		return []byte(HeaderV2[:1]), nil
+	case "header_read_failed":
+		return nil, rawError
+	case "header_invalid":
+		return append([]byte(strings.Repeat("x", len(HeaderV2))), make([]byte, 4)...), nil
+	case "length_rejected":
+		return header(0), nil
+	case "body_eof":
+		return header(4), nil
+	case "body_short":
+		return append(header(4), '{'), nil
+	case "body_read_failed":
+		return header(4), rawError
+	case "json_rejected":
+		return append(header(1), '{'), nil
+	case "mac_rejected":
+		r.MAC = strings.Repeat("0", 64)
+		raw, _ := json.Marshal(r)
+		return rawV2Test(raw), nil
+	case "semantics_rejected":
+		r.Result.Tests = 0
+		return signedResponseV2Test(q, r), nil
+	case "trailing_data":
+		return append(signedResponseV2Test(q, r), 'x'), nil
+	case "eof_read_failed":
+		return signedResponseV2Test(q, r), rawError
+	case "assertion":
+		r.Result = c4verify.Result{Class: "test_failed", Tests: 1, ExitCode: 1}
+		r.Phases[0].ExitCode = 1
+	}
+	return signedResponseV2Test(q, r), nil
+}
+func TestV2ExchangeRetainsFirstHostFailureThroughClosedLifecycle(t *testing.T) {
+	cases := []struct{ kind, stage, code string }{
+		{"header_eof", "response", "header_eof"}, {"header_short", "response", "header_short"},
+		{"header_read_failed", "response", "header_read_failed"}, {"header_invalid", "response", "header_invalid"},
+		{"length_rejected", "response", "length_rejected"}, {"body_eof", "response", "body_eof"},
+		{"body_short", "response", "body_short"}, {"body_read_failed", "response", "body_read_failed"},
+		{"json_rejected", "response", "json_rejected"}, {"mac_rejected", "response", "mac_rejected"},
+		{"semantics_rejected", "response", "semantics_rejected"}, {"trailing_data", "transport_eof", "trailing_data"},
+		{"eof_read_failed", "transport_eof", "read_failed"}, {"wait", "native_wait", "unsuccessful"},
+		{"unconfirmed", "native_wait", "termination_unconfirmed"}, {"assertion", "", ""},
+		{"first", "response", "header_invalid"}, {"context", "session_context", "canceled"}, {"canceled", "response", "header_read_failed"}, {"deadline", "response", "header_read_failed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.kind, func(t *testing.T) {
+			r, q := testRuntimeV2(t, "c4_node_model_v2")
+			s, e := r.CreateV2(context.Background(), q)
+			if e != nil {
+				t.Fatal(e)
+			}
+			parent, cancel := context.WithCancel(context.Background())
+			if tc.kind == "deadline" {
+				parent, cancel = context.WithTimeout(context.Background(), time.Second)
+			}
+			defer cancel()
+			release := make(chan struct{})
+			r.launch = func(ctx context.Context, _ command) (nativeProcess, error) {
+				input, hostInput := io.Pipe()
+				hostOutput, output := io.Pipe()
+				p := &exchangeObservedNative{fakeNative: &fakeNative{in: hostInput, out: hostOutput, done: make(chan struct{})}, stopped: make(chan struct{}), unconfirmed: tc.kind == "unconfirmed"}
+				if tc.kind == "wait" || tc.kind == "first" {
+					p.waitErr = errors.New("PRIVATE_SENTINEL raw Wait " + s.v2.wire.Secret)
+				}
+				if tc.kind == "first" {
+					p.afterStop = cancel
+				}
+				if tc.kind == "context" {
+					p.afterWait = cancel
+				}
+				go func() {
+					defer close(p.done)
+					defer input.Close()
+					defer output.Close()
+					io.WriteString(output, ReadyMarkerV2)
+					wire, e := ReadRequestV2(ctx, input, drainV2Test)
+					if e != nil {
+						return
+					}
+					<-release
+					if tc.kind == "canceled" || tc.kind == "deadline" {
+						<-p.stopped
+						return
+					}
+					kind := tc.kind
+					if kind == "first" {
+						kind = "header_invalid"
+					}
+					frame, closeErr := exchangeFrameV2Test(wire, kind)
+					output.Write(frame)
+					if closeErr != nil {
+						output.CloseWithError(closeErr)
+					}
+				}()
+				return p, nil
+			}
+			if e = s.Start(parent); e != nil {
+				close(release)
+				t.Fatal(e)
+			}
+			if tc.kind == "canceled" {
+				cancel()
+			}
+			close(release)
+			e = s.Wait(context.Background())
+			valid := tc.kind == "assertion"
+			if (e == nil) != valid {
+				t.Fatal("changed exchange authority", e)
+			}
+			if tc.stage == "response" && !errors.Is(e, ErrProtocolV2) {
+				t.Fatal("public protocol matching changed", e)
+			}
+			if e != nil && strings.Contains(e.Error(), "PRIVATE_SENTINEL") {
+				t.Fatal("raw transport/Wait text leaked")
+			}
+			if _, ok := s.Result(); ok != valid {
+				t.Fatal("invalid result acquired authority")
+			}
+			if _, ok := s.AuthenticatedEvidenceV2(q); ok {
+				t.Fatal("evidence exposed before Close")
+			}
+			closeErr := s.Close(context.Background())
+			if (closeErr == nil) == (tc.kind == "unconfirmed") {
+				t.Fatal("changed termination requirement", closeErr)
+			}
+			if _, ok := s.AuthenticatedEvidenceV2(q); ok != valid {
+				t.Fatal("host diagnostic became authenticated evidence")
+			}
+			raw, e := os.ReadFile(filepath.Join(s.dir, "terminal.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if strings.Contains(string(raw), "PRIVATE_SENTINEL") {
+				t.Fatal("raw data persisted")
+			}
+			var terminal struct {
+				Native struct {
+					Exchange *struct {
+						Stage   string `json:"stage"`
+						Code    string `json:"code"`
+						Context string `json:"context"`
+						Stop    bool   `json:"exchange_stop_requested"`
+					} `json:"exchange"`
+				} `json:"native"`
+			}
+			if json.Unmarshal(raw, &terminal) != nil {
+				t.Fatal("invalid terminal")
+			}
+			if valid {
+				if terminal.Native.Exchange != nil {
+					t.Fatal("success acquired failure diagnostic")
+				}
+				return
+			}
+			got := terminal.Native.Exchange
+			contextWant := "live"
+			if tc.kind == "canceled" || tc.kind == "deadline" {
+				contextWant = tc.kind
+			}
+			if tc.kind == "context" {
+				contextWant = "canceled"
+			}
+			stop := tc.stage != "native_wait" && tc.stage != "session_context"
+			if got == nil || got.Stage != tc.stage || got.Code != tc.code || got.Context != contextWant || got.Stop != stop {
+				t.Fatalf("lost first safe exchange failure: %+v want %s/%s/%s stop=%v", got, tc.stage, tc.code, contextWant, stop)
+			}
+		})
+	}
+}
+
+type responseReadCounterV2 struct {
+	r       *bytes.Reader
+	lengths []int
+}
+
+func (r *responseReadCounterV2) Read(b []byte) (int, error) {
+	r.lengths = append(r.lengths, len(b))
+	return r.r.Read(b)
+}
+func TestV2ExchangeMetadataRetainsExactReadsAndPublicProtocolError(t *testing.T) {
+	q, _, _ := fixtureV2Test(t, "c4_node_model_v2")
+	raw := signedResponseV2Test(q, responseV2Test(q))
+	reader := &responseReadCounterV2{r: bytes.NewReader(append(bytes.Clone(raw), 'x'))}
+	if _, e := ReadResponseV2(reader, q); e != nil {
+		t.Fatal(e)
+	}
+	if !reflect.DeepEqual(reader.lengths, []int{len(HeaderV2) + 4, len(raw) - len(HeaderV2) - 4}) {
+		t.Fatal("metadata reads changed", reader.lengths)
+	}
+	if b, e := reader.r.ReadByte(); e != nil || b != 'x' {
+		t.Fatal("response codec read ahead")
+	}
+	q.Nonce = "invalid"
+	reader = &responseReadCounterV2{r: bytes.NewReader(raw)}
+	_, e := ReadResponseV2(reader, q)
+	var rejected *protocolFailureV2
+	if !errors.Is(e, ErrProtocolV2) || !errors.As(e, &rejected) || rejected.code != "request_binding_rejected" || len(reader.lengths) != 0 {
+		t.Fatal("invalid request consumed response or changed public error", e, reader.lengths)
+	}
+}
+func TestV2ExchangeFactsRejectUnknownValues(t *testing.T) {
+	for _, d := range []exchangeDiagnostic{
+		{Stage: "PRIVATE_SENTINEL", Code: "header_eof", Context: "live"},
+		{Stage: "response", Code: "PRIVATE_SENTINEL", Context: "live"},
+		{Stage: "response", Code: "header_eof", Context: "PRIVATE_SENTINEL"},
+		{Stage: "transport_eof", Code: "mac_rejected", Context: "live"},
+		{Stage: "session_context", Code: "deadline", Context: "live"},
+	} {
+		safe := safeNativeFacts(nativeFacts{DiagnosticStatus: "absent", Exchange: &d})
+		raw, _ := json.Marshal(safe)
+		if safe.Exchange != nil || strings.Contains(string(raw), "PRIVATE_SENTINEL") {
+			t.Fatal("unsafe exchange facts persisted", string(raw))
+		}
+	}
+}
+
+type rejectedExchangeInputV2 struct{ io.WriteCloser }
+
+func (rejectedExchangeInputV2) Write([]byte) (int, error) {
+	return 0, errors.New("PRIVATE_SENTINEL transfer")
+}
+func TestV2ExchangePreAcknowledgmentFailureRetainsOnlyClosedHostFacts(t *testing.T) {
+	for _, stage := range []string{"request_transfer", "start_record"} {
+		t.Run(stage, func(t *testing.T) {
+			r, q := testRuntimeV2(t, "c4_node_model_v2")
+			s, e := r.CreateV2(context.Background(), q)
+			if e != nil {
+				t.Fatal(e)
+			}
+			r.launch = fakeLaunchV2(false, false)
+			if stage == "request_transfer" {
+				r.launch = func(ctx context.Context, c command) (nativeProcess, error) {
+					p, e := fakeLaunchV2(false, false)(ctx, c)
+					if e != nil {
+						return p, e
+					}
+					return recordingNativeV2{p, rejectedExchangeInputV2{p.Input()}}, nil
+				}
+			} else if e = os.WriteFile(filepath.Join(s.dir, "started.json"), []byte("owned collision"), 0600); e != nil {
+				t.Fatal(e)
+			}
+			if e = s.Start(context.Background()); e == nil || strings.Contains(e.Error(), "PRIVATE_SENTINEL") {
+				t.Fatal("unsafe or successful failed acknowledgment", e)
+			}
+			if s.Wait(context.Background()) == nil {
+				t.Fatal("failed acknowledgment became valid")
+			}
+			if e = s.Close(context.Background()); e != nil {
+				t.Fatal(e)
+			}
+			if _, ok := s.AuthenticatedEvidenceV2(q); ok {
+				t.Fatal("pre-ack diagnostics granted authority")
+			}
+			raw, e := os.ReadFile(filepath.Join(s.dir, "terminal.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			var receipt struct {
+				Native nativeFacts `json:"native"`
+			}
+			if e = json.Unmarshal(raw, &receipt); e != nil {
+				t.Fatal(e)
+			}
+			code := "failed"
+			if stage == "start_record" {
+				code = "persist_failed"
+			}
+			d := receipt.Native.Exchange
+			if d == nil || d.Stage != stage || d.Code != code || d.Context != "live" || !d.StopRequested {
+				t.Fatalf("missing first pre-ack diagnostic %+v", d)
+			}
+		})
 	}
 }

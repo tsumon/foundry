@@ -79,24 +79,44 @@ func validEscapesV2(raw []byte) bool {
 	}
 	return true
 }
+
+// Private failure codes describe only the rejecting branch, never input/error
+// text. The public protocol error and exact reader operations remain unchanged.
+type protocolFailureV2 struct{ code string }
+
+func (e *protocolFailureV2) Error() string { return ErrProtocolV2.Error() }
+func (e *protocolFailureV2) Unwrap() error { return ErrProtocolV2 }
+func metadataReadFailureV2(part string, e error) error {
+	suffix := "read_failed"
+	if e == io.EOF {
+		suffix = "eof"
+	} else if e == io.ErrUnexpectedEOF {
+		suffix = "short"
+	}
+	return &protocolFailureV2{part + "_" + suffix}
+}
 func readMetadataV2(r io.Reader, limit int, v any) ([]byte, error) {
 	var header [len(HeaderV2) + 4]byte
-	if _, e := io.ReadFull(r, header[:]); e != nil || string(header[:len(HeaderV2)]) != HeaderV2 {
-		return nil, ErrProtocolV2
+	if _, e := io.ReadFull(r, header[:]); e != nil {
+		return nil, metadataReadFailureV2("header", e)
+	}
+	if string(header[:len(HeaderV2)]) != HeaderV2 {
+		return nil, &protocolFailureV2{"header_invalid"}
 	}
 	n := binary.BigEndian.Uint32(header[len(HeaderV2):])
 	if n == 0 || n > uint32(limit) {
-		return nil, ErrProtocolV2
+		return nil, &protocolFailureV2{"length_rejected"}
 	}
 	raw := make([]byte, int(n))
 	if _, e := io.ReadFull(r, raw); e != nil {
-		return nil, ErrProtocolV2
+		return nil, metadataReadFailureV2("body", e)
 	}
 	if strictJSONV2(raw, v) != nil {
-		return nil, ErrProtocolV2
+		return nil, &protocolFailureV2{"json_rejected"}
 	}
 	return raw, nil
 }
+
 func writeMetadataV2(w io.Writer, v any, limit int) error {
 	raw, e := json.Marshal(v)
 	if e != nil || len(raw) == 0 || len(raw) > limit {
