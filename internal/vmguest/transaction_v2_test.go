@@ -101,8 +101,8 @@ func TestV2TransactionStagesProvisionallyUntilTerminal(t *testing.T) {
 		if bad {
 			raw[len(raw)-1] ^= 1
 		}
-		var out bytes.Buffer
-		e = ServeV2(context.Background(), bytes.NewReader(raw), &out, "linux/amd64", m)
+		var out memoryWireV2
+		e = ServeV2(context.Background(), finiteReceiveV2{bytes.NewReader(raw)}, &out, "linux/amd64", m)
 		if bad {
 			if e == nil || m.prepares != 0 || len(m.phases) != 0 {
 				t.Fatal("provisional content authorized execution")

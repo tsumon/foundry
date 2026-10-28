@@ -38,21 +38,32 @@ func MainV2() error {
 	if runtime.GOARCH == "amd64" {
 		console = "/dev/ttyS0"
 	}
-	control, e := os.OpenFile(console, os.O_RDWR, 0)
+	// Distinct pollable nonblocking handles let receive close wake and join the
+	// monitor without closing the writer that still holds the final frame byte.
+	control, e := os.OpenFile(console, os.O_RDWR|unix.O_NONBLOCK, 0)
 	if e != nil {
 		return errGuestV2
 	}
 	defer control.Close()
+	output, e := os.OpenFile(console, os.O_WRONLY|unix.O_NONBLOCK, 0)
+	if e != nil {
+		return errGuestV2
+	}
+	defer output.Close()
 	unix.CloseOnExec(int(control.Fd()))
+	unix.CloseOnExec(int(output.Fd()))
 	if e = privateConsole(control); e != nil {
 		return e
 	}
-	go func() { <-ctx.Done(); _ = control.Close() }()
+	deadline, _ := ctx.Deadline()
+	if e = checkConsoleShutdownV2(control, output, deadline); e != nil {
+		return e
+	}
 	staged, e := newStagerV2("/workspace", "/foundry-deps/store", os.Getpagesize())
 	if e != nil {
 		return e
 	}
-	return ServeV2(ctx, control, control, "linux/"+runtime.GOARCH, &linuxMachineV2{stager: staged})
+	return ServeV2(ctx, control, output, "linux/"+runtime.GOARCH, &linuxMachineV2{stager: staged})
 }
 func bootstrapV2() error {
 	unix.Umask(0077)
@@ -182,8 +193,8 @@ func (m *linuxMachineV2) Prepare(q vmruntime.WireRequestV2) (vmruntime.SelfCheck
 	if e = os.Mkdir("/workspace/node_modules", 0700); e != nil {
 		return checks, nil, e
 	}
-	// Each nested mount is frozen separately. A nonrecursive source bind cannot
-	// confer immutability on these dependency aliases.
+	// Each nested mount is frozen separately. Ancestor binds preserve their
+	// existing child mounts and never confer child immutability.
 	for _, p := range []string{"/workspace/node_modules", "/foundry-deps/python", "/foundry-build/compiled/node_modules"} {
 		if e = unix.Mount(m.stager.deps, p, "", unix.MS_BIND, ""); e != nil {
 			return checks, nil, e
@@ -224,15 +235,22 @@ func (m *linuxMachineV2) Prepare(q vmruntime.WireRequestV2) (vmruntime.SelfCheck
 	return checks, m, nil
 }
 func readOnlyBindV2(p string, noexec bool) error {
-	if e := unix.Mount(p, p, "", unix.MS_BIND, ""); e != nil {
-		return e
-	}
-	flags := uintptr(unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY | unix.MS_NOSUID | unix.MS_NODEV)
-	if noexec {
-		flags |= unix.MS_NOEXEC
-	}
-	return unix.Mount("", p, "", flags, "")
+	return readOnlyHierarchyV2(p, noexec, func(p string, recursive bool) error { return unix.Mount(p, p, "", bindHierarchyFlagsV2(recursive), "") }, func(p string, noexec bool) error {
+		flags := uintptr(unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY | unix.MS_NOSUID | unix.MS_NODEV)
+		if noexec {
+			flags |= unix.MS_NOEXEC
+		}
+		return unix.Mount("", p, "", flags, "")
+	})
 }
+func bindHierarchyFlagsV2(recursive bool) uintptr {
+	flags := uintptr(unix.MS_BIND)
+	if recursive {
+		flags |= unix.MS_REC
+	}
+	return flags
+}
+
 func mountObservationLinuxV2(p string) (mountObservationV2, error) {
 	var s unix.Statfs_t
 	if e := unix.Statfs(p, &s); e != nil {
@@ -328,13 +346,33 @@ func (m *linuxMachineV2) FreezeCompiled(q vmruntime.WireRequestV2) (string, erro
 	if e = readOnlyBindV2(root, true); e != nil {
 		return "", e
 	}
-	var s unix.Statfs_t
-	if e = unix.Statfs(root, &s); e != nil || s.Flags&(unix.ST_RDONLY|unix.ST_NOSUID|unix.ST_NODEV|unix.ST_NOEXEC) != (unix.ST_RDONLY|unix.ST_NOSUID|unix.ST_NODEV|unix.ST_NOEXEC) {
-		return "", errGuestV2
+	if e = checkCompiledMountV2(mountObservationLinuxV2); e != nil {
+		return "", e
 	}
 	after, e := compiledInventoryV2(root, q.Verify.Inputs.TypeScript.InputFiles)
 	if e != nil || before != after {
 		return "", errGuestV2
 	}
 	return after, nil
+}
+
+// Deadline support verifies Go's pollable descriptor path, not only open intent.
+// An unsupported serial driver cannot enter response publication.
+func checkConsoleShutdownV2(input, output *os.File, deadline time.Time) error {
+	if input.Fd() == output.Fd() {
+		return errGuestV2
+	}
+	for _, f := range []*os.File{input, output} {
+		flags, e := unix.FcntlInt(f.Fd(), unix.F_GETFL, 0)
+		if e != nil || flags&unix.O_NONBLOCK == 0 {
+			return errGuestV2
+		}
+	}
+	if e := input.SetReadDeadline(deadline); e != nil {
+		return errGuestV2
+	}
+	if e := output.SetWriteDeadline(deadline); e != nil {
+		return errGuestV2
+	}
+	return nil
 }

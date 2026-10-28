@@ -1,6 +1,7 @@
 package vmguest
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"foundry/internal/c4verify"
@@ -34,7 +35,16 @@ type machineV2 interface {
 
 // ServeV2 consumes exactly one terminal-gated transaction. Stage is provisional;
 // neither a sink callback nor a valid metadata header permits execution.
-func ServeV2(ctx context.Context, input io.Reader, output io.Writer, platform string, m machineV2) error {
+func ServeV2(ctx context.Context, input io.ReadCloser, output io.WriteCloser, platform string, m machineV2) (err error) {
+	receive := &receiveMonitorV2{input: input}
+	defer func() {
+		if e := receive.shutdown(); err == nil {
+			err = e
+		}
+		if e := closeOutputV2(output); err == nil {
+			err = e
+		}
+	}()
 	if _, e := io.WriteString(output, vmruntime.ReadyMarkerV2); e != nil {
 		return e
 	}
@@ -55,31 +65,41 @@ func ServeV2(ctx context.Context, input io.Reader, output io.Writer, platform st
 	}
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
-	var mu sync.Mutex
-	late := false
-	go func() {
-		var b [1]byte
-		n, e := input.Read(b[:])
-		if n != 0 || e != io.EOF {
-			mu.Lock()
-			late = true
-			mu.Unlock()
-			cancel()
-		}
-	}()
-	violated := func() bool { mu.Lock(); defer mu.Unlock(); return late }
+	receive.start(cancel)
 	checks, exec, e := m.Prepare(q)
 	if e != nil || !checks.Valid() || exec == nil {
 		return errGuestV2
 	}
-	if violated() {
+	if receive.violated() {
 		return errGuestV2
 	}
 	result, phases := runPhasesV2(work, q, exec, m, &checks)
-	if violated() {
+	if receive.violated() {
 		return errGuestV2
 	}
-	return vmruntime.WriteResponseV2(output, q, checks, result, phases)
+	var frame bytes.Buffer
+	if e = vmruntime.WriteResponseV2(&frame, q, checks, result, phases); e != nil {
+		return e
+	}
+	raw := frame.Bytes()
+	// A missing final byte makes the length-delimited JSON/HMAC frame invalid
+	// to the unchanged host reader. Prefix publication grants no authority.
+	if n, e := output.Write(raw[:len(raw)-1]); e != nil || n != len(raw)-1 {
+		return errGuestV2
+	}
+	if e = receive.shutdown(); e != nil {
+		return e
+	}
+	if ctx.Err() != nil {
+		return errGuestV2
+	}
+	// Receive close and observer join are the explicit linearization boundary.
+	// No claim is made about input arriving after this shutdown. Output is closed
+	// immediately by the deferred owner after this final fragment is published.
+	if n, e := output.Write(raw[len(raw)-1:]); e != nil || n != 1 {
+		return errGuestV2
+	}
+	return nil
 }
 
 type diagnosticsV2 struct {

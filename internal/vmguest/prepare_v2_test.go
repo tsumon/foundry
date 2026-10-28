@@ -7,6 +7,7 @@ import (
 	"foundry/internal/vmruntime"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -222,6 +223,114 @@ func TestV2ScratchChecksExactSizeFlagsAndWritable(t *testing.T) {
 			return o, e
 		}) == nil {
 			t.Fatal("invalid scratch", bad)
+		}
+	}
+}
+
+// A narrow witness of Linux's relevant bind property, not a mount simulator:
+// covering one ancestor nonrecursively hides its existing dependency child.
+func TestV2ReadOnlyHierarchyPreservesDependencyAliases(t *testing.T) {
+	for _, tc := range []struct{ ancestor, alias string }{{"/workspace", "/workspace/node_modules"}, {"/foundry-deps", "/foundry-deps/python"}, {"/foundry-build/compiled", "/foundry-build/compiled/node_modules"}} {
+		t.Run(tc.alias, func(t *testing.T) {
+			visible, childRO, parentRO := true, false, false
+			ops := []string{}
+			bind := func(p string, recursive bool) error {
+				ops = append(ops, "bind:"+p)
+				if p == tc.ancestor && !recursive {
+					visible = false
+				}
+				return nil
+			}
+			freeze := func(p string, noexec bool) error {
+				if !noexec {
+					t.Fatal("lost noexec")
+				}
+				ops = append(ops, "freeze:"+p)
+				switch p {
+				case tc.alias:
+					childRO = true
+				case tc.ancestor:
+					parentRO = true
+				}
+				return nil
+			}
+			if e := readOnlyHierarchyV2(tc.alias, true, bind, freeze); e != nil {
+				t.Fatal(e)
+			}
+			if e := readOnlyHierarchyV2(tc.ancestor, true, bind, freeze); e != nil {
+				t.Fatal(e)
+			}
+			if !visible || !childRO || !parentRO {
+				t.Fatal("alias covered or mutable after ancestor freeze", visible, childRO, parentRO)
+			}
+			want := []string{"bind:" + tc.alias, "freeze:" + tc.alias, "bind:" + tc.ancestor, "freeze:" + tc.ancestor}
+			if !reflect.DeepEqual(ops, want) {
+				t.Fatal(ops)
+			}
+		})
+	}
+}
+func TestV2HierarchyFreezeDoesNotConferChildImmutability(t *testing.T) {
+	childRO := false
+	bind := func(string, bool) error { return nil }
+	freeze := func(p string, noexec bool) error {
+		if p == "/workspace/node_modules" {
+			childRO = true
+		}
+		return nil
+	}
+	if e := readOnlyHierarchyV2("/workspace", true, bind, freeze); e != nil {
+		t.Fatal(e)
+	}
+	if childRO {
+		t.Fatal("parent freeze claimed child immutability")
+	}
+	good := func(p string) (mountObservationV2, error) {
+		s := mountSpecsV2()[p]
+		return mountObservationV2{bytes: s.bytes, inodes: s.inodes, tmpfs: true, nosuid: true, nodev: true, noexec: s.noexec, readonly: p != "/workspace/node_modules" || childRO}, nil
+	}
+	if checkInputMountsV2(good) == nil {
+		t.Fatal("writable alias passed final strict checks")
+	}
+	if e := readOnlyHierarchyV2("/workspace/node_modules", true, bind, freeze); e != nil {
+		t.Fatal(e)
+	}
+	if checkInputMountsV2(good) != nil {
+		t.Fatal("separately frozen alias rejected")
+	}
+}
+func TestV2CompiledFreezeVerifiesVisibleDependencyAlias(t *testing.T) {
+	good := func(p string) (mountObservationV2, error) {
+		bytes, inodes := uint64(256<<20), uint64(16384)
+		if p == "/foundry-build/compiled/node_modules" {
+			bytes, inodes = 80<<20, 32768
+		}
+		return mountObservationV2{bytes: bytes, inodes: inodes, tmpfs: true, nosuid: true, nodev: true, noexec: true, readonly: true}, nil
+	}
+	if e := checkCompiledMountV2(good); e != nil {
+		t.Fatal(e)
+	}
+	for _, field := range []string{"covered", "readonly", "nosuid", "nodev", "noexec"} {
+		if e := checkCompiledMountV2(func(p string) (mountObservationV2, error) {
+			o, e := good(p)
+			if p == "/foundry-build/compiled/node_modules" {
+				switch field {
+				case "covered":
+					o.bytes = 256 << 20
+					o.inodes = 16384
+				case "readonly":
+					o.readonly = false
+				case "nosuid":
+					o.nosuid = false
+				case "nodev":
+					o.nodev = false
+				case "noexec":
+					o.noexec = false
+				}
+			}
+			return o, e
+		}); e == nil {
+			t.Fatal("invalid compiled dependency mount", field)
 		}
 	}
 }

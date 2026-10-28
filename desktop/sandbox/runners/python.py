@@ -93,7 +93,7 @@ class Result(unittest.TestResult):
     def addSkip(self, test, reason):
         if self.active is test:
             self.status = 'skipped'
-        elif self.active is not None and self.status is None:
+        elif self.stage == 'test' and self.active is not None and self.status is None:
             self.status = 'skipped'
 
     def addExpectedFailure(self, test, err):
@@ -103,6 +103,10 @@ class Result(unittest.TestResult):
         self.status = 'unexpected_passed'
 
     def addSubTest(self, test, subtest, err):
+        if self.stage != 'test':
+            if err is not None:
+                self.addError(test, err)
+            return
         if err is None:
             if self.status != 'failed':
                 self.status = 'passed'

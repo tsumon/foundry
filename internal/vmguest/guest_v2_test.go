@@ -8,6 +8,7 @@ import (
 	"foundry/internal/frameworkreport"
 	"foundry/internal/vmruntime"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -62,12 +63,13 @@ func completedV2() phaseOutcomeV2 {
 func TestV2ProbeAndExactTerminal(t *testing.T) {
 	for _, id := range []string{"c4_node_model_v2", "c4_python_model_v2", "c4_typescript_model_v2"} {
 		r := probeV2(t, id)
-		var input, output bytes.Buffer
+		var input bytes.Buffer
+		var output memoryWireV2
 		if e := vmruntime.WriteRequestV2(context.Background(), &input, r, nil, ""); e != nil {
 			t.Fatal(e)
 		}
 		m := &fixtureV2{outcome: completedV2()}
-		if e := ServeV2(context.Background(), &input, &output, "linux/amd64", m); e != nil {
+		if e := ServeV2(context.Background(), finiteReceiveV2{&input}, &output, "linux/amd64", m); e != nil {
 			t.Fatal(e)
 		}
 		got, e := vmruntime.ReadResponseV2(bytes.NewReader(bytes.TrimPrefix(output.Bytes(), []byte(vmruntime.ReadyMarkerV2))), r)
@@ -81,8 +83,8 @@ func TestV2ProbeAndExactTerminal(t *testing.T) {
 	valid := bytes.Clone(b.Bytes())
 	for _, raw := range [][]byte{valid[:len(valid)-1], append(bytes.Clone(valid), 'x'), []byte(vmruntime.ReadyMarker)} {
 		m := &fixtureV2{}
-		var out bytes.Buffer
-		if ServeV2(context.Background(), bytes.NewReader(raw), &out, "linux/amd64", m) == nil || m.prepares != 0 {
+		var out memoryWireV2
+		if ServeV2(context.Background(), finiteReceiveV2{bytes.NewReader(raw)}, &out, "linux/amd64", m) == nil || m.prepares != 0 {
 			t.Fatal("incomplete/mixed/extra transaction prepared")
 		}
 	}
@@ -96,7 +98,7 @@ func TestV2LateInputCancelsWork(t *testing.T) {
 	defer writer.Close()
 	m := &lateMachineV2{fixtureV2: fixtureV2{outcome: completedV2()}, running: make(chan struct{})}
 	done := make(chan error, 1)
-	go func() { var out bytes.Buffer; done <- ServeV2(context.Background(), reader, &out, "linux/amd64", m) }()
+	go func() { var out memoryWireV2; done <- ServeV2(context.Background(), reader, &out, "linux/amd64", m) }()
 	go func() { _, _ = writer.Write(b.Bytes()); <-m.running; _, _ = writer.Write([]byte("late")) }()
 	select {
 	case e := <-done:
@@ -219,8 +221,8 @@ func TestV2PostTerminalMonitorDoesNotSilentlyStopOnNoProgress(t *testing.T) {
 	m := &lateMachineV2{running: make(chan struct{})}
 	done := make(chan error, 1)
 	go func() {
-		var out bytes.Buffer
-		done <- ServeV2(context.Background(), &noProgressAfterV2{bytes.NewReader(b.Bytes())}, &out, "linux/amd64", m)
+		var out memoryWireV2
+		done <- ServeV2(context.Background(), io.NopCloser(&noProgressAfterV2{bytes.NewReader(b.Bytes())}), &out, "linux/amd64", m)
 	}()
 	select {
 	case e := <-done:
@@ -248,5 +250,288 @@ func TestV2CompilerDigestMustBeCanonicalBeforeTests(t *testing.T) {
 	r, p := runPhasesV2(context.Background(), q, m, invalidFreezerV2{}, &checks)
 	if r.Class != "infrastructure_failed" || len(p) != 1 || len(m.phases) != 1 {
 		t.Fatal("invalid digest launched tests", r, p)
+	}
+}
+
+// memoryWireV2 is an owned in-memory output endpoint. Close prevents further
+// writes; captured bytes are read only after Serve returns.
+type memoryWireV2 struct {
+	bytes.Buffer
+	closed   bool
+	closeErr error
+}
+
+func (w *memoryWireV2) Write(b []byte) (int, error) {
+	if w.closed {
+		return 0, io.ErrClosedPipe
+	}
+	return w.Buffer.Write(b)
+}
+func (w *memoryWireV2) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
+func (w *memoryWireV2) Close() error                      { w.closed = true; return w.closeErr }
+
+type blockedWireV2 struct {
+	memoryWireV2
+	entered, release chan struct{}
+}
+
+func (w *blockedWireV2) Write(b []byte) (int, error) {
+	if bytes.HasPrefix(b, []byte(vmruntime.HeaderV2)) {
+		close(w.entered)
+		<-w.release
+	}
+	return w.memoryWireV2.Write(b)
+}
+func hostAcceptsV2(q vmruntime.WireRequestV2, raw []byte) bool {
+	r := bytes.NewReader(bytes.TrimPrefix(raw, []byte(vmruntime.ReadyMarkerV2)))
+	v, e := vmruntime.ReadResponseV2(r, q)
+	if e != nil {
+		return false
+	}
+	var extra [1]byte
+	n, e := r.Read(extra[:])
+	return (v.Result.Class == "probe_passed" || v.Result.Class == "passed") && n == 0 && e == io.EOF
+}
+func TestV2LateInputDuringBlockedPublicationLeavesNoHostResponse(t *testing.T) {
+	q := probeV2(t, "c4_node_model_v2")
+	var request bytes.Buffer
+	if e := vmruntime.WriteRequestV2(context.Background(), &request, q, nil, ""); e != nil {
+		t.Fatal(e)
+	}
+	input, send := io.Pipe()
+	defer input.Close()
+	defer send.Close()
+	output := &blockedWireV2{entered: make(chan struct{}), release: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeV2(context.Background(), input, output, "linux/amd64", &fixtureV2{outcome: completedV2()})
+	}()
+	if _, e := send.Write(request.Bytes()); e != nil {
+		t.Fatal(e)
+	}
+	<-output.entered
+	// Write returns only after the actual monitor consumed the forbidden byte.
+	// Finalization must join that observer even if its latch update is pending.
+	if _, e := send.Write([]byte("x")); e != nil {
+		t.Fatal(e)
+	}
+	close(output.release)
+	select {
+	case e := <-done:
+		if hostAcceptsV2(q, output.Bytes()) {
+			t.Fatal("late byte left an authenticated successful frame and exact EOF", e)
+		}
+		if e == nil {
+			t.Fatal("late publication succeeded")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("publication did not finish")
+	}
+}
+
+// This endpoint has a permanent finite EOF; joining its observer is still
+// mandatory. Preserve Len so buffered extra-byte admission remains covered.
+type finiteBytesV2 interface {
+	io.Reader
+	Len() int
+}
+type finiteReceiveV2 struct{ finiteBytesV2 }
+
+func (finiteReceiveV2) Close() error { return nil }
+
+type finalizationReceiveV2 struct {
+	request                     *bytes.Reader
+	started, stop, releaseClose chan struct{}
+	observation                 receiveObservationV2
+	closeErr                    error
+	holdRead                    bool
+}
+
+func (r *finalizationReceiveV2) Read(b []byte) (int, error) {
+	if r.request.Len() != 0 {
+		return r.request.Read(b)
+	}
+	close(r.started)
+	<-r.stop
+	if r.holdRead {
+		<-r.releaseClose
+	}
+	if r.observation.n != 0 {
+		b[0] = 'x'
+	}
+	return r.observation.n, r.observation.err
+}
+func (r *finalizationReceiveV2) Close() error {
+	select {
+	case <-r.stop:
+	default:
+		close(r.stop)
+	}
+	return r.closeErr
+}
+func TestV2PublicationRequiresReceiveCloseAndObserverJoin(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		observation  receiveObservationV2
+		closeErr     error
+		holdRead, ok bool
+	}{
+		{name: "close-wakeup", observation: receiveObservationV2{err: io.ErrClosedPipe}, ok: true},
+		{name: "EOF", observation: receiveObservationV2{err: io.EOF}, ok: true},
+		{name: "late-during-finalization", observation: receiveObservationV2{n: 1}},
+		{name: "pending-error", observation: receiveObservationV2{err: errors.New("pending monitor failure")}},
+		{name: "close-failure", observation: receiveObservationV2{err: io.ErrClosedPipe}, closeErr: errors.New("receive close failed")},
+		{name: "join-failure", observation: receiveObservationV2{err: io.ErrClosedPipe}, holdRead: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := probeV2(t, "c4_node_model_v2")
+			var raw bytes.Buffer
+			if e := vmruntime.WriteRequestV2(context.Background(), &raw, q, nil, ""); e != nil {
+				t.Fatal(e)
+			}
+			input := &finalizationReceiveV2{request: bytes.NewReader(raw.Bytes()), started: make(chan struct{}), stop: make(chan struct{}), releaseClose: make(chan struct{}), observation: tc.observation, closeErr: tc.closeErr, holdRead: tc.holdRead}
+			defer close(input.releaseClose)
+			output := &blockedWireV2{entered: make(chan struct{}), release: make(chan struct{})}
+			done := make(chan error, 1)
+			go func() {
+				done <- ServeV2(context.Background(), input, output, "linux/amd64", &fixtureV2{outcome: completedV2()})
+			}()
+			<-input.started
+			<-output.entered
+			close(output.release)
+			e := <-done
+			if (e == nil) != tc.ok {
+				t.Fatal("serve result", e)
+			}
+			if hostAcceptsV2(q, output.Bytes()) != tc.ok {
+				t.Fatal("host parser/EOF disagrees with receive authority", e)
+			}
+			if !output.closed {
+				t.Fatal("output left open")
+			}
+			if !tc.ok {
+				r := bytes.NewReader(bytes.TrimPrefix(output.Bytes(), []byte(vmruntime.ReadyMarkerV2)))
+				if _, e := vmruntime.ReadResponseV2(r, q); e == nil {
+					t.Fatal("failed precommit operation left a complete authenticated frame")
+				}
+			}
+		})
+	}
+}
+func TestV2BufferedPrefixCannotAuthenticateBeforeReceiveShutdown(t *testing.T) {
+	q := probeV2(t, "c4_node_model_v2")
+	var frame bytes.Buffer
+	if e := vmruntime.WriteResponseV2(&frame, q, goodChecksV2(), c4verify.Result{Class: "probe_passed"}, []vmruntime.PhaseEvidenceV2{{Phase: "probe-node", Exited: true, ResourceLimitsOK: true, CleanupConfirmed: true}}); e != nil {
+		t.Fatal(e)
+	}
+	b := frame.Bytes()
+	if _, e := vmruntime.ReadResponseV2(bytes.NewReader(b[:len(b)-1]), q); e == nil {
+		t.Fatal("withheld-byte prefix authenticated")
+	}
+	if _, e := vmruntime.ReadResponseV2(bytes.NewReader(b), q); e != nil {
+		t.Fatal(e)
+	}
+}
+func TestV2PublicationReportsOutputCloseAfterCommit(t *testing.T) {
+	q := probeV2(t, "c4_node_model_v2")
+	var request bytes.Buffer
+	_ = vmruntime.WriteRequestV2(context.Background(), &request, q, nil, "")
+	output := &memoryWireV2{closeErr: errors.New("output close failed")}
+	e := ServeV2(context.Background(), finiteReceiveV2{bytes.NewReader(request.Bytes())}, output, "linux/amd64", &fixtureV2{outcome: completedV2()})
+	if e == nil {
+		t.Fatal("output close failure hidden")
+	}
+	if !hostAcceptsV2(q, output.Bytes()) {
+		t.Fatal("test must demonstrate that local postcommit failure cannot retract frame")
+	}
+}
+
+type errorReceiveV2 struct{}
+
+func (errorReceiveV2) Read([]byte) (int, error) { return 0, errors.New("owned monitor error") }
+func (errorReceiveV2) Close() error             { return nil }
+func TestV2ReceiveShutdownJoinsObserverAfterObservation(t *testing.T) {
+	m := &receiveMonitorV2{input: errorReceiveV2{}}
+	entered, release := make(chan struct{}), make(chan struct{})
+	m.start(func() { close(entered); <-release })
+	<-entered
+	done := make(chan error, 1)
+	go func() { done <- m.shutdown() }()
+	select {
+	case <-done:
+		close(release)
+		t.Fatal("returned before observer completed")
+	case <-time.After(10 * time.Millisecond):
+	}
+	close(release)
+	if e := <-done; e == nil {
+		t.Fatal("pending error hidden")
+	}
+}
+func TestV2PublicationClosesOwnedNativeReceivePipe(t *testing.T) {
+	input, send, e := os.Pipe()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer input.Close()
+	defer send.Close()
+	if e = input.SetReadDeadline(time.Now().Add(time.Second)); e != nil {
+		t.Fatal(e)
+	}
+	q := probeV2(t, "c4_node_model_v2")
+	var request bytes.Buffer
+	if e = vmruntime.WriteRequestV2(context.Background(), &request, q, nil, ""); e != nil {
+		t.Fatal(e)
+	}
+	sent := make(chan error, 1)
+	go func() { _, e := send.Write(request.Bytes()); sent <- e }()
+	output := &memoryWireV2{}
+	e = ServeV2(context.Background(), input, output, "linux/amd64", &fixtureV2{outcome: completedV2()})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = <-sent; e != nil {
+		t.Fatal(e)
+	}
+	if !hostAcceptsV2(q, output.Bytes()) || !output.closed {
+		t.Fatal("native pipe shutdown did not commit exact transcript")
+	}
+	if _, e = send.Write([]byte("after receive shutdown")); e == nil {
+		t.Fatal("receive pipe remained open")
+	}
+}
+func TestV2PendingCloseErrorCannotBeIgnored(t *testing.T) {
+	for _, e := range []error{io.ErrClosedPipe, os.ErrClosed} {
+		m := &receiveMonitorV2{input: &readErrorV2{err: e}}
+		m.start(func() {})
+		<-m.joined
+		if m.shutdown() == nil {
+			t.Fatal("preexisting close error ignored", e)
+		}
+	}
+}
+
+type readErrorV2 struct{ err error }
+
+func (r *readErrorV2) Read([]byte) (int, error) { return 0, r.err }
+func (r *readErrorV2) Close() error             { return nil }
+
+type blockingCloseReceiveV2 struct {
+	*bytes.Reader
+	release chan struct{}
+}
+
+func (r *blockingCloseReceiveV2) Close() error { <-r.release; return nil }
+func TestV2ReceiveCloseDeadlineLeavesFrameIncomplete(t *testing.T) {
+	q := probeV2(t, "c4_node_model_v2")
+	var request bytes.Buffer
+	_ = vmruntime.WriteRequestV2(context.Background(), &request, q, nil, "")
+	input := &blockingCloseReceiveV2{Reader: bytes.NewReader(request.Bytes()), release: make(chan struct{})}
+	defer close(input.release)
+	output := &memoryWireV2{}
+	started := time.Now()
+	e := ServeV2(context.Background(), input, output, "linux/amd64", &fixtureV2{outcome: completedV2()})
+	if e == nil || hostAcceptsV2(q, output.Bytes()) || time.Since(started) > 2*transportShutdownV2 {
+		t.Fatal("close deadline did not fail incomplete", e)
 	}
 }

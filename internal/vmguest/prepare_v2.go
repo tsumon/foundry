@@ -253,3 +253,22 @@ func checkScratchV2(stat func(string) (mountObservationV2, error)) error {
 	}
 	return nil
 }
+
+// Preserve existing child mounts while adding the read-only ancestor layer;
+// the caller still freezes/checks every dependency child independently.
+func readOnlyHierarchyV2(p string, noexec bool, bind func(string, bool) error, freeze func(string, bool) error) error {
+	if e := bind(p, true); e != nil {
+		return e
+	}
+	return freeze(p, noexec)
+}
+
+func checkCompiledMountV2(stat func(string) (mountObservationV2, error)) error {
+	for p, s := range map[string]mountSpecV2{"/foundry-build/compiled": {256 << 20, 16384, true}, "/foundry-build/compiled/node_modules": {80 << 20, 32768, true}} {
+		o, e := stat(p)
+		if e != nil || !safeMountV2(o, s, true) {
+			return errGuestV2
+		}
+	}
+	return nil
+}

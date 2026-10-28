@@ -122,6 +122,11 @@ func TestV2PythonAdapterNativeFixtures(t *testing.T) {
 		{"subtest", "import unittest\nclass Test(unittest.TestCase):\n def test_a(self):\n  for i in range(3):\n   with self.subTest(i=i): self.assertEqual(i,i)\n", "passed", 1},
 		{"subtestfail", "import unittest\nclass Test(unittest.TestCase):\n def test_a(self):\n  for i in range(3):\n   with self.subTest(i=i): self.assertEqual(i,0)\n", "test_failed", 1},
 		{"expected", "import unittest\nclass Test(unittest.TestCase):\n @unittest.expectedFailure\n def test_a(self): self.fail()\n", "infrastructure_failed", 0},
+		{"setupsubassert", "import unittest\nclass Test(unittest.TestCase):\n def setUp(self):\n  with self.subTest(owned=True): self.fail(\"non-method subtest\")\n def test_a(self): pass\n", "infrastructure_failed", 0},
+		{"teardownsubassert", "import unittest\nclass Test(unittest.TestCase):\n def tearDown(self):\n  with self.subTest(owned=True): self.fail(\"non-method subtest\")\n def test_a(self): pass\n", "infrastructure_failed", 0},
+		{"cleanupsubassert", "import unittest\nclass Test(unittest.TestCase):\n def setUp(self): self.addCleanup(self.owned_cleanup)\n def owned_cleanup(self):\n  with self.subTest(owned=True): self.fail(\"non-method subtest\")\n def test_a(self): pass\n", "infrastructure_failed", 0},
+		{"teardownsubsuccess-skip", "import unittest\nclass Test(unittest.TestCase):\n def tearDown(self):\n  with self.subTest(owned=True): self.assertTrue(True)\n def test_a(self): self.skipTest(\"method skipped\")\n", "infrastructure_failed", 0},
+		{"cleanupsubsuccess-skip", "import unittest\nclass Test(unittest.TestCase):\n def setUp(self): self.addCleanup(self.owned_cleanup)\n def owned_cleanup(self):\n  with self.subTest(owned=True): self.assertTrue(True)\n def test_a(self): self.skipTest(\"method skipped\")\n", "infrastructure_failed", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
