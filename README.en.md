@@ -69,7 +69,8 @@ Tests run in a Linux guest; they do not certify native DMG, EXE, web or mobile a
 | Evidence | What it covers |
 | :--- | :--- |
 | [Real Mac CPA/Grok delivery](docs/public/compatible-api-acceptance.md) | Five real role calls; baseline and candidate each passed 14 real VM tests, with source and protected tests unchanged. The first candidate passed, so no real Debugger call occurred. |
-| Versioned Release receipts | Distinguish real provider calls, injected failures, protocol fixtures, installation/upgrade and VM execution, bound to commits and installer hashes. |
+| [Real repair delivery](docs/public/compatible-api-acceptance.md#real-repair-and-delivery--stable-candidate) | Six roles each called the real model once. A deliberate injected error failed in the VM; Debugger repaired it and all 9 tests passed. This is not a claim of a spontaneous model defect. |
+| Versioned Release receipts | Distinguish provider calls, protocol fixtures, installation/upgrade and VM execution, bound to commits and installer hashes. |
 | Native Windows installation and WHPX acceptance | Actual installation, UI, restart and VM failure→repair→recheck. Protocol-fixture roles are not real Windows provider calls. |
 | Local demonstration | Labeled `SYNTHETIC` / `synthetic_stub`; no cloud calls or Go compiler execution. |
 

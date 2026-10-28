@@ -4,7 +4,22 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { exactCopy, inventory, snapshot } = require("../upgrade-smoke.cjs");
+const { exactCopy, inventory, snapshot, allowedMigration, assertSchemaEvolution } = require("../upgrade-smoke.cjs");
+
+test("only the reviewed additive inference schema migration is accepted", () => {
+  const original = [{ type: "table", name: "missions", sql: "CREATE TABLE missions(id TEXT)" }];
+  const migrated = [...original, ...[...allowedMigration].map(([key, sql]) => {
+    const [type, name] = key.split(":");
+    return { type, name, sql };
+  })];
+  assert.equal(allowedMigration.size, 6);
+  assert.doesNotThrow(() => assertSchemaEvolution(original, original, false));
+  assert.doesNotThrow(() => assertSchemaEvolution(original, migrated, true));
+  assert.throws(() => assertSchemaEvolution(original, migrated, false), /schema/);
+  assert.throws(() => assertSchemaEvolution(original, [...migrated, { type: "table", name: "unknown", sql: "CREATE TABLE unknown(id TEXT)" }], true), /schema/);
+  assert.throws(() => assertSchemaEvolution(original, migrated.map((row) => row.name === "inference_budget_no_update" ? { ...row, sql: row.sql + " --changed" } : row), true), /migration DDL/);
+  assert.throws(() => assertSchemaEvolution(original, [{ ...original[0], sql: "CREATE TABLE missions(id BLOB)" }, ...migrated.slice(1)], true), /Historical schema changed/);
+});
 
 test("consistent backup copies exact files and rejects links and reused destinations", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "foundry-upgrade-copy-"));
@@ -48,6 +63,15 @@ test("stopped synthetic ledger snapshot preserves sealed budget and rejects inco
   changedCredential.prepare("UPDATE model_credential_versions SET secret_ref=? WHERE account_id=?").run("other-inert-reference", "synthetic-account");
   changedCredential.close();
   assert.notEqual(snapshot(fixture).credential_versions, first.credential_versions);
+  const migrationDb = new DatabaseSync(dbFile);
+  migrationDb.exec("CREATE TABLE model_acceptance_inference_budgets(operation_id TEXT); CREATE TABLE model_acceptance_inference_sends(operation_id TEXT)");
+  migrationDb.close();
+  assert.deepEqual(snapshot(fixture).migration_table_rows,
+    { model_acceptance_inference_budgets: 0, model_acceptance_inference_sends: 0 });
+  const writtenMigration = new DatabaseSync(dbFile);
+  writtenMigration.prepare("INSERT INTO model_acceptance_inference_budgets VALUES(?)").run("unexpected");
+  writtenMigration.close();
+  assert.equal(snapshot(fixture).migration_table_rows.model_acceptance_inference_budgets, 1);
   fs.writeFileSync(dbFile + "-wal", "incomplete");
   assert.throws(() => snapshot(fixture), /closed, checkpointed/);
 });

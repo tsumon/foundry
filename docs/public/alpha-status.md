@@ -23,9 +23,9 @@ historical `alpha-status.md` URL so older links keep working.
 
 [Mac CPA/Grok acceptance](compatible-api-acceptance.md) records a real API-driven
 code delivery with five role calls and passing baseline/candidate VM tests. That
-first candidate passed, so it does not prove real Debugger execution. Release
-receipts record subsequent acceptance separately, including whether a failure
-was deliberately injected. Windows native installation and WHPX tests use local
+first candidate passed. A separate six-call real-provider run then exercised a
+deliberately injected failure, Debugger repair and passing nine-test VM recheck.
+Both runs are documented with their scope; Release receipts bind the final assets. Windows native installation and WHPX tests use local
 model protocol fixtures; do not present them as Windows real-provider acceptance.
 The [release](https://github.com/tsumon/foundry/releases/tag/v0.1.0) records exact
 commits, package hashes and scoped checks. Tests on a prior build are historical,

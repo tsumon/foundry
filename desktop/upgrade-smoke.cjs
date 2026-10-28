@@ -12,6 +12,31 @@ const asar = require("@electron/asar");
 const sha = (value) => crypto.createHash("sha256").update(value).digest("hex");
 const host = process.platform === "win32" ? "windows/amd64" : "darwin/arm64";
 const hashJSON = (value) => sha(JSON.stringify(value));
+// Exact additive DDL observed between pinned alpha.3 and the stable candidate.
+// No prior object may change and no other object may appear.
+const allowedMigration = new Map([
+  ["table:model_acceptance_inference_budgets", "CREATE TABLE model_acceptance_inference_budgets(operation_id TEXT PRIMARY KEY REFERENCES model_acceptance_claims(operation_id), mission_id TEXT NOT NULL REFERENCES missions(id), revision INTEGER NOT NULL, binding_digest TEXT NOT NULL)"],
+  ["table:model_acceptance_inference_sends", "CREATE TABLE model_acceptance_inference_sends(operation_id TEXT PRIMARY KEY REFERENCES model_acceptance_dispatches(operation_id),claim_sequence INTEGER NOT NULL UNIQUE REFERENCES model_acceptance_claims(sequence),started_at TEXT NOT NULL)"],
+  ["trigger:inference_budget_no_delete", "CREATE TRIGGER inference_budget_no_delete BEFORE DELETE ON model_acceptance_inference_budgets BEGIN SELECT RAISE(ABORT,'immutable inference budget'); END"],
+  ["trigger:inference_budget_no_update", "CREATE TRIGGER inference_budget_no_update BEFORE UPDATE ON model_acceptance_inference_budgets BEGIN SELECT RAISE(ABORT,'immutable inference budget'); END"],
+  ["trigger:inference_send_no_delete", "CREATE TRIGGER inference_send_no_delete BEFORE DELETE ON model_acceptance_inference_sends BEGIN SELECT RAISE(ABORT,'immutable inference send'); END"],
+  ["trigger:inference_send_no_update", "CREATE TRIGGER inference_send_no_update BEFORE UPDATE ON model_acceptance_inference_sends BEGIN SELECT RAISE(ABORT,'immutable inference send'); END"],
+]);
+
+function assertSchemaEvolution(before, after, candidate) {
+  const key = (row) => row.type + ":" + row.name;
+  const original = new Map(before.map((row) => [key(row), row.sql]));
+  const actual = new Map(after.map((row) => [key(row), row.sql]));
+  assert.equal(original.size, before.length, "Duplicate initial schema object");
+  assert.equal(actual.size, after.length, "Duplicate resulting schema object");
+  assert.equal(actual.size, original.size + (candidate ? allowedMigration.size : 0),
+    "Unreviewed schema object added or removed");
+  for (const [name, sql] of original) assert.equal(actual.get(name), sql, "Historical schema changed: " + name);
+  for (const [name, sql] of allowedMigration) {
+    assert.equal(original.has(name), false, "Migration already in old source: " + name);
+    if (candidate) assert.equal(actual.get(name), sql, "Unexpected migration DDL: " + name);
+  }
+}
 
 function packagedRuntime(resources, output) {
   assert(path.isAbsolute(resources) && path.isAbsolute(output));
@@ -109,7 +134,12 @@ function snapshot(fixture) {
       model_routes: hashJSON(db.prepare("SELECT * FROM model_routes ORDER BY id").all()),
       evidence: inventory(path.join(data, "evidence")),
       missions: inventory(path.join(data, "missions")),
-      schema: hashJSON(db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()),
+      schema: db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all(),
+      migration_table_rows: Object.fromEntries(
+        ["model_acceptance_inference_budgets", "model_acceptance_inference_sends"].map((name) => [name,
+          db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name=?").get(name).n === 1
+            ? db.prepare("SELECT count(*) AS n FROM " + name).get().n : null]),
+      ),
     };
   } finally { db.close(); fs.rmSync(scratch, { recursive: true }); }
 }
@@ -184,7 +214,15 @@ async function run(oldResources, newResources, fixtureFile, reportFile) {
   const current = packagedRuntime(newResources, path.join(work, "upgrade-current-module"));
   const steps = [];
   const initial = snapshot(fixture);
-  function retained() { assert.deepEqual(snapshot(fixture), initial, "Frozen task history changed"); }
+  function retained(candidate) {
+    const actual = snapshot(fixture);
+    const { schema: beforeSchema, migration_table_rows: beforeTables, ...before } = initial;
+    const { schema: afterSchema, migration_table_rows: afterTables, ...after } = actual;
+    assert.deepEqual(after, before, "Frozen task/account/credential history changed");
+    assertSchemaEvolution(beforeSchema, afterSchema, candidate);
+    for (const name of Object.keys(beforeTables))
+      assert.equal(afterTables[name], candidate ? 0 : null, "Migration table contains data");
+  }
   async function start(version, name, expected = "ok") {
     let child;
     try {
@@ -192,7 +230,7 @@ async function run(oldResources, newResources, fixtureFile, reportFile) {
       const result = await inspect(child, fixture, expected, version.resources);
       await child.stop();
       assert.equal(child.process.exitCode, 0);
-      retained();
+      retained(version === current);
       steps.push({ name, ...result });
     } finally { if (child) await child.stop(); }
   }
@@ -210,13 +248,13 @@ async function run(oldResources, newResources, fixtureFile, reportFile) {
   fs.writeFileSync(kernel, "TAMPERED SYNTHETIC FIXTURE\n");
   try {
     await assert.rejects(() => current.runtime.startBackend({ resources: current.resources, dataRoot: fixture.data_root, mode: "coding", integrity: current.integrity }), /Controller exited before readiness/);
-    retained();
+    retained(true);
     steps.push({ name: "tampered-retained-runtime", startup_rejected: true });
   } finally {
     fs.renameSync(fixture.data_root, path.join(work, "upgrade-failed-data-preserved"));
     exactCopy(checkpoint, fixture.data_root);
   }
-  retained();
+  retained(false);
   await start(old, "rollback-from-consistent-checkpoint");
   await start(current, "upgrade-after-restore");
   const report = { result: "PASS", source_version: "v0.1.0-alpha.3", scope: "packaged controller and synthetic journal; no provider or VM execution", synthetic: true, host,
@@ -272,4 +310,4 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
-module.exports = { packagedRuntime, inventory, exactCopy, snapshot, probeOld, verifyFresh, run };
+module.exports = { packagedRuntime, inventory, exactCopy, snapshot, allowedMigration, assertSchemaEvolution, probeOld, verifyFresh, run };

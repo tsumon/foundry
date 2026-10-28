@@ -82,7 +82,8 @@ evidence. Never substitute a real user's existing task or credentials.
 
 ## Real-account workflow gate
 
-The Mac compatible-API path has completed a real code delivery; see
+The Mac compatible-API path has completed real code delivery and a separately
+labeled injected-failure repair/recheck; see
 [its scoped acceptance record](compatible-api-acceptance.md). The earlier OpenAI
 subscription attempt stopped at media validation and is not a successful route.
 New acceptance needs its own explicit account and operation authority. API Key

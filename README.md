@@ -69,7 +69,8 @@ API Key 在 Mac 存入 Keychain，在 Windows 存入 Credential Manager，不写
 | 证据 | 覆盖范围 |
 | :--- | :--- |
 | [Mac CPA/Grok 真实交付](docs/public/compatible-api-acceptance.md) | 5 次真实角色调用；基线和候选各 14 项真实 VM 测试通过，原仓库与受保护测试未改。首版通过，未触发真实 Debugger。 |
-| 版本 Release 的验收回执 | 明确区分真实供应商调用、故障注入、协议 fixture、安装升级与 VM 执行；按提交和安装包摘要绑定。 |
+| [真实故障修复交付](docs/public/compatible-api-acceptance.md#real-repair-and-delivery--stable-candidate) | 6 个角色各一次真实调用；明确注入的错误被 VM 检出，Debugger 修复后 9 项测试通过。不是模型自然出错的宣称。 |
+| 版本 Release 的验收回执 | 区分供应商调用、协议 fixture、安装升级与 VM 执行，按提交和安装包摘要绑定。 |
 | Windows 原生安装与 WHPX 验收 | 真实安装、界面、重启及 VM 失败→修复→复验；角色协议 fixture 不能冒充 Windows 真实供应商调用。 |
 | 本地演示 | `SYNTHETIC` / `synthetic_stub`，不调用云模型，也不执行 Go 编译器。 |
 

@@ -42,3 +42,41 @@ Retained private artifact digests:
 
 - Patch: `499e895024ede6da68a0b6494d160cdcd3378e4c307d49664e737ecfce89c546`
 - Report: `ec091946ae6119114a33debfb74d2087b3b18947b7250e4e02bb77af7d77eefa`
+
+## Real repair and delivery — stable candidate
+
+A separate bounded run used the installed resources built from
+`5b5cd706c9a2010e29b95a899484b304d3492617` on physical Apple Silicon. It used
+independent task/account data and a seven-call ceiling; historical tasks and their
+consumed budgets were unchanged.
+
+This was a **deliberate fault-injection exercise**, not a spontaneous model bug.
+The approved plan told Worker to initially implement `Double(x)` as
+`(x << 1) + 1`, then required Debugger to repair it to `x << 1` using the actual
+verifier failures. The protected test file and `go.mod` were never edited.
+
+| Check | Observed result |
+| --- | --- |
+| Fixed receiver/model | User-selected local CPA Responses entry; requested `grok-4.6`, gateway reported `grok-4.6-build` |
+| Model calls | Researcher, Planner, Worker, Debugger, QA and Auditor each completed once; six of seven calls used, no retry/fallback |
+| Baseline | 9 real VM tests passed; shutdown confirmed |
+| Injected candidate | 9 verifier-counted tests, confirmed `test_failed`; shutdown confirmed |
+| Repaired candidate | 9 real VM tests passed; shutdown confirmed |
+| Reviews | QA and Auditor passed against the corrected candidate and matching evidence |
+| Delivery | Independently approved and sealed patch/report; source checkout and protected bytes unchanged |
+| Provider-reported usage | 26,844 input and 11,929 output tokens; not a monetary charge calculation |
+
+All six responses passed strict media and completed-envelope validation.
+No guest network, host execution fallback, login or subscription renewal occurred.
+The produced patch changes only `double.go`, from `x + x` to `x << 1`.
+This adds real Debugger/repair evidence to the earlier first-pass delivery; it does
+not establish arbitrary-project reliability or Windows real-account acceptance.
+
+Retained private artifact digests:
+
+- Patch: `4b17a0836dd60640829ef5628c3b8873268915de84813c133965ec23bac5420d`
+- Report: `c5de06e4974b910ad1538f33d740339b05d3b2c1cd99a824b3d996cf6ef4c026`
+
+Later candidates must verify unchanged executable/resource bytes before carrying
+this run forward. Release receipts identify the final installer and that binding;
+a version or source-tree resemblance alone is insufficient.
