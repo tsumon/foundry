@@ -8,37 +8,75 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"foundry/internal/platformfs"
 	"golang.org/x/sys/windows"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"unsafe"
 )
 
 type entry struct {
-	rel, digest, security string
-	directory             bool
+	rel, digest string
+	security    securityID
+	directory   bool
 }
 
-func security(path string) (string, error) {
+type securityID struct {
+	owner, aceDigest string
+	protected        bool
+}
+
+// Compare the owner, protected-DACL state and ordered ACE bytes. Windows may
+// normalize descriptor bookkeeping flags without changing these permissions.
+func security(path string) (securityID, error) {
 	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
 		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
-		return "", err
+		return securityID{}, err
 	}
 	owner, _, err := sd.Owner()
 	if err != nil || owner == nil {
-		return "", errors.New("missing owner")
+		return securityID{}, errors.New("missing owner")
 	}
 	dacl, _, err := sd.DACL()
 	if err != nil || dacl == nil {
-		return "", errors.New("missing DACL")
+		return securityID{}, errors.New("missing DACL")
 	}
-	return sd.String(), nil
+	control, _, err := sd.Control()
+	if err != nil {
+		return securityID{}, err
+	}
+	h := sha256.New()
+	revision := *(*byte)(unsafe.Pointer(dacl))
+	_, _ = h.Write([]byte{revision, byte(dacl.AceCount), byte(dacl.AceCount >> 8)})
+	for i := uint32(0); i < uint32(dacl.AceCount); i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, i, &ace); err != nil {
+			return securityID{}, err
+		}
+		if ace.Header.AceSize == 0 {
+			return securityID{}, errors.New("empty DACL ACE")
+		}
+		_, _ = h.Write(unsafe.Slice((*byte)(unsafe.Pointer(ace)), int(ace.Header.AceSize)))
+	}
+	return securityID{owner: owner.String(), aceDigest: hex.EncodeToString(h.Sum(nil)), protected: control&windows.SE_DACL_PROTECTED != 0}, nil
 }
 
 func cloneSecurity(source, target string) error {
+	want, err := security(source)
+	if err != nil {
+		return err
+	}
+	got, err := security(target)
+	if err != nil {
+		return err
+	}
+	if got == want {
+		return nil
+	}
 	sd, err := windows.GetNamedSecurityInfo(source, windows.SE_FILE_OBJECT,
 		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
@@ -140,18 +178,36 @@ func copyExact(source, target string) error {
 	if _, err := os.Lstat(target); !os.IsNotExist(err) {
 		return errors.New("fresh backup destination required")
 	}
+	sourceInfo, err := os.Lstat(source)
+	if err != nil {
+		return err
+	}
+	if !sourceInfo.IsDir() || sourceInfo.Mode()&os.ModeSymlink != 0 {
+		return errors.New("private backup source directory required")
+	}
+	if err := platformfs.PrivateDirectory(source); err != nil {
+		return fmt.Errorf("private backup source required: %w", err)
+	}
 	before, err := inventory(source)
 	if err != nil {
 		return err
 	}
 	for _, row := range before {
+		from := filepath.Join(source, row.rel)
 		to := filepath.Join(target, row.rel)
 		if row.directory {
-			if err := platformfs.PrivateDirectory(to); err != nil {
+			// Protected roots must be private at creation. An inherited child
+			// is created under its already-matched private parent, so Windows
+			// derives the same inherited ACEs without a later rewrite.
+			if row.security.protected {
+				err = platformfs.PrivateDirectory(to)
+			} else {
+				err = os.Mkdir(to, 0700)
+			}
+			if err != nil {
 				return err
 			}
 		} else {
-			from := filepath.Join(source, row.rel)
 			info, err := os.Lstat(from)
 			if err != nil {
 				return err
@@ -160,11 +216,7 @@ func copyExact(source, target string) error {
 				return err
 			}
 		}
-	}
-	// Apply parent security before child security so inheritance cannot change a
-	// child after its owner and DACL have been checked.
-	for _, row := range before {
-		if err := cloneSecurity(filepath.Join(source, row.rel), filepath.Join(target, row.rel)); err != nil {
+		if err := cloneSecurity(from, to); err != nil {
 			return err
 		}
 	}
@@ -180,9 +232,31 @@ func copyExact(source, target string) error {
 		return errors.New("backup inventory count changed")
 	}
 	for i := range before {
-		if before[i] != after[i] || before[i] != again[i] {
-			return errors.New("backup bytes or owner/DACL changed")
+		if err := compareEntry(before[i], after[i], "backup"); err != nil {
+			return err
 		}
+		if err := compareEntry(before[i], again[i], "source"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func compareEntry(want, got entry, phase string) error {
+	if want.rel != got.rel || want.directory != got.directory {
+		return fmt.Errorf("%s inventory path/type changed", phase)
+	}
+	if want.digest != got.digest {
+		return fmt.Errorf("%s file content changed at %q", phase, want.rel)
+	}
+	if want.security.owner != got.security.owner {
+		return fmt.Errorf("%s owner changed at %q", phase, want.rel)
+	}
+	if want.security.protected != got.security.protected {
+		return fmt.Errorf("%s DACL protection changed at %q", phase, want.rel)
+	}
+	if want.security.aceDigest != got.security.aceDigest {
+		return fmt.Errorf("%s DACL ACEs changed at %q", phase, want.rel)
 	}
 	return nil
 }
