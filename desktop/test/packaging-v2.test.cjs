@@ -65,3 +65,63 @@ test("distribution manifest binds both installed runtimes and complete sidecars 
     });
   }
 });
+function moduleNoticeFixture(t,filename='golang.org-x-sys-v0.48.0.zip') {
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'foundry-module-notices-')));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const moduleDir=path.join(root,'module'),legal=path.join(root,'bundle/legal/go-modules');
+  fs.mkdirSync(moduleDir);fs.mkdirSync(legal,{recursive:true});
+  return {root,moduleDir,legal,filename,source:path.join(moduleDir,'LICENSE'),target:path.join(legal,filename+'-LICENSE'),copy:()=>require('../sandbox/build-bundle-v2.cjs').copyGoModuleNotices(moduleDir,legal,filename)};
+}
+test('module notices copy absent LICENSE and PATENTS with exact bytes',t=>{
+  const f=moduleNoticeFixture(t);fs.writeFileSync(f.source,'BSD license\n');fs.writeFileSync(path.join(f.moduleDir,'PATENTS'),'patent grant\n');
+  f.copy();
+  assert.equal(fs.readFileSync(f.target,'utf8'),'BSD license\n');
+  assert.equal(fs.readFileSync(path.join(f.legal,f.filename+'-PATENTS'),'utf8'),'patent grant\n');
+});
+test('module notices preserve identical inherited legal bytes and file identity',t=>{
+  const f=moduleNoticeFixture(t),base=path.join(f.root,'v1/legal/go-modules');fs.mkdirSync(base,{recursive:true});
+  fs.writeFileSync(f.source,'exact inherited BSD license\n');fs.writeFileSync(path.join(base,f.filename+'-LICENSE'),'exact inherited BSD license\n');
+  fs.writeFileSync(path.join(base,'inherited-only'),'complete inherited notice\n');
+  // The assembler first inherits v1 legal files exclusively, then adds linked-module notices.
+  for(const name of fs.readdirSync(base))fs.copyFileSync(path.join(base,name),path.join(f.legal,name),fs.constants.COPYFILE_EXCL);
+  fs.chmodSync(f.target,0o444);fs.utimesSync(f.target,123456789,123456789);const before=fs.lstatSync(f.target);
+  f.copy();
+  const after=fs.lstatSync(f.target);
+  assert.equal(fs.readFileSync(f.target,'utf8'),'exact inherited BSD license\n');
+  for(const key of ['ino','mode','mtimeMs','size'])assert.equal(after[key],before[key]);
+  assert.equal(fs.readFileSync(path.join(f.legal,'inherited-only'),'utf8'),'complete inherited notice\n');
+});
+test('module notices reject different inherited bytes without overwriting',t=>{
+  const f=moduleNoticeFixture(t);fs.writeFileSync(f.source,'new notice');fs.writeFileSync(f.target,'old notice');
+  assert.throws(f.copy);assert.equal(fs.readFileSync(f.target,'utf8'),'old notice');
+});
+test('module notices reject symlink and directory targets without replacing them',async t=>{
+  for(const kind of ['symlink','dangling symlink','directory'])await t.test(kind,t=>{
+    const f=moduleNoticeFixture(t);fs.writeFileSync(f.source,'exact notice');
+    if(kind==='directory')fs.mkdirSync(f.target);
+    else fs.symlinkSync(kind==='symlink'?f.source:path.join(f.root,'absent'),f.target);
+    assert.throws(f.copy);
+    if(kind==='directory')assert.equal(fs.lstatSync(f.target).isDirectory(),true);
+    else {assert.equal(fs.lstatSync(f.target).isSymbolicLink(),true);assert.equal(fs.readlinkSync(f.target),kind==='symlink'?f.source:path.join(f.root,'absent'));}
+    assert.equal(fs.readFileSync(f.source,'utf8'),'exact notice');
+  });
+});
+test('module notices retain LICENSE.txt for a linked module',t=>{
+  const f=moduleNoticeFixture(t,'github.com-Masterminds-semver-v3-v3.5.0.zip');fs.writeFileSync(path.join(f.moduleDir,'LICENSE.txt'),'semver MIT license\n');
+  f.copy();f.copy();assert.equal(fs.readFileSync(path.join(f.legal,f.filename+'-LICENSE.txt'),'utf8'),'semver MIT license\n');
+});
+test('module notices reject a linked module without a recognized license',async t=>{
+  for(const patents of [false,true])await t.test(patents?'PATENTS only':'no notices',t=>{
+    const f=moduleNoticeFixture(t);if(patents)fs.writeFileSync(path.join(f.moduleDir,'PATENTS'),'not a license');
+    assert.throws(f.copy,/license/i);
+  });
+});
+test('module notices reject nonregular source notices even when inherited bytes match',async t=>{
+  for(const name of ['LICENSE','LICENSE.txt','PATENTS'])for(const kind of ['symlink','dangling symlink','directory'])await t.test(name+'/'+kind,t=>{
+    const f=moduleNoticeFixture(t),source=path.join(f.moduleDir,name),real=path.join(f.root,'real-notice'),target=path.join(f.legal,f.filename+'-'+name);
+    if(name!=='LICENSE')fs.writeFileSync(f.source,'valid license');
+    fs.writeFileSync(real,'exact notice');fs.writeFileSync(target,'exact notice');
+    if(kind==='directory')fs.mkdirSync(source);else fs.symlinkSync(kind==='symlink'?real:path.join(f.root,'absent'),source);
+    assert.throws(f.copy);assert.equal(fs.readFileSync(target,'utf8'),'exact notice');
+  });
+});

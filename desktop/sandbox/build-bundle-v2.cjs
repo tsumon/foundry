@@ -24,6 +24,19 @@ function copyFile(source,target) {
   if(!fs.lstatSync(source).isFile())throw Error('Regular source input required');
   fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(source,target,fs.constants.COPYFILE_EXCL);
 }
+function copyGoModuleNotices(moduleDir,legal,filename) {
+  // Only linked-module notices may reuse byte-identical inherited v1 files.
+  const notices=['LICENSE','LICENSE.txt','PATENTS'].filter(n=>fs.lstatSync(path.join(moduleDir,n),{throwIfNoEntry:false}));
+  if(!notices.some(n=>n!=='PATENTS'))throw Error('Go module license required: '+filename);
+  for(const n of notices) {
+    const source=path.join(moduleDir,n),target=path.join(legal,filename+'-'+n);
+    if(!fs.lstatSync(source).isFile())throw Error('Regular Go module notice source required');
+    const existing=fs.lstatSync(target,{throwIfNoEntry:false});
+    if(existing) {
+      if(!existing.isFile()||!fs.readFileSync(source).equals(fs.readFileSync(target)))throw Error('Go module notice collision: '+target);
+    } else copyFile(source,target);
+  }
+}
 async function buildBundleV2({output,inputs,baseBundle,baseSources,nativeInputs,windowsRuntime,python=process.env.FOUNDRY_BUILD_PYTHON,go=process.env.FOUNDRY_GO||'go'}) {
   const host=process.platform==='win32'&&process.arch==='x64'?'windows/amd64':process.platform+'/'+process.arch;
   if(!['darwin/arm64','windows/amd64'].includes(host))throw Error('Native supported build host required');
@@ -73,16 +86,16 @@ async function buildBundleV2({output,inputs,baseBundle,baseSources,nativeInputs,
     if(!fs.readFileSync(path.join(source,'go.sum'),'utf8').split(/\r?\n/).includes(`${info.Path} ${info.Version} ${info.Sum}`))throw Error('Unpinned Go source module');
     const filename=spec.replaceAll('/','-').replace('@','-')+'.zip';copyFile(info.Zip,path.join(sourceKit,'go-modules',filename));
     moduleInputs.push({module:info.Path,version:info.Version,sum:info.Sum,file:filename,sha256:resourceDigest(info.Zip)});
-    for(const n of ['LICENSE','PATENTS'])if(fs.existsSync(path.join(info.Dir,n)))copyFile(path.join(info.Dir,n),path.join(bundle,'legal/go-modules',filename+'-'+n));
+    copyGoModuleNotices(info.Dir,path.join(bundle,'legal/go-modules'),filename);
   }
   json(path.join(sourceKit,'module-inputs.json'),moduleInputs);copyFile(path.join(__dirname,'multilang-inputs.lock.json'),path.join(sourceKit,'multilang-inputs.lock.json'));
   json(path.join(sourceKit,'build-contract.json'),{schema_version:2,host,guest_platform:'linux/'+arch,go:version,base_manifest_sha256:resourceDigest(path.join(baseBundle,'manifest.json')),projection:validated,runtime_inventory:receipt.descriptor,guest:receipt.guest,runners:receipt.runners,image:receipt.image,native_acceptance:'not_performed'});
   fs.writeFileSync(path.join(sourceKit,'README.md'),'# Foundry v2 corresponding sources\n\nThis sidecar accompanies the matching installer. multilang/ contains every pinned Debian upstream/distribution source, Node source, and TypeScript source/compiler artifact. native/ preserves kernel/native runtime sources and audited QEMU stdio/UTF-8/zlib proofs and recipes. toolchain/ contains exact Go source/toolchain input; go-modules/ contains pinned linked module source. foundry-source/ holds the exact guest and builder/runner recipes. Run desktop/sandbox/build-bundle-v2.cjs in the matching checkout with explicit local inputs; it invokes only pinned Go and trusted Python and performs no downloads. The descriptor precedes image compression; manifest identity is computed afterward. Build-only evidence is not native VM acceptance.\n',{flag:'wx'});
-  fs.writeFileSync(path.join(bundle,'legal/NOTICE.md'),'# Bundled v2 sandbox components\n\nFoundry guest/runners/native helper: Apache-2.0. Go 1.27.3 and linked golang.org/x/sys: BSD-3-Clause (Go-LICENSE/Go-PATENTS and go-modules/). Linux kernel: GPL-2.0-only (GPL-2.0.txt). Node 24.22.1: MIT and bundled third-party terms in Node-LICENSE. Python 3.13.5 Debian trixie revision 3.13.5-2+deb13u5 and its complete runtime closure: exact per-package copyright notices in debian/; extracted upstream license texts in source-licenses/. TypeScript 5.9.3: Apache-2.0 and ThirdPartyNoticeText, included here. runtime-components.json maps every shipped package to exact corresponding sources and notices. Windows native QEMU/runtime notices and proofs remain in qemu/. This installer must be distributed with sandbox-v2-sources; sources.json binds its complete actual bytes. No native VM acceptance is claimed.\n',{flag:'wx'});
+  fs.writeFileSync(path.join(bundle,'legal/NOTICE.md'),'# Bundled v2 sandbox components\n\nFoundry guest/runners/native helper: Apache-2.0. Go 1.27.3: BSD-3-Clause (Go-LICENSE/Go-PATENTS). Linked golang.org/x/sys: BSD-3-Clause; github.com/Masterminds/semver/v3: MIT (exact module notices in go-modules/). Linux kernel: GPL-2.0-only (GPL-2.0.txt). Node 24.22.1: MIT and bundled third-party terms in Node-LICENSE. Python 3.13.5 Debian trixie revision 3.13.5-2+deb13u5 and its complete runtime closure: exact per-package copyright notices in debian/; extracted upstream license texts in source-licenses/. TypeScript 5.9.3: Apache-2.0 and ThirdPartyNoticeText, included here. runtime-components.json maps every shipped package to exact corresponding sources and notices. Windows native QEMU/runtime notices and proofs remain in qemu/. This installer must be distributed with sandbox-v2-sources; sources.json binds its complete actual bytes. No native VM acceptance is claimed.\n',{flag:'wx'});
   json(path.join(bundle,'legal/sources.json'),{schema_version:1,sidecar:'sandbox-v2-sources',files:sourceInventory(sourceKit)});
   const manifest=writeVMManifestV2(bundle,host);verifySourceSidecar(bundle,sourceKit,'sandbox-v2-sources');
   json(path.join(output,'sandbox-build-v2.json'),{schema_version:2,host,base_manifest_sha256:resourceDigest(path.join(baseBundle,'manifest.json')),manifest_sha256:resourceDigest(path.join(bundle,'manifest.json')),runtime_inventory_digest:manifest.runtime_inventory_digest,native_acceptance:'not_performed'});
   return {bundle,sourceKit,manifest};
 }
-module.exports={writeVMManifestV2,buildBundleV2};
+module.exports={writeVMManifestV2,buildBundleV2,copyGoModuleNotices};
 if(require.main===module)buildBundleV2({output:process.argv[2]||'',inputs:process.env.FOUNDRY_MULTILANG_INPUTS,baseBundle:process.env.FOUNDRY_SANDBOX_BUNDLE,baseSources:process.env.FOUNDRY_SANDBOX_SOURCES,nativeInputs:process.env.FOUNDRY_SANDBOX_INPUTS,windowsRuntime:process.env.FOUNDRY_WINDOWS_VM_RUNTIME}).then(r=>console.log(JSON.stringify({bundle:r.bundle,sourceKit:r.sourceKit,assets:r.manifest.assets.length}))).catch(e=>{console.error(e.message);process.exitCode=1;});
