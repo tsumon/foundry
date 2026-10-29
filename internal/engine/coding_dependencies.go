@@ -7,8 +7,8 @@ import (
 	"foundry/internal/dependencybundle"
 	"foundry/internal/domain"
 	"foundry/internal/gitinspect"
+	"foundry/internal/platformfs"
 	"foundry/internal/workspace"
-	"os"
 	"path/filepath"
 	"reflect"
 	"time"
@@ -113,7 +113,7 @@ func (e *Engine) ImportCodingDependencies(parent context.Context, q CodingDepend
 	if err != nil {
 		return zero, err
 	}
-	if err = os.MkdirAll(root, 0700); err != nil {
+	if err = platformfs.PrivateDirectory(root); err != nil {
 		return zero, domain.ImportStorageFailed
 	}
 	var a dependencyadmission.AdmissionReceipt
