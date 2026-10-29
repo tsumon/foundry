@@ -13,19 +13,34 @@ function tar(entries) {
   return Buffer.concat([...chunks,Buffer.alloc(1024)]);
 }
 function elf(arch='amd64') {const b=Buffer.alloc(64);b.write('\x7fELF');b[4]=2;b[5]=1;b[6]=1;b.writeUInt16LE(2,16);b.writeUInt16LE(arch==='amd64'?62:183,18);b.writeUInt32LE(1,20);b.writeUInt16LE(64,52);b.writeUInt16LE(56,54);return b;}
-function archive() {return zlib.gzipSync(tar([['go/VERSION','go1.27.3\ntime 2026-10-01T00:00:00Z\n'],['go/bin/go',elf()],['go/pkg/tool/linux_amd64/compile',elf()],['go/src/runtime/runtime.go','package runtime\n']]))}
-function cpioNames(b) {let at=0,entries=[];for(;;){assert.equal(b.toString('ascii',at,at+6),'070701');const size=parseInt(b.toString('ascii',at+54,at+62),16),n=parseInt(b.toString('ascii',at+94,at+102),16);const name=b.toString('utf8',at+110,at+110+n-1);at=(at+110+n+3)&~3;if(name==='TRAILER!!!')break;entries.push(name);at=(at+size+3)&~3;}return entries;}
+function archive(arch='amd64') {return zlib.gzipSync(tar([['go/VERSION','go1.27.3\ntime 2026-10-01T00:00:00Z\n'],['go/bin/go',elf(arch)],['go/pkg/tool/linux_'+arch+'/compile',elf(arch),'0','0000755\0'],['go/src/runtime/runtime.go','package runtime\n']]))}
+function cpioEntries(b) {let at=0,entries=new Map();for(;;){assert.equal(b.toString('ascii',at,at+6),'070701');const fields=Array.from({length:13},(_,i)=>parseInt(b.toString('ascii',at+6+i*8,at+14+i*8),16)),size=fields[6],n=fields[11];const name=b.toString('utf8',at+110,at+110+n-1);at=(at+110+n+3)&~3;if(name==='TRAILER!!!')break;assert.ok(!entries.has(name),'duplicate cpio entry');entries.set(name,{fields,data:b.subarray(at,at+size)});at=(at+size+3)&~3;}return entries;}
 test('deterministic root-owned newc includes pinned toolchain and init',()=>{
  const args={guest:elf(),goArchive:archive(),arch:'amd64'};
  const a=buildInitramfs(args),b=buildInitramfs(args);assert.deepEqual(a,b);
- assert.deepEqual(cpioNames(zlib.gunzipSync(a)).filter(n=>n==='init'||n==='usr/local/go/bin/go'),['init','usr/local/go/bin/go']);
+ assert.deepEqual([...cpioEntries(zlib.gunzipSync(a)).keys()].filter(n=>n==='init'||n==='usr/local/go/bin/go'),['init','usr/local/go/bin/go']);
+});
+test('both images supply only the fixed null device needed before Go PID1 bootstrap',()=>{
+ for(const arch of ['amd64','arm64']) {
+  const args={guest:elf(arch),goArchive:archive(arch),arch},image=buildInitramfs(args);
+  assert.deepEqual(image,buildInitramfs(args));
+  const entries=cpioEntries(zlib.gunzipSync(image)),node=entries.get('dev/null');
+  assert.ok(node,'Go checkfds needs /dev/null before Main can mount devtmpfs');
+  assert.deepEqual(node.fields.slice(1,11),[0o020600,0,0,1,0,0,0,0,1,3]);
+  assert.equal(node.data.length,0);
+  assert.deepEqual([...entries.keys()].filter(n=>n.startsWith('dev/')),['dev/null']);
+  for(const [name,{fields}] of entries)if(name!=='dev/null') {
+   assert.ok([0o100000,0o40000].includes(fields[1]&0o170000));
+   assert.deepEqual(fields.slice(9,11),[0,0]);
+  }
+ }
 });
 test('a non-executable Go toolchain cannot yield a bootable-looking image',()=>{
  const bad=zlib.gzipSync(tar([['go/VERSION','go1.27.3\n'],['go/bin/go',elf(),'0','0000644\0'],['go/pkg/tool/linux_amd64/compile',elf()],['go/src/runtime/runtime.go','package runtime\n']]));
  assert.throws(()=>buildInitramfs({guest:elf(),goArchive:bad,arch:'amd64'}),/executable/);
 });
 test('archive parser rejects traversal, links, duplicate paths, checksum and non-Go content',()=>{
- for(const entries of [[['../evil','x']],[['go/../evil','x']],[['go/link','', '2']],[['go/VERSION','x'],['go/VERSION','y']],[['bin/sh','x']]]) assert.throws(()=>readTar(tar(entries)));
+ for(const entries of [[['../evil','x']],[['go/../evil','x']],[['go/link','', '2']],[['go/dev/null','','3']],[['go/dev/disk','','4']],[['go/VERSION','x'],['go/VERSION','y']],[['bin/sh','x']]]) assert.throws(()=>readTar(tar(entries)));
  const corrupt=tar([['go/x','x']]);corrupt[0]^=1;assert.throws(()=>readTar(corrupt),/checksum/);
 });
 test('wrong Go version or guest platform and dynamic interpreter fail closed',()=>{

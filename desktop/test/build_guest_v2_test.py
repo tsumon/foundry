@@ -52,6 +52,18 @@ def elf(arch='amd64', interp=None, needed=(), rpath=None):
         struct.pack_into('<IIQQQQQQ', b, 176, 3, 4, 256, 0, 0, len(value), len(value), 1)
     return bytes(b)
 
+def cpio_entries(image):
+    raw = gzip.decompress(image); at = 0; parsed = {}
+    while True:
+        assert raw[at:at+6] == b'070701'
+        fields = [int(raw[at+6+i*8:at+14+i*8], 16) for i in range(13)]
+        size, namesize = fields[6], fields[11]; start = at+110
+        name = raw[start:start+namesize-1].decode(); at = (start+namesize+3)//4*4
+        value = raw[at:at+size]; at = (at+size+3)//4*4
+        if name == 'TRAILER!!!': return parsed
+        assert name not in parsed, 'duplicate cpio entry'
+        parsed[name] = (fields, value)
+
 def host_alias(link,target):
     if os.name=='nt':
         location=Path(__file__).with_name('build_guest_v2_host_test.py')
@@ -108,7 +120,7 @@ class BoundaryTests(unittest.TestCase):
         data = tar([('x', b'data', 'file', 0o644)])
         for broken in [data[:-1], data[:1024], data + bytes(511) + b'x', b'!' + data[1:]]:
             with self.assertRaises(ValueError): self.m.read_tar(broken)
-        for typ in [tarfile.XHDTYPE, tarfile.GNUTYPE_SPARSE, tarfile.CHRTYPE]:
+        for typ in [tarfile.XHDTYPE, tarfile.GNUTYPE_SPARSE, tarfile.CHRTYPE, tarfile.BLKTYPE]:
             out = io.BytesIO()
             with tarfile.open(fileobj=out, mode='w') as t:
                 x = tarfile.TarInfo('bad'); x.type = typ; t.addfile(x)
@@ -158,24 +170,55 @@ class BoundaryTests(unittest.TestCase):
             bad = dict(entries); bad['usr/bin/tool'] = {'type': 'file', 'mode': '0555', 'data': broken}
             with self.subTest(broken=hashlib.sha256(broken).hexdigest()), self.assertRaises(ValueError): m.check_elf(bad, 'amd64', policy)
 
-    def fixture(self, root):
-        runtime = ar(tar([('usr/bin/python3.13', elf(), 'file', 0o755), ('usr/lib/python3.13/unittest/__init__.py', b'# stdlib', 'file', 0o644), ('usr/share/doc/python/copyright', b'license', 'file', 0o644), ('usr/bin/python3','python3.13','link',0o777)]))
-        node = lzma.compress(tar([('node-v/bin/node', elf(), 'file', 0o755), ('node-v/LICENSE', b'node license', 'file', 0o644), ('node-v/npm', b'NEVER INCLUDED', 'file', 0o755)]))
+    def fixture(self, root, arch='amd64'):
+        runtime = ar(tar([('usr/bin/python3.13', elf(arch), 'file', 0o755), ('usr/lib/python3.13/unittest/__init__.py', b'# stdlib', 'file', 0o644), ('usr/share/doc/python/copyright', b'license', 'file', 0o644), ('usr/bin/python3','python3.13','link',0o777)]))
+        node = lzma.compress(tar([('node-v/bin/node', elf(arch), 'file', 0o755), ('node-v/LICENSE', b'node license', 'file', 0o644), ('node-v/npm', b'NEVER INCLUDED', 'file', 0o755)]))
         ts = gzip.compress(tar([('package/lib/typescript.js', b'compiler', 'file', 0o644), ('package/package.json', b'{}', 'file', 0o644), ('package/LICENSE.txt', b'ts license', 'file', 0o644), ('package/ThirdPartyNoticeText.txt', b'notices', 'file', 0o644)]))
         artifacts = []
         for name, value, kind in [('py.deb', runtime, 'debian-runtime-package'), ('node.tar.xz', node, 'node-runtime'), ('ts.tgz', ts, 'typescript-compiler'), ('source.tar', b'NOT AN ARCHIVE, HASH ONLY', 'node-source')]:
             (root/name).write_bytes(value)
-            artifacts.append({'archive_root':'node-v', 'file': name, 'size': len(value), 'sha256': hashlib.sha256(value).hexdigest(), 'kind': kind, 'target_architectures': ['amd64'], 'url': 'https://example.invalid/'+name})
+            artifacts.append({'archive_root':'node-v', 'file': name, 'size': len(value), 'sha256': hashlib.sha256(value).hexdigest(), 'kind': kind, 'target_architectures': [arch], 'url': 'https://example.invalid/'+name})
         projected = {
-          'usr/bin/python3.13': ('0555', elf()), 'usr/lib/python3.13/unittest/__init__.py': ('0444', b'# stdlib'), 'usr/share/doc/python/copyright': ('0444', b'license'),
-          'opt/foundry/node/bin/node': ('0555', elf()), 'opt/foundry/node/LICENSE': ('0444', b'node license'),
+          'usr/bin/python3.13': ('0555', elf(arch)), 'usr/lib/python3.13/unittest/__init__.py': ('0444', b'# stdlib'), 'usr/share/doc/python/copyright': ('0444', b'license'),
+          'opt/foundry/node/bin/node': ('0555', elf(arch)), 'opt/foundry/node/LICENSE': ('0444', b'node license'),
           'opt/foundry/typescript/lib/typescript.js': ('0444', b'compiler'), 'opt/foundry/typescript/package.json': ('0444', b'{}'),
           'opt/foundry/typescript/LICENSE.txt': ('0444', b'ts license'), 'opt/foundry/typescript/ThirdPartyNoticeText.txt': ('0444', b'notices')}
         inventory = [{'path': n, 'type': 'file', 'mode': mode, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for n, (mode, data) in sorted(projected.items())]
         inventory += [{'path':'lib','type':'symlink','mode':'0777','target':'usr/lib'}, {'path':'usr/bin/python3','type':'symlink','mode':'0777','target':'python3.13'}]
         inventory.sort(key=lambda x:x['path'])
         expected = {'sha256': hashlib.sha256(json.dumps(inventory, sort_keys=True, separators=(',', ':')).encode()).hexdigest(), 'entries': 11, 'regular_bytes': sum(len(x[1]) for x in projected.values())}
-        return {'schema_version': 2, 'versions':{'python_command':'/usr/bin/python3.13','python_upstream_version':'3.13.5','python_distribution':'Debian trixie','python_package_version':'3.13.5-2+deb13u5','python_stdlib':'/usr/lib/python3.13','python_options':['-I','-S','-B'],'node_command':'/opt/foundry/node/bin/node','node_version':'24.22.1','typescript_command':['/opt/foundry/node/bin/node','/opt/foundry/typescript/lib/tsc.js'],'typescript_version':'5.9.3'}, 'artifacts': artifacts, 'architectures': {'amd64': {'expected': expected, 'links': {'lib':'usr/lib','usr/bin/python3':'python3.13'}, 'case_exceptions': [], 'archive_case_exceptions': [], 'elf': {'search_dirs': [], 'origin_rpaths': {}}, 'required': list(projected)}}, 'projection_policy': 'foundry-runtime-projection-v2'}
+        return {'schema_version': 2, 'versions':{'python_command':'/usr/bin/python3.13','python_upstream_version':'3.13.5','python_distribution':'Debian trixie','python_package_version':'3.13.5-2+deb13u5','python_stdlib':'/usr/lib/python3.13','python_options':['-I','-S','-B'],'node_command':'/opt/foundry/node/bin/node','node_version':'24.22.1','typescript_command':['/opt/foundry/node/bin/node','/opt/foundry/typescript/lib/tsc.js'],'typescript_version':'5.9.3'}, 'artifacts': artifacts, 'architectures': {arch: {'expected': expected, 'links': {'lib':'usr/lib','usr/bin/python3':'python3.13'}, 'case_exceptions': [], 'archive_case_exceptions': [], 'elf': {'search_dirs': [], 'origin_rpaths': {}}, 'required': list(projected)}}, 'projection_policy': 'foundry-runtime-projection-v2'}
+
+    def test_boot_null_device_is_fixed_and_available_before_guest_bootstrap(self):
+        m = self.m
+        for arch in ['amd64', 'arm64']:
+            with self.subTest(arch=arch), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve(); lock = self.fixture(root, arch)
+                runners = {n: {'data': b'# owned', 'sha256': hashlib.sha256(b'# owned').hexdigest()} for n in m.RUNNERS}
+                image, receipt = m.assemble(lock, root, arch, elf(arch), runners)
+                self.assertEqual((image, receipt), m.assemble(lock, root, arch, elf(arch), runners))
+                entries = cpio_entries(image)
+                self.assertTrue('dev/null' in entries, 'Go checkfds runs before bootstrap mounts devtmpfs')
+                fields, value = entries['dev/null']
+                self.assertEqual(fields[1:11], [0o020600,0,0,1,0,0,0,0,1,3])
+                self.assertEqual(value, b'')
+                self.assertEqual([n for n in entries if n.startswith('dev/')], ['dev/null'])
+                for name, (fields, _) in entries.items():
+                    if name == 'dev/null': continue
+                    self.assertIn(fields[1] & 0o170000, [0o100000,0o40000,0o120000])
+                    self.assertEqual(fields[9:11], [0,0])
+                self.assertEqual(receipt['runtime']['entries'], 11)
+
+    def test_writer_rejects_supplied_boot_device_and_counts_owned_member(self):
+        for value in [{'type':'file','mode':'0600','data':b''}, {'type':'char','mode':'0600','major':1,'minor':3}, {'type':'symlink','mode':'0777','target':'/init'}]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.m.newc({'dev/null': value})
+        old = self.m.MAX_MEMBERS
+        try:
+            self.m.MAX_MEMBERS = 1
+            with self.assertRaisesRegex(ValueError, 'member bound'):
+                self.m.newc({'dev': {'type':'dir','mode':'0555'}})
+        finally: self.m.MAX_MEMBERS = old
 
     def test_full_offline_build_is_deterministic_and_newc_independently_parses(self):
         m = self.m
@@ -198,7 +241,7 @@ class BoundaryTests(unittest.TestCase):
                 self.assertEqual(fields[2:4], [0, 0]); self.assertEqual(fields[5], 0)
                 if name == 'TRAILER!!!': break
                 parsed[name] = (fields[1], value)
-            self.assertEqual(len(parsed),40)
+            self.assertEqual(len(parsed),41)
             self.assertEqual(parsed['lib'],(0o120777,b'usr/lib'))
             self.assertEqual(parsed['usr/bin/python3'],(0o120777,b'python3.13'))
             self.assertEqual(parsed['init'], (0o100555, elf()))

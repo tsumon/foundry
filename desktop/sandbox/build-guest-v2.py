@@ -395,13 +395,18 @@ def validate(lock, input_dir, arch, sources=False):
     return project(lock, input_dir, arch, sources)[1]
 
 def newc(entries):
+    # Go repairs standard fds before PID1 mounts devtmpfs. Only this fixed
+    # boot-owned device is emitted; runtime archives cannot supply devices.
+    if 'dev/null' in entries: fail('boot device collision')
+    if len(entries)+1 > MAX_MEMBERS: fail('final image member bound')
+    members = sorted([*entries.items(), ('dev/null', {'type':'file','mode':'0600','data':b''})])
     out = io.BytesIO()
-    for inode, (name,e) in enumerate([*sorted(entries.items()), ('TRAILER!!!', {'type':'file','mode':'0000','data':b''})], 1):
+    for inode, (name,e) in enumerate([*members, ('TRAILER!!!', {'type':'file','mode':'0000','data':b''})], 1):
         data = e.get('data', b'') if e['type']!='symlink' else e['target'].encode()
-        mode = (0o40000 if e['type']=='dir' else 0o120000 if e['type']=='symlink' else 0o100000) | int(e['mode'],8)
+        mode = 0o020600 if name=='dev/null' else (0o40000 if e['type']=='dir' else 0o120000 if e['type']=='symlink' else 0o100000) | int(e['mode'],8)
         if name=='TRAILER!!!': mode=0
         n = name.encode()+b'\0'
-        fields=[inode,mode,0,0,2 if e['type']=='dir' else 1,0,len(data),0,0,0,0,len(n),0]
+        fields=[inode,mode,0,0,2 if e['type']=='dir' else 1,0,len(data),0,0,1 if name=='dev/null' else 0,3 if name=='dev/null' else 0,len(n),0]
         out.write(('070701'+''.join(f'{v:08x}' for v in fields)).encode()); out.write(n)
         out.write(bytes((-out.tell())%4)); out.write(data); out.write(bytes((-len(data))%4))
         if out.tell()>MAX_FINAL: fail('final cpio bound')

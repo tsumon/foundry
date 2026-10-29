@@ -50,10 +50,13 @@ function staticELF(b,arch) {
   for(let i=0;i<count;i++)if(b.readUInt32LE(offset+i*size)===3)throw Error('guest must be static (no interpreter)');
 }
 function newc(entries) {
+  // Go repairs closed standard descriptors before PID1 can mount devtmpfs.
+  // This one boot-owned device never comes from the input Go archive.
+  if(entries.has('dev/null'))throw Error('boot device collision');
   const chunks=[];let inode=1;
-  for(const [name,e] of [...entries.entries()].sort(([a],[b])=>a<b?-1:a>b?1:0).concat([['TRAILER!!!',{mode:0,data:Buffer.alloc(0)}]])) {
+  for(const [name,e] of [...entries.entries(),['dev/null',{mode:0o020600}]].sort(([a],[b])=>a<b?-1:a>b?1:0).concat([['TRAILER!!!',{mode:0,data:Buffer.alloc(0)}]])) {
     const data=e.data||Buffer.alloc(0),n=Buffer.from(name+'\0');
-    const fields=[inode++,e.mode,0,0,e.mode&0o40000?2:1,0,data.length,0,0,0,0,n.length,0];
+    const fields=[inode++,e.mode,0,0,e.mode&0o40000?2:1,0,data.length,0,0,name==='dev/null'?1:0,name==='dev/null'?3:0,n.length,0];
     const h=Buffer.from('070701'+fields.map(v=>v.toString(16).padStart(8,'0')).join(''));
     chunks.push(h,n,Buffer.alloc((4-(h.length+n.length)%4)%4),data,Buffer.alloc((4-data.length%4)%4));
   }
