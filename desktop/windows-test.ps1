@@ -35,6 +35,7 @@ Checked 'node' @('--test', 'desktop/test/security.test.cjs', 'desktop/test/downl
 $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 Checked $windowsPowerShell @('-NoProfile', '-NonInteractive', '-File', (Join-Path $PWD 'desktop/windows-taskdialog-action.test.ps1'))
 Checked $windowsPowerShell @('-NoProfile', '-NonInteractive', '-File', (Join-Path $PWD 'desktop/windows-ui-scroll.test.ps1'))
+Checked $windowsPowerShell @('-NoProfile', '-NonInteractive', '-File', (Join-Path $PWD 'desktop/windows-upgrade-smoke.test.ps1'))
 # Real native Electron session/cookie/attachment events, in disposable profiles.
 $electron = Join-Path $PWD 'desktop/node_modules/electron/dist/electron.exe'
 $contract = Join-Path $PWD 'desktop/test/download-contract.cjs'

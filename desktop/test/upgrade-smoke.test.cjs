@@ -133,6 +133,23 @@ test("native Windows workflow pins public source and installer, then over-instal
   assert.match(seed, /platformfs\.PrivateDirectory\(p\)/);
 });
 
+test("stable uninstall observes every fixed residue category without relaunching or removing files", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../windows-upgrade-smoke.ps1"), "utf8");
+  const nativeTests = fs.readFileSync(path.join(__dirname, "../windows-test.ps1"), "utf8");
+  const regressions = fs.readFileSync(path.join(__dirname, "../windows-upgrade-smoke.test.ps1"), "utf8");
+  assert.match(source, /function Wait-StableUninstall\(/);
+  assert.match(source, /Stopwatch\]::StartNew\(\)/);
+  assert.match(source, /Test-Path -LiteralPath \$Path -ErrorAction Stop/);
+  assert.equal((source.match(/Install-Exact \(Join-Path \$installed 'Uninstall Foundry\.exe'\)/g) || []).length, 1);
+  assert.match(source, /\$uninstallObservation = Wait-StableUninstall/);
+  assert(source.indexOf('$uninstallObservation = Wait-StableUninstall') < source.indexOf('if ((Data-Inventory) -cne $beforeUninstall)'));
+  assert.doesNotMatch(source, /Remove-Item|while \(\(Test-Path \(Join-Path \$installed 'Foundry\.exe'\)\)/);
+  assert.match(nativeTests, /Checked \$windowsPowerShell .*windows-upgrade-smoke\.test\.ps1/);
+  assert.match(regressions, /FunctionDefinitionAst/);
+  assert.match(regressions, /Invoke-Expression \$functions\[0\]\.Extent\.Text/);
+  assert.doesNotMatch(regressions, /^\s*(?:\. \$source|Remove-Item|Start-Job|Start-ThreadJob)\b/m);
+});
+
 test("sealed upgrade resource verification loads the descriptor module for dual resources", async (t) => {
   const { sandboxFixture, v2Fixture, loadDesktopFixtureModule } = require("./sandbox-fixture.cjs");
   const nativeHost = process.platform === "win32" ? "windows/amd64" : `${process.platform}/${process.arch}`;

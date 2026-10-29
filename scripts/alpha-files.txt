@@ -1219,6 +1219,7 @@ web/src/test/repositoryInspectionGoldens.json
 desktop/native-vm-v2.cjs
 desktop/test/native-vm-v2-smoke.test.cjs
 desktop/windows-upgrade-smoke.ps1
+desktop/windows-upgrade-smoke.test.ps1
 internal/vmacceptance/fixtures_v2.go
 internal/vmacceptance/fixtures_v2_test.go
 internal/vmacceptance/summary_v2.go

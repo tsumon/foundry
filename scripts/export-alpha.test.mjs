@@ -248,6 +248,7 @@ test('the real alpha manifest exports exactly its listed regular files', async (
       'desktop/native-vm-smoke.cjs',
       'desktop/windows-ui-scroll.ps1',
       'desktop/windows-ui-scroll.test.ps1',
+      'desktop/windows-upgrade-smoke.test.ps1',
       'desktop/test/windows-scroll-fixture.cjs',
       'internal/engine/coding_dependencies_native_test.go',
       'internal/engine/coding_dependencies_windows_test.go',
