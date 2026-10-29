@@ -15,11 +15,41 @@ func CanonicalMode(mode os.FileMode) (os.FileMode, error) { return WindowsMode(m
 func ValidateRelative(p string) error                     { return WindowsRelative(p) }
 func ValidateAbsolute(p string) error                     { return WindowsAbsolute(p) }
 
+// Native handles can distinguish a literal tilde from a DOS short-name alias.
+// Preserve every other lexical rule in a validation-only shadow; always open
+// the original spelling, then compare its normalized final handle identity.
+func validateNativeRelative(p string) error {
+	return WindowsRelative(strings.ReplaceAll(p, "~", "_"))
+}
+func validateNativeAbsolute(p string) error {
+	return WindowsAbsolute(strings.ReplaceAll(p, "~", "_"))
+}
+
+func verifyFinalPath(h windows.Handle, requested string, query func(windows.Handle, *uint16, uint32, uint32) (uint32, error)) error {
+	buf := make([]uint16, 32768)
+	// FILE_NAME_NORMALIZED | VOLUME_NAME_DOS. Never resolve an incoming short
+	// name before this comparison: that would erase the alias being rejected.
+	n, err := query(h, &buf[0], uint32(len(buf)), 0)
+	if err != nil || n == 0 || n >= uint32(len(buf)) || buf[n] != 0 {
+		return errors.New("opened path identity unavailable")
+	}
+	for _, c := range buf[:n] {
+		if c == 0 {
+			return errors.New("opened path identity unavailable")
+		}
+	}
+	if !strings.EqualFold(windows.UTF16ToString(buf[:n]), `\\?\`+requested) {
+		return errors.New("opened path identity mismatch")
+	}
+	return nil
+}
+
 // Every component is opened without delete sharing before the next component.
 // This pins names against ancestor replacement; OPEN_REPARSE_POINT and the
 // opened handle's attributes reject symlinks, junctions and other reparse tags.
+// Final long-name comparison also rejects aliases at every pinned component.
 func openChain(p string, directory bool) (*File, error) {
-	if e := WindowsAbsolute(p); e != nil {
+	if e := validateNativeAbsolute(p); e != nil {
 		return nil, e
 	}
 	p = filepath.Clean(p)
@@ -60,6 +90,10 @@ func openChain(p string, directory bool) (*File, error) {
 		if e != nil || ke != nil || kind != windows.FILE_TYPE_DISK || info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || (info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0) != wantDir {
 			f.Close()
 			return fail(errors.New("nonregular or reparse path refused"))
+		}
+		if e := verifyFinalPath(h, current, windows.GetFinalPathNameByHandle); e != nil {
+			f.Close()
+			return fail(e)
 		}
 		if last {
 			return &File{File: f, parents: parents}, nil
@@ -102,7 +136,7 @@ func OpenLock(p string) (*File, error) {
 	return &File{File: f, parents: append(parent.parents, parent.File)}, nil
 }
 func OpenRootRegular(root *os.Root, p string) (*File, error) {
-	if e := WindowsRelative(p); e != nil {
+	if e := validateNativeRelative(p); e != nil {
 		return nil, e
 	}
 	return OpenRegular(filepath.Join(root.Name(), p))
@@ -116,7 +150,7 @@ func ValidateDirectory(p string) error {
 }
 
 func PrivateDirectory(p string) error {
-	if e := WindowsAbsolute(p); e != nil {
+	if e := validateNativeAbsolute(p); e != nil {
 		return e
 	}
 	parent, e := openChain(filepath.Dir(p), true)

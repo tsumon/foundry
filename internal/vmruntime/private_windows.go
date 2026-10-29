@@ -6,18 +6,24 @@ import (
 	"foundry/internal/platformfs"
 	"golang.org/x/sys/windows"
 	"path/filepath"
+	"strings"
 	"unsafe"
 )
 
 // Create with the protected DACL in the very first namespace operation. Never
 // accept ERROR_ALREADY_EXISTS: an existing name is not this session's owner.
 func createPrivateDirectory(path string) error {
-	if e := platformfs.ValidateAbsolute(path); e != nil {
+	// Retained immutable assets include literal Debian ~deb directory names.
+	// The shadow is lexical validation only; native handles validate original
+	// long-name identities and remain pinned through creation and the postcheck.
+	if e := platformfs.WindowsAbsolute(strings.ReplaceAll(path, "~", "_")); e != nil {
 		return e
 	}
-	if e := platformfs.ValidateDirectory(filepath.Dir(path)); e != nil {
+	parent, e := platformfs.OpenDirectory(filepath.Dir(path))
+	if e != nil {
 		return e
 	}
+	defer parent.Close()
 	user, e := windows.GetCurrentProcessToken().GetTokenUser()
 	if e != nil {
 		return e

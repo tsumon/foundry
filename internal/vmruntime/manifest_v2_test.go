@@ -91,6 +91,98 @@ func TestLoadRetainV2ExactBytesAndNoEffects(t *testing.T) {
 		t.Fatal("existing target tamper")
 	}
 }
+
+func TestLoadRetainV2PinnedLegalTildeAncestors(t *testing.T) {
+	root, instances := fixtureBundleV2(t)
+	manifestPath := filepath.Join(root, "manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m ManifestV2
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	// These are the actual directory-shaped spellings assembled from the
+	// pinned Debian sources. The contents remain owned inert test fixtures.
+	licenses := map[string][]byte{
+		"legal/source-licenses/expat_2.9.0-1~deb13u1.debian.tar.xz/debian/copyright":   []byte("owned expat license fixture\n"),
+		"legal/source-licenses/openssl_3.5.7-1~deb13u3.debian.tar.xz/debian/copyright": []byte("owned openssl license fixture\n"),
+	}
+	for rel, body := range licenses {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		m.Assets = append(m.Assets, Asset{rel, hashV2Test(body), int64(len(body))})
+	}
+	raw, err = json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := LoadV2(root, instances)
+	if err != nil || !r.Trusted() {
+		t.Fatalf("load complete legal inventory: %v", err)
+	}
+	archive := filepath.Join(archiveTestParent(t), "archive")
+	retained, err := Retain(root, archive, r.Identity())
+	if err != nil {
+		t.Fatalf("retain complete legal inventory: %v", err)
+	}
+	got, err := LoadRetained(archive, instances)
+	if err != nil || len(got) != 1 || got[0].Identity() != r.Identity() {
+		t.Fatalf("load retained complete legal inventory: %v", err)
+	}
+	retainedManifest, err := os.ReadFile(filepath.Join(retained, "manifest.json"))
+	if err != nil || !bytes.Equal(retainedManifest, raw) {
+		t.Fatalf("retention changed exact manifest: %v", err)
+	}
+	for rel, body := range licenses {
+		p := filepath.Join(retained, filepath.FromSlash(rel))
+		b, err := os.ReadFile(p)
+		if err != nil || !bytes.Equal(b, body) || hashV2Test(b) != hashV2Test(body) {
+			t.Fatalf("retention changed exact license %s: %v", rel, err)
+		}
+		if err := os.WriteFile(p, []byte("tampered"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadRetained(archive, instances); err == nil {
+			t.Fatal("retained license tamper accepted")
+		}
+		if _, err := Retain(root, archive, r.Identity()); err == nil {
+			t.Fatal("existing retained license tamper accepted")
+		}
+		if err := os.WriteFile(p, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		sourcePath := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.WriteFile(sourcePath, []byte("tampered"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadV2(root, instances); err == nil {
+			t.Fatal("source license tamper accepted")
+		}
+		if _, err := Retain(root, archive, r.Identity()); err == nil {
+			t.Fatal("source license tamper retained")
+		}
+		if err := os.WriteFile(sourcePath, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := LoadRetained(archive, instances); err != nil {
+		t.Fatalf("restored exact retained bytes no longer load: %v", err)
+	}
+	entries, err := os.ReadDir(instances)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("metadata load/retention created an instance: %v", err)
+	}
+}
 func TestLoadV2RejectsDescriptorAndManifestDrift(t *testing.T) {
 	for _, kind := range []string{"platform", "supervisor", "digest", "missing", "unknown", "duplicate", "alias", "null", "unlisted", "bounds"} {
 		t.Run(kind, func(t *testing.T) {
