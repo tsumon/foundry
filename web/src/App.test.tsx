@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { it, expect, vi } from "vitest";
 import App from "./App";
+import packageJSON from "../package.json";
 import { mission, profile, response } from "./test/fixtures";
 import { mergeMission } from "./useWorkbench";
 import {
@@ -441,7 +442,7 @@ it("boots the same-origin session first and shows an honest empty workspace", as
     /任务数据\s*已收到/,
   );
   expect(screen.getByLabelText("工作台状态")).toHaveTextContent(
-    /前端版本\s*0\.2\.0/,
+    `前端版本${packageJSON.version}`,
   );
   expect(screen.getByLabelText("工作台状态")).toHaveTextContent(
     /构建时间\s*\d{4}-\d{2}-\d{2}/,
