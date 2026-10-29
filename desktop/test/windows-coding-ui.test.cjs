@@ -495,11 +495,13 @@ function runNativeModeDriver({ elapsedMs, action = "coding" }) {
 }
 
 test("native mode outer deadline admits the bounded coding path and rejects runaway work", () => {
-  assert.deepEqual(runNativeModeDriver({ elapsedMs: 110_000 }), {
+  // Existing bounded menu/loading waits plus sixteen two-second scroll
+  // acknowledgements must fit inside the parent process boundary.
+  assert.deepEqual(runNativeModeDriver({ elapsedMs: 150_000 }), {
     output: { ok: true, action: "coding", window: "5678" },
     exitCode: 0,
   });
-  assert.deepEqual(runNativeModeDriver({ elapsedMs: 121_000 }), {
+  assert.deepEqual(runNativeModeDriver({ elapsedMs: 161_000 }), {
     output: { ok: false, action: "coding", snapshotAvailable: false },
     exitCode: 1,
   });

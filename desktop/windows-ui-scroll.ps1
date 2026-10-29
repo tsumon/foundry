@@ -97,32 +97,90 @@ function Invoke-CodingScrollStep([object]$Capture, [object]$Decision) {
   } else { throw 'coding-scroll: invalid action' }
 }
 
-function Scroll-CodingControlsIntoView([object]$Section, [int]$OwnerProcess) {
+function Get-CodingScrollGeometry([object]$Facts) {
+  $safe=@{}
+  foreach ($name in @('upper','checkbox','refresh')) {
+    $a=$Facts.$name
+    $safe[$name]=@{ matches=[int]$a.matches; owned=[bool]$a.owned; enabled=[bool]$a.enabled; visible=[bool]$a.visible; top=[double]$a.top; bottom=[double]$a.bottom }
+  }
+  $safe.checkbox.unchecked=[bool]$Facts.checkbox.unchecked
+  $s=$Facts.scroll
+  $safe.scroll=@{ available=[bool]$s.available; owned=[bool]$s.owned; top=[double]$s.top; bottom=[double]$s.bottom; percent=[double]$s.percent; viewSize=[double]$s.viewSize }
+  return $safe
+}
+
+function Wait-CodingScrollProgress([object]$Before, [scriptblock]$ReadCapture, [hashtable]$Record, [scriptblock]$Clock, [scriptblock]$Pause) {
+  $started=& $Clock
+  $last=$Before.fingerprint
+  $moved=$false
+  $Record.polls=0; $Record.elapsed_ms=0; $Record.outcome='waiting'
+  # UIA actions can return before the renderer/AX update is observable. Only
+  # read fresh facts here: never resend the scroll action or relax readiness.
+  for ($poll=0; $poll -lt 41; $poll++) {
+    if ($poll -gt 0) { & $Pause 50 }
+    $elapsed=(& $Clock)-$started
+    $Record.elapsed_ms=$elapsed
+    if ($elapsed -ge 2000) { break }
+    if ($elapsed -lt 0) { throw 'coding-scroll: invalid observation clock' }
+    $capture=& $ReadCapture
+    $Record.polls++
+    $elapsed=(& $Clock)-$started
+    $Record.elapsed_ms=$elapsed
+    if ($null -eq $capture) { throw 'coding-scroll: required anchor disappeared' }
+    $Record.after=Get-CodingScrollGeometry $capture.facts
+    if (-not (Test-CodingScrollReady $capture.facts)) { throw 'coding-scroll: invalid anchor identity/state' }
+    if ($elapsed -ge 2000) { break }
+    if ($elapsed -lt 0) { throw 'coding-scroll: invalid observation clock' }
+    $facts=$capture.facts
+    if ($facts.fingerprint -cne $Before.fingerprint) {
+      $moved=$true
+      if ($facts.upper.visible -and $facts.checkbox.visible -and $facts.refresh.visible) { $Record.outcome='visible'; return $capture }
+      if ($facts.fingerprint -ceq $last) { $Record.outcome='settled'; return $capture }
+    }
+    $last=$facts.fingerprint
+  }
+  if ($moved) { $Record.outcome='not_settled'; throw 'coding-scroll: did not settle before deadline' }
+  $Record.outcome='no_progress'; throw 'coding-scroll: no progress before deadline'
+}
+
+function Invoke-CodingScrollLoop([scriptblock]$ReadCapture, [scriptblock]$Apply, [scriptblock]$Clock, [scriptblock]$Pause) {
   $previous = $null
   $attempted = @{}
   $capture = $null
   $decision = $null
+  $step=0
+  $history=New-Object 'System.Collections.Generic.List[object]'
   try {
+    $capture=& $ReadCapture
     for ($step = 0; $step -lt 16; $step++) {
-      $capture = Get-CodingScrollCapture $Section $OwnerProcess
       if ($null -eq $capture) { throw 'coding-scroll: required anchor disappeared' }
       $decision = Get-CodingScrollDecision $capture.facts $step $previous $attempted
-      if ($decision.kind -eq 'done') { return }
+      if ($decision.kind -eq 'done') {
+        [Console]::Error.WriteLine('coding-scroll: ' + (@{ outcome='visible'; history=$history.ToArray() } | ConvertTo-Json -Compress -Depth 6))
+        return
+      }
       $previous = $capture.facts
       if ($decision.kind -eq 'item') { $attempted[$decision.target] = $true }
-      Invoke-CodingScrollStep $capture $decision
-      Start-Sleep -Milliseconds 100
+      $record=@{ action=$decision.kind; target=$decision.target; direction=$decision.direction; before=(Get-CodingScrollGeometry $capture.facts); polls=0; outcome='action_pending' }
+      if ($decision.kind -eq 'percent') { $record.requested_percent=[double]$decision.percent }
+      $history.Add($record)
+      & $Apply $capture $decision
+      $capture=Wait-CodingScrollProgress $previous $ReadCapture $record $Clock $Pause
     }
-    $capture = Get-CodingScrollCapture $Section $OwnerProcess
     if ($null -eq $capture) { throw 'coding-scroll: required anchor disappeared' }
     $decision = Get-CodingScrollDecision $capture.facts 16 $previous $attempted
     if ($decision.kind -ne 'done') { throw 'coding-scroll: decision bound exceeded' }
+    [Console]::Error.WriteLine('coding-scroll: ' + (@{ outcome='visible'; history=$history.ToArray() } | ConvertTo-Json -Compress -Depth 6))
   } catch {
-    # Fixed, bounded geometry/state only; no UI text, paths or account data.
-    $diagnostic = @{ decisions=$step; available=($null -ne $capture) }
-    if ($null -ne $capture) { $diagnostic.upper=$capture.facts.upper; $diagnostic.checkbox=$capture.facts.checkbox; $diagnostic.refresh=$capture.facts.refresh; $diagnostic.scroll=$capture.facts.scroll }
-    if ($null -ne $decision) { $diagnostic.action=$decision.kind; $diagnostic.target=$decision.target; $diagnostic.direction=$decision.direction }
-    [Console]::Error.WriteLine('coding-scroll: ' + ($diagnostic | ConvertTo-Json -Compress -Depth 4))
+    # At most sixteen records of typed geometry/state and fixed enum labels.
+    # No arbitrary UI text, fingerprint, paths, exception body or account data.
+    $diagnostic = @{ outcome='failed'; decisions=$step; history=$history.ToArray() }
+    [Console]::Error.WriteLine('coding-scroll: ' + ($diagnostic | ConvertTo-Json -Compress -Depth 6))
     throw
   }
+}
+
+function Scroll-CodingControlsIntoView([object]$Section, [int]$OwnerProcess) {
+  $watch=[System.Diagnostics.Stopwatch]::StartNew()
+  Invoke-CodingScrollLoop { Get-CodingScrollCapture $Section $OwnerProcess } { param($Capture,$Decision) Invoke-CodingScrollStep $Capture $Decision } { $watch.Elapsed.TotalMilliseconds } { param($Milliseconds) Start-Sleep -Milliseconds $Milliseconds }
 }

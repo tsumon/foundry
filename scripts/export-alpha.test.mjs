@@ -251,6 +251,7 @@ test('the real alpha manifest exports exactly its listed regular files', async (
       'desktop/test/windows-scroll-fixture.cjs',
       'internal/engine/coding_dependencies_native_test.go',
       'internal/engine/coding_dependencies_windows_test.go',
+      'internal/dependencybundle/native_windows_test.go',
       'desktop/coding-mode.cjs',
       'desktop/sandbox/build.cjs',
       'desktop/sandbox/build-guest.cjs',

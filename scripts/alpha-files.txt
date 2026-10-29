@@ -1099,6 +1099,7 @@ internal/dependencybundle/manifest_test.go
 internal/dependencybundle/native_other.go
 internal/dependencybundle/native_unix.go
 internal/dependencybundle/native_windows.go
+internal/dependencybundle/native_windows_test.go
 internal/dependencybundle/publish_darwin.go
 internal/dependencybundle/publish_linux.go
 internal/dependencybundle/store.go

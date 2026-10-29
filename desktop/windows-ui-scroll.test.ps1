@@ -18,7 +18,7 @@ $errors = $null
 $source = Join-Path $PSScriptRoot 'windows-ui-scroll.ps1'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($source, [ref]$tokens, [ref]$errors)
 Assert-True ($errors.Count -eq 0) 'Scroll driver PowerShell syntax invalid'
-foreach ($name in @('Test-CodingScrollReady', 'Get-CodingScrollDecision')) {
+foreach ($name in @('Test-CodingScrollReady', 'Get-CodingScrollDecision', 'Get-CodingScrollGeometry', 'Wait-CodingScrollProgress', 'Invoke-CodingScrollLoop')) {
   $functions = @($ast.FindAll({ param($a) $a -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -ceq $name }, $true))
   Assert-True ($functions.Count -eq 1) 'Actual scroll decision function missing/ambiguous'
   Invoke-Expression $functions[0].Extent.Text
@@ -85,6 +85,78 @@ $facts=New-Facts; $facts.refresh.itemAvailable=$false; $facts.refresh.top=100; $
 Assert-Rejected { Get-CodingScrollDecision $facts 0 $null @{} } 'without vertical displacement'
 Write-Output 'PASS: actual bounded scroll policy, identity/state and progress regressions'
 
+# The same acknowledgement/loop used by UIA sees controlled fresh captures.
+# Removing the observation wait or reissuing an action breaks these cases.
+function New-ScrollScenario([object[]]$Frames) {
+  $state=@{ index=0; milliseconds=0; reads=0; actions=0 }
+  $capture={
+    $index=[Math]::Min($state.index,$Frames.Count-1)
+    $state.index++; $state.reads++
+    return @{ facts=$Frames[$index] }
+  }.GetNewClosure()
+  $clock={ return $state.milliseconds }.GetNewClosure()
+  $pause={ param($Milliseconds) $state.milliseconds+=$Milliseconds }.GetNewClosure()
+  $apply={ param($Capture,$Decision) $state.actions++ }.GetNewClosure()
+  return @{ state=$state; capture=$capture; clock=$clock; pause=$pause; apply=$apply }
+}
+$before=New-Facts
+$moved=New-Facts; $moved.refresh.top=2900; $moved.refresh.bottom=2930; $moved.fingerprint='moved'
+$scenario=New-ScrollScenario @($before,$before,$before,$moved,$moved)
+$record=@{}
+$observed=Wait-CodingScrollProgress $before $scenario.capture $record $scenario.clock $scenario.pause
+Assert-True ($record.outcome -ceq 'settled' -and $record.polls -eq 5 -and $record.elapsed_ms -eq 200 -and $observed.facts.fingerprint -ceq 'moved') 'Delayed AX progress was not acknowledged'
+Assert-True ($scenario.state.actions -eq 0) 'Observation performed an action'
+$scenario=New-ScrollScenario @($before)
+$record=@{}
+Assert-Rejected { Wait-CodingScrollProgress $before $scenario.capture $record $scenario.clock $scenario.pause } 'no progress before deadline'
+Assert-True ($record.polls -le 41 -and $scenario.state.milliseconds -le 2000 -and $record.outcome -ceq 'no_progress') 'Stale acknowledgement was not bounded'
+$oscillating=New-ScrollScenario @($before)
+$state=$oscillating.state
+$readOscillating={
+  $state.reads++
+  $f=New-Facts; $f.refresh.top=2900+($state.reads % 2); $f.refresh.bottom=$f.refresh.top+30; $f.fingerprint='movement-'+($state.reads % 2)
+  return @{ facts=$f }
+}
+$record=@{}
+Assert-Rejected { Wait-CodingScrollProgress $before $readOscillating $record $oscillating.clock $oscillating.pause } 'did not settle before deadline'
+Assert-True ($record.polls -le 41 -and $record.outcome -ceq 'not_settled') 'Oscillating geometry was accepted'
+$visible=New-Facts; $visible.upper.visible=$true; $visible.checkbox.visible=$true; $visible.refresh.visible=$true; $visible.fingerprint='visible'
+$scenario=New-ScrollScenario @($before,$visible)
+$record=@{}
+$observed=Wait-CodingScrollProgress $before $scenario.capture $record $scenario.clock $scenario.pause
+Assert-True ($record.outcome -ceq 'visible' -and $record.polls -eq 2 -and $observed.facts.refresh.visible) 'Current visible anchors were not acknowledged'
+foreach ($fault in @('owner','duplicate','disabled','checked')) {
+  $invalid=New-Facts
+  if ($fault -ceq 'owner') { $invalid.refresh.owned=$false }
+  if ($fault -ceq 'duplicate') { $invalid.refresh.matches=2 }
+  if ($fault -ceq 'disabled') { $invalid.refresh.enabled=$false }
+  if ($fault -ceq 'checked') { $invalid.checkbox.unchecked=$false }
+  $scenario=New-ScrollScenario @($invalid)
+  $record=@{}
+  Assert-Rejected { Wait-CodingScrollProgress $before $scenario.capture $record $scenario.clock $scenario.pause } $(if ($fault -ceq 'checked') { 'opt-in state changed' } else { 'identity/state' })
+  Assert-True ($scenario.state.reads -eq 1 -and $scenario.state.actions -eq 0) 'Unsafe state was polled or acted on again'
+}
+$scenario=New-ScrollScenario @($before,$before,$visible)
+Invoke-CodingScrollLoop $scenario.capture $scenario.apply $scenario.clock $scenario.pause
+Assert-True ($scenario.state.actions -eq 1) 'Delayed acknowledgement repeated a scroll action'
+$scenario=New-ScrollScenario @($before)
+Assert-Rejected { Invoke-CodingScrollLoop $scenario.capture $scenario.apply $scenario.clock $scenario.pause } 'no progress before deadline'
+Assert-True ($scenario.state.actions -eq 1) 'Timed-out acknowledgement retried a scroll action'
+$scenario=New-ScrollScenario @($before)
+$state=$scenario.state
+$readSmallProgress={
+  $state.reads++
+  $f=New-Facts; $f.refresh.itemAvailable=$false; $f.refresh.top=3040-$state.actions; $f.refresh.bottom=3070-$state.actions; $f.fingerprint='position-'+$state.actions
+  return @{ facts=$f }
+}
+Assert-Rejected { Invoke-CodingScrollLoop $readSmallProgress $scenario.apply $scenario.clock $scenario.pause } 'decision bound exceeded'
+Assert-True ($state.actions -eq 16) 'Action count escaped its original bound'
+$before.privateText='must-not-leak'
+$before.refresh.privatePath='must-not-leak'
+$projection=Get-CodingScrollGeometry $before
+Assert-True (($projection | ConvertTo-Json -Depth 6 -Compress) -notmatch 'must-not-leak|privateText|privatePath|fingerprint') 'Diagnostic projection leaked non-fact data'
+Write-Output 'PASS: actual fresh-capture acknowledgement, deadline, no replay, closed diagnostics and sixteen-action bound'
+
 . $source
 $electron = Join-Path $PSScriptRoot 'node_modules/electron/dist/electron.exe'
 $fixture = Join-Path $PSScriptRoot 'test/windows-scroll-fixture.cjs'
@@ -94,6 +166,20 @@ New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
 $process = $null
 $primaryFailure = $null
 $cleanupFailure = $null
+function Set-FixtureScrollPosition([object]$Section, [int]$Owner, [double]$Percent) {
+  $capture=Get-CodingScrollCapture $Section $Owner
+  $capture.scroll.SetScrollPercent([System.Windows.Automation.ScrollPattern]::NoScroll,$Percent)
+  $watch=[System.Diagnostics.Stopwatch]::StartNew()
+  $matched=$false
+  while ($watch.ElapsedMilliseconds -lt 2000) {
+    $capture=Get-CodingScrollCapture $Section $Owner
+    $same=[Math]::Abs($capture.facts.scroll.percent-$Percent) -lt 0.05
+    if ($same -and $matched) { return }
+    $matched=$same
+    Start-Sleep -Milliseconds 50
+  }
+  throw 'Native fixture starting scroll position not observed'
+}
 try {
   $process = Start-Process -FilePath $electron -ArgumentList @("--user-data-dir=`"$fixtureRoot`"", "`"$fixture`"") -PassThru
   $section = $null
@@ -112,20 +198,30 @@ try {
     if ($null -eq $section) { Start-Sleep -Milliseconds 100 }
   }
   Assert-True ($null -ne $section) 'Native long-section fixture unavailable'
-  foreach ($start in @('top','bottom')) {
+  foreach ($start in @('top','bottom','near-bottom')) {
     $capture=Get-CodingScrollCapture $section $process.Id
     Assert-True ($null -ne $capture.scroll) 'Native fixture lacks scroll ancestor'
     $percent=if ($start -ceq 'top') { 0.0 } else { 100.0 }
-    $capture.scroll.SetScrollPercent([System.Windows.Automation.ScrollPattern]::NoScroll,$percent)
-    Start-Sleep -Milliseconds 100
+    if ($start -ceq 'near-bottom') {
+      # Reproduce the observed shape: upper metadata in view while the last
+      # control ends about63 pixels below the actual viewport, not at page end.
+      $s=$capture.facts.scroll
+      $range=($s.bottom-$s.top)*(100.0/$s.viewSize-1.0)
+      $percent=$s.percent+($capture.facts.refresh.bottom-$s.bottom-63.0)/$range*100.0
+      Assert-True ($percent -gt 0 -and $percent -lt 100) 'Native near-bottom position is not interior'
+    }
+    Set-FixtureScrollPosition $section $process.Id $percent
     $capture=Get-CodingScrollCapture $section $process.Id
     Assert-True (-not $capture.facts.refresh.visible) 'Fixture did not establish an offscreen target'
+    if ($start -ceq 'near-bottom') { Assert-True ($capture.facts.upper.visible -and $capture.facts.refresh.bottom -gt $capture.facts.scroll.bottom) 'Dense fixture did not reproduce clipped lower control' }
     if ($start -ceq 'bottom') {
       # Force the real ancestor adapter path without a production test flag.
       $decision=Get-CodingScrollDecision $capture.facts 0 $null @{ upper=$true; checkbox=$true; refresh=$true }
       Assert-True ($decision.kind -ceq 'percent' -and $decision.direction -ceq 'up') 'Native above-target fallback not selected'
       Invoke-CodingScrollStep $capture $decision
-      Start-Sleep -Milliseconds 100
+      $watch=[System.Diagnostics.Stopwatch]::StartNew()
+      $record=@{}
+      $capture=Wait-CodingScrollProgress $capture.facts { Get-CodingScrollCapture $section $process.Id } $record { $watch.Elapsed.TotalMilliseconds } { param($Milliseconds) Start-Sleep -Milliseconds $Milliseconds }
     }
     Scroll-CodingControlsIntoView $section $process.Id
     $capture=Get-CodingScrollCapture $section $process.Id

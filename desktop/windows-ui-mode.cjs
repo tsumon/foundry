@@ -60,7 +60,9 @@ if (require.main === module) {
       ],
       {
         encoding: "utf8",
-        timeout: 120000,
+        // Bounded menu/loading waits (110s) plus at most sixteen 2s AX
+        // acknowledgements fit here, with startup/diagnostic overhead.
+        timeout: 160000,
         maxBuffer: 64 * 1024,
         windowsHide: true,
       },
