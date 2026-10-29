@@ -20,6 +20,12 @@ The first DMG's local upgrade was also observed: the previous alpha.2 app was re
 
 ## Global Constraints
 
+### Separate kernel console from binary transport — 2026-10-29
+
+Select `console=null` in the shared Mac helper and Windows host boot command, preserving the existing private `/dev/hvc0` and `/dev/ttyS0` devices. The pinned HVC console consumes binary `0x0f`/SysRq input before raw termios and can force kernel feedback despite quiet logging; a sysctl-only change is insufficient. Regression coverage must connect actual boot policies to valid control-bearing v2 frames through the pinned filter model, including double controls, split polls, trailing-byte loss and complete authenticated response/EOF. Keep the Windows v1/v2 command golden and all resource, ownership and acceptance gates.
+
+Offline verification does not establish native repair. After review, rebuild both runtime/helper/source-kit/package identities and run the installed v1 gate plus all twelve v2 cases on the corrected bytes. Existing failed receipts, original tasks/budgets/baselines and archived helper bindings remain unchanged; older Mac helpers retain their original policy. No automatic runtime migration or historical requalification is introduced.
+
 ### Windows portable build bootstrap correction — 2026-10-23
 
 The first native Windows package job reached the pinned MSYS2 bootstrap but stopped before package installation: a portable extraction has no initialized pacman trust database. The fix verifies the bootstrap's exact `pacman-key`, GnuPG tools, packaged MSYS2 keyring/trust/revocation files and unchanged `pacman.conf`, then initializes and populates only that dedicated build root's keyring. It uses a non-login shell, no network key refresh, no signature-policy relaxation and no automatic retry. Local package installation follows only successful initialization. Regression checks cover command ordering, tampered/missing/nonregular trust inputs and fail-closed command errors. Native Windows build and installed WHPX acceptance must still pass in CI; local command-boundary tests are not native acceptance.

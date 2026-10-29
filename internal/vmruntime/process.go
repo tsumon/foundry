@@ -12,6 +12,7 @@ func nativeBootCommand(root string, m bootAssets) command {
 		c.Args = []string{"--kernel", kernel, "--initrd", initrd}
 		return c
 	}
-	c.Args = []string{"-no-user-config", "-nodefaults", "-machine", "q35,sata=off,usb=off", "-accel", "whpx", "-smp", "1", "-m", "2048", "-display", "none", "-monitor", "none", "-nic", "none", "-no-reboot", "-L", filepath.Join(root, "runtime", "share", "qemu"), "-chardev", "stdio,id=control,signal=off", "-serial", "chardev:control", "-kernel", kernel, "-initrd", initrd, "-append", "console=ttyS0 init=/init panic=1 quiet loglevel=0"}
+	// The binary serial channel must not also carry kernel console handling.
+	c.Args = []string{"-no-user-config", "-nodefaults", "-machine", "q35,sata=off,usb=off", "-accel", "whpx", "-smp", "1", "-m", "2048", "-display", "none", "-monitor", "none", "-nic", "none", "-no-reboot", "-L", filepath.Join(root, "runtime", "share", "qemu"), "-chardev", "stdio,id=control,signal=off", "-serial", "chardev:control", "-kernel", kernel, "-initrd", initrd, "-append", "console=null init=/init panic=1 quiet loglevel=0"}
 	return c
 }

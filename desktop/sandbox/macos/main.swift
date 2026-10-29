@@ -48,7 +48,8 @@ final class VMOwner: NSObject, VZVirtualMachineDelegate {
     init(kernel: String, initrd: String) throws {
         let loader = VZLinuxBootLoader(kernelURL: URL(fileURLWithPath: kernel))
         loader.initialRamdiskURL = URL(fileURLWithPath: initrd)
-        loader.commandLine = "console=hvc0 init=/init panic=1 quiet loglevel=0"
+        // HVC console SysRq handling consumes binary input before tty raw mode.
+        loader.commandLine = "console=null init=/init panic=1 quiet loglevel=0"
         let config = VZVirtualMachineConfiguration()
         config.bootLoader = loader
         config.cpuCount = 1

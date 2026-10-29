@@ -24,7 +24,7 @@ func TestV1ReceiptAndNativeCommandGolden(t *testing.T) {
 		args := []string{"--kernel", kernel, "--initrd", initrd}
 		if host == "windows/amd64" {
 			exe = "runtime/qemu-system-x86_64.exe"
-			args = []string{"-no-user-config", "-nodefaults", "-machine", "q35,sata=off,usb=off", "-accel", "whpx", "-smp", "1", "-m", "2048", "-display", "none", "-monitor", "none", "-nic", "none", "-no-reboot", "-L", filepath.Join(root, "runtime", "share", "qemu"), "-chardev", "stdio,id=control,signal=off", "-serial", "chardev:control", "-kernel", kernel, "-initrd", initrd, "-append", "console=ttyS0 init=/init panic=1 quiet loglevel=0"}
+			args = []string{"-no-user-config", "-nodefaults", "-machine", "q35,sata=off,usb=off", "-accel", "whpx", "-smp", "1", "-m", "2048", "-display", "none", "-monitor", "none", "-nic", "none", "-no-reboot", "-L", filepath.Join(root, "runtime", "share", "qemu"), "-chardev", "stdio,id=control,signal=off", "-serial", "chardev:control", "-kernel", kernel, "-initrd", initrd, "-append", "console=null init=/init panic=1 quiet loglevel=0"}
 		}
 		m := Manifest{HostPlatform: host, Runtime: exe, Kernel: "kernel", RootFS: "initramfs.cpio.gz"}
 		expected := command{Path: filepath.Join(root, filepath.FromSlash(exe)), Args: args, Env: []string{"LANG=C", "LC_ALL=C"}, Dir: filepath.Join(root, "runtime")}
