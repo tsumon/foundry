@@ -977,6 +977,7 @@ desktop/test/windows-coding-ui.test.cjs
 desktop/test/windows-sandbox-assets.test.cjs
 desktop/test/windows-source-build.test.cjs
 desktop/test/windows-taskdialog-fixture.cjs
+desktop/test/windows-scroll-fixture.cjs
 desktop/test/windows-zlib.test.cjs
 desktop/upgrade-smoke.cjs
 desktop/upgrade-copy-windows.go
@@ -987,6 +988,8 @@ desktop/windows-taskdialog-action.ps1
 desktop/windows-taskdialog-action.test.ps1
 desktop/windows-ui-mode.cjs
 desktop/windows-ui-mode.ps1
+desktop/windows-ui-scroll.ps1
+desktop/windows-ui-scroll.test.ps1
 docs/public/embedded-sandbox-plan.md
 docs/public/embedded-sandbox.md
 docs/public/live-coding-plan.md
@@ -1191,6 +1194,8 @@ internal/domain/repository_import_v2.go
 internal/domain/repository_import_v2_test.go
 internal/engine/backend_v2_test.go
 internal/engine/coding_dependencies.go
+internal/engine/coding_dependencies_native_test.go
+internal/engine/coding_dependencies_windows_test.go
 internal/engine/coding_profiles_v2.go
 internal/engine/repository_import_v2.go
 internal/httpapi/coding_dependencies.go

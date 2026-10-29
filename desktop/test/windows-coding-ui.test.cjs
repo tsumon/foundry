@@ -321,18 +321,33 @@ test("native mode driver receipts admit only fixed coding and persistent actions
     assert.throws(() => modeActionReceipt(bad, "coding", 42));
 });
 
-test("native coding action uses bounded UI Automation scrolling to the fixed section", () => {
-  const bytes = fs.readFileSync(path.join(__dirname, "../windows-ui-mode.ps1"));
-  const source = bytes.toString("utf8").replace(/^\uFEFF/, "");
-  assert.match(source, /ScrollItemPattern/);
-  assert.match(source, /ScrollPattern/);
-  assert.match(source, /function Coding-SectionAnchorsVisible/);
-  assert.match(source, /账户模型编码设置/);
-  assert.match(source, /启用账户模型与内置 VM（仅创建配置，不批准或执行）/);
-  assert.match(source, /刷新编码能力/);
-  assert.match(source, /-not \(Coding-SectionAnchorsVisible \$Element\)/);
-  assert.match(source, /-lt 16/);
-  assert.doesNotMatch(source, /executeJavaScript|debugger|DevTools/);
+test("native coding scrolling targets owned controls and runs actual native regressions early", () => {
+  const mode = fs.readFileSync(path.join(__dirname, "../windows-ui-mode.ps1"), "utf8");
+  const scroll = fs.readFileSync(path.join(__dirname, "../windows-ui-scroll.ps1"), "utf8");
+  const gate = fs.readFileSync(path.join(__dirname, "../windows-test.ps1"), "utf8");
+  assert.match(mode, /windows-ui-scroll\.ps1/);
+  assert.match(mode, /Scroll-CodingControlsIntoView \$codingSection \$OwnerProcess/);
+  assert.doesNotMatch(mode, /function Scroll-IntoViewExact/);
+  assert.match(scroll, /Get-CodingScrollDecision/);
+  assert.match(scroll, /ScrollItemPattern/);
+  assert.match(scroll, /SetScrollPercent/);
+  assert.match(scroll, /-lt 16/);
+  assert.doesNotMatch(scroll, /executeJavaScript|DevTools|SetFocus|\.Toggle\(|\.Invoke\(/);
+  assert.match(gate, /Checked \$windowsPowerShell @\('-NoProfile', '-NonInteractive', '-File', \(Join-Path \$PWD 'desktop\/windows-ui-scroll.test.ps1'\)\)/);
+  const native = fs.readFileSync(path.join(__dirname, "../windows-ui-scroll.test.ps1"), "utf8");
+  assert.match(native, /Get-CodingScrollDecision/);
+  assert.match(native, /windows-scroll-fixture\.cjs/);
+  assert.match(native, /windows-ui-ready\.cjs/);
+  assert.match(native, /coding-vm-configurable/);
+});
+
+test("scrolling does not make clipped provider, approval or controls ready", () => {
+  const expected = { window: "5678", processId: 42 };
+  for (const index of [7, 8, 9, 10]) {
+    const snapshot = renderedVMConfigurableWorkbench();
+    snapshot.nodes[index].visible = false;
+    assert.equal(codingWorkbenchReadiness(snapshot, expected).ready, false);
+  }
 });
 
 test("native mode driver stays compatible with the fixed Windows PowerShell 5.1 host", () => {

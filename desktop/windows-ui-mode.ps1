@@ -11,6 +11,7 @@ Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName Accessibility
 . (Join-Path $PSScriptRoot 'windows-taskdialog-action.ps1')
+. (Join-Path $PSScriptRoot 'windows-ui-scroll.ps1')
 $accessibilityAssembly = [Accessibility.IAccessible].Assembly.Location
 Add-Type -ReferencedAssemblies @($accessibilityAssembly) -TypeDefinition @'
 using System;
@@ -238,24 +239,16 @@ function Find-DescendantPresent([object]$Root, [object]$Type, [string]$Name) {
     [System.Windows.Automation.Condition]::TrueCondition
   )
   if ($items.Count -gt 2048) { throw 'Window UI tree exceeds bound' }
+  $match = $null
   foreach ($element in $items) {
     $current = $element.Current
     if ($current.ControlType -eq $Type -and $current.Name -ceq $Name) {
-      return $element
+      if ($current.ProcessId -ne $OwnerProcess) { throw 'Required section owner mismatch' }
+      if ($null -ne $match) { throw 'Required section is ambiguous' }
+      $match = $element
     }
   }
-  return $null
-}
-
-function Coding-SectionAnchorsVisible([object]$Element) {
-  $checkbox = Find-DescendantPresent $Element ([System.Windows.Automation.ControlType]::CheckBox) '启用账户模型与内置 VM（仅创建配置，不批准或执行）'
-  $refresh = Find-DescendantPresent $Element ([System.Windows.Automation.ControlType]::Button) '刷新编码能力'
-  return (
-    $null -ne $checkbox -and
-    $null -ne $refresh -and
-    -not $checkbox.Current.IsOffscreen -and
-    -not $refresh.Current.IsOffscreen
-  )
+  return $match
 }
 
 function Invoke-Exact(
@@ -282,37 +275,6 @@ function Invoke-Exact(
   try { ([System.Windows.Automation.InvokePattern]$pattern).Invoke() } catch {
     throw "${Phase}: required UI action failed"
   }
-}
-
-function Scroll-IntoViewExact([object]$Element) {
-  if ($null -eq $Element) { throw 'Required coding section unavailable' }
-  if (Coding-SectionAnchorsVisible $Element) { return }
-  $itemPattern = $null
-  if ($Element.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$itemPattern)) {
-    ([System.Windows.Automation.ScrollItemPattern]$itemPattern).ScrollIntoView()
-    Start-Sleep -Milliseconds 100
-  }
-  if (Coding-SectionAnchorsVisible $Element) { return }
-  $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
-  $ancestor = $walker.GetParent($Element)
-  $scrollPattern = $null
-  while ($null -ne $ancestor -and $null -eq $scrollPattern) {
-    $candidate = $null
-    if ($ancestor.TryGetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern, [ref]$candidate)) {
-      $typed = [System.Windows.Automation.ScrollPattern]$candidate
-      if ($typed.Current.VerticallyScrollable) { $scrollPattern = $typed }
-    }
-    $ancestor = $walker.GetParent($ancestor)
-  }
-  if ($null -eq $scrollPattern) { throw 'Required coding section is not scrollable' }
-  for ($i = 0; $i -lt 16 -and -not (Coding-SectionAnchorsVisible $Element); $i++) {
-    $scrollPattern.Scroll(
-      [System.Windows.Automation.ScrollAmount]::NoAmount,
-      [System.Windows.Automation.ScrollAmount]::SmallIncrement
-    )
-    Start-Sleep -Milliseconds 100
-  }
-  if (-not (Coding-SectionAnchorsVisible $Element)) { throw 'Required coding controls remained offscreen' }
 }
 
 function Wait-OwnedExact([object]$Type, [string]$Name, [int]$Seconds) {
@@ -514,11 +476,17 @@ if ($Action -eq 'coding') {
   $createForm = $true
   $codingSection = $null
   $deadline = [DateTime]::UtcNow.AddSeconds(30)
-  while ([DateTime]::UtcNow -lt $deadline -and $null -eq $codingSection) {
+  while ([DateTime]::UtcNow -lt $deadline) {
     $codingSection = Find-DescendantPresent $destinationRoot ([System.Windows.Automation.ControlType]::Group) '账户模型编码设置'
-    if ($null -eq $codingSection) { Start-Sleep -Milliseconds 100 }
+    if ($null -ne $codingSection) {
+      # Reuse the same deadline while capability metadata is loading. Bad
+      # ownership, ambiguity and a changed opt-in are never treated as loading.
+      $preview = Get-CodingScrollCapture $codingSection $OwnerProcess
+      if ($null -ne $preview -and (Test-CodingScrollReady $preview.facts)) { break }
+    }
+    Start-Sleep -Milliseconds 100
   }
-  Scroll-IntoViewExact $codingSection
+  Scroll-CodingControlsIntoView $codingSection $OwnerProcess
   $codingSectionVisible = $true
 } else {
   $destinationHandle = Wait-Destination 'Foundry — Persistent Workbench' 30
