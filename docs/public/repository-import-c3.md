@@ -1,8 +1,10 @@
 # C3: repository admission and read-only recovery diagnosis
 
-## Candidate 0.2.0: explicit dependency input and schema-2 inspection
+<a id="candidate-020-explicit-dependency-input-and-schema-2-inspection"></a>
 
-The current implementation extends the original C3 contract below. Its original design/fixture limitations are historical; the [controlled workbench](live-coding.md) separately composes real fixed VM verification. Candidate native/provider/installer/CI acceptance remains pending. User instructions are in the [language/input walkthrough](desktop-guide.md#candidate-020-language-and-dependency-inputs).
+## 0.2.0: explicit dependency input and schema-2 inspection
+
+The current implementation extends the original C3 contract below. Its original design/fixture limitations are historical; the [controlled workbench](live-coding.md) separately composes real fixed VM verification. Published platform packages require exact release receipts; [Mac native and scoped provider evidence](alpha-status.md) is recorded separately from that publication gate. User instructions are in the [language/input walkthrough](desktop-guide.md#candidate-020-language-and-dependency-inputs).
 
 `GET /api/coding-tasks` retains the legacy Go `available/profile/backends` fields and adds exactly three ordered `profiles` templates: `c4_node_model_v2`, `c4_typescript_model_v2`, `c4_python_model_v2`. Each has language/runner/verifier, `mode:embedded_vm`, limits, eligibility/reason and, when installed assets validate, the full VM identity plus `runtime_inventory_digest`. Top-level Go availability does not determine v2 eligibility. These templates cannot execute and do not prove a successful readiness check. Reading them allocates no VM session.
 

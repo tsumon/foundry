@@ -28,7 +28,7 @@ Generic external MCP execution is closed. Task-time MCP execution accepts only t
 
 Skill registration stores bounded static text. Skill content does not run scripts, fetch links, grant a tool, or authorize a state transition.
 
-## Built-in VM and candidate v2 inputs
+## Built-in VM and v2 inputs
 
 The controlled desktop defaults to a bundled Linux VM, with separate Go v1 and Node/TypeScript/Python v2 identities. V2 permits only single-package `node:test`, fixed TS typecheck then `node:test`, and Python `unittest`; Docker remains a separately selected Mac Go option. No unavailable profile can switch language, use a host runner or bypass virtualization requirements. Installed catalog eligibility is metadata, not readiness or native attestation.
 
@@ -36,7 +36,7 @@ Dependency import is a separate explicit read/copy/storage consent over an alrea
 
 Selected source is read-only; entire tests/support directories, manifests, locks, TS config and dependency payload remain protected. Editable scope cannot broaden through a root selection or model response. The static guest supervisor owns privilege, read-only mounts, control/FD separation and fixed resource policy before project loading; native gates must prove these actual controls. Complete authenticated response, exact EOF and confirmed owned termination/Close are required for retained native facts. A report alone cannot authorize a session.
 
-Selected test-file counts are not completed cases. Compiler, setup/discovery, truncated or zero-case infrastructure failures cannot become passing tests or Debugger repair evidence. Readiness, baseline, context, execution and delivery keep independent approvals. Candidate 0.2.0 native/provider/installed/CI acceptance remains pending; old Go or synthetic receipts cannot fill that gap.
+Selected test-file counts are not completed cases. Compiler, setup/discovery, truncated or zero-case infrastructure failures cannot become passing tests or Debugger repair evidence. Readiness, baseline, context, execution and delivery keep independent approvals. [Scoped Mac native and TypeScript gateway acceptance](alpha-status.md) is recorded; old Go or synthetic receipts never extend that proof. Platform CI and final-package verification remain mandatory, and docs-only repackaging requires measured equivalence with original evidence attribution. Windows fixture models do not establish real-provider access.
 
 ## Docker verification
 

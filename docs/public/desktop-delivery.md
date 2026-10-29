@@ -1,6 +1,6 @@
 # Desktop delivery design
 
-Status: desktop design with candidate 0.2.0 dual-runtime packaging implemented. Actual candidate native/installer/UI/upgrade and hosted CI acceptance remain pending; this document is not a release announcement.
+Status: 0.2.0 dual-runtime packaging and scoped Mac native/installation/upgrade acceptance are recorded. Published packages require their exact release receipts and platform checks; this design document does not assert a future hosted CI result.
 
 ## Outcome and boundary
 
@@ -19,13 +19,13 @@ Use a sandboxed Electron window with the unchanged built SPA, and a bundled nati
 - One desktop owner per profile. Closing/quitting shuts down its own child through the lifetime pipe; errors stop the session and retain evidence. No process-name kills or deletion of another instance's locks.
 - Installed resources are read-only inputs. Persistent state lives in a dedicated per-user desktop data directory, separate from existing CLI data. Removal/reinstallation does not erase state or evidence.
 
-## Candidate 0.2.0 resources and gates
+## 0.2.0 resources and gates
 
 The native package contains separate `sandbox/` (retained Go v1) and `sandbox-v2/` (one image shared by the three closed language profiles). Startup verifies both manifests, the v2 runtime descriptor and legal indexes before wiring the owned controller paths. A missing optional v2 resource cannot invalidate intact retained v1 evidence; new package builders require both bundles. No catalog read boots or probes either image. See [sandbox identity](embedded-sandbox.md) and [offline input/source-sidecar preparation](../../desktop/runtime-sources.md#v2-offline-runtime-and-source-sidecars).
 
 Electron/runtime source, `sandbox-sources` and `sandbox-v2-sources` are separate distribution sidecars, outside installed Resources. Complete source inventories and `distribution-manifest.json` bind actual files to the installer and both bundles. Preserve old task runtimes and released 0.1.0 assets; build fresh candidate bytes after all source/version changes.
 
-The installed native driver retains the unchanged v1 gate and adds a closed twelve-attempt v2 matrix with distinct bounded receipts. Each profile runs real tests with admitted dependencies and deliberately failing/repaired source, while model replies remain `local_protocol_fixture/not_real_provider`. Extra TS compile, Python setup/discovery and representative resource/stream/cleanup cases must produce their exact expected failure facts. Windows requires the full installed matrix before successful artifact upload; failure-only diagnostics expose only bounded receipt filenames, not packages or data directories. See the [matrix and pinned upgrade gates](release-readiness.md#candidate-020-gates). No such candidate native success is claimed by this source document.
+The installed native driver retains the unchanged v1 gate and adds a closed twelve-attempt v2 matrix with distinct bounded receipts. Each profile runs real tests with admitted dependencies and deliberately failing/repaired source, while model replies remain `local_protocol_fixture/not_real_provider`. Extra TS compile, Python setup/discovery and representative resource/stream/cleanup cases must produce their exact expected failure facts. Windows requires the full installed matrix before successful artifact upload; failure-only diagnostics expose only bounded receipt filenames, not packages or data directories. See the [matrix and pinned upgrade gates](release-readiness.md#candidate-020-gates). The complete matrix passed on Mac component source `6e60138`; see [scope and attribution](alpha-status.md). The final carrying package must retain exact component/source linkage and measured equivalence, with fresh package/installation checks; Windows requires actual native hosted CI.
 
 ## Platform security
 

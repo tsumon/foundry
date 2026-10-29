@@ -1,27 +1,25 @@
-# Desktop guide — stable 0.1.0 and candidate 0.2.0
+# Desktop guide — 0.2.0
 
 Foundry Desktop packages the existing workbench and local Go controller. It does
 not require a separately installed Node.js, npm, Go toolchain or compiler to run.
-Git is a separate prerequisite for repository operations. Released 0.1.0 supports serial, approval-bound standard-library Go delivery. Candidate 0.2.0 adds the closed Node, TypeScript and Python contracts below; its exact-source native, installer/UI, upgrade, provider and hosted CI gates remain pending. This page describes implementation and required acceptance, not a new release receipt.
+Git is a separate prerequisite for repository operations. Version 0.2.0 supports serial, approval-bound standard-library Go and the closed Node, TypeScript and Python contracts below. Mac native and scoped TypeScript gateway acceptance are recorded in [supported scope](alpha-status.md). Published platform packages require exact release receipts; Windows requires native hosted CI, not an inferred pass from Mac tests.
 
 ## Get the right artifact
 
-Use the [v0.1.0 release](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
+Use the [v0.2.0 release](https://github.com/tsumon/foundry/releases/tag/v0.2.0)
 for fixed versioned installers, checksums, corresponding runtime/sandbox source,
 clean Foundry source and exact-commit acceptance receipts. Actions artifacts are
 build evidence and can expire; they are not the durable download channel. There
-is no automatic updater. Keep the corresponding source/notices when redistributing.
+is no automatic updater. Keep the corresponding source/notices when redistributing. Platform source archives must include original runtime/installer sources, both exact sandbox source trees and distribution linkage. [Historical v0.1.0 installers and sources](https://github.com/tsumon/foundry/releases/tag/v0.1.0) remain retained.
 
 Release evidence distinguishes native installation and upgrade checks, real VM
 execution, local model fixtures and real provider calls. A successful build or a
-past package's result is not acceptance of a different installer. The recommended
-API route has [real Mac CPA/Grok delivery evidence](compatible-api-acceptance.md);
-Windows model-protocol fixtures do not establish real-provider compatibility. Hosted Windows cannot reach a provider bound to a Mac loopback address. Historical Mac Go evidence does not prove new-language delivery. Subscription integration remains experimental.
+past package's result is not acceptance of a different installer. Historical [Mac Go CPA/Grok evidence](compatible-api-acceptance.md) retains its original scope. The separate Mac TypeScript delivery used six successful real role calls, a typed dependency and four tests through a deliberately injected fault and Debugger repair. The configured “CPA Grok 本地” route requested grok-4.6; upstream identity is unverified. Windows model-protocol fixtures do not establish real-provider compatibility or access to a Mac loopback provider. Historical Mac Go evidence remains version-scoped. Subscription integration remains experimental.
 
 | Target | Package | Trust status |
 | --- | --- | --- |
-| macOS Apple Silicon | `Foundry-0.1.0-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
-| Windows x64 | `Foundry-0.1.0-x64.exe` | Unsigned per-user installer; no verified publisher |
+| macOS Apple Silicon | `Foundry-0.2.0-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
+| Windows x64 | `Foundry-0.2.0-x64.exe` | Unsigned per-user installer; no verified publisher |
 
 Do not treat a checksum as publisher authentication. Do not disable Gatekeeper,
 SmartScreen, antivirus or other OS protections to install the app. If your
@@ -87,7 +85,7 @@ creates a new run; it does not resume the previous simulation automatically.
 
 The new coding mode does not require `foundry.task.json` or preset patches. It
 uses a committed repository snapshot, a goal and protected/scoped files. The
-stable verifier runs standard-library Go 1.27.3 tests. Candidate 0.2.0 adds only the fixed profiles below. Tests execute in Linux, not as native Mac or Windows application tests. No guest NIC, host share, dependency installation or
+Go verifier runs standard-library Go 1.27.3 tests; 0.2.0 adds only the fixed profiles below. Tests execute in Linux, not as native Mac or Windows application tests. No guest NIC, host share, dependency installation or
 host-script fallback is provided. The source repository and protected tests remain
 untouched. If you explicitly choose Docker on Mac, supply an existing immutable
 local image matching the verifier contract; Foundry does not pull or build it.
@@ -176,7 +174,9 @@ After delivery, that model-backed task is a read-only historical result: downloa
 its artifacts or inspect evidence, but start a new task for additional model chat
 or execution. New readiness/cleanup preparation cannot rewrite a delivered record.
 
-## Candidate 0.2.0 language and dependency inputs
+<a id="candidate-020-language-and-dependency-inputs"></a>
+
+## 0.2.0 language and dependency inputs
 
 Use one committed single-package project. The source root is exactly `.` or `src`; it never expands the editable scope. Node/TypeScript tests live under selected `test` or `tests`; Python uses `tests`. Declare any additional test-support directory before inspection. The complete selected test/support directories are frozen, including helpers that are not themselves test cases.
 
@@ -288,7 +288,7 @@ administrator about the prerequisite. Foundry never changes it automatically.
 Unconfirmed shutdown preserves evidence and blocks further work instead of
 killing processes by name. See [sandbox design](embedded-sandbox.md).
 
-**Candidate input or framework error:** retain the failed admission/inspection or verification evidence. Check the selected framework, root metadata and exact local dependency input. Do not rewrite protected tests, loosen compiler settings or count zero-case setup/discovery/compile failures as a pass. New legitimate inputs need a new admission/inspection and task.
+**Input or framework error:** retain the failed admission/inspection or verification evidence. Check the selected framework, root metadata and exact local dependency input. Do not rewrite protected tests, loosen compiler settings or count zero-case setup/discovery/compile failures as a pass. New legitimate inputs need a new admission/inspection and task.
 
 **Simulation versus real verification:** inspect `source_kind`, the attempt trace
 and the exported report. A screenshot, exit code or model review alone does not

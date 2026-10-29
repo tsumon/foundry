@@ -1,8 +1,9 @@
 # Contributing
 
 FOUNDRY is a local delivery workbench with macOS arm64 and Windows x64
-desktop targets. Released 0.1.0 supports bounded Go tasks; candidate 0.2.0 adds
-closed Node/TypeScript/Python inputs with native release acceptance pending. It is maintained by [tsumon](https://github.com/tsumon). Use
+desktop targets. Version 0.2.0 adds closed Node/TypeScript/Python inputs beside
+Go, with [scoped Mac evidence](docs/public/alpha-status.md) and mandatory native
+platform release gates. It is maintained by [tsumon](https://github.com/tsumon). Use
 [tsumon/foundry](https://github.com/tsumon/foundry) for non-sensitive issues and
 focused pull requests. The project makes no response-time or contribution-acceptance
 commitment. Report suspected vulnerabilities privately through
@@ -90,7 +91,7 @@ outside the source tree**. Run `npm run package:mac --prefix desktop` or
 `npm run package:windows --prefix desktop`. `FOUNDRY_GO` can select the exact Go
 executable. Both builders require `FOUNDRY_SANDBOX_BUNDLE` and `FOUNDRY_SANDBOX_V2_BUNDLE` to select verified native v1/v2 bundles, with matching `FOUNDRY_SANDBOX_SOURCES` and `FOUNDRY_SANDBOX_V2_SOURCES` sidecars. Follow [the offline build sequence](desktop/runtime-sources.md#v2-offline-runtime-and-source-sidecars) before packaging. No signing-account discovery or publishing occurs. Distribute the Electron/runtime source, `sandbox-sources` and `sandbox-v2-sources` beside the installer, outside installed Resources. Building does not prove installation,
 Windows ACL behavior, approval flows or clean uninstall; run the matching native
-acceptance gates. Keep the v1 installed gate and twelve-case v2 native matrix; preserve Alpha.3 upgrade coverage and supplement it with pinned stable 0.1.0. Hosted Windows model replies are fixtures, not proof of access to a Mac loopback provider. These gates must run on the exact final source/package, including metadata changes. Never reuse personal data for package testing.
+acceptance gates. Keep the v1 installed gate and twelve-case v2 native matrix; preserve Alpha.3 upgrade coverage and supplement it with pinned stable 0.1.0. Hosted Windows model replies are fixtures, not proof of access to a Mac loopback provider. Keep every reused behavioral receipt's tested identity. A docs-only carrying-source rebuild requires measured executable/component equivalence and fresh final package/resource/install checks; changed executable inputs require the affected native gates. Never reuse personal data for package testing.
 
 Document any skipped check and the exact reason. A local pass does not imply GitHub-hosted CI, a clean machine, Docker smoke, or real-provider compatibility has passed.
 

@@ -75,11 +75,11 @@ Recovery performs local reconciliation. The legacy runner can perform owner-scop
 
 ## V2 frozen inputs and runtime eligibility
 
-Candidate 0.2.0 uses closed single-package `node:test`, fixed TypeScript typecheck plus `node:test`, and Python `unittest` contracts. Schema-2 inspection and immutable admission records bind committed metadata, protected test/support directories, config/locks, dependency payload and canonical runtime inventory. The server derives the full task profile from those immutable rows; the client submits only its selected profile and exact inspection reference. Model context receives a bounded dependency summary, not payload bytes or local input paths.
+Version 0.2.0 uses closed single-package `node:test`, fixed TypeScript typecheck plus `node:test`, and Python `unittest` contracts. Schema-2 inspection and immutable admission records bind committed metadata, protected test/support directories, config/locks, dependency payload and canonical runtime inventory. The server derives the full task profile from those immutable rows; the client submits only its selected profile and exact inspection reference. Model context receives a bounded dependency summary, not payload bytes or local input paths.
 
 Current catalog eligibility only validates installed assets/capability. It neither boots a VM nor proves hardware readiness, completed cases or distribution acceptance. Historical tasks resolve their exact retained runtime and input relations independently of the current catalog. Creation, context dispatch and verification recheck the sealed dependency payload. Cleanup uses existing exact ownership even when payloads are unavailable; a disk receipt never reconstructs process authority.
 
-Complete authenticated framework results supply actual case counts. TypeScript compile, Python setup/discovery and zero-case failures stop as infrastructure errors. Only a genuine completed assertion failure can enter bounded Debugger repair. Current candidate native/provider/installer/CI gates remain pending; see [release readiness](release-readiness.md#candidate-020-gates).
+Complete authenticated framework results supply actual case counts. TypeScript compile, Python setup/discovery and zero-case failures stop as infrastructure errors. Only a genuine completed assertion failure can enter bounded Debugger repair. [Scoped Mac native/provider acceptance](alpha-status.md) is recorded against component source `6e60138`. Exact carrying-source/package identities, measured repackaging equivalence and mandatory platform CI remain [release gates](release-readiness.md#candidate-020-gates); no receipt is relabeled as a run on different bytes.
 
 ## Historical C4-A/B synthetic verification boundary
 

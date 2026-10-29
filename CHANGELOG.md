@@ -2,27 +2,36 @@
 
 All notable public-facing changes will be recorded here.
 
-## 0.2.0 — candidate, acceptance pending
+## 0.2.0 — 2026-10-29
 
-- Prepare single-package JavaScript `node:test`, TypeScript typecheck plus
-  `node:test`, and Python `unittest` delivery alongside standard-library Go.
-  Choose the fixed language profile and follow the [input walkthrough](docs/public/desktop-guide.md#candidate-020-language-and-dependency-inputs).
+- Deliver single-package JavaScript `node:test`, TypeScript typecheck plus
+  `node:test`, and Python `unittest` tasks alongside standard-library Go.
+  Choose the fixed profile and follow the [input walkthrough](docs/public/desktop-guide.md#candidate-020-language-and-dependency-inputs).
 - Import pre-existing local pure-JS lock-v3 trees or exact locked pure wheels
-  through separate copy consent. Keep dependencies, tests/helpers, manifests,
-  locks and compiler configuration immutable throughout the approved workflow.
-  The guest never installs packages or runs project install scripts.
-- Show language/input identities and distinguish selected test files from
-  completed cases. Compile, discovery/setup and zero-case infrastructure
-  failures stop without claiming success or asking Debugger to repair them.
-- Package a shared v2 runtime beside retained Go v1, with separate measured
-  corresponding-source sidecars. Preserve old tasks, approvals and used budgets.
-- Add an installed native profile/failure matrix and stable-0.1.0 upgrade checks
-  alongside Alpha.3. These are source harnesses; candidate native, installed UI,
-  provider and exact-commit CI acceptance remain pending. See [release gates](docs/public/release-readiness.md#candidate-020-gates).
+  through separate copy consent. Dependencies, tests/helpers, manifests, locks
+  and compiler config stay protected; the guest never installs packages.
+- Distinguish selected test files from completed cases. Compile, setup/discovery
+  and zero-case infrastructure failures stop without false passes or repair
+  prompts. Node/Python retain bounded failure messages for diagnosis.
+- Package one shared v2 runtime beside retained Go v1, with complete separate
+  corresponding-source sidecars. Preserve existing tasks, approvals and budgets.
+- Correct kernel-console interference with binary VM transport and seed the
+  fixed boot null device, preserving authenticated results and old task runtimes.
+- Record Mac Go v1 and all twelve v2 native checks, plus physical Alpha.3 and
+  stable-0.1.0 upgrade/recovery/rollback/uninstall acceptance. Native workflow
+  models remain fixtures; baseline/fault/repair tests execute in the real VM.
+- Record a separate Mac TypeScript real-gateway delivery: six successful role
+  calls, a typed dependency and four tests through baseline, deliberately injected
+  first-candidate failure and Debugger repair. The requested `grok-4.6` identity
+  is not independently verified upstream. [Evidence scope](docs/public/alpha-status.md)
 
-Released 0.1.0 downloads and historical receipts remain fixed. This candidate
-entry is not a publication or new real-provider claim. Mac remains ad-hoc signed
-without notarization; Windows remains unsigned.
+Mac acceptance belongs to executable/runtime source `6e60138`; exact release
+receipts distinguish the final carrying source and any measured equivalent
+repackaging. Windows distribution requires native hosted CI and exact-release
+receipts; fixture replies do not prove Windows real-provider access. See
+[release gates](docs/public/release-readiness.md#candidate-020-gates).
+Released 0.1.0 assets and historical receipts remain fixed. Mac remains ad-hoc
+signed without Developer ID/notarization; Windows remains unsigned.
 
 ## 0.1.0 — 2026-10-28
 

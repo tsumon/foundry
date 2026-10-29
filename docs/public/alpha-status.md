@@ -1,12 +1,24 @@
-# Supported scope — candidate 0.2.0 and released 0.1.0
+# Supported scope — 0.2.0 and historical 0.1.0
 
-## Candidate 0.2.0 (acceptance pending)
+## 0.2.0
 
-The current source adds fixed single-package JavaScript `node:test`, TypeScript typecheck then `node:test`, and Python `unittest` profiles beside standard-library Go v1. New profiles use the bundled VM only, with explicit immutable local input: frozen pure-JS npm lock-v3 dependencies or exact locked pure Python wheels. Tests, helpers, manifests, locks, TS config and dependency payload are protected. No arbitrary packages, native extensions, plugins, monorepos, other frameworks or in-guest installers are supported. See the [input walkthrough](desktop-guide.md#candidate-020-language-and-dependency-inputs).
+The bounded serial workflow supports standard-library Go v1 plus single-package JavaScript `node:test`, fixed TypeScript typecheck then `node:test`, and Python `unittest`. New profiles require the bundled VM and explicit immutable local input: frozen pure-JS npm lock-v3 dependencies or exact locked pure wheels. Tests, helpers, manifests, locks, TS config and dependency payload remain protected. No arbitrary package acquisition, native extensions, plugins, monorepos, other frameworks or guest installers are offered. See the [input walkthrough](desktop-guide.md#candidate-020-language-and-dependency-inputs).
 
-Catalog eligibility is not a readiness check, test result or native attestation. Compile, setup/discovery and zero-case infrastructure failures cannot become passing tests or repair evidence. Existing independent approvals and retained runtime identities remain in force.
+Catalog eligibility is not a readiness check, test result or native attestation. Compile/setup/discovery and zero-case infrastructure errors cannot become passing tests or repair evidence. Existing independent approvals, retained runtime identities and no-host-fallback rules remain.
 
-Implementation/source fixtures and static package validation exist; actual candidate Mac VM, installed UI/upgrade, new-language provider, hosted Windows WHPX/installer and exact-commit CI gates remain pending. No candidate 0.2.0 download or successful run is asserted here. The native matrix uses explicitly synthetic model replies; it cannot extend historical Mac Go real-provider proof. Hosted Windows cannot reach a Mac loopback CPA service, so its fixture workflow cannot establish Windows real-provider access.
+### Scoped Mac evidence
+
+Executable/runtime source `6e60138` passed fresh Go v1 and the complete twelve-case v2 native matrix. Each Node/TS/Python workflow ran four real tests through baseline pass, intentional first-candidate failure and repair pass, using `local_protocol_fixture/not_real_provider` model replies. The additional compiler, setup/discovery, resource, signal, descendant and held-stream checks qualified their exact expected outcomes and cleanup. Real VM evidence is separate from model provenance.
+
+Fresh installation/window/catalog/retained-history and physical Alpha.3 plus stable 0.1.0 eight-step upgrade/recovery/rollback/uninstall passed. UI/history/restart behavioral reuse remains attributed to `72ed8dd` with measured equivalence, alongside fresh current-package checks; it is not a new restart run. Final release receipts distinguish the carrying source commit, accepted component source and any documentation-only repackaging by exact inventories/hashes. A new package timestamp is not a new native/provider pass.
+
+A separate real-gateway TypeScript task used Magpie “CPA Grok 本地”, requested `grok-4.6`; upstream model identity was not independently verified. Researcher, Planner, Worker, Debugger, QA and Auditor each completed one real call (six of a seven-call ceiling). With a typed dependency, four real VM tests passed baseline, detected an explicitly injected first-candidate fault, then passed after Debugger repair. Source, protected inputs and dependency input stayed unchanged; all native operations closed and patch/report were sealed. This proves that route/project/host scenario, not Node/Python real-provider or Windows access. Historical Go and OpenAI subscription receipts keep their original meaning.
+
+### Windows and distribution contract
+
+Windows distribution requires actual native hosted installer/UI/restart/upgrade/uninstall and WHPX checks for the exact release, with fixture-model replies. Consult the [v0.2.0 release receipts](https://github.com/tsumon/foundry/releases/tag/v0.2.0) for actual runs and final package hashes; no future CI success is inferred here. Hosted Windows cannot reach a Mac loopback CPA service. Native fixture workflows do not establish Windows real-provider access, and no tunnel, key export or provider substitution is implied.
+
+The seven release assets are DMG, EXE, clean Foundry source, macOS sources, Windows sources, scoped evidence and SHA256SUMS. Each platform source archive must include its original runtime/installer sources, both exact sandbox source trees and distribution linkage. Mac stays ad-hoc integrity signed without Developer ID/notarization; Windows stays unsigned. Versioned links and checksums do not authenticate a publisher or certify production safety. [Mandatory release gates](release-readiness.md#candidate-020-gates)
 
 ## Released 0.1.0
 
