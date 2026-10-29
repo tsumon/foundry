@@ -88,6 +88,7 @@ API Key 在 Mac 存入 Keychain，在 Windows 存入 Credential Manager，不写
 | 版本 Release 的验收回执 | 区分供应商调用、协议 fixture、安装升级与 VM 执行，按提交和安装包摘要绑定。 |
 | Mac 0.2.0 原生 VM 矩阵 | Go v1 与全部 12 项 v2 检查通过。Node/TS/Python 各以 4 项真实测试完成基线通过→明确注入错误被检出→修复通过；模型为 fixture（`local_protocol_fixture/not_real_provider`）。 |
 | Mac 0.2.0 API/TypeScript 交付 | 通过“CPA Grok 本地”完成 6 次成功真实角色调用，请求 `grok-4.6`，上游模型身份未独立验证。使用实际类型依赖和 4 项真实测试；首候选明确注入错误后失败，Debugger 修复，补丁/报告封存。源码、受保护输入和依赖未变，全部 VM 关闭。 |
+| [0.2.0 驱动生产模块修复](docs/public/compatible-api-acceptance.md#production-path-validation--2026-10-29) | 原样提取 Foundry 的路径校验模块，5 次真实调用产出控制字符修复；原有 3 项 VM 检查和独立 5 项回归通过，首次候选通过，未调用 Debugger。修复已回填源码，固定的 0.2.0 安装包不含此后续补丁。 |
 | Mac 安装与升级 | 新安装/窗口/目录/历史保留检查，以及 Alpha.3、v0.1.0 的物理升级/恢复/回滚/卸载通过。 |
 | Windows 发行 | 必须完成精确发行版本的原生托管安装/界面/升级/卸载及 WHPX 检查，模型回复为 fixture。实际结果见发行回执。 |
 | 本地演示 | `SYNTHETIC` / `synthetic_stub`，不调用云模型，也不执行 Go 编译器。 |

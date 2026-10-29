@@ -2,6 +2,15 @@
 
 All notable public-facing changes will be recorded here.
 
+## Unreleased
+
+- Reject C0/C1 control characters before admitting POSIX or Windows repository
+  paths, matching native inspection while preserving ordinary Unicode names.
+  Add regression coverage for every control code point and valid path names.
+- Record a real API-driven repair of this production module using installed
+  0.2.0: five role calls, protected VM tests, independent regression verification,
+  and sealed delivery. This maintenance fix is not in the fixed 0.2.0 installers.
+
 ## 0.2.0 — 2026-10-29
 
 - Deliver single-package JavaScript `node:test`, TypeScript typecheck plus

@@ -1,5 +1,6 @@
 // UI admission only; the native controller independently validates all paths.
 export function supportedRepositoryPath(value: string): boolean {
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(value)) return false;
   if (value.startsWith("/") && !value.startsWith("//")) return true;
   if (!/^[A-Za-z]:[\\/]/.test(value)) return false;
   return value.slice(3).split(/[\\/]/).every((part) =>

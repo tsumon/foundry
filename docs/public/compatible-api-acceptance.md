@@ -80,3 +80,42 @@ Retained private artifact digests:
 Later candidates must verify unchanged executable/resource bytes before carrying
 this run forward. Release receipts identify the final installer and that binding;
 a version or source-tree resemblance alone is insufficient.
+
+## Production path validation — 2026-10-29
+
+Installed Mac 0.2.0, carrying source `e53ece42ff9f26e99a7d39a62b0fab4b790dc30a`,
+completed a real repair of Foundry's `web/src/repositoryPath.ts`. The UI admitted
+control characters that native repository inspection rejects. The original
+production test reproduced the defect before any implementation change.
+
+The production module was copied byte-for-byte into a bounded TypeScript package.
+Existing behavior tests were adapted to `node:test`, with a protected native
+isolation check and an empty frozen dependency bundle. This establishes a
+production-module delivery, **not support for the whole React/Go monorepo**.
+
+| Check | Observed result |
+| --- | --- |
+| Receiver/model | User-selected local CPA Responses gateway; requested `grok-4.6`, upstream identity not independently verified |
+| Model calls | Researcher, Planner, Worker, QA and Auditor each completed once; five of seven calls, no retries or switching |
+| Change | One early rejection of U+0000–001F and U+007F–009F; no other path rules changed |
+| Baseline and candidate | Three real VM checks passed in each; protected inputs unchanged |
+| Independent regression | Five real VM checks passed, including every Cc character on both path styles and legitimate Unicode/POSIX names |
+| Lifecycle | Two readiness checks and three test executions; all five native instances confirmed closed |
+| Delivery | Separate delivery approval after independent regression; sealed patch/report, then exact reviewed module bytes applied to Foundry source |
+| Source integration | All 975 frontend tests passed; typecheck and production web build passed |
+| Native UI | Installed Mac displayed the delivered task, five-call budget and patch/report links after reopening the isolated profile |
+
+The product requires a passing baseline and immutable imported tests. The new
+regressions therefore ran in a second, separately approved verification task
+against the returned candidate, before delivery. That task made zero model calls;
+the original task's protected tests were never replaced. No deliberate failure was
+injected, and the first candidate passed, so this run did **not** call Debugger.
+
+The installed controller produced the patch; the fixed 0.2.0 release assets have
+not been replaced with it. Existing task data and consumed budgets were preserved.
+No private credentials, raw transcripts or local evidence paths are published.
+
+Retained private artifact digests:
+
+- Patch: `d8b97aef66350c1496347c2cc8f2138c07e55b63a005d230d8d9ed4209009e9a`
+- Report: `92502c6675d10950c8bd5441f6931a47706b47e60a7f66c1a5bdc04f2e878e73`
