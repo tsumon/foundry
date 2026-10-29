@@ -1,15 +1,23 @@
 """Host filesystem contract; real Win32 operations run on native Windows only."""
 import ctypes
+import hashlib
 import importlib.util
+import json
+import ntpath
 import os
 from pathlib import Path
 import struct
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 sys.dont_write_bytecode = True
 
 HELPER = Path(__file__).parents[1] / 'sandbox' / 'build-guest-v2-windows.py'
+LOCK = HELPER.with_name('multilang-inputs.lock.json')
+
+def locked_filenames():
+    return [row['file'] for row in json.loads(LOCK.read_text(encoding='utf-8'))['artifacts']]
 
 def load_helper():
     spec=importlib.util.spec_from_file_location('owned_windows_fs',HELPER)
@@ -17,6 +25,40 @@ def load_helper():
     return module
 
 class WindowsContractTests(unittest.TestCase):
+    def test_all_pinned_artifact_long_names_are_accepted_without_rewriting(self):
+        m=load_helper();names=locked_filenames()
+        self.assertTrue(any('~deb' in name for name in names))
+        for name in names:
+            value=ntpath.join(r'D:\a\_temp\foundry-multilang-inputs',name)
+            with self.subTest(file=name):self.assertEqual(m.windows_path(value),value)
+
+    def test_literal_long_tilde_names_do_not_admit_dos_short_aliases(self):
+        m=load_helper()
+        for part in ['package~deb13u1.deb','long-file~1.deb','source~archive','~inputs']:
+            value=ntpath.join(r'C:\owned',part,'input')
+            with self.subTest(part=part):self.assertEqual(m.windows_path(value),value)
+        for part in ['SHORT~1','PROGRA~1','PROGRA~2','AB1234~1.DEB','a~123456.xz','aBcD~12.TxT']:
+            with self.subTest(part=part),self.assertRaisesRegex(ValueError,'alias'):
+                m.windows_path(ntpath.join(r'C:\owned',part,'input'))
+
+    def test_handle_identity_still_rejects_alias_reparse_and_hardlink(self):
+        m=load_helper();info=m.FileInfo();info.links=1
+        expected=r'C:\owned\libexpat1_2.9.0-1~deb13u1_amd64.deb'
+        state={'name':'\\\\?\\'+expected}
+        def final_name(_handle,buffer,_size,_flags):
+            buffer.value=state['name'];return len(state['name'])
+        api=m.WindowsFS.__new__(m.WindowsFS)
+        api.kernel=SimpleNamespace(GetFileType=lambda _:1,GetFinalPathNameByHandleW=final_name)
+        api.info=lambda _:info
+        self.assertIs(api.check(123,expected,False),info)
+        state['name']='\\\\?\\'+r'C:\owned\different-long-name.deb'
+        with self.assertRaisesRegex(ValueError,'canonical handle path mismatch'):api.check(123,expected,False)
+        state['name']='\\\\?\\'+expected
+        for attributes,links in [(0x400,1),(0,2)]:
+            info.attributes=attributes;info.links=links
+            with self.subTest(attributes=attributes,links=links),self.assertRaisesRegex(ValueError,'linked or reparse'):
+                api.check(123,expected,False)
+
     def test_windows_host_boundary_has_canonical_drive_path_and_fixed_width_abi(self):
         self.assertTrue(HELPER.exists(),'native Windows build-host boundary is missing')
         m=load_helper()
@@ -34,6 +76,34 @@ if os.name=='nt':
     class NativeWindowsTests(unittest.TestCase):
         @classmethod
         def setUpClass(cls):cls.m=load_helper();cls.fs=cls.m.WindowsFS()
+
+        def test_native_pinned_tilde_names_read_exact_bytes_and_hash(self):
+            with tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp).resolve()
+                for name in [name for name in locked_filenames() if '~' in name]:
+                    with self.subTest(file=name):
+                        data=('owned input '+name).encode('utf-8');file=root/name;file.write_bytes(data)
+                        digest=hashlib.sha256(data).hexdigest()
+                        self.assertEqual(self.fs.read_regular(str(file),4096,size=len(data),digest=digest),data)
+                        with self.assertRaisesRegex(ValueError,'SHA-256 mismatch'):
+                            self.fs.read_regular(str(file),4096,size=len(data),digest='0'*64)
+
+        def test_native_generated_dos_alias_if_available_is_refused(self):
+            with tempfile.TemporaryDirectory() as tmp:
+                file=Path(tmp).resolve()/'owned-long-name~deb13u1.deb';file.write_bytes(b'owned bytes')
+                self.assertEqual(self.fs.read_regular(str(file),64),b'owned bytes')
+                get_short=self.fs.kernel.GetShortPathNameW
+                get_short.argtypes=[ctypes.c_wchar_p,ctypes.c_wchar_p,ctypes.c_uint32]
+                get_short.restype=ctypes.c_uint32
+                buffer=ctypes.create_unicode_buffer(32768)
+                count=get_short(str(file),buffer,len(buffer))
+                if not count:raise ctypes.WinError(ctypes.get_last_error())
+                self.assertLess(count,len(buffer))
+                if buffer.value.casefold()==str(file).casefold():
+                    print('Native DOS alias supplement: volume generated no short alias; mandatory long-name and handle checks still apply.')
+                    return
+                with self.assertRaisesRegex(ValueError,'alias|canonical handle path mismatch'):
+                    self.fs.read_regular(buffer.value,64)
 
         def test_native_read_pins_ancestors_and_file_until_close(self):
             with tempfile.TemporaryDirectory() as tmp:

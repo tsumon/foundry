@@ -15,9 +15,16 @@ def windows_path(value):
     text=text.replace('/','\\')
     for part in text[3:].split('\\') if len(text)>3 else []:
         if (not part or part in ('.','..') or part.endswith(('.',' '))
-                or re.search(r'[:*?"<>|~\x00-\x1f\x7f]',part)
+                or re.search(r'[:*?"<>|\x00-\x1f\x7f]',part)
                 or any(0xd800<=ord(x)<=0xdfff for x in part)):
             raise ValueError('Windows path alias refused')
+        # A literal tilde is legal in pinned Debian long filenames. Reject the
+        # conventional DOS 8.3 alias shape, then require every opened component's
+        # normalized final handle path to match in check(); syntax is not proof
+        # of a canonical filesystem identity.
+        if (len(part.split('.')[0])<=8
+                and re.fullmatch(r'[^. ~]{1,6}~[0-9]+(?:\.[^. ]{1,3})?',part)):
+            raise ValueError('Windows short-name alias refused')
         base=part.split('.')[0].upper()
         if base in ('CON','PRN','AUX','NUL') or re.fullmatch(r'(COM|LPT)[1-9¹²³]',base):
             raise ValueError('Windows device path refused')
