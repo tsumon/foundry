@@ -189,11 +189,16 @@ it.each(["credential_access_failed", "credential_wait_expired"])(
 it.each(["old connection", "old generation"])(
   "does not let expired %s diagnostic history disable a fresh inference gate",
   async (kind) => {
+    // Make separate clock reads cross a tick while constructing the same DTO.
+    // Receipt validity must not depend on fixture creation fitting into 1 ms.
+    let clockTick = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => clockTick++);
     const f = inferenceFixture();
     const old = structuredClone(f.pending);
     old.id = "historical-inference";
-    old.material.created_at = new Date(Date.now() - 700000).toISOString();
-    old.material.expires_at = new Date(Date.now() - 100000).toISOString();
+    const now = Date.now();
+    old.material.created_at = new Date(now - 700000).toISOString();
+    old.material.expires_at = new Date(now - 100000).toISOString();
     old.material.authorization.expires_at = old.material.expires_at;
     old.material.production_admission.generation = "f".repeat(32);
     if (kind === "old connection") {
@@ -202,6 +207,7 @@ it.each(["old connection", "old generation"])(
     } else {
       f.catalog.material.authorization.generation = 2;
     }
+    clock.mockRestore();
     const historical = {
       ...old,
       state: "unknown",
