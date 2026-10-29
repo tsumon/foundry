@@ -5,6 +5,8 @@ function fixture(t) {const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpd
 function contract(root,file,phase){return {schema_version:1,phase,source_root:root,output_root:'',source_roots:['.'],test_files:[file],input_files:[]};}
 function childEnv(root){return {LANG:'C.UTF-8',TZ:'UTC',TMPDIR:root,TEMP:root,TMP:root,...(process.env.SystemRoot?{SystemRoot:process.env.SystemRoot}:{} )};}
 function report(file){const rows=fs.readFileSync(file,'utf8').trim().split('\n').map(JSON.parse);assert.equal(rows[0].schema_version,1);assert.equal(rows.at(-1).type,'suite_end');return rows;}
+// Test-only host-native facade; the pinned compiler and Linux runner stay intact.
+function hostNativeCompiler(ts){return {...ts,getDefaultLibFilePath:options=>path.normalize(ts.getDefaultLibFilePath(options))};}
 test('image-owned Node adapter emits a native selected-case report on the build host',t=>{
   const root=fixture(t),output=path.join(root,'report');fs.writeFileSync(path.join(root,'owned.test.cjs'),"require('node:test')('owned case',()=>{});\n");
   const runner=path.resolve(__dirname,'../sandbox/runners/node.cjs');const script="const fs=require('node:fs'),fd=fs.openSync(process.argv[3],'wx');require(process.argv[2]).runTests(JSON.parse(process.argv[4]),fd).then(c=>{fs.closeSync(fd);process.exitCode=c;},()=>{process.exitCode=2});";
@@ -27,6 +29,12 @@ test('image-owned TypeScript adapter uses the lock-verified compiler and rejects
   const ts=require(path.join(compilerRoot,'typescript.js'));assert.equal(ts.version,'5.9.3');const {compile}=require('../sandbox/runners/typescript.cjs');
   const source=path.join(root,'source'),out=path.join(root,'out');fs.mkdirSync(source);fs.mkdirSync(out);fs.writeFileSync(path.join(source,'a.ts'),'export const owned: number = 1;');fs.writeFileSync(path.join(source,'package.json'),'{"type":"module"}');
   const options={target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',strict:true,noEmitOnError:true,allowJs:false,skipLibCheck:false};fs.writeFileSync(path.join(source,'tsconfig.json'),JSON.stringify({compilerOptions:options,files:['a.ts']}));
-  const c={...contract(source,'a.ts','compile-typescript'),input_files:['a.ts'],output_root:out};compile(c,ts);assert.match(fs.readFileSync(path.join(out,'a.js'),'utf8'),/export const owned = 1/);
-  fs.unlinkSync(path.join(out,'a.js'));fs.writeFileSync(path.join(source,'tsconfig.json'),JSON.stringify({compilerOptions:{...options,strict:false},files:['a.ts']}));assert.throws(()=>compile(c,ts),/compiler option/);assert.equal(fs.existsSync(path.join(out,'a.js')),false);
+  const c={...contract(source,'a.ts','compile-typescript'),input_files:['a.ts'],output_root:out};
+  if(process.platform==='win32'){
+    // The genuine compiler returns forward slashes; the Linux runner's native
+    // allowlist cannot admit those host library paths without the fixture bridge.
+    assert.throws(()=>compile(c,ts),/typescript_diagnostics/);assert.deepEqual(fs.readdirSync(out),[]);
+  }
+  const hostCompiler=hostNativeCompiler(ts);compile(c,hostCompiler);assert.equal(fs.readFileSync(path.join(out,'a.js'),'utf8'),'export const owned = 1;\n');assert.deepEqual(fs.readdirSync(out),['a.js']);
+  fs.unlinkSync(path.join(out,'a.js'));fs.writeFileSync(path.join(source,'tsconfig.json'),JSON.stringify({compilerOptions:{...options,strict:false},files:['a.ts']}));assert.throws(()=>compile(c,hostCompiler),/compiler option/);assert.deepEqual(fs.readdirSync(out),[]);
 });
