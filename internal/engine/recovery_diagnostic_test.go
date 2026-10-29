@@ -524,6 +524,7 @@ func TestRecoveryDiagnosticImportInitialGenerationIsNotCurrentSelection(t *testi
 	d := diagnosePure(t, e, m)
 	diagnosticCheck(t, d, "import_provenance", "verified")
 	diagnosticCheck(t, d, "candidate", "verified")
+	diagnosticCheck(t, d, "candidate_record", "verified")
 }
 
 // Catches accidentally treating any syntactically decoded committed row as

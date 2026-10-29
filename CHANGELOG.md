@@ -2,14 +2,26 @@
 
 All notable public-facing changes will be recorded here.
 
-## Unreleased
+## 0.2.1 — 2026-10-30
+
+- Validate a two-module TypeScript delivery through the real local API gateway,
+  including explicit recovery at a plan checkpoint and restart after sealed
+  delivery. Six successful calls, one retained earlier timeout; no replay.
+- Treat nil and empty persisted change lists equally in recovery diagnostics,
+  avoiding a false corrupt-selection warning on a clean reset.
+- Allow an explicit plan revision after VM readiness renewal when the complete
+  historical proposal still matches. A new execution approval remains required;
+  no automatic approval or model replay is introduced.
+- Give reasoning completions a shared five-minute deadline instead of cutting
+  off at 90 seconds. A virtual-time regression checks a 95-second response and
+  an actual deadline: unknown outcomes still consume one call and are not retried.
 
 - Reject C0/C1 control characters before admitting POSIX or Windows repository
   paths, matching native inspection while preserving ordinary Unicode names.
   Add regression coverage for every control code point and valid path names.
 - Record a real API-driven repair of this production module using installed
   0.2.0: five role calls, protected VM tests, independent regression verification,
-  and sealed delivery. This maintenance fix is not in the fixed 0.2.0 installers.
+  and sealed delivery. The fix ships in the 0.2.1 installers.
 
 ## 0.2.0 — 2026-10-29
 

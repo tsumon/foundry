@@ -110,7 +110,7 @@ func (e *Engine) RevisePlan(ctx context.Context, id string, request PlanRevision
 	if err != nil {
 		return m, empty, invalidRevision(err)
 	}
-	if !hasSeal(m, "plan_proposal", seal) {
+	if !hasSeal(m, "plan_proposal", seal) && !e.priorReadinessProposalIntact(m, base) {
 		return m, empty, invalidRevision(errors.New("current proposal inputs changed"))
 	}
 	if err = boundedPlanText("reason", request.Reason, 1000); err != nil {
@@ -140,4 +140,29 @@ func (e *Engine) RevisePlan(ctx context.Context, id string, request PlanRevision
 		current.Approvals = append(current.Approvals, domain.Approval{Kind: "plan_proposal", Digest: seal, Revision: next.Revision, PlanRevision: next.Revision})
 		return nil
 	})
+}
+
+// A fresh readiness receipt invalidates execution approval, not the historical
+// proposal's content. Explicit plan revision can bind that unchanged proposal
+// to current readiness without another model call. Approval still happens later.
+func (e *Engine) priorReadinessProposalIntact(m domain.Mission, base string) bool {
+	if m.Spec.C4 == nil || m.Spec.C4.ControlVersion != 1 {
+		return false
+	}
+	if _, err := e.currentC4Readiness(m); err != nil {
+		return false
+	}
+	for i := len(m.C4Controls) - 2; i >= 0; i-- {
+		c := m.C4Controls[i]
+		if c.Kind != "readiness" || c.Result == nil || c.Result.Status != "ready" || c.MaterialDigest != domain.C4ControlDigest(c) {
+			continue
+		}
+		historical := m
+		historical.C4Controls = m.C4Controls[:i+1]
+		seal, err := authority(historical, base, true)
+		if err == nil && hasSeal(m, "plan_proposal", seal) {
+			return true
+		}
+	}
+	return false
 }

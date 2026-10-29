@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 )
 
 // DiagnoseRecovery observes durable records and bounded managed material only.
@@ -164,7 +165,7 @@ func (e *Engine) diagnosticSelection(m domain.Mission) bool {
 		// untouched draft can lack a local selection operation.
 		return m.ImportVersion == 0 && m.State == "draft" && m.Epoch == 0 && len(m.Changes) == 0
 	}
-	return err == nil && op.MissionID == m.ID && op.Status == "committed" && (op.Kind == "apply" || op.Kind == "reset") && op.Result != nil && reflect.DeepEqual(op.Result.Generation, m.CandidateGeneration) && reflect.DeepEqual(op.Result.Changes, m.Changes) && op.ExpectedRevision < m.Revision && op.Epoch <= m.Epoch
+	return err == nil && op.MissionID == m.ID && op.Status == "committed" && (op.Kind == "apply" || op.Kind == "reset") && op.Result != nil && reflect.DeepEqual(op.Result.Generation, m.CandidateGeneration) && slices.Equal(op.Result.Changes, m.Changes) && op.ExpectedRevision < m.Revision && op.Epoch <= m.Epoch
 }
 
 func recoveryCheck(id string, status domain.RecoveryCheckStatus, code, message string) domain.RecoveryCheck {

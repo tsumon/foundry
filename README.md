@@ -10,15 +10,15 @@
 
 [![Verify](https://github.com/tsumon/foundry/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/verify.yml)
 [![Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)
-[![Version](https://img.shields.io/badge/version-0.2.0-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.2.0)
+[![Version](https://img.shields.io/badge/version-0.2.1-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.2.1)
 [![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2C56F5)](LICENSE)
 
 [简体中文](README.md) · [English](README.en.md) · [安装与使用](docs/public/desktop-guide.md) · [架构](docs/public/architecture.md) · [安全边界](docs/public/safety.md)
 
-[![下载 Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-下载_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.2.0/Foundry-0.2.0-arm64.dmg)
-[![下载 Windows EXE](https://img.shields.io/badge/Windows_x64-下载_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.2.0/Foundry-0.2.0-x64.exe)
+[![下载 Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-下载_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.2.1/Foundry-0.2.1-arm64.dmg)
+[![下载 Windows EXE](https://img.shields.io/badge/Windows_x64-下载_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.2.1/Foundry-0.2.1-x64.exe)
 
-[v0.2.0 · 发行说明与全部文件](https://github.com/tsumon/foundry/releases/tag/v0.2.0) · [SHA-256 校验值](https://github.com/tsumon/foundry/releases/download/v0.2.0/SHA256SUMS)
+[v0.2.1 · 发行说明与全部文件](https://github.com/tsumon/foundry/releases/tag/v0.2.1) · [SHA-256 校验值](https://github.com/tsumon/foundry/releases/download/v0.2.1/SHA256SUMS)
 
 </div>
 
@@ -28,7 +28,7 @@
 Foundry 是面向一人团队的 **软件交付工作台**。接入你选定的 API 模型，从已提交的 Git 快照出发，生成计划、修改独立候选、在内置虚拟机中测试、修复明确的失败，再交付可审阅的 **patch 和 Markdown 报告**。原仓库不动，部署与应用补丁由你控制。
 
 > [!IMPORTANT]
-> **0.2.0 支持下表约定内的单包 Go、JavaScript、TypeScript 和 Python 交付。** 接入 API 模型，用内置 VM 验证修改，无需 Docker Desktop，也不会降级到宿主机执行。ChatGPT 订阅登录仍为实验性功能。
+> **0.2.1 支持下表约定内的单包 Go、JavaScript、TypeScript 和 Python 交付。** 接入 API 模型，用内置 VM 验证修改，无需 Docker Desktop，也不会降级到宿主机执行。ChatGPT 订阅登录仍为实验性功能。
 
 ## 三件事放在同一个工作台
 
@@ -36,7 +36,7 @@ Foundry 是面向一人团队的 **软件交付工作台**。接入你选定的 
 | :--- | :--- | :--- |
 | Researcher 调研，Planner 规划；发送上下文和执行计划分别审批。计划可以修订。 | Worker 生成独立候选，受保护测试交给真实 VM；明确失败后由 Debugger 最多修复两轮。 | QA 与 Auditor 审查同一份候选和测试结果；最后单独批准导出，失败和已用预算仍保留。 |
 
-## 0.2.0 的项目范围
+## 0.2.1 的项目范围
 
 | 语言 | 固定验证方式 | 依赖输入 |
 | :--- | :--- | :--- |
@@ -51,18 +51,18 @@ Foundry 是面向一人团队的 **软件交付工作台**。接入你选定的 
 
 ## 下载与安装
 
-请通过 v0.2.0 发行页获取最终安装包、校验值和限定范围的回执。文件仅在必需检查完成后发布；源码版本号或下载链接本身不等于验收通过。
+请通过 v0.2.1 发行页获取最终安装包、校验值和限定范围的回执。文件仅在必需检查完成后发布；源码版本号或下载链接本身不等于验收通过。
 
 | 平台 | 安装包 | 对应第三方源码 |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | [Foundry-0.2.0-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.2.0/Foundry-0.2.0-arm64.dmg) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.2.0/Foundry-0.2.0-macos-sources.tar.gz) |
-| Windows x64 | [Foundry-0.2.0-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.2.0/Foundry-0.2.0-x64.exe) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.2.0/Foundry-0.2.0-windows-sources.tar.gz) |
+| Apple Silicon Mac | [Foundry-0.2.1-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.2.1/Foundry-0.2.1-arm64.dmg) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.2.1/Foundry-0.2.1-macos-sources.tar.gz) |
+| Windows x64 | [Foundry-0.2.1-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.2.1/Foundry-0.2.1-x64.exe) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.2.1/Foundry-0.2.1-windows-sources.tar.gz) |
 
-下载后核对 [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.2.0/SHA256SUMS)。[Release](https://github.com/tsumon/foundry/releases/tag/v0.2.0) 保留对应提交、安装与升级验收、真实调用范围、干净源码和第三方许可材料；发布文件固定到对应发行版，不随 main 滚动替换。平台源码归档包含原运行时/安装器源码、两个精确沙盒源码树及发行关联材料。[干净 Foundry 源码](https://github.com/tsumon/foundry/releases/download/v0.2.0/Foundry-0.2.0-source.tar.gz) · [限定范围的验收证据](https://github.com/tsumon/foundry/releases/download/v0.2.0/Foundry-0.2.0-evidence.tar.gz) · [历史 v0.1.0 下载与源码](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
+下载后核对 [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.2.1/SHA256SUMS)。[Release](https://github.com/tsumon/foundry/releases/tag/v0.2.1) 保留对应提交、安装与升级验收、真实调用范围、干净源码和第三方许可材料；发布文件固定到对应发行版，不随 main 滚动替换。平台源码归档包含原运行时/安装器源码、两个精确沙盒源码树及发行关联材料。[干净 Foundry 源码](https://github.com/tsumon/foundry/releases/download/v0.2.1/Foundry-0.2.1-source.tar.gz) · [限定范围的验收证据](https://github.com/tsumon/foundry/releases/download/v0.2.1/Foundry-0.2.1-evidence.tar.gz) · [历史 v0.1.0 下载与源码](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
 
 **签名状态：** Mac 使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Windows 安装包未签名，没有已验证发布者。校验值不等于发布者认证。不要关闭 Gatekeeper、SmartScreen 或杀毒软件；组织策略不允许时请采用审阅过的源码工作流。正式版本号不代表已获平台公证或商业服务承诺。
 
-0.2.0 安装包内置控制器、前端、Linux 客户系统、Go 工具链、固定的 Node/Python 解释器和 TypeScript 编译器。运行应用无需另装语言工具链或 Docker；准备第三方依赖输入可能需要 Foundry 外的工具。仓库导入需要本机受支持的 Git；Windows 还需已启用的硬件虚拟化及 Windows Hypervisor Platform。不会自动启用系统功能、安装服务或重启系统。Intel Mac、Windows ARM 和 Linux 桌面包暂不支持。详见[桌面指南](docs/public/desktop-guide.md)。
+0.2.1 安装包内置控制器、前端、Linux 客户系统、Go 工具链、固定的 Node/Python 解释器和 TypeScript 编译器。运行应用无需另装语言工具链或 Docker；准备第三方依赖输入可能需要 Foundry 外的工具。仓库导入需要本机受支持的 Git；Windows 还需已启用的硬件虚拟化及 Windows Hypervisor Platform。不会自动启用系统功能、安装服务或重启系统。Intel Mac、Windows ARM 和 Linux 桌面包暂不支持。详见[桌面指南](docs/public/desktop-guide.md)。
 
 ## 用自己的模型完成一次交付
 
@@ -88,7 +88,8 @@ API Key 在 Mac 存入 Keychain，在 Windows 存入 Credential Manager，不写
 | 版本 Release 的验收回执 | 区分供应商调用、协议 fixture、安装升级与 VM 执行，按提交和安装包摘要绑定。 |
 | Mac 0.2.0 原生 VM 矩阵 | Go v1 与全部 12 项 v2 检查通过。Node/TS/Python 各以 4 项真实测试完成基线通过→明确注入错误被检出→修复通过；模型为 fixture（`local_protocol_fixture/not_real_provider`）。 |
 | Mac 0.2.0 API/TypeScript 交付 | 通过“CPA Grok 本地”完成 6 次成功真实角色调用，请求 `grok-4.6`，上游模型身份未独立验证。使用实际类型依赖和 4 项真实测试；首候选明确注入错误后失败，Debugger 修复，补丁/报告封存。源码、受保护输入和依赖未变，全部 VM 关闭。 |
-| [0.2.0 驱动生产模块修复](docs/public/compatible-api-acceptance.md#production-path-validation--2026-10-29) | 原样提取 Foundry 的路径校验模块，5 次真实调用产出控制字符修复；原有 3 项 VM 检查和独立 5 项回归通过，首次候选通过，未调用 Debugger。修复已回填源码，固定的 0.2.0 安装包不含此后续补丁。 |
+| [0.2.0 驱动生产模块修复](docs/public/compatible-api-acceptance.md#production-path-validation--2026-10-29) | 原样提取 Foundry 的路径校验模块，5 次真实调用产出控制字符修复；原有 3 项 VM 检查和独立 5 项回归通过，首次候选通过，未调用 Debugger。修复已收录到 0.2.1 安装包。 |
+| [多文件交付与重启恢复](docs/public/compatible-api-acceptance.md#two-module-delivery-and-restart-acceptance) | 两个 TypeScript 模块完成修改、6 项候选测试与独立 9 项回归；计划和交付后重启均保留证据及预算。6 次真实调用成功，另保留最初 1 次超时；不自动重试。 |
 | Mac 安装与升级 | 新安装/窗口/目录/历史保留检查，以及 Alpha.3、v0.1.0 的物理升级/恢复/回滚/卸载通过。 |
 | Windows 发行 | 必须完成精确发行版本的原生托管安装/界面/升级/卸载及 WHPX 检查，模型回复为 fixture。实际结果见发行回执。 |
 | 本地演示 | `SYNTHETIC` / `synthetic_stub`，不调用云模型，也不执行 Go 编译器。 |
@@ -109,10 +110,10 @@ MCP、Skills 和观察型 hooks 提供管理、发现和静态说明；桌面不
 
 ## 从源码运行
 
-开发基线：Go **1.27.3**、Node.js **22.23.2**、npm **10.9.8**、cgo/C 编译器和受支持的本机 Git。v2 的源码测试与构建另需显式指定可信 Python **3.13+** 路径和固定离线运行时/编译器输入，见[贡献指南](CONTRIBUTING.md#pinned-v2-inputs)。以下快速示例在发行后使用固定的 v0.2.0 标签和模拟工作流，不启动 VM 或调用供应商。
+开发基线：Go **1.27.3**、Node.js **22.23.2**、npm **10.9.8**、cgo/C 编译器和受支持的本机 Git。v2 的源码测试与构建另需显式指定可信 Python **3.13+** 路径和固定离线运行时/编译器输入，见[贡献指南](CONTRIBUTING.md#pinned-v2-inputs)。以下快速示例在发行后使用固定的 v0.2.1 标签和模拟工作流，不启动 VM 或调用供应商。
 
 ```sh
-git clone --branch v0.2.0 --depth 1 https://github.com/tsumon/foundry.git
+git clone --branch v0.2.1 --depth 1 https://github.com/tsumon/foundry.git
 cd foundry
 npm ci --prefix web
 ./scripts/build.sh

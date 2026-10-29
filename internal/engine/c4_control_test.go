@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"foundry/internal/c4fixture"
 	"foundry/internal/domain"
 	"foundry/internal/sandbox"
@@ -663,5 +664,57 @@ func TestC4ControlCleanupIndependent(t *testing.T) {
 	}
 	if d.removes != before+1 || m.C4Controls[len(m.C4Controls)-1].Result.Status != "cleaned" || m.C4Operations[0].Result.Class != o.Result.Class {
 		t.Fatal("cleanup changed run")
+	}
+}
+
+func TestC4ReadinessRenewalAllowsExplicitPlanRevisionWithoutModelReplay(t *testing.T) {
+	for _, tamper := range []bool{false, true} {
+		t.Run(fmt.Sprint(tamper), func(t *testing.T) {
+			e, s, m, _, _, _ := c4FixtureMode(t, true)
+			m = controlReady(t, e, m)
+			m = c4Baseline(t, e, m)
+			models := &scripted{outputs: []string{`{"summary":"change","steps":[{"id":"one","title":"change","description":"update","depends_on":[],"files":["main.go"]}]}`}}
+			e.options.C4Controlled.models = models
+			if _, err := e.Plan(context.Background(), m.ID, m.Revision); err != nil {
+				t.Fatal(err)
+			}
+			finishCoding(e)
+			m, _ = s.GetMission(m.ID)
+			oldPlan := *m.Plan
+			oldBudget := m.Budget
+			baseline := m.C4Operations[0]
+			m = controlReady(t, e, m)
+			if _, err := e.Approve(context.Background(), m.ID, m.Revision); err == nil {
+				t.Fatal("fresh readiness automatically approved old plan")
+			}
+			if tamper {
+				var err error
+				m, err = s.UpdateMission(m.ID, m.Revision, "fixture.plan_drift", func(m *domain.Mission) error { m.Plan.Steps[0].Description = "unreviewed change"; return nil })
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := EditablePlan{Summary: oldPlan.Summary + "; operator reviewed recovery after readiness renewal", Steps: []EditableStep{{ID: "one", Title: "change", Description: "update", DependsOn: []string{}, Files: []string{"main.go"}}}}
+			revised, _, err := e.RevisePlan(context.Background(), m.ID, PlanRevisionRequest{ExpectedMissionRevision: m.Revision, ExpectedPlanRevision: m.Plan.Revision, Reason: "Explicit operator review after readiness renewal; retain source and implementation scope", Plan: p})
+			if tamper {
+				if err == nil {
+					t.Fatal("changed proposal was repaired from an unrelated historical seal")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if revised.State != "awaiting_approval" || revised.Budget != oldBudget || len(models.roles) != 1 || !reflect.DeepEqual(revised.C4Operations[0], baseline) {
+				t.Fatal("revision dispatched, charged budget, or changed baseline")
+			}
+			seal, err := authority(revised, filepath.Join(e.dir(m.ID), "base"), true)
+			if err != nil || !hasSeal(revised, "plan_proposal", seal) {
+				t.Fatal("new proposal is not bound to current readiness", err)
+			}
+			if _, err = e.Approve(context.Background(), m.ID, m.Revision); err == nil {
+				t.Fatal("stale approval accepted")
+			}
+		})
 	}
 }

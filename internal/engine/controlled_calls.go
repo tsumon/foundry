@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -231,7 +230,7 @@ func (e *Engine) controlledModel(op *operation, role domain.Role, extra any) (do
 func (e *Engine) completeControlledModel(op *operation, v domain.Invocation, input controlledInput) (domain.Invocation, string, error) {
 	role, auth := v.Role, v.AuthorityDigest
 	var err error
-	ctx, cancel := context.WithTimeout(op.ctx, 90*time.Second)
+	ctx, cancel := context.WithTimeout(op.ctx, model.CompletionTimeout)
 	defer cancel()
 	var result model.Result
 	if e.gateway == nil {

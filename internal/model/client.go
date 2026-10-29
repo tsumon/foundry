@@ -14,6 +14,10 @@ import (
 	"foundry/internal/domain"
 )
 
+// CompletionTimeout bounds one reasoning response, including non-streaming providers.
+// It does not authorize retries or change the task call budget.
+const CompletionTimeout = 5 * time.Minute
+
 const maxResponseBytes = 2 * 1024 * 1024
 
 var errProviderRedirect = errors.New("provider redirects are disabled")
@@ -67,7 +71,7 @@ func NewClient(secrets Secrets) *Client {
 	return &Client{
 		secrets: secrets,
 		http: &http.Client{
-			Timeout: 90 * time.Second,
+			Timeout: CompletionTimeout,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return errProviderRedirect
 			},

@@ -119,3 +119,57 @@ Retained private artifact digests:
 
 - Patch: `d8b97aef66350c1496347c2cc8f2138c07e55b63a005d230d8d9ed4209009e9a`
 - Report: `92502c6675d10950c8bd5441f6931a47706b47e60a7f66c1a5bdc04f2e878e73`
+
+## Maintenance completion and recovery policy — 2026-10-30
+
+The 0.2.1 maintenance work keeps the same bounded project profiles, protected
+inputs and independent approvals. Reasoning completions now share a five-minute
+deadline across the controller and HTTP transport. A 95-second local simulated
+response succeeds; a response beyond five minutes remains an unknown outcome,
+consumes its reservation, and is not retried. Response media/envelope validation
+and provider selection are unchanged.
+
+Restarting the controller requires fresh VM readiness before execution. That
+receipt invalidates an earlier execution proposal binding. After verifying the
+complete historical proposal against its original readiness receipt, the existing
+plan-revision action can create a new proposal bound to current readiness. It
+does not call a model or authorize execution. The operator must still review and
+approve the revised plan separately; altered proposals and stale approvals fail.
+Recovery diagnostics also compare empty persisted change lists by their contents,
+so a clean reset is not mislabeled as corrupt merely because JSON omitted an
+empty list.
+
+### Two-module delivery and restart acceptance
+
+A standalone TypeScript delivery-manifest utility used two editable source files
+and frozen tests/configuration. This is a supported small project, not the whole
+Foundry monorepo. The source-built Mac controller used the installed signed VM
+bundles and the user-selected local CPA Responses gateway (`grok-4.6`; upstream
+identity not independently verified).
+
+| Check | Observed result |
+| --- | --- |
+| Initial interruption | First Researcher hit the former 90-second client deadline; gateway recorded HTTP 499. Unknown outcome and consumed reservation retained |
+| New plan after repair | Operator explicitly initiated a new plan on the same task. Researcher completed in about 158 seconds, Planner completed once; no transport replay |
+| Restart before execution | Plan, baseline, model snapshot and 3/8 consumed calls persisted; no dispatch on restart |
+| Recovery approval | Fresh readiness, explicit plan revision through the existing editor/API, then separate execution approval; no additional planning calls |
+| Implementation | Two Worker calls changed `src/paths.ts` and `src/manifest.ts`: nested path normalization, duplicate rejection and deterministic sorted manifests |
+| Tests | Baseline and candidate each passed 6 real VM checks; a separate frozen requirements task passed 9, with zero model calls |
+| Reviews and delivery | QA and Auditor each completed once; patch/report sealed after the independent regression passed |
+| Final restart | Delivered state, sealed artifacts, invocation ledger and budget retained without redispatch |
+| Budget and isolation | 7 of 8 calls used: 6 completed, 1 earlier unknown. Original workspaces unchanged; all 9 VM instances confirmed closed |
+
+The candidate passed on its first test run; no Debugger call or deliberately
+introduced source defect was involved. Protected files and original project bytes
+were unchanged. The nine instances include six independently approved readiness
+checks during diagnosis/restarts and three test executions; they are not nine
+separate project test runs. Known usage was 24,829 input and 31,596 output tokens;
+the initial interrupted request's usage is unknown, so these are not complete
+token or monetary totals.
+
+This was a pre-packaging controller acceptance. Final installer receipts separately
+identify the packaged binaries and installation checks. A read-only diagnostic
+normalization fix was added afterward and verified by local regression tests.
+
+- Patch SHA-256: `8ce7d3cdc8171f00d4a43d1ba067a482587b8e6b6a25d81dcfa4198037ae56ca`
+- Report SHA-256: `1489c0c4533a7321699443bd83ee7376c2c54ca3158a2e4ceec19e2346b41624`

@@ -34,14 +34,14 @@ type Router struct {
 }
 
 func NewRouter(legacy Gateway, resolver CredentialResolver, options RouterOptions) *Router {
-	r := &Router{legacy: legacy, resolver: resolver, origins: make(map[string]bool), http: &http.Client{Timeout: 90 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errProviderRedirect }}}
+	r := &Router{legacy: legacy, resolver: resolver, origins: make(map[string]bool), http: &http.Client{Timeout: CompletionTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return errProviderRedirect }}}
 	r.codingAdmission, r.dispatched = options.CodingAdmission, make(map[string]bool)
 	// Disable environment proxies: even test credentials must only reach the pinned listener.
 	// No reused connections: net/http otherwise has implicit stale-connection
 	// replay paths, including GET discovery. Never inherit mutable global hooks.
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
-	r.http.Transport = &http.Transport{Protocols: protocols, DialContext: (&net.Dialer{Timeout: 30 * time.Second}).DialContext, DisableKeepAlives: true, ResponseHeaderTimeout: 90 * time.Second}
+	r.http.Transport = &http.Transport{Protocols: protocols, DialContext: (&net.Dialer{Timeout: 30 * time.Second}).DialContext, DisableKeepAlives: true, ResponseHeaderTimeout: CompletionTimeout}
 	for _, origin := range options.SimulationOrigins {
 		if validSimulationOrigin(origin) {
 			r.origins[origin] = true

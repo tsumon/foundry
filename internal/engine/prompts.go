@@ -12,7 +12,6 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -251,7 +250,7 @@ func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(op.ctx, 90*time.Second)
+	ctx, cancel := context.WithTimeout(op.ctx, model.CompletionTimeout)
 	defer cancel()
 	result, err := gateway.Complete(ctx, model.Request{Profile: m.Profiles[role], Role: role, System: missionRolePrompt(m, role), Prompt: string(b), MaxOutputTokens: 8192})
 	// Even unknown outcomes consume the reservation. No retry is performed.
