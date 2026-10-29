@@ -35,7 +35,7 @@ func TestControlledBindingsHaveFixedBudgetAndStableDigest(t *testing.T) {
 		t.Fatalf("FixedReadBudget() = %+v, want %+v", got, want)
 	}
 	b := TaskBindings{
-		Git:           GitSourceBinding{RepositoryID: "repo", RepositoryRevision: 2, ObservationID: "obs", Root: "/tmp/repo", BaseCommit: "0123456789012345678901234567890123456789"},
+		Git:           GitSourceBinding{RepositoryID: "repo", RepositoryRevision: 2, ObservationID: "obs", Root: nativeDomainRoot(), BaseCommit: "0123456789012345678901234567890123456789"},
 		Skills:        []SkillBinding{{ID: "skill", Revision: 3, Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Name: "Review", Role: Researcher}},
 		PolicyVersion: "repo_read_v1",
 		Tools:         []string{"repo.list", "repo.read", "repo.search"},

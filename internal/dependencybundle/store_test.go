@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	"foundry/internal/platformfs"
@@ -373,6 +374,11 @@ func TestSourceMutationBeforePublicationRejectsSnapshot(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			root, src, m := fixture(t)
 			mutated := false
+			blocked := false
+			original, e := os.Stat(filepath.Join(src, "lib/a"))
+			if e != nil {
+				t.Fatal(e)
+			}
 			ctx := checkpointContext{context.Background(), func() error {
 				entries, e := os.ReadDir(root)
 				if e != nil {
@@ -388,6 +394,14 @@ func TestSourceMutationBeforePublicationRejectsSnapshot(t *testing.T) {
 								put(t, src, "lib/a", []byte("xyz"))
 							case "replacement":
 								if e := os.Remove(filepath.Join(src, "lib/a")); e != nil {
+									if runtime.GOOS == "windows" {
+										// Win32 ERROR_SHARING_VIOLATION, not an unrelated I/O error.
+										if !errors.Is(e, syscall.Errno(32)) {
+											t.Fatal(e)
+										}
+										blocked = true
+										break
+									}
 									t.Fatal(e)
 								}
 								put(t, src, "lib/a", []byte("abc"))
@@ -399,7 +413,26 @@ func TestSourceMutationBeforePublicationRejectsSnapshot(t *testing.T) {
 				}
 				return nil
 			}}
-			if _, e := ImportFrozen(ctx, root, src, m); e == nil || !mutated {
+			binding, e := ImportFrozen(ctx, root, src, m)
+			if runtime.GOOS == "windows" && kind == "replacement" {
+				if !blocked || !mutated || e != nil {
+					t.Fatalf("replacement blocked=%v attempted=%v import=%v", blocked, mutated, e)
+				}
+				if e := Verify(context.Background(), root, binding); e != nil {
+					t.Fatal(e)
+				}
+				if b, e := os.ReadFile(filepath.Join(src, "lib/a")); e != nil || string(b) != "abc" {
+					t.Fatalf("blocked replacement changed source: %q %v", b, e)
+				}
+				if current, e := os.Stat(filepath.Join(src, "lib/a")); e != nil || !os.SameFile(original, current) {
+					t.Fatalf("blocked replacement changed source identity: %v", e)
+				}
+				if entries, e := os.ReadDir(root); e != nil || len(entries) != 1 || entries[0].Name() != binding.BundleDigest {
+					t.Fatalf("blocked replacement left incomplete publication: %v %v", entries, e)
+				}
+				return
+			}
+			if e == nil || !mutated {
 				t.Fatalf("mutated=%v error=%v", mutated, e)
 			}
 			requireAbsent(t, root)

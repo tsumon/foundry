@@ -24,6 +24,14 @@ func runnerAssetV2(t *testing.T, name string) string {
 }
 func adapterRunV2(t *testing.T, python bool, root, file string) (frameworkreport.Verdict, int, []byte) {
 	t.Helper()
+	// Host temporary directories can have aliases (macOS /var -> /private/var).
+	// Node emits canonical filenames; mirror the guest's canonical /workspace
+	// contract instead of weakening the adapter's project-boundary check.
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root = canonicalRoot
 	reportR, reportW, e := os.Pipe()
 	if e != nil {
 		t.Fatal(e)
@@ -196,6 +204,10 @@ func TestV2AdaptersRetainFailureDiagnosticsWithoutChangingAuthority(t *testing.T
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, file := t.TempDir(), "a.test.cjs"
+			canonicalRoot, err := filepath.EvalSymlinks(root)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if tc.python {
 				file = "test_a.py"
 			}
@@ -230,14 +242,50 @@ func TestV2AdaptersRetainFailureDiagnosticsWithoutChangingAuthority(t *testing.T
 						t.Fatal("missing project-relative location", r)
 					}
 				}
-				if strings.Contains(diagnosticTextV2(r["file"]), root) || strings.Contains(diagnosticTextV2(r["message"]), root) {
-					t.Fatal("absolute project path in diagnostic", r)
+				for _, location := range []string{root, canonicalRoot} {
+					for _, field := range []string{"file", "message", "cause"} {
+						if strings.Contains(diagnosticTextV2(r[field]), location) {
+							t.Fatal("absolute project path in diagnostic", r)
+						}
+					}
 				}
 			}
 			if !found {
 				t.Fatalf("missing error text %q: %s", tc.message, raw)
 			}
 		})
+	}
+}
+
+func TestV2HostNodeAdapterCanonicalizesOwnedRootAlias(t *testing.T) {
+	root := t.TempDir()
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "owned-root-alias")
+	if err := os.Symlink(canonicalRoot, alias); err != nil {
+		t.Fatal(err)
+	}
+	file := "a.test.cjs"
+	body := `require('node:test').test('owned alias',()=>{throw Error('OWNED_ALIAS '+__filename)});`
+	if err := os.WriteFile(filepath.Join(root, file), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	verdict, exit, raw := adapterRunV2(t, false, alias, file)
+	if verdict.Class != "test_failed" || verdict.Tests != 1 || exit != 1 {
+		t.Fatalf("changed authority: %+v exit=%d diagnostics=%s", verdict, exit, raw)
+	}
+	records := failureDiagnosticsV2(t, raw)
+	if len(records) != 1 || records[0]["file"] != file || !strings.Contains(diagnosticTextV2(records[0]["message"]), "OWNED_ALIAS <project>/"+file) {
+		t.Fatalf("missing canonical project-relative diagnostic: %s", raw)
+	}
+	for _, location := range []string{root, canonicalRoot, alias} {
+		for _, field := range []string{"file", "message", "cause"} {
+			if strings.Contains(diagnosticTextV2(records[0][field]), location) {
+				t.Fatal("absolute root alias in diagnostic", records[0])
+			}
+		}
 	}
 }
 

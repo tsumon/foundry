@@ -7,6 +7,7 @@ import (
 	"foundry/internal/dependencybundle"
 	"foundry/internal/domain"
 	"foundry/internal/gitinspect"
+	"foundry/internal/platformfs"
 	"foundry/internal/workspace"
 	"os"
 	"os/exec"
@@ -38,7 +39,7 @@ func TestV2FixturesAdmitRealFrozenDependenciesAndCommittedInputs(t *testing.T) {
 				t.Fatal(e)
 			}
 			store := filepath.Join(base, "store")
-			if e = os.Mkdir(store, 0700); e != nil {
+			if e = platformfs.PrivateDirectory(store); e != nil {
 				t.Fatal(e)
 			}
 			var a dependencyadmission.AdmissionReceipt
@@ -88,12 +89,21 @@ func TestV2PythonFixtureImportsFrozenWheelAndProtectedHelper(t *testing.T) {
 	}
 	// Import and discovery only: never run the Linux assertions or pressure cases
 	// on the host. This catches a broken fixture before expensive native gates.
-	script := `import importlib.util,sys,unittest
+	script := `import importlib.abc,importlib.util,sys,types,unittest
+class NoHostLinuxGuard(importlib.abc.MetaPathFinder):
+ def find_spec(self,fullname,path=None,target=None):
+  if fullname == 'fcntl': raise AssertionError('host discovery imported the Linux isolation guard')
+sys.meta_path.insert(0,NoHostLinuxGuard())
+guard=types.ModuleType('guards')
+def no_host_isolation(*args): raise AssertionError('host discovery executed Linux isolation checks')
+guard.check=no_host_isolation
+sys.modules['guards']=guard
 sys.path[:0]=[sys.argv[1]+'/src',sys.argv[2]+'/foundry_fixture_dep-1.0-py3-none-any.whl']
 spec=importlib.util.spec_from_file_location('owned',sys.argv[1]+'/tests/test_triple.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 assert module.identity(9)==9 and module.triple(-2)==-6
 assert unittest.defaultTestLoader.loadTestsFromModule(module).countTestCases()==4
+assert module.check is no_host_isolation and 'fcntl' not in sys.modules
 `
 	if output, e := exec.Command(python, "-I", "-S", "-B", "-c", script, source, input).CombinedOutput(); e != nil {
 		t.Fatalf("offline fixture import: %s %v", output, e)
@@ -109,6 +119,49 @@ func TestV2FixtureSelectionIsClosed(t *testing.T) {
 		if _, e := selectFixture(q[0], q[1]); e != nil {
 			t.Fatal(q, e)
 		}
+	}
+}
+
+func TestV2PythonFixtureGuardsRejectUnsafeObservations(t *testing.T) {
+	python := os.Getenv("FOUNDRY_BUILD_PYTHON")
+	if !filepath.IsAbs(python) {
+		t.Fatal("absolute trusted FOUNDRY_BUILD_PYTHON required")
+	}
+	guard, e := json.Marshal(pythonGuardsV2)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Execute the actual protected guard against owned observations. No host
+	// credentials, network, mounts, files or native descriptors are inspected.
+	script := `import io,json,stat,sys,types,unittest
+guard=json.loads(sys.argv[1])
+def check(change={}):
+ values=dict(uid=65534,gid=65534,groups=[],status='NoNewPrivs:\t1\n',network=['lo'],mounts='root / - tmpfs tmpfs ro\n',writable='',readable='',fifo=True,access=1,fd4=False)
+ values.update(change)
+ os=types.ModuleType('os')
+ os.getuid=lambda:values['uid'];os.getgid=lambda:values['gid'];os.getgroups=lambda:values['groups']
+ os.O_RDWR=2;os.O_RDONLY=0;os.O_NONBLOCK=2048;os.O_ACCMODE=3;os.O_WRONLY=1
+ def opened(path,flags):
+  if path==values['writable' if flags==os.O_RDWR else 'readable']: return 9
+  raise OSError('owned denied observation')
+ os.open=opened;os.close=lambda fd:None
+ def fstat(fd):
+  if fd==4 and not values['fd4']: raise OSError('owned closed observation')
+  return types.SimpleNamespace(st_mode=stat.S_IFIFO if values['fifo'] else stat.S_IFREG)
+ os.fstat=fstat
+ socket=types.ModuleType('socket');socket.if_nameindex=lambda:list(enumerate(values['network']))
+ fcntl=types.ModuleType('fcntl');fcntl.F_GETFL=3;fcntl.fcntl=lambda fd,command:values['access']
+ sys.modules.update(os=os,socket=socket,fcntl=fcntl)
+ def read(path): return io.StringIO(values['status' if path=='/proc/self/status' else 'mounts'])
+ scope={'open':read}
+ exec(guard,scope)
+ scope['check'](unittest.TestCase())
+check()
+for change in [dict(uid=0),dict(gid=0),dict(groups=[65534]),dict(status='NoNewPrivs:\t0\n'),dict(network=['lo','eth0']),dict(mounts='1 / - virtiofs host rw\n'),dict(writable='/workspace/src/triple.py'),dict(readable='/dev/hvc0'),dict(fifo=False),dict(access=0),dict(fd4=True)]:
+ with unittest.TestCase().assertRaises(AssertionError): check(change)
+`
+	if out, e := exec.Command(python, "-I", "-S", "-B", "-c", script, string(guard)).CombinedOutput(); e != nil {
+		t.Fatalf("offline Python guard observations: %s %v", out, e)
 	}
 }
 

@@ -23,8 +23,12 @@ func singleLink(f *os.File, _ os.FileInfo) error {
 func makeDirectory(r *os.Root, p string) error {
 	return platformfs.PrivateDirectory(filepath.Join(r.Name(), filepath.FromSlash(p)))
 }
-func syncFile(*os.File) error   { return nil }
-func syncRoot(r *os.Root) error { return platformfs.SyncPath(r.Name()) }
+func syncFile(*os.File) error { return nil }
+func syncRoot(r *os.Root) error {
+	// OpenRoot(".") preserves a terminal dot in Name. Clean only this trusted
+	// handle-derived path; external path admission must still reject aliases.
+	return platformfs.SyncPath(filepath.Clean(r.Name()))
+}
 func publishAbsent(r *os.Root, source, target string) error {
 	return platformfs.PublishAbsent(filepath.Join(r.Name(), source), filepath.Join(r.Name(), target))
 }

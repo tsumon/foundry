@@ -2,14 +2,23 @@ package domain
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func nativeDomainRoot() string {
+	if runtime.GOOS == "windows" {
+		return `C:\tmp\repo`
+	}
+	return "/tmp/repo"
+}
 
 func inspectionFixture() RepositoryInspection {
 	n := 1
 	b := int64(7)
 	v := RepositoryInspection{SchemaVersion: 1, ID: "inspection", Root: "/tmp/repo", Branch: "main", Commit: strings.Repeat("a", 40), Spec: RepositoryImportSpec{Scope: []string{"file.txt"}, Acceptance: []string{"test -f file.txt"}}, PolicyVersion: "committed_text_v1", Status: "ready", Stage: "complete", CheckedAt: "2026-10-21T00:00:00Z", WorkingTreeStatus: "not_checked", FileCount: &n, TotalBytes: &b, ContextFileCount: &n, ContextBytes: &b, ContextManifest: []FileMeta{{Path: "file.txt", Bytes: 7, SHA256: strings.Repeat("b", 64)}}, ProtectedInputs: []string{}}
+	v.Root = nativeDomainRoot()
 	v.Digest = RepositoryInspectionDigest(v)
 	return v
 }
@@ -21,7 +30,7 @@ func TestRepositoryInspectionDigestAndSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, change := range []func(*RepositoryInspection){
-		func(v *RepositoryInspection) { v.ID = "other" }, func(v *RepositoryInspection) { v.Root = "/other" }, func(v *RepositoryInspection) { v.Branch = "other" }, func(v *RepositoryInspection) { v.Commit = strings.Repeat("c", 40) }, func(v *RepositoryInspection) { v.CheckedAt = "2026-10-20T00:00:00Z" }, func(v *RepositoryInspection) { v.Spec.Image = "other" }, func(v *RepositoryInspection) { v.RepositoryID = "repo"; v.RepositoryRevision = 1 }, func(v *RepositoryInspection) { v.ProtectedInputs = []string{"file.txt"} }, func(v *RepositoryInspection) { n := 2; v.FileCount = &n }, func(v *RepositoryInspection) {
+		func(v *RepositoryInspection) { v.ID = "other" }, func(v *RepositoryInspection) { v.Root = nativeDomainRoot() + "-other" }, func(v *RepositoryInspection) { v.Branch = "other" }, func(v *RepositoryInspection) { v.Commit = strings.Repeat("c", 40) }, func(v *RepositoryInspection) { v.CheckedAt = "2026-10-20T00:00:00Z" }, func(v *RepositoryInspection) { v.Spec.Image = "other" }, func(v *RepositoryInspection) { v.RepositoryID = "repo"; v.RepositoryRevision = 1 }, func(v *RepositoryInspection) { v.ProtectedInputs = []string{"file.txt"} }, func(v *RepositoryInspection) { n := 2; v.FileCount = &n }, func(v *RepositoryInspection) {
 			v.ContextManifest = []FileMeta{{Path: "file.txt", Bytes: 7, SHA256: strings.Repeat("c", 64)}}
 		},
 	} {
@@ -75,7 +84,7 @@ func TestRepositoryInspectionRejectsBoundsAndUnknownCategories(t *testing.T) {
 		{"protected", func(v *RepositoryInspection) { v.Spec.Protected = make([]string, 501) }},
 		{"commands", func(v *RepositoryInspection) { v.Spec.Acceptance = make([]string, 13) }},
 		{"command_bytes", func(v *RepositoryInspection) { v.Spec.Acceptance = []string{strings.Repeat("x", 8193)} }},
-		{"root", func(v *RepositoryInspection) { v.Root = "/" + strings.Repeat("x", 4096) }},
+		{"root", func(v *RepositoryInspection) { v.Root = nativeDomainRoot() + strings.Repeat("x", 4096) }},
 		{"status", func(v *RepositoryInspection) { v.Status = "partial_ready" }},
 		{"policy", func(v *RepositoryInspection) { v.PolicyVersion = "future" }},
 		{"dirty", func(v *RepositoryInspection) { v.WorkingTreeStatus = "clean" }},

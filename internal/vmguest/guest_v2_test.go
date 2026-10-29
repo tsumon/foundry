@@ -9,6 +9,7 @@ import (
 	"foundry/internal/vmruntime"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -468,35 +469,69 @@ func TestV2ReceiveShutdownJoinsObserverAfterObservation(t *testing.T) {
 		t.Fatal("pending error hidden")
 	}
 }
-func TestV2PublicationClosesOwnedNativeReceivePipe(t *testing.T) {
-	input, send, e := os.Pipe()
-	if e != nil {
-		t.Fatal(e)
+func TestV2PublicationClosesOwnedReceivePipe(t *testing.T) {
+	t.Run("cancellable", func(t *testing.T) {
+		input, send := io.Pipe()
+		testV2PublicationClosesOwnedReceivePipe(t, input, send)
+	})
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+		t.Run("native-pollable", func(t *testing.T) {
+			input, send, e := os.Pipe()
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer input.Close()
+			defer send.Close()
+			if e = input.SetReadDeadline(time.Now().Add(time.Second)); e != nil {
+				t.Fatal(e)
+			}
+			testV2PublicationClosesOwnedReceivePipe(t, input, send)
+		})
 	}
+}
+
+func testV2PublicationClosesOwnedReceivePipe(t *testing.T, input io.ReadCloser, send io.WriteCloser) {
+	t.Helper()
 	defer input.Close()
 	defer send.Close()
-	if e = input.SetReadDeadline(time.Now().Add(time.Second)); e != nil {
-		t.Fatal(e)
+	// io.Pipe is cancellable on every host, including Windows where os.Pipe
+	// has no deadline support. Bound the whole positive contract, including the
+	// write that would otherwise hang if the receive endpoint stayed open.
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	await := func(stage string, result <-chan error) error {
+		t.Helper()
+		select {
+		case e := <-result:
+			return e
+		case <-timer.C:
+			t.Fatalf("receive-close publication stalled at %s", stage)
+			return nil
+		}
 	}
 	q := probeV2(t, "c4_node_model_v2")
 	var request bytes.Buffer
-	if e = vmruntime.WriteRequestV2(context.Background(), &request, q, nil, ""); e != nil {
+	if e := vmruntime.WriteRequestV2(context.Background(), &request, q, nil, ""); e != nil {
 		t.Fatal(e)
 	}
 	sent := make(chan error, 1)
 	go func() { _, e := send.Write(request.Bytes()); sent <- e }()
 	output := &memoryWireV2{}
-	e = ServeV2(context.Background(), input, output, "linux/amd64", &fixtureV2{outcome: completedV2()})
-	if e != nil {
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeV2(context.Background(), input, output, "linux/amd64", &fixtureV2{outcome: completedV2()})
+	}()
+	if e := await("serve", done); e != nil {
 		t.Fatal(e)
 	}
-	if e = <-sent; e != nil {
+	if e := await("request send", sent); e != nil {
 		t.Fatal(e)
 	}
 	if !hostAcceptsV2(q, output.Bytes()) || !output.closed {
-		t.Fatal("native pipe shutdown did not commit exact transcript")
+		t.Fatal("receive pipe shutdown did not commit exact transcript")
 	}
-	if _, e = send.Write([]byte("after receive shutdown")); e == nil {
+	go func() { _, e := send.Write([]byte("after receive shutdown")); sent <- e }()
+	if e := await("post-close write", sent); e == nil {
 		t.Fatal("receive pipe remained open")
 	}
 }

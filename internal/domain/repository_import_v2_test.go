@@ -170,6 +170,9 @@ func TestV2CandidateRejectsNewUnsupportedLayout(t *testing.T) {
 // serialization/domain definitions (top-level receipt keys only are sorted).
 func TestRepositoryImportV1LiteralDigestGoldens(t *testing.T) {
 	v := inspectionFixture()
+	// Historical wire bytes stay fixed even on hosts with different root syntax.
+	v.Root = "/tmp/repo"
+	v.Digest = RepositoryInspectionDigest(v)
 	if got := RepositoryImportSpecDigest(v.Spec); got != "275c4dfe09a8c32bdd0e5c74440d079d80e3664af0156762a5ae05e495de07ac" {
 		t.Fatal("v1 spec digest changed", got)
 	}

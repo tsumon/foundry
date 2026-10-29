@@ -72,7 +72,7 @@ func TestManifestRejectsAmbiguousAndUnboundedInventory(t *testing.T) {
 			}
 		})
 	}
-	for _, p := range []string{"", "/a", "a\\b", "a:b", "a//b", ".", "a/..", "a/./b", "a\n", "a\x7f", "a/é", "a.", "a ", "CON", "con.txt", "aux", "NUL.py", "lpt9.x", "COM1", "a/PRN/x", strings.Repeat("x", 129), strings.Repeat("a/", 32) + "x", strings.Repeat("aaa/", 256) + "x"} {
+	for _, p := range []string{"", "/a", "a\\b", "a:b", "bad:name", "AUX.txt", "trailing.", "a//b", ".", "a/..", "a/./b", "a\n", "a\x7f", "a/é", "a.", "a ", "CON", "con.txt", "aux", "NUL.py", "lpt9.x", "COM1", "a/PRN/x", strings.Repeat("x", 129), strings.Repeat("a/", 32) + "x", strings.Repeat("aaa/", 256) + "x"} {
 		t.Run(fmt.Sprintf("path-%q", p), func(t *testing.T) {
 			m := manifest("node")
 			m.Files[0].Path = p

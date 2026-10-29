@@ -164,15 +164,22 @@ func TestInspectFrozenPayloadExactBounds(t *testing.T) {
 	}
 }
 func TestInspectFrozenRejectsPathBounds(t *testing.T) {
-	for _, p := range []string{strings.Repeat("a", 129), strings.Repeat("d/", 32) + "a", "bad:name", "AUX.txt", "trailing."} {
+	paths := []string{strings.Repeat("a", 129), strings.Repeat("d/", 32) + "a"}
+	if runtime.GOOS != "windows" {
+		// Windows materializes these spellings as aliases/devices, not literal
+		// directory entries. Manifest tests reject the spellings on every host;
+		// native Windows tests separately check the actual enumerated namespace.
+		paths = append(paths, "bad:name", "AUX.txt", "trailing.")
+	}
+	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
 			_, src := dirs(t)
 			writePath := filepath.Join(src, filepath.FromSlash(p))
 			if e := os.MkdirAll(filepath.Dir(writePath), 0700); e != nil {
-				t.Skip(e)
+				t.Fatal(e)
 			}
 			if e := os.WriteFile(writePath, nil, 0644); e != nil {
-				t.Skip(e)
+				t.Fatal(e)
 			}
 			if _, e := InspectFrozen(context.Background(), src, "node", sum(nil), nil); e == nil {
 				t.Fatalf("accepted path %q", p)
