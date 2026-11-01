@@ -160,6 +160,33 @@ it.each([0, 1, 2])(
     expect(requests[2].body.spec.protected).toEqual([]);
   },
 );
+it.each([0, 1, 2])(
+  "preserves language %i dependency admission and inspection on unchanged refresh",
+  async (index) => {
+    const { requests } = setup();
+    await selectLanguage(index);
+    await admit();
+    fireEvent.click(screen.getByRole("button", { name: "检查可导入性" }));
+    await screen.findByText("可创建任务");
+    expect(createButton()).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "刷新编码能力" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "刷新编码能力" }),
+      ).toBeEnabled(),
+    );
+    await waitFor(() => expect(createButton()).toBeEnabled());
+    expect(screen.getByText("已保留依赖准入结果")).toBeVisible();
+    expect(screen.getByLabelText("本地依赖输入目录")).toHaveValue(
+      "/synthetic/dependencies",
+    );
+    expect(requests.map((row) => row.path)).toEqual([
+      "/api/coding-dependencies",
+      "/api/repository-imports/inspections",
+    ]);
+  },
+);
+
 it.each([
   "源代码根目录",
   "测试根目录",

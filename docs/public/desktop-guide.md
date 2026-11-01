@@ -1,12 +1,12 @@
-# Desktop guide — 0.2.0
+# Desktop guide — 0.2.2
 
 Foundry Desktop packages the existing workbench and local Go controller. It does
 not require a separately installed Node.js, npm, Go toolchain or compiler to run.
-Git is a separate prerequisite for repository operations. Version 0.2.0 supports serial, approval-bound standard-library Go and the closed Node, TypeScript and Python contracts below. Mac native and scoped TypeScript gateway acceptance are recorded in [supported scope](alpha-status.md). Published platform packages require exact release receipts; Windows requires native hosted CI, not an inferred pass from Mac tests.
+Git is a separate prerequisite for repository operations. Version 0.2.2 supports serial, approval-bound standard-library Go and the closed Node, TypeScript and Python contracts below. Mac native and scoped TypeScript gateway acceptance are recorded in [supported scope](alpha-status.md). Published platform packages require exact release receipts; Windows requires native hosted CI, not an inferred pass from Mac tests.
 
 ## Get the right artifact
 
-Use the [v0.2.0 release](https://github.com/tsumon/foundry/releases/tag/v0.2.0)
+Use the [v0.2.2 release](https://github.com/tsumon/foundry/releases/tag/v0.2.2)
 for fixed versioned installers, checksums, corresponding runtime/sandbox source,
 clean Foundry source and exact-commit acceptance receipts. Actions artifacts are
 build evidence and can expire; they are not the durable download channel. There
@@ -18,8 +18,8 @@ past package's result is not acceptance of a different installer. Historical [Ma
 
 | Target | Package | Trust status |
 | --- | --- | --- |
-| macOS Apple Silicon | `Foundry-0.2.0-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
-| Windows x64 | `Foundry-0.2.0-x64.exe` | Unsigned per-user installer; no verified publisher |
+| macOS Apple Silicon | `Foundry-0.2.2-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
+| Windows x64 | `Foundry-0.2.2-x64.exe` | Unsigned per-user installer; no verified publisher |
 
 Do not treat a checksum as publisher authentication. Do not disable Gatekeeper,
 SmartScreen, antivirus or other OS protections to install the app. If your
@@ -80,6 +80,27 @@ model or a real MCP service.
 Closing the app stops its own controller. It does not erase retained evidence,
 restart failed work, or grant any pending approval. Starting a new simulation
 creates a new run; it does not resume the previous simulation automatically.
+
+## Resume daily work
+
+New-task input and import receipts remain in memory while you visit Settings or
+another task in the same window. Return with **New task**. Saved model settings
+are read again without clearing repository fields. Cancel, successful creation,
+selecting a different registered repository, closing or reloading the window
+ends that draft. This is not a persisted task or credential store.
+
+**Refresh coding capability** reads local metadata only. Unchanged configuration
+keeps explicit runtime inputs and dependency/import receipts. Creation is disabled
+while that read is pending. Changed or unavailable configuration invalidates the
+selection; changing repository, scope or protected inputs still needs a new check.
+
+If an action response is lost, **Read latest task state** and **Refresh C4 facts**
+read the persisted mission before showing current controls. They do not repeat
+the failed action, clear its consumed budget or grant approval. Unsaved plan
+edits remain available for reconciliation. **View current decision** opens the
+existing approval panel; **View recovery diagnosis** opens the overview, where
+diagnosis itself remains an explicit read. Readiness, baseline, context, plan,
+candidate and delivery approvals stay separate, and tests stay in the VM.
 
 ## Model-driven tasks (opt-in)
 

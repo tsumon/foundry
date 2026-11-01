@@ -62,6 +62,48 @@ it("opens the existing decision drawer from diagnosis without executing an actio
   );
 });
 
+it("lets a failed task read its latest state without repeating actions or losing the plan draft", async () => {
+  let resolve!: (value: Response) => void;
+  const fetcher = vi.fn(async (url: string, _init?: RequestInit) =>
+    url === `/api/missions/${mission.id}`
+      ? new Promise<Response>((done) => {
+          resolve = done;
+        })
+      : reliabilityRead(url),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  function Recoverable() {
+    const [value, update] = useState<Mission>({
+      ...mission,
+      error: "连接中断，结果未知",
+    });
+    return <MissionWorkspace mission={value} onUpdate={update} />;
+  }
+  render(<Recoverable />);
+  openPlanEditor();
+  fireEvent.change(screen.getByLabelText("计划摘要"), {
+    target: { value: "保留未保存的计划" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "读取最新任务状态" }));
+  expect(
+    screen.getByRole("button", { name: "读取最新任务状态" }),
+  ).toBeDisabled();
+  resolve(
+    response({ mission: { ...mission, revision: mission.revision + 1 } }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("连接中断，结果未知")).not.toBeInTheDocument(),
+  );
+  expect(screen.getByLabelText("计划摘要")).toHaveValue("保留未保存的计划");
+  expect(screen.getByRole("button", { name: "批准并执行计划" })).toBeDisabled();
+  expect(
+    fetcher.mock.calls.filter(([url]) => url === `/api/missions/${mission.id}`),
+  ).toHaveLength(1);
+  expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(
+    false,
+  );
+});
+
 const controlledBindings = {
   git: {
     repository_id: "repo",

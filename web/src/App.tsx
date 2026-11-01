@@ -40,6 +40,10 @@ export default function App() {
     Record<string, MissionSession>
   >({});
   const [creating, setCreating] = useState(false);
+  const [creationSession, setCreationSession] = useState(0);
+  const [hasCreationDraft, setHasCreationDraft] = useState(false);
+  const creationBusy = useRef(false);
+  const draftRepository = useRef<GitRepository | undefined>(undefined);
   const [creationRepository, setCreationRepository] = useState<GitRepository>();
   const [demo, setDemo] = useState(false);
   const [decisionOpen, setDecisionOpen] = useState(false);
@@ -75,20 +79,30 @@ export default function App() {
     setDecisionOpen(false);
     setInitialMissionView(undefined);
   };
-  const beginCreate = () => {
-    setCreationRepository(undefined);
-    creationSource.current =
-      section === "catalog" && selectedProject
-        ? {
-            kind: "catalog",
-            projectId: selectedProject,
-            projectName:
-              catalog.snapshot?.projects.find(
-                (project) => project.id === selectedProject,
-              )?.name ?? "项目任务",
-            view: catalogView,
-          }
-        : { kind: "section", section };
+  const beginCreate = (repository?: GitRepository) => {
+    const sourceChanged =
+      repository &&
+      (repository.id !== draftRepository.current?.id ||
+        repository.revision !== draftRepository.current?.revision);
+    if (creationBusy.current && sourceChanged) return;
+    if (!hasCreationDraft || sourceChanged) {
+      setCreationRepository(repository);
+      draftRepository.current = repository;
+      setCreationSession((version) => version + 1);
+      setHasCreationDraft(true);
+      creationSource.current =
+        section === "catalog" && selectedProject
+          ? {
+              kind: "catalog",
+              projectId: selectedProject,
+              projectName:
+                catalog.snapshot?.projects.find(
+                  (project) => project.id === selectedProject,
+                )?.name ?? "项目任务",
+              view: catalogView,
+            }
+          : { kind: "section", section };
+    }
     setCreating(true);
     setDemo(false);
   };
@@ -159,7 +173,7 @@ export default function App() {
         onSelect={(id) =>
           openMission(id, false, undefined, { kind: "section", section })
         }
-        onCreate={beginCreate}
+        onCreate={() => beginCreate()}
         loading={work.loading}
         error={work.error}
         stream={work.stream}
@@ -194,30 +208,46 @@ export default function App() {
             view={catalogView}
             onView={setCatalogView}
             onCreateFromRepository={(repository) => {
-              beginCreate();
-              setCreationRepository(repository);
+              beginCreate(repository);
             }}
           />
         </div>
-        {catalogVisible ? null : creating ? (
-          <CreateMission
-            initialRepository={creationRepository}
-            onCancel={() => setCreating(false)}
-            onCreated={(m) => {
-              work.update(m);
-              setMissionSessions((current) => ({
-                ...current,
-                [m.id]: createMissionSession(m),
-              }));
-              setSelected(m.id);
-              setMissionSource(creationSource.current);
-              setDecisionOpen(false);
-              setInitialMissionView(undefined);
-              setCreating(false);
-              setSection("projects");
-            }}
-          />
-        ) : section === "settings" ? (
+        {hasCreationDraft && (
+          <div hidden={!creating}>
+            <CreateMission
+              key={creationSession}
+              active={creating}
+              onBusyChange={(busy) => {
+                creationBusy.current = busy;
+              }}
+              initialRepository={creationRepository}
+              onRepositoryChange={(repository) => {
+                draftRepository.current = repository;
+              }}
+              onCancel={() => {
+                creationBusy.current = false;
+                setCreating(false);
+                setHasCreationDraft(false);
+              }}
+              onCreated={(m) => {
+                creationBusy.current = false;
+                work.update(m);
+                setMissionSessions((current) => ({
+                  ...current,
+                  [m.id]: createMissionSession(m),
+                }));
+                setSelected(m.id);
+                setMissionSource(creationSource.current);
+                setDecisionOpen(false);
+                setInitialMissionView(undefined);
+                setCreating(false);
+                setHasCreationDraft(false);
+                setSection("projects");
+              }}
+            />
+          </div>
+        )}
+        {catalogVisible || creating ? null : section === "settings" ? (
           <CapabilitySettings
             enabled={work.readReady}
             catalog={catalog}
@@ -279,7 +309,7 @@ export default function App() {
                 section: "overview",
               })
             }
-            onCreate={beginCreate}
+            onCreate={() => beginCreate()}
             onSettings={() => navigate("settings")}
             onDemo={() => setDemo(true)}
             onRetry={work.retry}
@@ -339,7 +369,7 @@ export default function App() {
                   <button
                     className="primary"
                     disabled={work.loading || !!work.error}
-                    onClick={beginCreate}
+                    onClick={() => beginCreate()}
                   >
                     创建交付任务
                   </button>

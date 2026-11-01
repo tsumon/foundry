@@ -2,6 +2,22 @@
 
 All notable public-facing changes will be recorded here.
 
+## 0.2.2 — 2026-11-01
+
+- Keep one in-memory new-task draft across navigation, including a still-bound
+  import receipt; reload saved model settings on return without retyping repository
+  fields. Cancel, creation and a different registered repository end the draft.
+- Preserve explicit runtime and dependency selections on an unchanged coding
+  capability refresh. Block creation while reading; invalidate changed/unavailable
+  metadata without weakening import or execution checks.
+- Let a manual C4 fact refresh recover the persisted mission revision after a
+  lost response. Add read-only state/decision/recovery links beside task errors;
+  preserve unsaved plan edits and never replay the failed action.
+- Update pinned build dependencies for the minimatch pattern-amplification and
+  glob cancellation advisories; retain the existing installer template checks.
+- Keep the existing UI, separate approvals, VM isolation, immutable evidence and
+  call budgets. This maintenance release adds no provider or language claims.
+
 ## 0.2.1 — 2026-10-30
 
 - Validate a two-module TypeScript delivery through the real local API gateway,

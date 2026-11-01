@@ -302,6 +302,22 @@ export function MissionWorkspace({
       setBusy(false);
     }
   };
+  const readLatest = async () => {
+    if (demo || inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      onUpdate((await api.mission(mission.id)).mission);
+      setError("");
+    } catch (cause) {
+      setError(
+        `读取失败：${errorMessage(cause)}。任务与草稿已保留，可再次读取状态。`,
+      );
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
   const savePlanRevision = async () => {
     if (demo || unsupportedWorkspaceMode || inFlight.current || !mission.plan)
       return;
@@ -468,7 +484,19 @@ export function MissionWorkspace({
         </div>
         {(error || mission.error) && (
           <div className="workspace-error" role="alert">
-            {error || mission.error}
+            <p>{error || mission.error}</p>
+            {!demo && (
+              <div className="actions">
+                <button disabled={busy} onClick={() => void readLatest()}>
+                  读取最新任务状态
+                </button>
+                <button onClick={() => setDrawer(true)}>查看当前决策</button>
+                <button onClick={() => setView("总览")}>查看恢复诊断</button>
+                <span className="small">
+                  读取和查看不会重试执行；继续操作仍需在决策面板审批。
+                </span>
+              </div>
+            )}
           </div>
         )}
         <section

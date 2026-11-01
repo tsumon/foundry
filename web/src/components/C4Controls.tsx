@@ -192,6 +192,25 @@ export function C4Controls({
   const key = (body: C4Action) =>
     `${m.id}:${body.action}:${"control_id" in body ? body.control_id : "operation_id" in body ? body.operation_id : m.revision}`;
   const stopped = (body: C4Action) => failed.includes(key(body));
+  const refreshFacts = async () => {
+    if (lock.current) return;
+    lock.current = true;
+    setPending(true);
+    onBusyChange?.(true);
+    setError("");
+    try {
+      onUpdate((await api.mission(m.id)).mission);
+      setRefresh((value) => value + 1);
+    } catch (cause) {
+      setError(
+        `刷新失败：${errorMessage(cause)}。已保留材料；可再次读取状态，不会重试执行。`,
+      );
+    } finally {
+      lock.current = false;
+      setPending(false);
+      onBusyChange?.(false);
+    }
+  };
   const act = async (body: C4Action) => {
     if (reason || lock.current || stopped(body)) return;
     if (
@@ -428,11 +447,8 @@ export function C4Controls({
         ))}
       <C4ControlFacts mission={m} />
       <button
-        disabled={pending || loading}
-        onClick={() => {
-          setError("");
-          setRefresh((x) => x + 1);
-        }}
+        disabled={busy || pending || loading}
+        onClick={() => void refreshFacts()}
       >
         刷新 C4 事实
       </button>

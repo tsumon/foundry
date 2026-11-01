@@ -54,7 +54,7 @@ jobs:
           FOUNDRY_MULTILANG_INPUTS: ${{ runner.temp }}/foundry-compiler-fixture
         run: |
           set -eu
-          npm ci --prefix desktop --ignore-scripts
+          npm ci --prefix desktop --omit=peer --ignore-scripts
           npm test --prefix desktop
 
   macos-verify:
@@ -163,5 +163,5 @@ jobs:
           go mod verify
           "$tools/govulncheck" -show=verbose ./...
           (cd web && npm audit --audit-level=low)
-          (cd desktop && npm audit --audit-level=low)
+          (cd desktop && npm audit --include=peer --audit-level=low)
           "$tools/actionlint" .github/workflows/*.yml

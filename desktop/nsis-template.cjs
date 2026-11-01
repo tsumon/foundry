@@ -17,7 +17,7 @@ const pins = {
 const unused = '    WinShell::UninstAppUserModelId "${APP_ID}"\n';
 const cosmeticBanner =
   '  ${IfNot} ${Silent}\n    !ifdef HEADER_ICO\n      SpiderBanner::Show /MODERN /ICON "$PLUGINSDIR\\installerHeaderico.ico"\n    !else\n      SpiderBanner::Show /MODERN\n    !endif\n\n    FindWindow $0 "#32770" "" $hwndparent\n    FindWindow $0 "#32770" "" $hwndparent $0\n    GetDlgItem $0 $0 1000\n    SendMessage $0 ${WM_SETTEXT} 0 "STR:$(installing)"\n\n    StrCpy $1 $hwndparent\n\t\tSystem::Call \'user32::ShutdownBlockReasonCreate(${SYSTYPE_PTR}r1, w "$(installing)")\'\n  ${endif}\n';
-// Pinned builder26.15.3 toolsets/windows, icons, 7zip and binDownload/
+// Pinned builder26.18.0 toolsets/windows, icons, 7zip and binDownload/
 // electronGet honor these before their reviewed archives. Cache locations are
 // deliberately not overrides. Match keys case-insensitively on every host.
 function rejectToolsetOverrides(env) {

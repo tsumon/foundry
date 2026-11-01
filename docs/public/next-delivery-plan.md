@@ -1,5 +1,49 @@
 # Delivery expansion implementation plan
 
+## 0.2.2 daily-use maintenance
+
+The 0.2.1 native walkthrough reproduced lost new-task input after visiting
+settings. Source tracing also found that an unchanged capability refresh clears
+the dependency/import selection, and the C4 refresh button reads control facts
+without recovering the mission revision after a failed response refresh.
+
+Keep the existing workbench and approval/VM contracts. Retain one in-memory
+creation form while navigating this window; cancel, successful creation or an
+explicit different repository starts a new form. Re-read model settings on return
+without erasing user input or sharing context. An unchanged capability response
+keeps valid selections; pending refresh blocks creation, while changed or failed
+metadata still invalidates affected material. Error recovery reads current task
+facts only, never replays mutations or approves a next step.
+
+- [x] `App.tsx`, `CreateMission.tsx`: retain navigation drafts and refresh saved
+  model configuration on return. Regress navigation, cancellation, late creation
+  response and changed repository behavior through mounted App tests.
+- [x] `CodingTaskSetup.tsx`: preserve byte-equivalent capability selections and
+  entered runtime values. Regress retained dependency/import receipts, pending
+  refresh submission, metadata change/failure and late responses.
+- [x] `C4Controls.tsx`, `MissionWorkspace.tsx`: expose explicit read-only recovery
+  after an uncertain response, and navigation to the current decision/diagnosis.
+  Regress GET-only recovery, failed refresh, shared action locks and preserved
+  plan drafts; no model/VM dispatch or automatic retry.
+- [ ] Update supported-scope documentation, bilingual README and version 0.2.2.
+  Run full local regression/security checks and installed Mac UI/VM acceptance,
+  review once, push a consolidated change, and require complete native Windows
+  installation/upgrade/VM CI before publishing one release. Keep original tasks,
+  evidence and budget; remove superseded generated outputs after replacement.
+
+Build dependency closeout: npm audit discovered [minimatch amplification](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+and [glob cancellation](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4).
+Use electron-builder 26.18.0, ASAR 4.3.1 and universal 3.0.6 for the named-export
+matcher API; pin minimatch 11.0.3 and modern glob 14.0.2. The unsupported Squirrel peer closure is omitted from installation,
+not from the full lockfile audit. Verify ASAR round trips, matchers,
+existing template digests and both installers; do not suppress audit findings.
+
+## Completed 0.2.0 / 0.2.1 implementation history
+
+The items below record completed implementation and release acceptance, except
+Windows real-provider access, which is explicitly unverified. Exact receipts
+remain attached to their original releases.
+
 **Goal:** Eliminate duplicate CI, complete native Windows acceptance where the available environment permits, and extend the approved coding workflow to JavaScript/TypeScript, Python and frozen dependencies. Report real-provider acceptance separately for each platform.
 
 **Architecture:** Keep the current desktop, controller, approvals, immutable task journal and VM execution boundary. Add explicitly versioned verification profiles; preserve existing Go tasks and their retained runtimes. Dependency preparation and model credentials remain outside untrusted project execution.
@@ -60,14 +104,14 @@ Framework reports authenticate the supervisor's observations, not mathematical c
 
 - [x] Wire installed profile selection through task creation, context, plan, patch, failure repair and re-verification. Include language and dependency summary in model context, never dependency archive contents or credentials. Backend and renderer fixture regressions pass; native execution remains pending.
 - [x] Preserve the workbench layout; display actual returned runtime eligibility, exact test contract and evidence source. Unsupported retained runtime remains unavailable/read-only. Wide/narrow synthetic UI acceptance passes; installed native acceptance remains pending.
-- [ ] Package Mac and Windows with both retained v1 and available v2 runtimes; verify restart, upgrade and recovery with isolated test data.
+- [x] Package Mac and Windows with both retained v1 and available v2 runtimes; verify restart, upgrade and recovery with isolated test data.
 
 ### Task 5: acceptance and consolidated publication
 
-- [ ] Independently review the complete diff; run security checks and regression suites without omissions.
+- [x] Independently review the complete diff; run security checks and regression suites without omissions.
 - [x] Extend the existing native acceptance driver with a closed three-profile matrix, strict authenticated receipts, and both Alpha.3 and stable upgrade inputs. Offline tests and task review pass; actual native and installation execution remain pending.
 - [x] Configure the trusted Python build prerequisite and explicitly include the new assembler tests in native Windows selection; missing tools or unrun tests must not be reported as passes. Configuration is locally checked; hosted native execution is pending consolidated CI.
-- [ ] Native Mac and Windows VM evidence: baseline pass, deliberate assertion failure, repair pass, protected tests/dependencies unchanged, exact VM shutdown, separate delivery approval. Include no-network/write/isolation and incomplete-result cases.
+- [x] Native Mac and Windows VM evidence: baseline pass, deliberate assertion failure, repair pass, protected tests/dependencies unchanged, exact VM shutdown, separate delivery approval. Include no-network/write/isolation and incomplete-result cases.
 - [ ] Windows real-provider acceptance requires a reachable authorized provider route. No separate Windows test computer is available for this acceptance. Hosted CI cannot reach a developer machine’s loopback API. Do not export persistent credentials or silently introduce public tunnels; report any missing native-provider evidence separately from fixture/native-runtime acceptance.
-- [ ] One consolidated source push after local checks; observe hosted CI and publish installation artifacts only for verified source. Do not trigger duplicate tag builds or rewrite v0.1.0 artifacts.
-- [ ] Update bilingual README with only tested support and explicit framework/dependency limits. Delete redundant build intermediates after their replacements and receipts are verified.
+- [x] One consolidated source push after local checks; observe hosted CI and publish installation artifacts only for verified source. Do not trigger duplicate tag builds or rewrite v0.1.0 artifacts.
+- [x] Update bilingual README with only tested support and explicit framework/dependency limits. Delete redundant build intermediates after their replacements and receipts are verified.

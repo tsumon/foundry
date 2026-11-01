@@ -73,7 +73,7 @@ target. See the [release readiness gates](docs/public/release-readiness.md) befo
 promoting a candidate desktop build to a release.
 
 For desktop changes, additionally install the exact desktop lock and run its
-tests (`npm ci --prefix desktop`, `npm test --prefix desktop`). The **Desktop
+tests (`npm ci --prefix desktop --omit=peer`, `npm test --prefix desktop`). The **Desktop
 packages** workflow performs native packaging and installed-resource acceptance
 on both supported targets. The security workflow audits both npm locks at
 `--audit-level=low`, including build dependencies. Do not omit development
@@ -102,3 +102,13 @@ Keep changes focused and add tests for behavior changes. Validate failure, resta
 Update public documentation when a user-visible flag, requirement, capability, limitation, approval boundary, or security property changes. Public documents must not link to private planning records, local absolute paths, private runtime data, or generated acceptance artifacts. A committed screenshot must come from a fresh synthetic acceptance run, contain no personal repository, account, credential, token, authorization URL, or host path, and document its source revision, scenario, viewport, and fixture limits in [`docs/media/README.md`](docs/media/README.md). Review both the pixels and embedded metadata before committing it; a screenshot is presentation evidence, not proof of real-provider or Docker behavior.
 
 By intentionally submitting a contribution for inclusion, you agree that it is provided under the repository's [Apache License 2.0](LICENSE), unless explicitly stated otherwise.
+
+### Desktop build-only peers
+
+Install desktop dependencies with `npm ci --prefix desktop --omit=peer`. Foundry
+builds NSIS on Windows and DMG on Mac; the unused Squirrel peer brings a legacy
+glob API incompatible with the patched matcher. Omission removes that unused
+build target from disk, while the lockfile still resolves every peer. Run the
+full audit with `cd desktop && npm audit --include=peer --audit-level=low` (no omit flags).
+ASAR, the supported builder file matcher, template pins and native installers
+are checked with the pinned security updates. Do not use `--legacy-peer-deps`.

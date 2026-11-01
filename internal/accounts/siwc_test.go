@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -191,9 +192,24 @@ func TestSIWCBeginLifetimeIsDetachedFromRequestAndExplicitlyCancelable(t *testin
 	if err != nil || canceled.State != "canceled" || canceled.HandoffURL != "" {
 		t.Fatalf("cancel: %+v %v", canceled, err)
 	}
+	// Cancel publishes coordination state immediately; terminal diagnostics
+	// finish asynchronously and every read returns a defensive copy.
+	terminal, err := siwc.Wait(flow.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := json.Marshal(canceled)
+	after, _ := json.Marshal(terminal)
+	if string(before) != string(after) {
+		t.Fatalf("cancel coordination changed: %s -> %s", before, after)
+	}
+	diagnostic := terminal.ConnectionDiagnostic
+	if diagnostic == nil || diagnostic.Stage != "session" || diagnostic.Code != "canceled" || diagnostic.CredentialCommit != "not_committed" || diagnostic.Cleanup != "not_required" {
+		t.Fatalf("cancel diagnostic: %+v", diagnostic)
+	}
 	status, err := siwc.Status(flow.OperationID)
-	if err != nil || status != canceled {
-		t.Fatalf("cancel status: %+v %v", status, err)
+	if err != nil || !reflect.DeepEqual(status, terminal) || status.ConnectionDiagnostic == diagnostic {
+		t.Fatalf("cancel status must retain values in a separate copy: %+v %v", status, err)
 	}
 }
 

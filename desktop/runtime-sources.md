@@ -139,7 +139,7 @@ remain applicable; these materials are not a blanket legal clearance.
 
 ### Preparing the sidecars
 
-Run `npm ci --prefix desktop --ignore-scripts` to install the locked build-time
+Run `npm ci --prefix desktop --omit=peer --ignore-scripts` to install the locked build-time
 verifier without Electron installation scripts. Then run
 `node desktop/runtime-sources.cjs /absolute/new/output` to download each pinned
 input once and verify it; a failure stops without fallback or hash rewriting.

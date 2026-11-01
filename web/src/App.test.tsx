@@ -320,6 +320,63 @@ const appInspection = legacyReceipt(
   "/tmp/new-mission",
 );
 
+it("retains a new-task draft and import receipt through settings, then clears it on cancel", async () => {
+  let savedProfile = profile;
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [savedProfile],
+        settings: { default_profile_id: savedProfile.id, role_bindings: {} },
+      });
+    if (path === "/api/missions") return response({ missions: [] });
+    if (path === "/api/capabilities") return response(emptyCapabilities);
+    if (path === "/api/health") return response({ capabilities: {} });
+    if (
+      path === "/api/repository-imports/inspections" &&
+      init?.method === "POST"
+    )
+      return response(appInspection);
+    return response({});
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "创建交付任务" }));
+  await screen.findByRole("option", { name: "测试连接 · fixture-model" });
+  for (const [label, value] of [
+    ["任务标题", "保留草稿"],
+    ["交付目标", "配置后继续"],
+    ["Git 仓库绝对路径", "/tmp/new-mission"],
+    ["允许修改范围（每行一项）", "src/"],
+    ["验收命令（每行一条）", "/opt/foundry/verify"],
+    ["本地 Docker 镜像", "fixture:local"],
+  ]) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
+  fireEvent.click(screen.getByRole("button", { name: "检查可导入性" }));
+  await screen.findByText("可创建任务");
+  fireEvent.click(screen.getByRole("button", { name: "设置" }));
+  savedProfile = { ...profile, name: "已更新连接" };
+  fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
+  expect(screen.getByLabelText("任务标题")).toHaveValue("保留草稿");
+  expect(screen.getByLabelText("交付目标")).toHaveValue("配置后继续");
+  expect(screen.getByLabelText("Git 仓库绝对路径")).toHaveValue(
+    "/tmp/new-mission",
+  );
+  expect(screen.getByText("可创建任务")).toBeVisible();
+  await screen.findByRole("option", { name: "已更新连接 · fixture-model" });
+  expect(
+    fetcher.mock.calls.filter(
+      ([path, init]) =>
+        path === "/api/repository-imports/inspections" &&
+        init?.method === "POST",
+    ),
+  ).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "取消" }));
+  fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
+  expect(screen.getByLabelText("任务标题")).toHaveValue("");
+  expect(screen.queryByText("可创建任务")).not.toBeInTheDocument();
+});
+
 async function submitNewMission(prefilled = false) {
   await screen.findByRole("option", { name: "测试连接 · fixture-model" });
   fireEvent.change(screen.getByLabelText("任务标题"), {
@@ -895,7 +952,18 @@ it("returns a task created from a selected project to its prior project task vie
     Promise.resolve(
       response(
         path === "/api/capabilities"
-          ? { ...emptyCapabilities, repositories: [registered] }
+          ? {
+              ...emptyCapabilities,
+              repositories: [
+                registered,
+                {
+                  ...registered,
+                  id: "repo-other",
+                  name: "Other source",
+                  path: "/tmp/other-source",
+                },
+              ],
+            }
           : path === "/api/repository-imports/inspections" &&
               init?.method === "POST"
             ? sealReceipt({
@@ -932,6 +1000,32 @@ it("returns a task created from a selected project to its prior project task vie
   expect(screen.getByLabelText("Git 仓库绝对路径")).toHaveValue(
     "/tmp/new-mission",
   );
+  await screen.findByRole("option", { name: "Other source · 登记 v2" });
+  fireEvent.change(screen.getByLabelText("任务标题"), {
+    target: { value: "仓库 B 的草稿" },
+  });
+  fireEvent.change(screen.getByLabelText("已登记仓库（元数据，不代表许可）"), {
+    target: { value: "repo-other" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "设置" }));
+  fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
+  expect(screen.getByLabelText("Git 仓库绝对路径")).toHaveValue(
+    "/tmp/other-source",
+  );
+  expect(screen.getByLabelText("任务标题")).toHaveValue("仓库 B 的草稿");
+  fireEvent.click(screen.getByRole("button", { name: "项目资产" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "从 Other source 创建任务" }),
+  );
+  expect(screen.getByLabelText("任务标题")).toHaveValue("仓库 B 的草稿");
+  fireEvent.click(screen.getByRole("button", { name: "项目资产" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "从 Project source 创建任务" }),
+  );
+  expect(screen.getByLabelText("任务标题")).toHaveValue("");
+  expect(screen.getByLabelText("Git 仓库绝对路径")).toHaveValue(
+    "/tmp/new-mission",
+  );
   await submitNewMission(true);
   const inspected = fetcher.mock.calls.find(
     ([path, init]) =>
@@ -951,6 +1045,13 @@ it("returns a task created from a selected project to its prior project task vie
   expect(
     fetcher.mock.calls.some((call) => call[0] === "/api/catalog/commands"),
   ).toBe(false);
+  fireEvent.click(
+    screen.getByRole("button", { name: "从 Other source 创建任务" }),
+  );
+  expect(screen.getByLabelText("Git 仓库绝对路径")).toHaveValue(
+    "/tmp/other-source",
+  );
+  expect(screen.getByLabelText("任务标题")).toHaveValue("");
 });
 
 it("keeps catalog context stale and drafts disabled until authenticated recovery rereads the catalog", async () => {

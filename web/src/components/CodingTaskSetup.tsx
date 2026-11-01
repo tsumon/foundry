@@ -43,9 +43,11 @@ export function CodingTaskSetup({
   onChange,
   source,
   onProfileChange,
+  onLoadingChange,
 }: {
   source?: RepositorySelector;
   onProfileChange?: (id: string) => void;
+  onLoadingChange?: (loading: boolean) => void;
   disabled: boolean;
   requested: boolean;
   onRequestedChange: (requested: boolean) => void;
@@ -66,16 +68,18 @@ export function CodingTaskSetup({
   const requestEpoch = useRef(0);
   const mounted = useRef(true);
   const explicitBackend = useRef<string | null>(null);
+  const previousCapability = useRef<CodingTaskCapability | null>(null);
 
   const read = useCallback(async () => {
     const epoch = ++requestEpoch.current;
-    onChange(null);
     setLoading(true);
-    setCapability(null);
+    onLoadingChange?.(true);
     setError("");
     try {
       const next = await codingTaskApi.capability();
       if (!mounted.current || requestEpoch.current !== epoch) return;
+      if (JSON.stringify(previousCapability.current) === JSON.stringify(next))
+        return;
       const mode =
         explicitProfile.current !== "c4_go_model_v1"
           ? "embedded_vm"
@@ -86,6 +90,8 @@ export function CodingTaskSetup({
         next.backends?.find((item) => item.mode === mode)?.profile ??
         (next.profile.mode === mode ? next.profile : null);
       if (!frozen) throw new Error("已选后端不可用；不会自动更换后端");
+      previousCapability.current = next;
+      onChange(null);
       setProfileID(explicitProfile.current);
       setCapability(next);
       setBackend(mode);
@@ -94,12 +100,17 @@ export function CodingTaskSetup({
       setEndpoint(frozen.endpoint);
     } catch (cause) {
       if (!mounted.current || requestEpoch.current !== epoch) return;
+      previousCapability.current = null;
+      onChange(null);
       setCapability(null);
       setError(errorMessage(cause));
     } finally {
-      if (mounted.current && requestEpoch.current === epoch) setLoading(false);
+      if (mounted.current && requestEpoch.current === epoch) {
+        setLoading(false);
+        onLoadingChange?.(false);
+      }
     }
-  }, [onChange]);
+  }, [onChange, onLoadingChange]);
 
   useEffect(() => {
     mounted.current = true;
@@ -129,7 +140,8 @@ export function CodingTaskSetup({
 
   useEffect(() => {
     if (v2Requested) return;
-    if (loading || !requested || !capability?.enabled || !available) {
+    if (loading) return;
+    if (!requested || !capability?.enabled || !available) {
       if (value) onChange(null);
       return;
     }

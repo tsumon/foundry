@@ -5,7 +5,6 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { finished } = require("node:stream/promises");
 const { exactCopy, inventory, snapshot, allowedMigration, assertSchemaEvolution,priorRelease,assertFixture } = require("../upgrade-smoke.cjs");
 
 test("only the reviewed additive inference schema migration is accepted", () => {
@@ -169,10 +168,9 @@ test("sealed upgrade resource verification loads the descriptor module for dual 
       require("../build-support.cjs").writeManifest(resources);
       for (const name of ["runtime.cjs", "runtime-inventory-v2.cjs"]) fs.copyFileSync(path.join(__dirname, "..", name), path.join(app, name));
       fs.writeFileSync(path.join(app, "resource-integrity.json"), JSON.stringify({ manifestSHA256: require("../runtime.cjs").resourceDigest(path.join(resources, "resources-manifest.json")) }));
-      const archive = await require("@electron/asar").createPackage(app, path.join(resources, "app.asar"));
-      await finished(archive);
-      assert.equal(archive.writableFinished, true);
-      assert.equal(archive.closed, true);
+      // ASAR 4 awaits all archive writes and ends the writer; it no longer
+      // returns a writable stream. Verify the sealed bytes immediately below.
+      await require("@electron/asar").createPackage(app, path.join(resources, "app.asar"));
       // Native identities use the shipping loader directly. Other fixture
       // identities use the existing scoped process view, including the exact
       // runtime bytes extracted and checked by packagedRuntime from the ASAR.

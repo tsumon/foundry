@@ -243,7 +243,7 @@ it("preserves explicit model-backed intent after metadata refresh fails and bloc
   ).toHaveLength(0);
 });
 
-it("invalidates model-backed creation for the full duration of a metadata refresh", async () => {
+it("blocks creation during refresh and reuses the inspection when metadata is unchanged", async () => {
   let codingReads = 0;
   let resolveRefresh!: (value: Response) => void;
   const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
@@ -295,6 +295,12 @@ it("invalidates model-backed creation for the full duration of a metadata refres
   resolveRefresh(response(codingCapability));
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "刷新编码能力" })).toBeEnabled(),
+  );
+  expect(
+    screen.getByRole("button", { name: "创建任务并检查上下文" }),
+  ).toBeEnabled();
+  expect(screen.getByLabelText("不可变本地镜像 ID")).toHaveValue(
+    `sha256:${"e".repeat(64)}`,
   );
 });
 

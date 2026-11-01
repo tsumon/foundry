@@ -55,6 +55,29 @@ function SetupHarness({
   );
 }
 
+it("keeps an explicitly entered runtime and selection when capability refresh is unchanged", async () => {
+  const fetcher = vi.fn(async () => response(capability));
+  vi.stubGlobal("fetch", fetcher);
+  const onSelection = vi.fn();
+  render(<SetupHarness onSelection={onSelection} />);
+  fireEvent.click(await screen.findByLabelText(/启用账户模型与受控 Docker/));
+  const imageID = `sha256:${"a".repeat(64)}`;
+  fireEvent.change(screen.getByLabelText("不可变本地镜像 ID"), {
+    target: { value: imageID },
+  });
+  await waitFor(() =>
+    expect(onSelection.mock.calls.at(-1)?.[0]?.profile.image_id).toBe(imageID),
+  );
+  onSelection.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "刷新编码能力" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "刷新编码能力" })).toBeEnabled(),
+  );
+  expect(screen.getByLabelText("不可变本地镜像 ID")).toHaveValue(imageID);
+  expect(onSelection).not.toHaveBeenCalled();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
 it("keeps model-backed coding default-closed when metadata is missing and never retries automatically", async () => {
   const fetcher = vi.fn(async () =>
     response({ error: { message: "route missing" } }, 404),

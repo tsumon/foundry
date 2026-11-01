@@ -1,4 +1,20 @@
-# Supported scope — 0.2.0 and historical 0.1.0
+# Supported scope — 0.2.2 and historical releases
+
+## 0.2.2 maintenance
+
+0.2.2 retains the language, dependency, provider and platform boundaries below.
+It preserves an in-memory new-task draft across navigation, avoids discarding
+unchanged coding/import selections on a metadata refresh, and adds read-only
+recovery from lost action responses. Independent approvals, VM isolation and
+consumed budgets are unchanged. The [0.2.2 release receipts](https://github.com/tsumon/foundry/releases/tag/v0.2.2)
+bind fresh installation/VM acceptance to the installers; historical real-provider
+results below remain attributed to their original runs, not repeated claims.
+
+0.2.1 added a path-validation repair and a scoped two-module TypeScript delivery
+with restart checkpoints, six successful real role calls plus one unknown call,
+and an independent nine-test VM check. That run did not call Debugger. See
+[the recorded scope](compatible-api-acceptance.md). Windows provider calls remain
+unverified; its native acceptance uses local protocol fixtures.
 
 ## 0.2.0
 

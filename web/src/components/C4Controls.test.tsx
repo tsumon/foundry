@@ -86,6 +86,41 @@ function Harness({ start }: { start: Mission }) {
   const [m, setM] = useState(start);
   return <C4Decision mission={m} busy={false} onUpdate={setM} />;
 }
+
+it("recovers the persisted mission revision on manual fact refresh without replaying the failed action", async () => {
+  const before = initial();
+  const after = {
+    ...before,
+    revision: before.revision + 1,
+    c4_controls: [prepared({ ...before, revision: before.revision + 1 })],
+  };
+  let persisted = before;
+  vi.spyOn(api, "c4").mockImplementation(async () => status(persisted));
+  const post = vi.spyOn(api, "c4Action").mockImplementation(async () => {
+    persisted = after;
+    throw new Error("response lost");
+  });
+  const get = vi
+    .spyOn(api, "mission")
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValue({ mission: after });
+  render(<Harness start={before} />);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "准备就绪材料" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "准备就绪材料" }));
+  await screen.findByText(/刷新失败.*offline/);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "刷新 C4 事实" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "刷新 C4 事实" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "批准就绪材料" })).toBeEnabled(),
+  );
+  expect(get).toHaveBeenCalledTimes(2);
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "执行就绪检查" })).toBeDisabled();
+});
 it("requires three explicit readiness actions; readiness cannot approve or execute baseline", async () => {
   let m = initial();
   vi.spyOn(api, "c4").mockImplementation(async () => status(m));

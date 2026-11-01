@@ -39,7 +39,7 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
       - name: Install source verifier without Electron install scripts
-        run: npm ci --prefix desktop --ignore-scripts
+        run: npm ci --prefix desktop --omit=peer --ignore-scripts
       - name: Read installer names from the package version
         id: package-metadata
         run: |
@@ -128,7 +128,7 @@ jobs:
         run: |
           set -eu
           npm ci --prefix web
-          npm ci --prefix desktop
+          npm ci --prefix desktop --omit=peer
           node desktop/node_modules/electron/install.js
           go mod download
           go mod verify
@@ -268,7 +268,7 @@ jobs:
         run: |
           npm ci --prefix web
           if ($LASTEXITCODE -ne 0) { throw 'web install failed' }
-          npm ci --prefix desktop
+          npm ci --prefix desktop --omit=peer
           if ($LASTEXITCODE -ne 0) { throw 'desktop install failed' }
           node desktop/node_modules/electron/install.js
           if ($LASTEXITCODE -ne 0) { throw 'Electron runtime install failed' }

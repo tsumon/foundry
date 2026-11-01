@@ -32,10 +32,16 @@ export function CreateMission({
   onCancel,
   onCreated,
   initialRepository,
+  active = true,
+  onBusyChange,
+  onRepositoryChange,
 }: {
   onCancel: () => void;
   onCreated: (mission: Mission) => void;
   initialRepository?: GitRepository;
+  active?: boolean;
+  onBusyChange?: (busy: boolean) => void;
+  onRepositoryChange?: (repository: GitRepository | undefined) => void;
 }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profileID, setProfileID] = useState("");
@@ -57,6 +63,9 @@ export function CreateMission({
   const [localMCPLoading, setLocalMCPLoading] = useState(false);
   const [localMCPError, setLocalMCPError] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
   const lock = useRef(false);
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
@@ -64,6 +73,9 @@ export function CreateMission({
   const [importRepository, setImportRepository] = useState<
     GitRepository | undefined
   >(initialRepository);
+  useEffect(() => {
+    onRepositoryChange?.(importRepository);
+  }, [importRepository, onRepositoryChange]);
   const [repositories, setRepositories] = useState<GitRepository[]>([]);
   const [registryError, setRegistryError] = useState("");
   const [scope, setScope] = useState("");
@@ -76,6 +88,7 @@ export function CreateMission({
   const [controlled, setControlled] = useState(false);
   const [mcpControlled, setMCPControlled] = useState(false);
   const [codingRequested, setCodingRequested] = useState(false);
+  const [codingLoading, setCodingLoading] = useState(true);
   const [codingProfileID, setCodingProfileID] = useState("c4_go_model_v1");
   const v2Contract =
     codingRequested && languageProfileID(codingProfileID)
@@ -113,7 +126,9 @@ export function CreateMission({
   const selectedInspection =
     importing && inspection?.epoch === epoch ? inspection.receipt : null;
   useEffect(() => {
+    if (!active) return;
     let alive = true;
+    setRegistryError("");
     void capabilityApi
       .snapshot()
       .then((data) => {
@@ -125,7 +140,7 @@ export function CreateMission({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [active]);
   const [capabilities, setCapabilities] = useState<CapabilitySnapshot | null>(
     null,
   );
@@ -138,13 +153,19 @@ export function CreateMission({
   const nextSkillKey = useRef(1);
   const capabilityEpoch = useRef(0);
   useEffect(() => {
+    if (!active) return;
     let disposed = false;
+    setLoading(true);
     void api
       .profiles()
       .then((data) => {
         if (!disposed) {
           setProfiles(data.profiles ?? []);
-          setProfileID(data.settings.default_profile_id);
+          setProfileID((current) =>
+            (data.profiles ?? []).some((profile) => profile.id === current)
+              ? current
+              : data.settings.default_profile_id,
+          );
           setModelSettings({
             ...data.settings,
             role_bindings: data.settings.role_bindings ?? {},
@@ -152,7 +173,10 @@ export function CreateMission({
         }
       })
       .catch((e) => {
-        if (!disposed) setError(errorMessage(e));
+        if (!disposed) {
+          setProfiles([]);
+          setError(errorMessage(e));
+        }
       })
       .finally(() => {
         if (!disposed) setLoading(false);
@@ -160,9 +184,12 @@ export function CreateMission({
     return () => {
       disposed = true;
     };
-  }, []);
+  }, [active]);
   useEffect(() => {
+    if (!active) return;
     let disposed = false;
+    setRolePolicyLoading(true);
+    setRolePolicyError("");
     void rolePolicyApi
       .state()
       .then(({ state }) => {
@@ -177,7 +204,7 @@ export function CreateMission({
     return () => {
       disposed = true;
     };
-  }, []);
+  }, [active]);
   const readHealth = useCallback(async () => {
     setHealthLoading(true);
     setHealthError("");
@@ -197,8 +224,8 @@ export function CreateMission({
     }
   }, []);
   useEffect(() => {
-    void readHealth();
-  }, [readHealth]);
+    if (active) void readHealth();
+  }, [readHealth, active]);
   const readLocalMCP = useCallback(async () => {
     setLocalMCPLoading(true);
     setLocalMCPError("");
@@ -297,7 +324,13 @@ export function CreateMission({
   );
   const selectedSource = sources.find((source) => source.key === sourceKey);
   const submit = async () => {
-    if (lock.current || readOnly) return;
+    if (
+      lock.current ||
+      readOnly ||
+      loading ||
+      (codingRequested && codingLoading)
+    )
+      return;
     if (importing && !selectedInspection) {
       setError("请先检查可导入性并确认当前回执。");
       return;
@@ -749,6 +782,7 @@ export function CreateMission({
               " 普通任务的可恢复候选选择与受控模式互斥，当前显示关闭；切回普通模式时恢复草稿选择。"}
           </p>
           <CodingTaskSetup
+            onLoadingChange={setCodingLoading}
             onProfileChange={setCodingProfileID}
             source={
               importRepository
@@ -1082,7 +1116,7 @@ export function CreateMission({
               loading ||
               readOnly ||
               !profiles.length ||
-              (codingRequested && !codingSelection) ||
+              (codingRequested && (codingLoading || !codingSelection)) ||
               (importing && !selectedInspection)
             }
           >
