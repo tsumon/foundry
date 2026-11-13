@@ -7,6 +7,13 @@ A version number or successful installer build alone does not satisfy the gates
 below. Independent approvals, consumed unknown calls and immutable task records
 apply to release acceptance as well as development.
 
+Current-source knowledge-graph upgrades additionally allow exactly three
+`knowledge_*` tables and five indexes, with fixed DDL and initially empty derived
+tables. This applies to both pinned prior-release paths; all old schema, task,
+credential, budget and evidence checks remain in place. See the
+[knowledge graph contract](knowledge-graph.md). The 0.2.0-specific migration and
+release receipts below retain their original historical scope.
+
 <a id="candidate-020-gates"></a>
 
 ## 0.2.0 release gates

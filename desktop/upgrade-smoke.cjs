@@ -19,6 +19,16 @@ const priorReleases={
  "v0.1.0":{commit:"ab89b5a88f73755e91aaefa5b73b1dfd5c73fdb0",installer:"Foundry-0.1.0-x64.exe",installerSHA256:"5a770a31021d3914ad1b30a5597e0ec17e256c50f7e65c7565cfd21603f6ac7d"},
 };
 function priorRelease(version){assert(Object.hasOwn(priorReleases,version),"Unreviewed prior release");return {...priorReleases[version]}}
+const knowledgeMigration = new Map([
+  ["table:knowledge_meta", "CREATE TABLE knowledge_meta(id INTEGER PRIMARY KEY CHECK(id=1),data BLOB NOT NULL)"],
+  ["table:knowledge_nodes", "CREATE TABLE knowledge_nodes(id TEXT PRIMARY KEY,kind TEXT NOT NULL,project_id TEXT NOT NULL,mission_id TEXT NOT NULL,label TEXT NOT NULL,data BLOB NOT NULL)"],
+  ["table:knowledge_edges", "CREATE TABLE knowledge_edges(id TEXT PRIMARY KEY,source TEXT NOT NULL,target TEXT NOT NULL,kind TEXT NOT NULL,data BLOB NOT NULL)"],
+  ["index:knowledge_nodes_kind", "CREATE INDEX knowledge_nodes_kind ON knowledge_nodes(kind)"],
+  ["index:knowledge_nodes_project", "CREATE INDEX knowledge_nodes_project ON knowledge_nodes(project_id)"],
+  ["index:knowledge_nodes_mission", "CREATE INDEX knowledge_nodes_mission ON knowledge_nodes(mission_id)"],
+  ["index:knowledge_edges_source", "CREATE INDEX knowledge_edges_source ON knowledge_edges(source)"],
+  ["index:knowledge_edges_target", "CREATE INDEX knowledge_edges_target ON knowledge_edges(target)"],
+]);
 const allowedMigration = new Map([
  ["table:dependency_admissions","CREATE TABLE dependency_admissions (digest TEXT PRIMARY KEY, data BLOB NOT NULL)"],
   ["table:model_acceptance_inference_budgets", "CREATE TABLE model_acceptance_inference_budgets(operation_id TEXT PRIMARY KEY REFERENCES model_acceptance_claims(operation_id), mission_id TEXT NOT NULL REFERENCES missions(id), revision INTEGER NOT NULL, binding_digest TEXT NOT NULL)"],
@@ -27,11 +37,12 @@ const allowedMigration = new Map([
   ["trigger:inference_budget_no_update", "CREATE TRIGGER inference_budget_no_update BEFORE UPDATE ON model_acceptance_inference_budgets BEGIN SELECT RAISE(ABORT,'immutable inference budget'); END"],
   ["trigger:inference_send_no_delete", "CREATE TRIGGER inference_send_no_delete BEFORE DELETE ON model_acceptance_inference_sends BEGIN SELECT RAISE(ABORT,'immutable inference send'); END"],
   ["trigger:inference_send_no_update", "CREATE TRIGGER inference_send_no_update BEFORE UPDATE ON model_acceptance_inference_sends BEGIN SELECT RAISE(ABORT,'immutable inference send'); END"],
+  ...knowledgeMigration,
 ]);
 
 function assertSchemaEvolution(before, after, candidate,sourceVersion="v0.1.0-alpha.3") {
   priorRelease(sourceVersion);
-  const migration=sourceVersion==="v0.1.0"?new Map([["table:dependency_admissions",allowedMigration.get("table:dependency_admissions")]]):allowedMigration;
+  const migration=sourceVersion==="v0.1.0"?new Map([["table:dependency_admissions",allowedMigration.get("table:dependency_admissions")],...knowledgeMigration]):allowedMigration;
   const key = (row) => row.type + ":" + row.name;
   const original = new Map(before.map((row) => [key(row), row.sql]));
   const actual = new Map(after.map((row) => [key(row), row.sql]));
@@ -144,7 +155,7 @@ function snapshot(fixture) {
       missions: inventory(path.join(data, "missions")),
       schema: db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all(),
       migration_table_rows: Object.fromEntries(
-        ["model_acceptance_inference_budgets", "model_acceptance_inference_sends","dependency_admissions"].map((name) => [name,
+        ["model_acceptance_inference_budgets", "model_acceptance_inference_sends","dependency_admissions","knowledge_meta","knowledge_nodes","knowledge_edges"].map((name) => [name,
           db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name=?").get(name).n === 1
             ? db.prepare("SELECT count(*) AS n FROM " + name).get().n : null]),
       ),
@@ -321,4 +332,4 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
-module.exports = { packagedRuntime, inventory, exactCopy, snapshot, allowedMigration, assertSchemaEvolution, priorRelease,assertFixture,probeOld, verifyFresh, run };
+module.exports = { packagedRuntime, inventory, exactCopy, snapshot, allowedMigration, knowledgeMigration, assertSchemaEvolution, priorRelease,assertFixture,probeOld, verifyFresh, run };

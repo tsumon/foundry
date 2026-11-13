@@ -16,6 +16,8 @@ All notable public-facing changes will be recorded here.
   existing context-sharing and execution approvals.
 - Reverify both runtime source and multilang input artifacts during explicit
   CI input reuse, avoiding redundant upstream downloads without weakening pins.
+- Register the exact additive graph schema in both legacy installer upgrade
+  gates, retaining historical-record and empty-migration-table checks.
 
 ## 0.2.2 — 2026-11-01
 
