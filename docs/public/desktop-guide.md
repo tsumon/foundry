@@ -1,12 +1,12 @@
-# Desktop guide — 0.2.2
+# Desktop guide — 0.3.0
 
 Foundry Desktop packages the existing workbench and local Go controller. It does
 not require a separately installed Node.js, npm, Go toolchain or compiler to run.
-Git is a separate prerequisite for repository operations. Version 0.2.2 supports serial, approval-bound standard-library Go and the closed Node, TypeScript and Python contracts below. Mac native and scoped TypeScript gateway acceptance are recorded in [supported scope](alpha-status.md). Published platform packages require exact release receipts; Windows requires native hosted CI, not an inferred pass from Mac tests.
+Git is a separate prerequisite for repository operations. Version 0.3.0 supports serial, approval-bound standard-library Go and the closed Node, TypeScript and Python contracts below. Mac native and scoped TypeScript gateway acceptance are recorded in [supported scope](alpha-status.md). Published platform packages require exact release receipts; Windows requires native hosted CI, not an inferred pass from Mac tests.
 
 ## Get the right artifact
 
-Use the [v0.2.2 release](https://github.com/tsumon/foundry/releases/tag/v0.2.2)
+Use the [v0.3.0 release](https://github.com/tsumon/foundry/releases/tag/v0.3.0)
 for fixed versioned installers, checksums, corresponding runtime/sandbox source,
 clean Foundry source and exact-commit acceptance receipts. Actions artifacts are
 build evidence and can expire; they are not the durable download channel. There
@@ -18,8 +18,8 @@ past package's result is not acceptance of a different installer. Historical [Ma
 
 | Target | Package | Trust status |
 | --- | --- | --- |
-| macOS Apple Silicon | `Foundry-0.2.2-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
-| Windows x64 | `Foundry-0.2.2-x64.exe` | Unsigned per-user installer; no verified publisher |
+| macOS Apple Silicon | `Foundry-0.3.0-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
+| Windows x64 | `Foundry-0.3.0-x64.exe` | Unsigned per-user installer; no verified publisher |
 
 Do not treat a checksum as publisher authentication. Do not disable Gatekeeper,
 SmartScreen, antivirus or other OS protections to install the app. If your
@@ -39,6 +39,21 @@ evidence. Keep a backup before a future upgrade; downgrading an existing data
 directory is not a supported recovery method.
 
 ## First run: separate workspaces, separate authority
+
+### Knowledge graph and ontology in 0.3.0
+
+Open **Knowledge graph** in the sidebar (shown as **知识图谱** in the workbench),
+or follow the graph link from a project or task. Filter the persisted records,
+select a node, and explore neighbors, recorded downstream impact or upstream
+evidence. **本体与存储** lists the 15 entity types, 10 relationship types and
+storage rules. The graph uses an embedded SQLite property store; no separate
+database service is needed. An empty workspace shows an empty graph.
+
+The first startup adds derived graph tables and indexes. Original task records,
+baselines, evidence, budgets and approvals remain authoritative. Rebuilding the
+graph does not execute a model or sandbox. See [design and usage](knowledge-graph.md).
+
+### Workspaces
 
 **Persistent Workbench** opens an empty, persistent local workbench. It supports
 project, delivery-target, environment and shared-resource records, task history

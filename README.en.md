@@ -6,19 +6,19 @@
 
 ### A clear delivery process—even when the team is just you.
 
-Plans · Isolated candidates · Built-in sandbox · Repairs · Approvals · Local patches
+Plans · Isolated candidates · Built-in sandbox · Knowledge graph · Approvals · Local patches
 
 [![Verify](https://github.com/tsumon/foundry/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/verify.yml)
 [![Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)
-[![Version](https://img.shields.io/badge/version-0.2.2-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.2.2)
+[![Version](https://img.shields.io/badge/version-0.3.0-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.3.0)
 [![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2C56F5)](LICENSE)
 
 [简体中文](README.md) · [English](README.en.md) · [Install & use](docs/public/desktop-guide.md) · [Architecture](docs/public/architecture.md) · [Safety](docs/public/safety.md)
 
-[![Download Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-Download_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.2.2/Foundry-0.2.2-arm64.dmg)
-[![Download Windows EXE](https://img.shields.io/badge/Windows_x64-Download_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.2.2/Foundry-0.2.2-x64.exe)
+[![Download Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-Download_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-arm64.dmg)
+[![Download Windows EXE](https://img.shields.io/badge/Windows_x64-Download_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-x64.exe)
 
-[v0.2.2 · Release notes & all files](https://github.com/tsumon/foundry/releases/tag/v0.2.2) · [SHA-256 checksums](https://github.com/tsumon/foundry/releases/download/v0.2.2/SHA256SUMS)
+[v0.3.0 · Release notes & all files](https://github.com/tsumon/foundry/releases/tag/v0.3.0) · [SHA-256 checksums](https://github.com/tsumon/foundry/releases/download/v0.3.0/SHA256SUMS)
 
 </div>
 
@@ -28,13 +28,17 @@ Plans · Isolated candidates · Built-in sandbox · Repairs · Approvals · Loca
 Foundry is a **software-delivery workbench** for a one-person team. Connect an explicitly chosen API model, start from a committed Git snapshot, plan changes, edit isolated candidates, test in a bundled VM, repair confirmed failures and deliver a reviewable **patch and Markdown report**. Your source repository stays untouched; applying and deploying the patch remain your decisions.
 
 > [!IMPORTANT]
-> **0.2.2 supports bounded single-package Go, JavaScript, TypeScript and Python delivery under the contracts below.** Connect an API model and verify changes in the built-in VM, with no Docker Desktop requirement or host-execution fallback. ChatGPT subscription sign-in remains experimental.
+> **0.3.0 supports bounded single-package Go, JavaScript, TypeScript and Python delivery under the contracts below.** Connect an API model and verify changes in the built-in VM, with no Docker Desktop requirement or host-execution fallback. ChatGPT subscription sign-in remains experimental.
 
-## Smoother daily use in 0.2.2
+## 0.3.0: delivery knowledge you can trace
 
-- Visit Settings and return to **New task** without retyping the draft or repeating an unchanged import check. The draft lives in the current window only; cancel, successful creation or choosing a different registered repository clears it.
-- Refresh coding metadata without losing your runtime/dependency selection when the configuration is unchanged. Creation waits for the read; changed or unavailable configuration still requires a valid check.
-- After a failed response, use **Read latest task state** or **Refresh C4 facts** to recover the stored revision, then review the pending decision. Reading state never repeats a model call, test or approval.
+| Ontology | Knowledge graph | Embedded graph store |
+| :--- | :--- | :--- |
+| 15 entity types and 10 relationship types, with allowed endpoints, versions and provenance rules. | Follow projects and tasks through plans, files, candidates, tests, approvals and delivery; inspect recorded impact and evidence lineage. | Indexed property graphs, transactional synchronization and bounded traversal in the existing SQLite database. No database service to deploy. |
+
+After installing, open **知识图谱** (Knowledge graph) in the sidebar. Select a node to explore its relationships, or open **本体与存储** (Ontology and storage) to inspect the schema. Project and task pages link directly to their graphs. Workspaces without records show an empty state, not invented example facts.
+
+Upgrades retain tasks and independent approvals. The derived graph can be rebuilt without rewriting original evidence. Draft preservation, valid import-check reuse and recovery by reading persisted state from 0.2.2 remain available. The host build toolchain is updated to Go 1.27.4.
 
 ## One workbench, three connected views
 
@@ -42,7 +46,7 @@ Foundry is a **software-delivery workbench** for a one-person team. Connect an e
 | :--- | :--- | :--- |
 | Researcher investigates and Planner proposes. Context sharing and plan execution have separate approvals; plans are editable. | Worker builds an isolated candidate. Protected tests run in a real VM. Confirmed failures can enter at most two Debugger rounds. | QA and Auditor review the same candidate and test evidence. Export requires separate approval; failures and spent calls remain recorded. |
 
-## 0.2.2 project scope
+## 0.3.0 project scope
 
 | Language | Fixed verifier | Dependency input |
 | :--- | :--- | :--- |
@@ -57,20 +61,20 @@ The three new profiles require the VM, with no host-execution fallback. Native e
 
 ## Download and install
 
-Use the v0.2.2 release page for final installers, checksums and scoped receipts. Assets are published only after the required checks; a source version or download link alone is not acceptance.
+Use the v0.3.0 release page for final installers, checksums and scoped receipts. Assets are published only after the required checks; a source version or download link alone is not acceptance.
 
 | Platform | Installer | Corresponding third-party source |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | [Foundry-0.2.2-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.2.2/Foundry-0.2.2-arm64.dmg) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.2.2/Foundry-0.2.2-macos-sources.tar.gz) |
-| Windows x64 | [Foundry-0.2.2-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.2.2/Foundry-0.2.2-x64.exe) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.2.2/Foundry-0.2.2-windows-sources.tar.gz) |
+| Apple Silicon Mac | [Foundry-0.3.0-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-arm64.dmg) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-macos-sources.tar.gz) |
+| Windows x64 | [Foundry-0.3.0-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-x64.exe) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-windows-sources.tar.gz) |
 
-Check [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.2.2/SHA256SUMS) after downloading. The [Release](https://github.com/tsumon/foundry/releases/tag/v0.2.2) retains the exact commit, installation/upgrade acceptance, real-call scope, clean source and third-party materials. Published files are fixed to their release, not rolling builds of main. The platform source archives include the original runtime/installer sources, both exact sandbox source trees and distribution linkage. [Clean Foundry source](https://github.com/tsumon/foundry/releases/download/v0.2.2/Foundry-0.2.2-source.tar.gz) · [Scoped evidence](https://github.com/tsumon/foundry/releases/download/v0.2.2/Foundry-0.2.2-evidence.tar.gz) · [Historical v0.1.0 downloads and sources](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
+Check [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.3.0/SHA256SUMS) after downloading. The [Release](https://github.com/tsumon/foundry/releases/tag/v0.3.0) retains the exact commit, installation/upgrade acceptance, real-call scope, clean source and third-party materials. Published files are fixed to their release, not rolling builds of main. The platform source archives include the original runtime/installer sources, both exact sandbox source trees and distribution linkage. [Clean Foundry source](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-source.tar.gz) · [Scoped evidence](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-evidence.tar.gz) · [Historical v0.1.0 downloads and sources](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
 
 **Signing status:** Mac uses an ad-hoc integrity signature, without Developer ID signing or notarization. Windows is unsigned, with no verified publisher. Checksums do not authenticate the publisher. Do not disable Gatekeeper, SmartScreen or antivirus; use the reviewed source workflow if your organization's policy rejects unsigned apps. A stable version number does not mean platform notarization or a commercial support promise.
 
-The 0.2.2 installer bundles the controller, frontend, Linux guest, Go toolchain, pinned Node/Python interpreters and TypeScript compiler. Running the app needs no separate language toolchain or Docker; preparing third-party dependency inputs may need tools outside Foundry. Repository imports require supported local Git. Windows also requires hardware virtualization and Windows Hypervisor Platform already enabled. Foundry does not enable OS features, install services or reboot the machine. Intel Mac, Windows ARM and Linux desktop packages are not supported. See the [desktop guide](docs/public/desktop-guide.md).
+The 0.3.0 installer bundles the controller, frontend, Linux guest, Go toolchain, pinned Node/Python interpreters and TypeScript compiler. Running the app needs no separate language toolchain or Docker; preparing third-party dependency inputs may need tools outside Foundry. Repository imports require supported local Git. Windows also requires hardware virtualization and Windows Hypervisor Platform already enabled. Foundry does not enable OS features, install services or reboot the machine. Intel Mac, Windows ARM and Linux desktop packages are not supported. See the [desktop guide](docs/public/desktop-guide.md).
 
-## New in source: ontology and knowledge graph
+## Follow relationships, inspect the evidence
 
 The **Knowledge graph** workbench connects projects, resources, tasks, plans,
 files, candidates, test evidence and deliveries. Filter by project or task,
@@ -85,8 +89,8 @@ service. Rebuilding it never rewrites business evidence or grants approval.
 Agent relationship context stays within the current authorized task; it does not
 send unrelated project data. [Design and scope](docs/public/knowledge-graph.md)
 
-This feature is available in current source. The linked **v0.2.2 installers retain
-their original release contents** and do not include later source additions.
+These capabilities ship in the **0.3.0 Mac and Windows installers**. Graph links
+do not approve plans, run tools or establish that a test passed.
 
 ## Deliver with your own model
 

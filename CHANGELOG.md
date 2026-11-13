@@ -2,7 +2,7 @@
 
 All notable public-facing changes will be recorded here.
 
-## Unreleased
+## 0.3.0 — 2026-11-14
 
 - Pin the host build and verification compiler to Go 1.27.4 for `GO-2026-6859`
   in `net/http`. Keep the independently locked Go 1.27.3 offline guest test
