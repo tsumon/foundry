@@ -14,6 +14,8 @@ All notable public-facing changes will be recorded here.
   the workbench; rebuild derived data without rewriting source records.
 - Include bounded same-task relationship context in agent requests, retaining
   existing context-sharing and execution approvals.
+- Reverify both runtime source and multilang input artifacts during explicit
+  CI input reuse, avoiding redundant upstream downloads without weakening pins.
 
 ## 0.2.2 — 2026-11-01
 

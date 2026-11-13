@@ -75,13 +75,33 @@ for (const file of ["verify.yml", "desktop.yml"]) {
       assert.deepEqual(workflow.on.workflow_dispatch, {
         inputs: {
           runtime_sources_run_id: {
-            description: "Optional same-repository run containing foundry-runtime-sources; every input is reverified against this checkout",
+            description: "Optional same-repository run containing runtime sources and multilang inputs; every input is reverified against this checkout",
             required: false,
             default: "",
             type: "string",
           },
         },
       });
+    });
+    test("Desktop reuse verifies both archived input sets before packaging without upstream fetches", () => {
+      const steps = workflow.jobs["runtime-sources"].steps;
+      const reuse = "${{ github.event_name == 'workflow_dispatch' && inputs.runtime_sources_run_id != '' }}";
+      const fresh = "${{ github.event_name != 'workflow_dispatch' || inputs.runtime_sources_run_id == '' }}";
+      for (const name of ["foundry-runtime-sources", "foundry-multilang-inputs"]) {
+        const read = steps.find(s => s.uses?.startsWith("actions/download-artifact@") && s.with?.name === name);
+        assert.ok(read, `missing reusable artifact ${name}`);
+        assert.equal(read.if, reuse);
+        assert.equal(read.with.repository, "${{ github.repository }}");
+        assert.equal(read.with["run-id"], "${{ inputs.runtime_sources_run_id }}");
+        assert.equal(read.with["digest-mismatch"], "error");
+      }
+      const acquire = steps.find(s => s.name === "Acquire the exact locked multilang runtime and source inputs once (build only)");
+      assert.equal(acquire.if, fresh);
+      const verify = steps.find(s => s.name === "Reverify reused multilang inputs against the current lock");
+      assert.equal(verify?.if, reuse);
+      assert.match(verify.run, /multilang-inputs\.cjs "\$RUNNER_TEMP\/foundry-multilang-inputs" all "\$RUNNER_TEMP\/foundry-multilang-source-input"/);
+      assert.ok(steps.indexOf(verify) < steps.findIndex(s => s.uses?.startsWith("actions/upload-artifact@")));
+      assert.equal(verify["continue-on-error"], undefined);
     });
   }
 }

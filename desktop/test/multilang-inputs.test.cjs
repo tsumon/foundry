@@ -16,3 +16,15 @@ test('acquisition rejects foreign origins, unsafe paths and unpinned identities 
 test('source verification acquisition selects only the exact compiler fixture artifact',()=>{
   const {selectInputs}=require('../sandbox/multilang-inputs.cjs');const rows=selectInputs(require('../sandbox/multilang-inputs.lock.json'),'compiler');assert.equal(rows.length,1);assert.equal(rows[0].file,'typescript-5.9.3.tgz');assert.equal(rows[0].sha256,'10e108c9cf7d5f2879053dff18515fb405abf2ccef63eaaf017d9c571687a1d3');
 });
+test('complete local input reuse stays offline and rejects same-size changed bytes',async t=>{
+  const {prepareMultilangInputs}=require('../sandbox/multilang-inputs.cjs');
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'foundry-local-inputs-')));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const local=path.join(root,'local');fs.mkdirSync(local);const lock=fixture();
+  for(const [file,body] of [['arm.tar.xz','arm'],['x64.tar.xz','x64'],['source.tar.xz','source']])fs.writeFileSync(path.join(local,file),body);
+  let calls=0;const fetchImpl=()=>{calls++;throw Error('local reuse must not fetch');};
+  const receipt=await prepareMultilangInputs({output:path.join(root,'ok'),local,arch:'all',lock,fetchImpl});
+  assert.equal(receipt.files.length,3);assert.equal(calls,0);
+  fs.writeFileSync(path.join(local,'source.tar.xz'),'SOURCE');
+  await assert.rejects(prepareMultilangInputs({output:path.join(root,'bad'),local,arch:'all',lock,fetchImpl}),/integrity/);
+  assert.equal(calls,0);
+});

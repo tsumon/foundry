@@ -94,6 +94,14 @@ or modified-library runtime compatibility test is claimed here.
 
 ## Maintainer checks
 
+When an upstream download is unavailable, the Desktop packages manual workflow
+can reuse an explicit same-repository `runtime_sources_run_id`. That run must
+contain both `foundry-runtime-sources` and `foundry-multilang-inputs`. Artifact
+digests are checked on download; the source manifests and multilang lock from
+the current checkout then validate every reused input before packaging. Missing
+or changed inputs fail the build; reuse does not fall back to upstream downloads
+or replace either platform's installation and test gates.
+
 ### Windows installer components
 
 The native installer pins electron-builder's NSIS toolset `1.2.1` (NSIS 3.12).
