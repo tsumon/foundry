@@ -10,6 +10,7 @@ import (
 	"foundry/internal/domain"
 	"foundry/internal/evidence"
 	"foundry/internal/jsontext"
+	"foundry/internal/knowledge"
 	"foundry/internal/model"
 	"foundry/internal/store"
 	"foundry/internal/workspace"
@@ -310,6 +311,11 @@ func (e *Engine) controlledModelInput(m domain.Mission, role domain.Role, extra 
 		}
 	}
 	payload := map[string]any{"goal": m.Goal, "spec": m.Spec, "context": files, "manifest": m.ContextManifest, "skills": bound, "research": m.Research, "plan": m.Plan, "changes": m.Changes, "evidence": m.Evidence, "extra": extra}
+	graphMission := m
+	if role == domain.Researcher && m.ToolMode != "" {
+		graphMission.ContextManifest = nil
+	}
+	payload["knowledge"] = knowledge.TaskContext(graphMission)
 	if isModelC4(m) {
 		path, err := e.selectedCandidate(m)
 		if err != nil {

@@ -1,0 +1,113 @@
+.knowledge-workspace {
+  padding: 32px;
+  max-width: 1500px;
+  margin: auto;
+}
+.knowledge-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 24px 0;
+}
+.knowledge-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 150px;
+}
+.knowledge-filters select,
+.knowledge-filters input {
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: inherit;
+}
+.knowledge-storage {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.knowledge-storage p {
+  margin: 8px 0;
+}
+.knowledge-digest {
+  overflow-wrap: anywhere;
+}
+.knowledge-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+.knowledge-columns section {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.knowledge-results {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.knowledge-results button[aria-pressed="true"] {
+  border-color: currentColor;
+  font-weight: 700;
+}
+.knowledge-diagram {
+  max-height: 440px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  margin: 20px 0;
+}
+.knowledge-diagram svg {
+  display: block;
+  width: 100%;
+  min-width: 700px;
+  color: var(--muted);
+}
+.knowledge-diagram line {
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.knowledge-diagram rect {
+  fill: var(--paper);
+  stroke: var(--line);
+}
+.knowledge-diagram text {
+  font-size: 11px;
+  fill: var(--ink);
+}
+.knowledge-workspace dd {
+  margin-bottom: 12px;
+}
+.knowledge-workspace dt {
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .knowledge-workspace {
+    padding: 18px;
+  }
+  .knowledge-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.knowledge-sync {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin: 18px 0;
+}
+.knowledge-diagram [role="button"] {
+  cursor: pointer;
+}
+.knowledge-diagram [aria-pressed="true"] rect {
+  stroke: var(--blue);
+  stroke-width: 2;
+}
+.knowledge-diagram [role="button"]:hover rect {
+  fill: var(--bg);
+}

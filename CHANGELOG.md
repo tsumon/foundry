@@ -2,6 +2,19 @@
 
 All notable public-facing changes will be recorded here.
 
+## Unreleased
+
+- Pin the host build and verification compiler to Go 1.27.4 for `GO-2026-6859`
+  in `net/http`. Keep the independently locked Go 1.27.3 offline guest test
+  toolchain archives and existing guest verification contract unchanged.
+
+- Add a versioned delivery ontology, provenance-backed knowledge graph and
+  embedded SQLite property-graph storage with indexed, bounded traversal.
+- Browse task/project relationships, recorded impact and evidence lineage in
+  the workbench; rebuild derived data without rewriting source records.
+- Include bounded same-task relationship context in agent requests, retaining
+  existing context-sharing and execution approvals.
+
 ## 0.2.2 — 2026-11-01
 
 - Keep one in-memory new-task draft across navigation, including a still-bound

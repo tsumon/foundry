@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { KnowledgeWorkspace } from "./components/KnowledgeWorkspace";
 import { useWorkbench } from "./useWorkbench";
 import { Sidebar, type Section } from "./components/Sidebar";
 import {
@@ -50,6 +51,12 @@ export default function App() {
   const [initialMissionView, setInitialMissionView] = useState<
     DecisionTargetView | undefined
   >();
+  const [knowledgeOpened, setKnowledgeOpened] = useState(false);
+  const [knowledgeSession, setKnowledgeSession] = useState(0);
+  const [knowledgeContext, setKnowledgeContext] = useState({
+    mission: "",
+    project: "",
+  });
   const [selectedProject, setSelectedProject] = useState("");
   const [catalogView, setCatalogView] = useState<CatalogView>("目标");
   const [missionSource, setMissionSource] = useState<MissionSource>({
@@ -72,6 +79,7 @@ export default function App() {
       error: catalog.error,
     });
   const navigate = (value: Section) => {
+    if (value === "knowledge") setKnowledgeOpened(true);
     setSection(value);
     setCreating(false);
     setDemo(false);
@@ -157,6 +165,13 @@ export default function App() {
     setDecisionOpen(false);
     setSection("catalog");
   };
+  const openKnowledge = (mission = "", project = "") => {
+    setKnowledgeContext({ mission, project });
+    setKnowledgeSession((n) => n + 1);
+    navigate("knowledge");
+  };
+  const knowledgeVisible =
+    section === "knowledge" && !creating && !demo && !current;
   const catalogVisible =
     section === "catalog" && !creating && !demo && !current;
   return (
@@ -187,7 +202,31 @@ export default function App() {
             <button onClick={work.retry}>重新连接</button>
           </div>
         )}
+        {knowledgeOpened && (
+          <div hidden={!knowledgeVisible}>
+            <KnowledgeWorkspace
+              key={knowledgeSession}
+              enabled={work.readReady && knowledgeVisible}
+              catalog={catalog}
+              missions={work.missions}
+              initialMission={knowledgeContext.mission}
+              initialProject={knowledgeContext.project}
+              onOpenMission={(id) =>
+                openMission(id, false, undefined, {
+                  kind: "section",
+                  section: "knowledge",
+                })
+              }
+              onOpenProject={openProject}
+            />
+          </div>
+        )}
         <div hidden={!catalogVisible}>
+          {catalogVisible && (
+            <button onClick={() => openKnowledge("", selectedProject)}>
+              在知识图谱中查看项目
+            </button>
+          )}
           <CatalogWorkspace
             enabled={work.readReady}
             missions={work.missions}
@@ -259,43 +298,50 @@ export default function App() {
               })
             }
           />
-        ) : demo ? (
+        ) : section === "knowledge" ? null : demo ? (
           <DemoWorkspace onClose={() => setDemo(false)} />
         ) : current ? (
-          <MissionWorkspace
-            key={current.id}
-            mission={current}
-            session={missionSessions[current.id]}
-            onSessionChange={(value) =>
-              setMissionSessions((sessions) => {
-                const previous =
-                  sessions[current.id] ?? createMissionSession(current);
-                return {
-                  ...sessions,
-                  [current.id]:
-                    typeof value === "function" ? value(previous) : value,
-                };
-              })
-            }
-            events={work.events.filter((e) => e.mission_id === current.id)}
-            stream={work.stream}
-            hooksEnabled={work.readReady}
-            onUpdate={work.update}
-            initialDecisionOpen={decisionOpen}
-            initialView={initialMissionView}
-            projectContext={projectContextFor(current.id)}
-            onOpenProject={openProject}
-            onBack={returnFromMission}
-            backLabel={
-              missionSource.kind === "catalog"
-                ? `返回项目 ${missionSource.projectName}`
-                : missionSource.section === "decisions"
-                  ? "返回待决策"
-                  : missionSource.section === "overview"
-                    ? "返回交付总览"
-                    : "返回交付任务"
-            }
-          />
+          <>
+            <button onClick={() => openKnowledge(current.id)}>
+              在知识图谱中查看任务
+            </button>
+            <MissionWorkspace
+              key={current.id}
+              mission={current}
+              session={missionSessions[current.id]}
+              onSessionChange={(value) =>
+                setMissionSessions((sessions) => {
+                  const previous =
+                    sessions[current.id] ?? createMissionSession(current);
+                  return {
+                    ...sessions,
+                    [current.id]:
+                      typeof value === "function" ? value(previous) : value,
+                  };
+                })
+              }
+              events={work.events.filter((e) => e.mission_id === current.id)}
+              stream={work.stream}
+              hooksEnabled={work.readReady}
+              onUpdate={work.update}
+              initialDecisionOpen={decisionOpen}
+              initialView={initialMissionView}
+              projectContext={projectContextFor(current.id)}
+              onOpenProject={openProject}
+              onBack={returnFromMission}
+              backLabel={
+                missionSource.kind === "catalog"
+                  ? `返回项目 ${missionSource.projectName}`
+                  : missionSource.section === "decisions"
+                    ? "返回待决策"
+                    : missionSource.section === "knowledge"
+                      ? "返回知识图谱"
+                      : missionSource.section === "overview"
+                        ? "返回交付总览"
+                        : "返回交付任务"
+              }
+            />
+          </>
         ) : section === "overview" ? (
           <DeliveryOverview
             missions={work.missions}

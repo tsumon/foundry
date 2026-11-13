@@ -1188,3 +1188,94 @@ it("does not call an unavailable catalog unclassified and labels a genuine unlin
   render(<App />);
   expect(await screen.findByText("任务项目：未归类")).toBeVisible();
 });
+
+it("preserves knowledge filters and traversal when returning from a source task", async () => {
+  const graph = {
+    schema_version: 1,
+    backend: "sqlite-property-graph",
+    synced_at: "2026-11-14",
+    source_digest: "digest",
+    total_nodes: 1,
+    total_edges: 0,
+    truncated: false,
+    issues: [],
+    edges: [],
+    nodes: [
+      {
+        id: "plan:1",
+        kind: "plan",
+        label: "Plan",
+        historical: false,
+        mission_id: mission.id,
+        source: { kind: "plan", id: "1", revision: 3 },
+        properties: { revision: "3" },
+      },
+    ],
+  };
+  const fetcher = vi.fn(async (path: string) =>
+    response(
+      path === "/api/health"
+        ? { status: "ok", version: "1", capabilities: {} }
+        : path === "/api/missions"
+          ? { missions: [mission] }
+          : path === "/api/catalog"
+            ? {
+                catalog: {
+                  schema_version: 1,
+                  revision: 0,
+                  projects: [],
+                  targets: [],
+                  environments: [],
+                  resources: [],
+                  bindings: [],
+                  mission_links: [],
+                },
+              }
+            : path === "/api/knowledge/schema"
+              ? {
+                  version: 1,
+                  types: [{ kind: "plan", label: "计划", description: "记录" }],
+                  relations: [],
+                  rules: [],
+                }
+              : path.startsWith("/api/knowledge?")
+                ? graph
+                : {},
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  await screen.findByRole("button", { name: "知识图谱" });
+  fireEvent.click(screen.getByRole("button", { name: "知识图谱" }));
+  await screen.findByRole("button", { name: "Plan · v3 · 计划" });
+  fireEvent.change(screen.getByLabelText("任务"), {
+    target: { value: mission.id },
+  });
+  fireEvent.change(screen.getByLabelText("探索方向"), {
+    target: { value: "lineage" },
+  });
+  fireEvent.change(screen.getByLabelText("深度"), { target: { value: "3" } });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Plan · v3 · 计划" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "以此节点探索" }));
+  await screen.findByRole("button", { name: "打开源任务" });
+  fireEvent.click(screen.getByRole("button", { name: "打开源任务" }));
+  fireEvent.click(await screen.findByRole("button", { name: "返回知识图谱" }));
+  expect(screen.getByLabelText("任务")).toHaveValue(mission.id);
+  expect(screen.getByLabelText("探索方向")).toHaveValue("lineage");
+  expect(screen.getByLabelText("深度")).toHaveValue("3");
+  await waitFor(() => {
+    const calls = fetcher.mock.calls.filter(([path]) =>
+      path.startsWith("/api/knowledge?"),
+    );
+    const params = new URLSearchParams(calls.at(-1)![0].split("?")[1]);
+    expect(Object.fromEntries(params)).toMatchObject({
+      root: "plan:1",
+      mission_id: mission.id,
+      mode: "lineage",
+      depth: "3",
+    });
+  });
+  expect(screen.getByRole("button", { name: "清除探索起点" })).toBeVisible();
+});

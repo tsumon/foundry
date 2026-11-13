@@ -2,7 +2,13 @@ import type { Mission } from "../types";
 import { decisionKind, missionStateName } from "../deliveryStatus";
 import { WorkbenchStatus } from "./WorkbenchStatus";
 export type Section =
-  "overview" | "projects" | "catalog" | "decisions" | "deliveries" | "settings";
+  | "knowledge"
+  | "overview"
+  | "projects"
+  | "catalog"
+  | "decisions"
+  | "deliveries"
+  | "settings";
 export function Sidebar({
   missions,
   missionSnapshotAvailable,
@@ -50,6 +56,7 @@ export function Sidebar({
             ["decisions", "◷", "待决策"],
             ["projects", "▱", "交付任务"],
             ["catalog", "▦", "项目资产"],
+            ["knowledge", "⌘", "知识图谱"],
             ["deliveries", "◇", "交付记录"],
             ["settings", "⚙", "设置"],
           ] as const

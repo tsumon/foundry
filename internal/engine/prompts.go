@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"foundry/internal/domain"
+	"foundry/internal/knowledge"
 	"foundry/internal/model"
 	"foundry/internal/workspace"
 	"io"
@@ -217,6 +218,7 @@ func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error
 		return errors.New("current " + kind + " approval required")
 	}
 	payload := struct {
+		Knowledge      knowledge.Context     `json:"knowledge"`
 		CodingIdentity map[string]any        `json:"coding_identity,omitempty"`
 		ReplanContext  *domain.FailureBundle `json:"replan_context,omitempty"`
 		Goal           string                `json:"goal"`
@@ -227,7 +229,7 @@ func (e *Engine) call(op *operation, role domain.Role, extra any, out any) error
 		Changes        []domain.Change       `json:"changes"`
 		Evidence       []domain.Verification `json:"evidence"`
 		Extra          any                   `json:"extra"`
-	}{nil, m.ReplanContext, m.Goal, m.Spec, contextFiles, m.Research, m.Plan, m.Changes, m.Evidence, extra}
+	}{knowledge.TaskContext(m), nil, m.ReplanContext, m.Goal, m.Spec, contextFiles, m.Research, m.Plan, m.Changes, m.Evidence, extra}
 	if m.CodingVersion == 1 {
 		payload.CodingIdentity = map[string]any{"mission_id": m.ID, "epoch": m.Epoch, "candidate_generation": m.CandidateGeneration}
 	}

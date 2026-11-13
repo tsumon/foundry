@@ -33,8 +33,8 @@ async function main() {
   verifyMacSandboxSignature(sandboxV2Bundle);
   const go = process.env.FOUNDRY_GO || "go";
   const goVersion = execFileSync(go, ["version"], { encoding: "utf8" }).trim();
-  if (!goVersion.startsWith("go version go1.27.3 "))
-    throw Error("Go 1.27.3 is required");
+  if (!goVersion.startsWith("go version go1.27.4 "))
+    throw Error("Go 1.27.4 is required");
   if (process.versions.node !== "22.23.2")
     throw Error("Node 22.23.2 is required");
   const npm = path.join(path.dirname(process.execPath), "npm");

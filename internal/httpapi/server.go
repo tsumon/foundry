@@ -273,6 +273,8 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/knowledge" || r.URL.Path == "/api/knowledge/schema" || r.URL.Path == "/api/knowledge/rebuild":
+		s.knowledgeRoute(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/repository-imports/operations":
 		s.repositoryImportOperations(w, r)
 	case r.URL.Path == "/api/repository-imports/inspections":

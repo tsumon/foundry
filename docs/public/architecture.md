@@ -1,5 +1,14 @@
 # Architecture
 
+## Delivery knowledge graph
+
+The workbench also provides a versioned delivery ontology and an embedded
+SQLite property graph. `internal/knowledge` projects allowlisted business facts;
+`internal/store/knowledge.go` persists and queries their relationships. Business
+records retain authority, and graph rebuilds never modify task evidence or
+approval seals. Model input receives bounded same-task structural context only.
+See [ontology, graph storage and workbench behavior](knowledge-graph.md).
+
 FOUNDRY is a local HTTP application with a deterministic Go controller and a React single-page UI. The production entrypoint is [`cmd/foundry`](../../cmd/foundry/main.go); the compiled frontend is served by [`internal/httpapi`](../../internal/httpapi), and durable state is managed by [`internal/store`](../../internal/store).
 
 ## Components

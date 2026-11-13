@@ -56,7 +56,7 @@ async function buildBundleV2({output,inputs,baseBundle,baseSources,nativeInputs,
   const validated=buildGuestV2({python,inputs,arch,validateOnly:true,sources:true});
   const env={...process.env,GOENV:'off',GOTOOLCHAIN:'local',GOPROXY:'off',GOSUMDB:'off',GOTELEMETRY:'off',CGO_ENABLED:'0',GOOS:'linux',GOARCH:arch};
   const run=args=>cp.execFileSync(go,args,{cwd:source,env,encoding:'utf8',timeout:180000,maxBuffer:4*1024**2});
-  const version=run(['version']).trim();if(!version.startsWith('go version go1.27.3 '))throw Error('Pinned Go 1.27.3 required');
+  const version=run(['version']).trim();if(!version.startsWith('go version go1.27.4 '))throw Error('Pinned host Go 1.27.4 required');
   run(['mod','verify']);
   const archive='go1.27.3.linux-'+arch+'.tar.gz',goInput=path.join(nativeInputs||path.join(path.dirname(baseBundle),'inputs'),archive);
   require('./assets.cjs').verifyAsset(nativeLock.assets.find(a=>a.file===archive),fs.readFileSync(goInput));

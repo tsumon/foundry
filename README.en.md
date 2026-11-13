@@ -70,6 +70,24 @@ Check [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.2.2/SH
 
 The 0.2.2 installer bundles the controller, frontend, Linux guest, Go toolchain, pinned Node/Python interpreters and TypeScript compiler. Running the app needs no separate language toolchain or Docker; preparing third-party dependency inputs may need tools outside Foundry. Repository imports require supported local Git. Windows also requires hardware virtualization and Windows Hypervisor Platform already enabled. Foundry does not enable OS features, install services or reboot the machine. Intel Mac, Windows ARM and Linux desktop packages are not supported. See the [desktop guide](docs/public/desktop-guide.md).
 
+## New in source: ontology and knowledge graph
+
+The **Knowledge graph** workbench connects projects, resources, tasks, plans,
+files, candidates, test evidence and deliveries. Filter by project or task,
+explore recorded downstream impact and upstream provenance, and return to the
+source record. The ontology view explains entity types, allowed relationships
+and validation rules. Synthetic checks, isolated execution and unknown evidence
+origins remain distinct.
+
+An embedded SQLite property-graph layer supplies indexed storage, atomic
+synchronization and bounded relationship traversal without another database
+service. Rebuilding it never rewrites business evidence or grants approval.
+Agent relationship context stays within the current authorized task; it does not
+send unrelated project data. [Design and scope](docs/public/knowledge-graph.md)
+
+This feature is available in current source. The linked **v0.2.2 installers retain
+their original release contents** and do not include later source additions.
+
 ## Deliver with your own model
 
 Choose **Controlled Coding Workbench** in the app menu:
@@ -116,10 +134,10 @@ MCP, Skills and observation hooks provide management, discovery and static descr
 
 ## Run from source
 
-Development baseline: Go **1.27.3**, Node.js **22.23.2**, npm **10.9.8**, cgo/a C compiler and supported local Git. V2 source tests/builds also require an explicit trusted Python **3.13+** path and pinned offline runtime/compiler inputs; see [contributor setup](CONTRIBUTING.md#pinned-v2-inputs). The quickstart uses the fixed v0.2.2 tag after publication and a synthetic workflow; it does not launch a VM or call a provider.
+Development baseline: host Go **1.27.4**, Node.js **22.23.2**, npm **10.9.8**, cgo/a C compiler and supported local Git. V2 source tests/builds also require an explicit trusted Python **3.13+** path and pinned offline runtime/compiler inputs; see [contributor setup](CONTRIBUTING.md#pinned-v2-inputs). The independently pinned offline guest test toolchain remains Go 1.27.3. The quickstart uses current main source, including the knowledge graph, and a synthetic workflow; it does not launch a VM or call a provider.
 
 ```sh
-git clone --branch v0.2.2 --depth 1 https://github.com/tsumon/foundry.git
+git clone --branch main --depth 1 https://github.com/tsumon/foundry.git
 cd foundry
 npm ci --prefix web
 ./scripts/build.sh

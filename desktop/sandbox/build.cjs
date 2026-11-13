@@ -142,7 +142,7 @@ async function buildBundle({ output, local, windowsRuntime, go = process.env.FOU
   const arch = host === "darwin/arm64" ? "arm64" : "amd64";
   const env = { ...process.env, GOTOOLCHAIN: "local", GOENV: "off", GOPROXY: "off", GOSUMDB: "off", GOTELEMETRY: "off", CGO_ENABLED: "0", GOOS: "linux", GOARCH: arch };
   const run = (program, args, opts = {}) => cp.execFileSync(program, args, { cwd: source, env, timeout: 180000, maxBuffer: 1024 * 1024, ...opts });
-  if (!run(go, ["version"], { encoding: "utf8" }).startsWith("go version go1.27.3 ")) throw Error("Pinned Go 1.27.3 required");
+  if (!run(go, ["version"], { encoding: "utf8" }).startsWith("go version go1.27.4 ")) throw Error("Pinned host Go 1.27.4 required");
   const guest = path.join(bundle, "foundry-vm-guest");
   run(go, ["build", "-trimpath", "-buildvcs=false", "-ldflags=-s -w", "-o", guest, "./cmd/foundry-vm-guest"]);
   const goRaw = fs.readFileSync(path.join(input, "go1.27.3.linux-" + arch + ".tar.gz"));

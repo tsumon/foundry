@@ -25,13 +25,18 @@ Read [architecture](docs/public/architecture.md), [safety](docs/public/safety.md
 
 ## Development setup
 
-On Apple Silicon macOS use cgo, a C compiler, Go 1.27.3, Node.js 22.23.2,
+On Apple Silicon macOS use cgo, a C compiler, Go 1.27.4, Node.js 22.23.2,
 npm 10.9.8, and `/usr/bin/git` supporting `--no-lazy-fetch`. A different Git on
 PATH is not a substitute. Windows native build/acceptance uses the pinned
 `windows-2025` workflow toolchain, cgo and an explicit MinGW-w64 compiler; runtime
 Git is resolved from the OS Program Files directory, not PATH. See the desktop
 workflow for its exact checks. Unsupported targets must not silently inherit a
-pass from cross-compilation. Install frontend dependencies from the lockfile:
+pass from cross-compilation. The host compiler is pinned to Go 1.27.4 for
+`GO-2026-6859`; it compiles the controller and sandbox guest binaries. The
+separately locked Go 1.27.3 Linux archives remain the offline guest test toolchain
+and retain their existing checksums and verification contract. Updating the host
+compiler does not replace those bundled archives or claim new VM acceptance.
+Install frontend dependencies from the lockfile:
 
 ```sh
 cd web

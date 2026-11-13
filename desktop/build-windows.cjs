@@ -44,10 +44,10 @@ async function main() {
   const go = process.env.FOUNDRY_GO || "go";
   const goVersion = execFileSync(go, ["version"], { encoding: "utf8" }).trim();
   if (
-    !goVersion.startsWith("go version go1.27.3 ") ||
+    !goVersion.startsWith("go version go1.27.4 ") ||
     process.versions.node !== "22.23.2"
   )
-    throw Error("Pinned Go 1.27.3 and Node 22.23.2 required");
+    throw Error("Pinned Go 1.27.4 and Node 22.23.2 required");
   const npmCLI = path.join(
     path.dirname(process.execPath),
     "node_modules/npm/bin/npm-cli.js",
