@@ -14,14 +14,15 @@ test("installed subscription metadata stays unprepared and never creates diagnos
   );
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const platform of ["darwin", "win32", "linux"]) {
-    for (const mode of ["normal", "coding"]) {
+    for (const mode of ["normal", "coding", "simulation"]) {
       const enabled =
-        ["darwin", "win32"].includes(platform) && mode === "coding";
+        ["darwin", "win32"].includes(platform) && ["normal", "coding"].includes(mode);
       const calls = [];
       const request = async (_child, route, options) => {
         calls.push(route);
         assert.equal(options.method, undefined);
         assert.equal(options.headers.Cookie, "local-cookie");
+        if (route === "/api/model-accounts") return {status: 200,json: async () => ({accounts: []})};
         if (route === "/api/model-routes")
           return {
             status: 200,
@@ -63,7 +64,7 @@ test("installed subscription metadata stays unprepared and never creates diagnos
         mode,
         request,
       );
-      assert.equal(calls.length, 3);
+      assert.equal(calls.length, 4);
     }
   }
   fs.mkdirSync(path.join(root, "openai-desktop-diagnostics"));
@@ -84,7 +85,7 @@ test("installed subscription metadata stays unprepared and never creates diagnos
 test("installed metadata rejects enabled or missing inference authority on startup", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "foundry-inference-closed-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const inference of [true, undefined]) {
+  for (const mode of ["normal", "coding"]) for (const inference of [true, undefined]) {
     const calls = [];
     const request = async (_child, route) => {
       calls.push(route);
@@ -99,7 +100,7 @@ test("installed metadata rejects enabled or missing inference authority on start
       };
     };
     await assert.rejects(assertDesktopSubscriptionMetadata(
-      { ready: { dataDir: root } }, "local-cookie", "darwin", "coding", request,
+      { ready: { dataDir: root } }, "local-cookie", "darwin", mode, request,
     ), { code: "ERR_ASSERTION" });
     assert.equal(calls.length, 2, "invalid preparation must fail before the renewal read");
   }

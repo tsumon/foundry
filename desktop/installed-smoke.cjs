@@ -52,7 +52,7 @@ async function assertDesktopSubscriptionMetadata(
   const response = await request(child, "/api/model-routes", options);
   assert.equal(response.status, 200);
   const { runtime } = await response.json();
-  const enabled = ["darwin", "win32"].includes(platform) && mode === "coding";
+  const enabled = ["darwin", "win32"].includes(platform) && ["normal", "coding"].includes(mode);
   assert.equal(runtime.desktop_subscription, enabled);
   assert.equal(runtime.live_authorization, false);
   assert.equal(runtime.live_discovery, false);
@@ -81,6 +81,12 @@ async function assertDesktopSubscriptionMetadata(
     options,
   );
   assert.equal(renewal.status, enabled ? 404 : 403);
+  const instances = path.join(child.ready.dataDir, "vm-instances");
+  if (fs.existsSync(instances))
+    assert.deepEqual(fs.readdirSync(instances), [], "metadata reads created VM instances");
+  const accounts = await request(child, "/api/model-accounts", options);
+  assert.equal(accounts.status, 200);
+  assert.deepEqual(await accounts.json(), {accounts: []}, "metadata reads created accounts");
   assert.equal(
     fs.existsSync(diagnostics),
     false,
@@ -136,16 +142,16 @@ async function main() {
       ).status,
       200,
     );
-    const disabledCodingResponse = await authorized(
+    const normalCodingResponse = await authorized(
       child,
       "/api/coding-tasks",
       { headers: { Cookie: cookie } },
     );
-    assert.equal(disabledCodingResponse.status, 200);
+    assert.equal(normalCodingResponse.status, 200);
     assertCodingMetadata(
-      await disabledCodingResponse.json(),
+      await normalCodingResponse.json(),
       process.platform,
-      false,
+      true,
     );
     await assertDesktopSubscriptionMetadata(
       child,
@@ -153,6 +159,9 @@ async function main() {
       process.platform,
       "normal",
     );
+    const ideaResponse = await authorized(child, "/api/idea-tasks", {headers: {Cookie: cookie}});
+    assert.equal(ideaResponse.status, 200);
+    assert.deepEqual(await ideaResponse.json(), {available: true, reason: ""});
     await child.stop();
     child = await startBackend({
       resources,
@@ -282,8 +291,8 @@ async function main() {
             "same-data lock rejects second controller",
             "EOF graceful exit",
             "persistent restart",
-            "normal startup keeps coding metadata closed",
-            "subscription metadata is desktop-coding-only and unprepared across restart; reads create no diagnostic journals",
+            "normal startup exposes installed coding and idea metadata without execution",
+            "subscription metadata is available in normal and coding desktop workbenches and stays unprepared across restart; reads create no accounts, diagnostic journals or VM instances",
             "coding startup exposes installed VM identity metadata only; hardware readiness and execution remain separately approved",
             "current runtime is retained byte-exact in the private archive and revalidated after restart; no VM execution",
             "isolated simulation baseline remains prepared without approval or execution facts",
