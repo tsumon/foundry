@@ -18,6 +18,8 @@ All notable public-facing changes will be recorded here.
   CI input reuse, avoiding redundant upstream downloads without weakening pins.
 - Register the exact additive graph schema in both legacy installer upgrade
   gates, retaining historical-record and empty-migration-table checks.
+- Explain the isolated C4 mode boundary before graph queries instead of showing
+  forbidden-request errors. Normal and coding workspaces retain graph access.
 
 ## 0.2.2 — 2026-11-01
 

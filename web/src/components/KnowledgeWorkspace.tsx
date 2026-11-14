@@ -35,16 +35,23 @@ export function KnowledgeWorkspace({
   onOpenProject: (id: string) => void;
 }) {
   const [recoveryReadOnly, setRecoveryReadOnly] = useState(true);
+  const [isolatedMode, setIsolatedMode] = useState<boolean | null>(null);
   useEffect(() => {
     if (!enabled) return;
     let active = true;
     api
       .health()
       .then((h) => {
-        if (active) setRecoveryReadOnly(!!h.read_only);
+        if (active) {
+          setRecoveryReadOnly(!!h.read_only);
+          setIsolatedMode(h.c4_controlled_only === true);
+        }
       })
       .catch(() => {
-        if (active) setRecoveryReadOnly(true);
+        if (active) {
+          setRecoveryReadOnly(true);
+          setIsolatedMode(false);
+        }
       });
     return () => {
       active = false;
@@ -69,7 +76,7 @@ export function KnowledgeWorkspace({
   const rebuildController = useRef<AbortController | null>(null);
   useEffect(() => () => rebuildController.current?.abort(), []);
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || isolatedMode !== false) return;
     const c = new AbortController();
     setSchemaError("");
     knowledgeApi
@@ -81,9 +88,9 @@ export function KnowledgeWorkspace({
         if (!c.signal.aborted) setSchemaError(errorMessage(e));
       });
     return () => c.abort();
-  }, [enabled, refresh]);
+  }, [enabled, isolatedMode, refresh]);
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || isolatedMode !== false) return;
     const c = new AbortController();
     setLoading(true);
     setError("");
@@ -114,7 +121,7 @@ export function KnowledgeWorkspace({
         if (!c.signal.aborted) setLoading(false);
       });
     return () => c.abort();
-  }, [enabled, project, mission, kind, q, root, mode, depth, refresh]);
+  }, [enabled, isolatedMode, project, mission, kind, q, root, mode, depth, refresh]);
   const rebuild = async () => {
     const c = new AbortController();
     rebuildController.current = c;
@@ -186,6 +193,17 @@ export function KnowledgeWorkspace({
       { x: 110 + (i % 4) * 210, y: 60 + Math.floor(i / 4) * 135 },
     ]),
   );
+  if (isolatedMode !== false)
+    return (
+      <section className="knowledge-workspace">
+        <header className="mission-header"><h1>知识图谱</h1></header>
+        <p role="status">
+          {isolatedMode === null
+            ? "正在读取工作台模式…"
+            : "当前是隔离 C4 演示或受限执行模式，不开放工作空间图谱。请从 Foundry 菜单选择 Persistent Workbench 或 Controlled Coding Workbench，查看该工作台自己的本体与知识图谱。演示记录不会复制到其他工作台。"}
+        </p>
+      </section>
+    );
   return (
     <div className="knowledge-workspace">
       <header className="mission-header">

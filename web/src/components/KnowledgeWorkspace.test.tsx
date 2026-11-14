@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { KnowledgeWorkspace } from "./KnowledgeWorkspace";
 import { knowledgeApi, type KnowledgeGraph } from "../knowledgeApi";
@@ -70,6 +70,21 @@ beforeEach(() => {
   });
   vi.mocked(knowledgeApi.graph).mockResolvedValue(graph);
   vi.mocked(knowledgeApi.rebuild).mockResolvedValue(graph);
+});
+it("waits for mode metadata and explains isolated C4 scope without forbidden graph requests", async () => {
+  let resolve!: (value: Awaited<ReturnType<typeof api.health>>) => void;
+  vi.mocked(api.health).mockReturnValue(new Promise((done) => { resolve = done; }));
+  mount();
+  expect(knowledgeApi.schema).not.toHaveBeenCalled();
+  expect(knowledgeApi.graph).not.toHaveBeenCalled();
+  await act(async () => resolve({ status: "ok", version: "0.3.0", capabilities: {}, c4_controlled_only: true }));
+  expect(await screen.findByRole("status")).toHaveTextContent("当前是隔离 C4 演示或受限执行模式");
+  expect(screen.getByRole("status")).toHaveTextContent("Persistent Workbench");
+  expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(knowledgeApi.schema).not.toHaveBeenCalled();
+  expect(knowledgeApi.graph).not.toHaveBeenCalled();
+  expect(knowledgeApi.rebuild).not.toHaveBeenCalled();
 });
 it("filters, traverses and links to source records with explicit provenance", async () => {
   mount();
@@ -162,7 +177,7 @@ it("aborts obsolete graph reads and disables rebuild in read-only recovery", asy
     target: { value: "new" },
   });
   expect(signal?.aborted).toBe(true);
-  fireEvent.click(screen.getByRole("tab", { name: "本体与存储" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "本体与存储" }));
   expect(
     screen.getByRole("button", { name: "从业务记录重建图谱" }),
   ).toBeDisabled();
@@ -171,7 +186,7 @@ it("aborts obsolete graph reads and disables rebuild in read-only recovery", asy
 it("shows rebuild failure without claiming success", async () => {
   vi.mocked(knowledgeApi.rebuild).mockRejectedValueOnce(new Error("重建回滚"));
   mount();
-  fireEvent.click(screen.getByRole("tab", { name: "本体与存储" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "本体与存储" }));
   const b = await screen.findByRole("button", { name: "从业务记录重建图谱" });
   await waitFor(() => expect(b).toBeEnabled());
   fireEvent.click(b);

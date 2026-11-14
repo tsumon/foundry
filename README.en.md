@@ -38,6 +38,8 @@ Foundry is a **software-delivery workbench** for a one-person team. Connect an e
 
 After installing, open **知识图谱** (Knowledge graph) in the sidebar. Select a node to explore its relationships, or open **本体与存储** (Ontology and storage) to inspect the schema. Project and task pages link directly to their graphs. Workspaces without records show an empty state, not invented example facts.
 
+Graphs use each **Persistent Workbench** or **Controlled Coding Workbench**'s own data. Isolated C4 demonstrations retain their restricted capabilities: they do not expose workspace graphs or copy synthetic records into the daily workbench.
+
 Upgrades retain tasks and independent approvals. The derived graph can be rebuilt without rewriting original evidence. Draft preservation, valid import-check reuse and recovery by reading persisted state from 0.2.2 remain available. The host build toolchain is updated to Go 1.27.4.
 
 ## One workbench, three connected views

@@ -49,6 +49,10 @@ evidence. **本体与存储** lists the 15 entity types, 10 relationship types a
 storage rules. The graph uses an embedded SQLite property store; no separate
 database service is needed. An empty workspace shows an empty graph.
 
+Use Persistent Workbench or Controlled Coding Workbench for graphs. Isolated C4
+demonstrations and restricted execution mode keep the existing API boundary;
+their graph entry explains the mode instead of issuing forbidden requests.
+
 The first startup adds derived graph tables and indexes. Original task records,
 baselines, evidence, budgets and approvals remain authoritative. Rebuilding the
 graph does not execute a model or sandbox. See [design and usage](knowledge-graph.md).
