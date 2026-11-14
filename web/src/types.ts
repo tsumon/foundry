@@ -897,6 +897,11 @@ export interface Delivery {
   created_at: string;
 }
 export interface Mission {
+  idea_project?: {
+    schema_version: 1;
+    template: "browser_app_v1";
+    acceptance: string[];
+  };
   c4_profile_binding?: {
     revision: number;
     profile: import("./c4").C4Profile;

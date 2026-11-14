@@ -212,12 +212,19 @@ func (e *Engine) validateV2Inspection(ctx context.Context, v domain.RepositoryIn
 	return a, nil
 }
 
+type applicationTestsContext struct {
+	Template                    string   `json:"template"`
+	CandidateAuthoredTestModule string   `json:"candidate_authored_test_module"`
+	ValidationScope             string   `json:"validation_scope"`
+	Acceptance                  []string `json:"acceptance"`
+}
 type verificationContextV2 struct {
-	Language                string            `json:"language"`
-	SourceRoots             []string          `json:"source_roots"`
-	SelectedTestFileCount   int               `json:"selected_test_file_count"`
-	ExecutionContractDigest string            `json:"execution_contract_digest"`
-	Dependencies            DependencySummary `json:"dependencies"`
+	Application             *applicationTestsContext `json:"application,omitempty"`
+	Language                string                   `json:"language"`
+	SourceRoots             []string                 `json:"source_roots"`
+	SelectedTestFileCount   int                      `json:"selected_test_file_count"`
+	ExecutionContractDigest string                   `json:"execution_contract_digest"`
+	Dependencies            DependencySummary        `json:"dependencies"`
 }
 
 func (e *Engine) v2ContextSummary(m domain.Mission) (verificationContextV2, error) {
@@ -229,7 +236,11 @@ func (e *Engine) v2ContextSummary(m domain.Mission) (verificationContextV2, erro
 	if err != nil {
 		return verificationContextV2{}, err
 	}
-	return verificationContextV2{m.Spec.C4.V2.Language, c.SourceRoots, len(c.TestFiles), c.ExecutionContractDigest, summary}, nil
+	v := verificationContextV2{Language: m.Spec.C4.V2.Language, SourceRoots: c.SourceRoots, SelectedTestFileCount: len(c.TestFiles), ExecutionContractDigest: c.ExecutionContractDigest, Dependencies: summary}
+	if m.IdeaProject != nil {
+		v.Application = &applicationTestsContext{Template: m.IdeaProject.Template, CandidateAuthoredTestModule: "src/checks.js", ValidationScope: "Fixed harness checks structure and syntax and loads candidate-authored requirement assertions. These assertions are not independent validation; QA/Auditor must separately assess user acceptance coverage and behavior.", Acceptance: append([]string{}, m.IdeaProject.Acceptance...)}
+	}
+	return v, nil
 }
 func (e *Engine) validateV2ContextSummary(m domain.Mission, prompt string) error {
 	if m.Spec.C4 == nil || m.Spec.C4.SchemaVersion != 2 {

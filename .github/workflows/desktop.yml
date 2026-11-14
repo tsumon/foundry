@@ -155,6 +155,8 @@ jobs:
           npm test --prefix desktop
           desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/download-contract.cjs patch
           desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/download-contract.cjs report
+          desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/download-contract.cjs source
+          desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop/test/preview-contract.cjs
       - name: Assemble pinned sandbox and corresponding-source sidecar (no VM boot)
         id: sandbox-bundle
         env:
@@ -423,6 +425,7 @@ jobs:
           path: |
             ${{ runner.temp }}/foundry-windows-output/native-vm-acceptance.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-node-workflow.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-node-idea-app.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-typescript-workflow.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-workflow.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-typescript-typecheck.json
@@ -450,6 +453,7 @@ jobs:
             ${{ runner.temp }}/foundry-windows-output/native-vm-acceptance.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-matrix.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-node-workflow.json
+            ${{ runner.temp }}/foundry-windows-output/native-vm-v2-node-idea-app.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-typescript-workflow.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-python-workflow.json
             ${{ runner.temp }}/foundry-windows-output/native-vm-v2-typescript-typecheck.json

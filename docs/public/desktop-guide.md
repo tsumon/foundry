@@ -1,12 +1,12 @@
-# Desktop guide — 0.3.0
+# Desktop guide — 0.4.0
 
 Foundry Desktop packages the existing workbench and local Go controller. It does
 not require a separately installed Node.js, npm, Go toolchain or compiler to run.
-Git is a separate prerequisite for repository operations. Version 0.3.0 supports serial, approval-bound standard-library Go and the closed Node, TypeScript and Python contracts below. Mac native and scoped TypeScript gateway acceptance are recorded in [supported scope](alpha-status.md). Published platform packages require exact release receipts; Windows requires native hosted CI, not an inferred pass from Mac tests.
+Git is a separate prerequisite for repository operations. Version 0.4.0 supports serial, approval-bound standard-library Go and the closed Node, TypeScript and Python contracts below. Mac native and scoped TypeScript gateway acceptance are recorded in [supported scope](alpha-status.md). Published platform packages require exact release receipts; Windows requires native hosted CI, not an inferred pass from Mac tests.
 
 ## Get the right artifact
 
-Use the [v0.3.0 release](https://github.com/tsumon/foundry/releases/tag/v0.3.0)
+Use the [v0.4.0 release](https://github.com/tsumon/foundry/releases/tag/v0.4.0)
 for fixed versioned installers, checksums, corresponding runtime/sandbox source,
 clean Foundry source and exact-commit acceptance receipts. Actions artifacts are
 build evidence and can expire; they are not the durable download channel. There
@@ -18,8 +18,8 @@ past package's result is not acceptance of a different installer. Historical [Ma
 
 | Target | Package | Trust status |
 | --- | --- | --- |
-| macOS Apple Silicon | `Foundry-0.3.0-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
-| Windows x64 | `Foundry-0.3.0-x64.exe` | Unsigned per-user installer; no verified publisher |
+| macOS Apple Silicon | `Foundry-0.4.0-arm64.dmg` | Ad-hoc integrity signature; not Developer ID signed or notarized |
+| Windows x64 | `Foundry-0.4.0-x64.exe` | Unsigned per-user installer; no verified publisher |
 
 Do not treat a checksum as publisher authentication. Do not disable Gatekeeper,
 SmartScreen, antivirus or other OS protections to install the app. If your
@@ -38,9 +38,29 @@ installation path supplied with `/D`). Uninstalling the app must not remove task
 evidence. Keep a backup before a future upgrade; downgrading an existing data
 directory is not a supported recovery method.
 
-## First run: separate workspaces, separate authority
+## First run: describe an idea
 
-### Knowledge graph and ontology in 0.3.0
+Click **新建任务 → 从想法创建**. Enter an application name, idea and acceptance
+requirements, select an already configured API model and call budget, then create
+the task. Foundry creates a private managed Git repository and configures the
+bundled Node VM profile; you do not provide a repository path, build command or
+dependency directory. Supported local Git is still required for this internal setup.
+
+The first output type is a dependency-free browser application. Readiness,
+baseline, context sharing, plan execution and delivery keep their independent
+approvals. Fixed tests verify the structure/runtime contract; candidate-authored
+requirement assertions run in the same isolated test phase and are identified as
+such. QA, audit and the user's preview remain distinct from those assertions.
+Preview runs in an opaque-origin frame without network or workbench access;
+localStorage in that preview is unavailable. After approved delivery, download the
+complete ZIP and open `src/index.html` outside Foundry. Generated servers,
+databases, online integrations and generated DMG/EXE packaging are not supported.
+
+Choose **改进已有仓库** for the existing language workflows below. Older ordinary
+tasks remain visible with their original records; the default coding runtime
+does not execute them through a different authority or host runner.
+
+### Knowledge graph and ontology in 0.4.0
 
 Open **Knowledge graph** in the sidebar (shown as **知识图谱** in the workbench),
 or follow the graph link from a project or task. Filter the persisted records,
@@ -61,7 +81,8 @@ graph does not execute a model or sandbox. See [design and usage](knowledge-grap
 
 **Persistent Workbench** opens an empty, persistent local workbench. It supports
 project, delivery-target, environment and shared-resource records, task history
-and the existing settings UI. It does not invent a configured model or silently
+and idea-to-app coding through the installed VM. Its existing `workbench` database
+path is unchanged. It does not invent a configured model or silently
 turn on account access. Creating account metadata is not a successful connection.
 
 **Controlled Coding Workbench** is an explicit native-menu opt-in with its own
@@ -72,11 +93,12 @@ hardware virtualization and Windows Hypervisor Platform already available;
 Foundry does not enable features, reboot or substitute software emulation.
 Docker remains an explicit Mac-only alternative for a new Go task; v2 profiles are VM-only. Installed
 metadata is not evidence of successful readiness or permission to execute.
-Normal launch and the simulation retain their original closed behavior.
+Default launch now exposes the same approval-bound coding capability in its own
+persistent profile. Opening either workbench performs no VM boot or model call.
+The simulation keeps its separate fixture-only behavior.
 
 **New Isolated Local Repository Simulation**, in the Foundry menu, creates fresh
-disposable Git inputs and a separate retained database. This is the recommended
-first experience. Two examples exercise nested-path and dependent multi-file
+disposable Git inputs and a separate retained database. This is an optional, clearly labeled demonstration. Two examples exercise nested-path and dependent multi-file
 changes. The scripted role responses and exact-content checks are labeled
 `SYNTHETIC` / `synthetic_stub`; they do not execute a Go compiler, Docker, cloud
 model or a real MCP service.

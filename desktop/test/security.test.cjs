@@ -131,3 +131,48 @@ test("renderer cannot use Node, preload, persistent storage or webviews", () => 
   assert.equal(options.webPreferences.preload, undefined);
   assert.equal(options.webPreferences.partition.startsWith("persist:"), false);
 });
+test("preview frames cannot receive workbench APIs or send requests from generated scripts", () => {
+  const { allowFrameRequest } = require("../security.cjs");
+  const origin = "http://127.0.0.1:12345";
+  const preview =
+    origin +
+    "/api/missions/0123456789abcdef0123456789abcdef/app-preview/frame?digest=" +
+    "a".repeat(64);
+  const frame = { parent: {} };
+  assert.equal(
+    allowFrameRequest(origin, {
+      url: preview,
+      resourceType: "subFrame",
+      frame,
+    }),
+    true,
+  );
+  assert.equal(
+    allowFrameRequest(origin, {
+      url: origin + "/api/profiles",
+      resourceType: "subFrame",
+      frame,
+    }),
+    false,
+  );
+  assert.equal(
+    allowFrameRequest(origin, {
+      url: origin + "/api/profiles",
+      resourceType: "xhr",
+      frame,
+    }),
+    false,
+  );
+  assert.equal(
+    allowFrameRequest(origin, { url: preview, resourceType: "xhr", frame }),
+    false,
+  );
+  assert.equal(
+    allowFrameRequest(origin, {
+      url: origin + "/api/profiles",
+      resourceType: "xhr",
+      frame: { parent: null },
+    }),
+    true,
+  );
+});

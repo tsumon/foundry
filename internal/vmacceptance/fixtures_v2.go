@@ -32,6 +32,13 @@ func selectFixture(profile, caseID string) (fixtureSpec, error) {
 	if caseID == "" {
 		return f, errors.New("explicit_v2_case_required")
 	}
+	if profile == "c4_node_model_v2" && caseID == "idea-app" {
+		f.path, f.verifier = "src/app.js", "/opt/foundry/verify-node-v2"
+		f.worker = ideaCounterSource(false)
+		f.repaired = ideaCounterSource(true)
+		f.expectedTests = 2 // Baseline smoke plus the fixed structure contract.
+		return f, nil
+	}
 	switch profile {
 	case "c4_node_model_v2", "c4_typescript_model_v2":
 		ext, typ := "js", ""
@@ -260,7 +267,7 @@ func fixtureWheelV2() ([]byte, error) {
 func (f fixtureSpec) protectedDigests(root string) (map[string]string, error) {
 	out := map[string]string{}
 	for p := range f.files {
-		if p == f.path {
+		if p == f.path || f.caseID == "idea-app" && p == "src/checks.js" {
 			continue
 		}
 		b, e := os.ReadFile(filepath.Join(root, filepath.FromSlash(p)))
@@ -278,4 +285,9 @@ func (f fixtureSpec) fileDigests() map[string]string {
 	}
 	return out
 }
-func (f fixtureSpec) deliveryPatchMarker() string { return "identity(n) + identity(n) + identity(n)" }
+func (f fixtureSpec) deliveryPatchMarker() string {
+	if f.caseID == "idea-app" {
+		return "return ++value"
+	}
+	return "identity(n) + identity(n) + identity(n)"
+}

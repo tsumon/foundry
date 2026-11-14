@@ -6,31 +6,39 @@
 
 ### A clear delivery process—even when the team is just you.
 
-Plans · Isolated candidates · Built-in sandbox · Knowledge graph · Approvals · Local patches
+Describe an idea · Build an app · Verify in a VM · Preview & deliver
 
 [![Verify](https://github.com/tsumon/foundry/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/verify.yml)
 [![Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)
-[![Version](https://img.shields.io/badge/version-0.3.0-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.3.0)
+[![Version](https://img.shields.io/badge/version-0.4.0-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.4.0)
 [![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2C56F5)](LICENSE)
 
 [简体中文](README.md) · [English](README.en.md) · [Install & use](docs/public/desktop-guide.md) · [Architecture](docs/public/architecture.md) · [Safety](docs/public/safety.md)
 
-[![Download Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-Download_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-arm64.dmg)
-[![Download Windows EXE](https://img.shields.io/badge/Windows_x64-Download_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-x64.exe)
+[![Download Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-Download_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-arm64.dmg)
+[![Download Windows EXE](https://img.shields.io/badge/Windows_x64-Download_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-x64.exe)
 
-[v0.3.0 · Release notes & all files](https://github.com/tsumon/foundry/releases/tag/v0.3.0) · [SHA-256 checksums](https://github.com/tsumon/foundry/releases/download/v0.3.0/SHA256SUMS)
+[v0.4.0 · Release notes & all files](https://github.com/tsumon/foundry/releases/tag/v0.4.0) · [SHA-256 checksums](https://github.com/tsumon/foundry/releases/download/v0.4.0/SHA256SUMS)
 
 </div>
 
-<p align="center"><img src="docs/media/desktop-delivery.jpg" alt="Installed Foundry: independently approved synthetic delivery with patch and report exports" width="100%"></p>
-<p align="center"><sub>Actual workbench with disposable synthetic data. A screenshot is not evidence of model or sandbox execution.</sub></p>
+<p align="center"><img src="docs/media/idea-create.png" alt="Native Foundry: create an application from an idea without providing a repository" width="100%"></p>
+<p align="center"><sub>Actual native workbench with an illustrative brief. No model is configured or called in this screenshot; it is not generation or sandbox evidence.</sub></p>
 
-Foundry is a **software-delivery workbench** for a one-person team. Connect an explicitly chosen API model, start from a committed Git snapshot, plan changes, edit isolated candidates, test in a bundled VM, repair confirmed failures and deliver a reviewable **patch and Markdown report**. Your source repository stays untouched; applying and deploying the patch remain your decisions.
+Foundry is a **software-delivery workbench** for a one-person team. Describe the software you want, choose your API model, and Foundry creates a project, plans the work, edits code, tests it in a bundled VM and repairs failures. Preview the application, then approve delivery of a **complete source ZIP, patch and report**. Existing repositories remain supported.
 
 > [!IMPORTANT]
-> **0.3.0 supports bounded single-package Go, JavaScript, TypeScript and Python delivery under the contracts below.** Connect an API model and verify changes in the built-in VM, with no Docker Desktop requirement or host-execution fallback. ChatGPT subscription sign-in remains experimental.
+> **The no-repository entry currently delivers dependency-free browser apps (HTML / CSS / JavaScript).** It suits interactive tools, dashboards and local-data apps. Servers, databases, online integrations and DMG / EXE packaging of generated apps are not covered. The Mac / Windows installers below install Foundry itself. Independent approvals and VM isolation remain in place, with no host-execution fallback.
 
-## 0.3.0: delivery knowledge you can trace
+## 0.4.0: start with an idea
+
+| Describe the outcome | Follow the work | Receive the whole app |
+| :--- | :--- | :--- |
+| Enter the idea and acceptance requirements, select a model and budget; no repository required. | Foundry creates the project and reuses planning, candidate editing, repair and verification. | Preview in an isolated page, then approve and download the complete usable source project. |
+
+**从想法创建** (Create from an idea) is the default entry. Foundry manages project paths, Git initialization, snapshots and empty dependency setup. **改进已有仓库** (Improve an existing repository) retains the Go, JS, TS and Python workflows below. Fixed tests establish structure and runtime contracts; business acceptance also requires the recorded QA/audit review and your interaction with the preview. [Design and scope](docs/public/idea-to-app.md)
+
+## Delivery knowledge you can trace
 
 | Ontology | Knowledge graph | Embedded graph store |
 | :--- | :--- | :--- |
@@ -48,7 +56,7 @@ Upgrades retain tasks and independent approvals. The derived graph can be rebuil
 | :--- | :--- | :--- |
 | Researcher investigates and Planner proposes. Context sharing and plan execution have separate approvals; plans are editable. | Worker builds an isolated candidate. Protected tests run in a real VM. Confirmed failures can enter at most two Debugger rounds. | QA and Auditor review the same candidate and test evidence. Export requires separate approval; failures and spent calls remain recorded. |
 
-## 0.3.0 project scope
+## Existing repository scope
 
 | Language | Fixed verifier | Dependency input |
 | :--- | :--- | :--- |
@@ -63,18 +71,18 @@ The three new profiles require the VM, with no host-execution fallback. Native e
 
 ## Download and install
 
-Use the v0.3.0 release page for final installers, checksums and scoped receipts. Assets are published only after the required checks; a source version or download link alone is not acceptance.
+Use the v0.4.0 release page for final installers, checksums and scoped receipts. Assets are published only after the required checks; a source version or download link alone is not acceptance.
 
 | Platform | Installer | Corresponding third-party source |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | [Foundry-0.3.0-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-arm64.dmg) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-macos-sources.tar.gz) |
-| Windows x64 | [Foundry-0.3.0-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-x64.exe) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-windows-sources.tar.gz) |
+| Apple Silicon Mac | [Foundry-0.4.0-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-arm64.dmg) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-macos-sources.tar.gz) |
+| Windows x64 | [Foundry-0.4.0-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-x64.exe) | [Runtime and sandbox source](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-windows-sources.tar.gz) |
 
-Check [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.3.0/SHA256SUMS) after downloading. The [Release](https://github.com/tsumon/foundry/releases/tag/v0.3.0) retains the exact commit, installation/upgrade acceptance, real-call scope, clean source and third-party materials. Published files are fixed to their release, not rolling builds of main. The platform source archives include the original runtime/installer sources, both exact sandbox source trees and distribution linkage. [Clean Foundry source](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-source.tar.gz) · [Scoped evidence](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-evidence.tar.gz) · [Historical v0.1.0 downloads and sources](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
+Check [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.4.0/SHA256SUMS) after downloading. The [Release](https://github.com/tsumon/foundry/releases/tag/v0.4.0) retains the exact commit, installation/upgrade acceptance, real-call scope, clean source and third-party materials. Published files are fixed to their release, not rolling builds of main. The platform source archives include the original runtime/installer sources, both exact sandbox source trees and distribution linkage. [Clean Foundry source](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-source.tar.gz) · [Scoped evidence](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-evidence.tar.gz) · [Historical v0.1.0 downloads and sources](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
 
 **Signing status:** Mac uses an ad-hoc integrity signature, without Developer ID signing or notarization. Windows is unsigned, with no verified publisher. Checksums do not authenticate the publisher. Do not disable Gatekeeper, SmartScreen or antivirus; use the reviewed source workflow if your organization's policy rejects unsigned apps. A stable version number does not mean platform notarization or a commercial support promise.
 
-The 0.3.0 installer bundles the controller, frontend, Linux guest, Go toolchain, pinned Node/Python interpreters and TypeScript compiler. Running the app needs no separate language toolchain or Docker; preparing third-party dependency inputs may need tools outside Foundry. Repository imports require supported local Git. Windows also requires hardware virtualization and Windows Hypervisor Platform already enabled. Foundry does not enable OS features, install services or reboot the machine. Intel Mac, Windows ARM and Linux desktop packages are not supported. See the [desktop guide](docs/public/desktop-guide.md).
+The 0.4.0 installer bundles the controller, frontend, Linux guest, Go toolchain, pinned Node/Python interpreters and TypeScript compiler. Running the app needs no separate language toolchain or Docker; preparing third-party dependency inputs may need tools outside Foundry. Repository imports require supported local Git. Windows also requires hardware virtualization and Windows Hypervisor Platform already enabled. Foundry does not enable OS features, install services or reboot the machine. Intel Mac, Windows ARM and Linux desktop packages are not supported. See the [desktop guide](docs/public/desktop-guide.md).
 
 ## Follow relationships, inspect the evidence
 
@@ -91,19 +99,19 @@ service. Rebuilding it never rewrites business evidence or grants approval.
 Agent relationship context stays within the current authorized task; it does not
 send unrelated project data. [Design and scope](docs/public/knowledge-graph.md)
 
-These capabilities ship in the **0.3.0 Mac and Windows installers**. Graph links
+These capabilities ship in the **0.4.0 Mac and Windows installers**. Graph links
 do not approve plans, run tools or establish that a test passed.
 
 ## Deliver with your own model
 
-Choose **Controlled Coding Workbench** in the app menu:
+Open the default workbench and choose **新建任务 → 从想法创建** (Create from an idea):
 
 1. **Configure an API.** Create an OpenAI or compatible Responses-gateway API Key account and save its key. Use **API quick setup** to enter an available model ID, acknowledge billing and assign it to roles for new tasks. Explicit Magpie/CPA Responses endpoints are supported. No ChatGPT login is needed; saving does not query a catalog or run inference. [Setup guide](docs/public/api-key-coding.md)
-2. **Import a repository.** Select a supported profile and committed repository; for the new language profiles, separately import its pre-existing dependency input. Specify the goal, editable files and protected tests, inspect the exact committed snapshot, then confirm models, the call ceiling and sandbox.
-3. **Establish the baseline.** Separately approve and run VM readiness and baseline tests. The baseline must pass; this workflow does not ask the model to repair an already-failing repository.
+2. **Describe the idea.** Enter a name, goal and acceptance requirements, then select a model and call ceiling. Foundry creates the project without a model call or VM boot. Choose **改进已有仓库** to modify an existing project.
+3. **Establish the baseline.** Separately approve and run VM readiness and baseline tests. The baseline checks the initial project contract. It is a verification starting point, not proof that your new requirements are implemented.
 4. **Approve the plan.** Confirm the outgoing files and receiver, authorize Researcher / Planner, then review or revise their plan before separately approving execution.
 5. **Check the outcome.** Worker edits an isolated candidate. Confirmed test failures trigger bounded Debugger repair and recheck. QA / Auditor independently review the evidence. Network, infrastructure and unknown-outcome failures stop.
-6. **Deliver.** Approve patch/report export and review/apply it outside the product. Foundry does not automatically commit, push, deploy or edit the source repository.
+6. **Deliver.** Preview the app, then approve its complete source ZIP, patch and report. For existing repositories, review/apply the patch outside the product. Foundry does not automatically commit, push, deploy or edit the source repository.
 
 API keys live in macOS Keychain or Windows Credential Manager, not browser storage or plaintext configuration. Tasks pin the receiver, account and model, with no automatic call retry or paid-provider fallback. Call counts and timeouts **are not monetary caps**; also configure provider spending limits. A dispatched call with an unknown result still consumes budget and is never replayed on restart.
 
@@ -115,6 +123,7 @@ Tests run in a Linux guest; they do not certify native DMG, EXE, web or mobile a
 | :--- | :--- |
 | [Historical v0.1.0 Mac Go CPA/Grok delivery](docs/public/compatible-api-acceptance.md) | Five real role calls; baseline and candidate each passed 14 real VM tests, with source and protected tests unchanged. The first candidate passed, so no real Debugger call occurred. |
 | [Historical v0.1.0 Mac Go repair delivery](docs/public/compatible-api-acceptance.md#real-repair-and-delivery--stable-candidate) | Six roles each called the real model once. A deliberate injected error failed in the VM; Debugger repaired it and all 9 tests passed. This is not a claim of a spontaneous model defect. |
+| 0.4.0 idea-to-app workflow (Mac) | Local protocol fixture produces plan, faulty candidate and repair. Real VM: 2 baseline tests pass, 4 candidate tests detect the fault, then all 4 pass after repair. Approved source ZIP matches the candidate and preview; all instances close. No real-provider call in this acceptance. |
 | Versioned Release receipts | Distinguish provider calls, protocol fixtures, installation/upgrade and VM execution, bound to commits and installer hashes. |
 | Mac 0.2.0 native VM matrix | Go v1 and all 12 v2 cases passed. Each Node/TS/Python workflow ran 4 real tests: baseline pass → deliberate fault detected → repair pass, with fixture models (`local_protocol_fixture/not_real_provider`). |
 | Mac 0.2.0 API/TypeScript delivery | Six successful real role calls through “CPA Grok 本地”, requested `grok-4.6` (upstream identity unverified). Typed dependency and 4 real tests; a deliberate first-candidate fault failed, Debugger repaired it, and patch/report were sealed. Source, protected inputs and dependencies stayed unchanged; all VMs closed. |

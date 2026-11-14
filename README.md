@@ -6,31 +6,39 @@
 
 ### 一个人的开发，也应该有清楚的交付过程。
 
-计划 · 隔离修改 · 内置沙盒 · 知识图谱 · 审批 · 本地补丁
+描述想法 · 生成应用 · 沙盒验证 · 预览交付 · 知识图谱
 
 [![Verify](https://github.com/tsumon/foundry/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/verify.yml)
 [![Desktop packages](https://github.com/tsumon/foundry/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/tsumon/foundry/actions/workflows/desktop.yml)
-[![Version](https://img.shields.io/badge/version-0.3.0-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.3.0)
+[![Version](https://img.shields.io/badge/version-0.4.0-2C56F5)](https://github.com/tsumon/foundry/releases/tag/v0.4.0)
 [![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2C56F5)](LICENSE)
 
 [简体中文](README.md) · [English](README.en.md) · [安装与使用](docs/public/desktop-guide.md) · [架构](docs/public/architecture.md) · [安全边界](docs/public/safety.md)
 
-[![下载 Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-下载_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-arm64.dmg)
-[![下载 Windows EXE](https://img.shields.io/badge/Windows_x64-下载_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-x64.exe)
+[![下载 Mac DMG](https://img.shields.io/badge/macOS_Apple_Silicon-下载_DMG-24292F?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-arm64.dmg)
+[![下载 Windows EXE](https://img.shields.io/badge/Windows_x64-下载_EXE-2563EB?style=for-the-badge)](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-x64.exe)
 
-[v0.3.0 · 发行说明与全部文件](https://github.com/tsumon/foundry/releases/tag/v0.3.0) · [SHA-256 校验值](https://github.com/tsumon/foundry/releases/download/v0.3.0/SHA256SUMS)
+[v0.4.0 · 发行说明与全部文件](https://github.com/tsumon/foundry/releases/tag/v0.4.0) · [SHA-256 校验值](https://github.com/tsumon/foundry/releases/download/v0.4.0/SHA256SUMS)
 
 </div>
 
-<p align="center"><img src="docs/media/desktop-delivery.jpg" alt="实际安装后的 Foundry：独立审批完成的模拟交付与补丁、报告导出" width="100%"></p>
-<p align="center"><sub>真实工作台截图，使用一次性合成数据。截图本身不是模型或沙盒执行证据。</sub></p>
+<p align="center"><img src="docs/media/idea-create.png" alt="Foundry 原生工作台：从想法创建应用，无需先提供仓库" width="100%"></p>
+<p align="center"><sub>真实原生工作台截图，填写的是演示需求，尚未配置模型或发起调用；不作为生成结果或沙盒证据。</sub></p>
 
-Foundry 是面向一人团队的 **软件交付工作台**。接入你选定的 API 模型，从已提交的 Git 快照出发，生成计划、修改独立候选、在内置虚拟机中测试、修复明确的失败，再交付可审阅的 **patch 和 Markdown 报告**。原仓库不动，部署与应用补丁由你控制。
+Foundry 是面向一人团队的 **软件交付工作台**。描述你想做的软件，选择自己的 API 模型，Foundry 自动创建项目、生成计划、修改代码，并在内置虚拟机中测试和修复。你可以预览应用，再批准交付 **完整源码 ZIP、patch 和报告**。已有仓库也能继续改进。
 
 > [!IMPORTANT]
-> **0.3.0 支持下表约定内的单包 Go、JavaScript、TypeScript 和 Python 交付。** 接入 API 模型，用内置 VM 验证修改，无需 Docker Desktop，也不会降级到宿主机执行。ChatGPT 订阅登录仍为实验性功能。
+> **零仓库入口当前交付无需外部依赖的浏览器应用（HTML / CSS / JavaScript）。** 可制作交互工具、看板和本地数据小应用；服务端、数据库、在线服务及生成应用的 DMG / EXE 打包尚未覆盖。下面的 Mac / Windows 安装包是 Foundry 本身。测试和审批保留独立边界，不降级到宿主机执行。
 
-## 0.3.0：让交付过程成为可追溯的知识
+## 0.4.0：从一个想法开始
+
+| 说清要做什么 | 看见它怎么完成 | 拿到完整应用 |
+| :--- | :--- | :--- |
+| 写下想法和验收要求，选择模型与预算，无需先准备仓库。 | 自动创建项目，规划、修改、失败修复与复验沿用现有任务链。 | 在隔离页面预览，批准交付后下载可独立使用的完整源码。 |
+
+默认打开 **从想法创建**。项目路径、Git 初始化、快照和空依赖配置由 Foundry 管理；**改进已有仓库** 继续支持下列 Go、JS、TS、Python 配置。固定测试只证明应用结构与运行契约，业务需求还需结合 QA、审计和你的实际预览确认。[设计与边界](docs/public/idea-to-app.md)
+
+## 交付过程中的知识与证据
 
 | 本体 | 知识图谱 | 内嵌图存储 |
 | :--- | :--- | :--- |
@@ -54,9 +62,9 @@ Foundry 是面向一人团队的 **软件交付工作台**。接入你选定的 
 
 图存储内嵌在现有 SQLite 中，提供属性图索引、事务同步和有界关系遍历，无需额外数据库服务。图谱可从业务记录重建；不会改写原始证据或产生审批。Agent 获取的关系上下文限于当前已授权任务，不会额外发送其他项目资料。[设计与使用范围](docs/public/knowledge-graph.md)
 
-这些能力已纳入 **0.3.0 的 Mac 和 Windows 安装包**。图谱不是执行权限：关系连接不会批准计划、运行工具或证明测试通过。
+这些能力已纳入 **0.4.0 的 Mac 和 Windows 安装包**。图谱不是执行权限：关系连接不会批准计划、运行工具或证明测试通过。
 
-## 0.3.0 的项目范围
+## 已有仓库的支持范围
 
 | 语言 | 固定验证方式 | 依赖输入 |
 | :--- | :--- | :--- |
@@ -71,29 +79,29 @@ Foundry 是面向一人团队的 **软件交付工作台**。接入你选定的 
 
 ## 下载与安装
 
-请通过 v0.3.0 发行页获取最终安装包、校验值和限定范围的回执。文件仅在必需检查完成后发布；源码版本号或下载链接本身不等于验收通过。
+请通过 v0.4.0 发行页获取最终安装包、校验值和限定范围的回执。文件仅在必需检查完成后发布；源码版本号或下载链接本身不等于验收通过。
 
 | 平台 | 安装包 | 对应第三方源码 |
 | :--- | :--- | :--- |
-| Apple Silicon Mac | [Foundry-0.3.0-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-arm64.dmg) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-macos-sources.tar.gz) |
-| Windows x64 | [Foundry-0.3.0-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-x64.exe) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-windows-sources.tar.gz) |
+| Apple Silicon Mac | [Foundry-0.4.0-arm64.dmg](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-arm64.dmg) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-macos-sources.tar.gz) |
+| Windows x64 | [Foundry-0.4.0-x64.exe](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-x64.exe) | [运行时与沙盒源码](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-windows-sources.tar.gz) |
 
-下载后核对 [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.3.0/SHA256SUMS)。[Release](https://github.com/tsumon/foundry/releases/tag/v0.3.0) 保留对应提交、安装与升级验收、真实调用范围、干净源码和第三方许可材料；发布文件固定到对应发行版，不随 main 滚动替换。平台源码归档包含原运行时/安装器源码、两个精确沙盒源码树及发行关联材料。[干净 Foundry 源码](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-source.tar.gz) · [限定范围的验收证据](https://github.com/tsumon/foundry/releases/download/v0.3.0/Foundry-0.3.0-evidence.tar.gz) · [历史 v0.1.0 下载与源码](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
+下载后核对 [SHA256SUMS](https://github.com/tsumon/foundry/releases/download/v0.4.0/SHA256SUMS)。[Release](https://github.com/tsumon/foundry/releases/tag/v0.4.0) 保留对应提交、安装与升级验收、真实调用范围、干净源码和第三方许可材料；发布文件固定到对应发行版，不随 main 滚动替换。平台源码归档包含原运行时/安装器源码、两个精确沙盒源码树及发行关联材料。[干净 Foundry 源码](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-source.tar.gz) · [限定范围的验收证据](https://github.com/tsumon/foundry/releases/download/v0.4.0/Foundry-0.4.0-evidence.tar.gz) · [历史 v0.1.0 下载与源码](https://github.com/tsumon/foundry/releases/tag/v0.1.0)
 
 **签名状态：** Mac 使用 ad-hoc 完整性签名，未作 Developer ID 签名或公证；Windows 安装包未签名，没有已验证发布者。校验值不等于发布者认证。不要关闭 Gatekeeper、SmartScreen 或杀毒软件；组织策略不允许时请采用审阅过的源码工作流。正式版本号不代表已获平台公证或商业服务承诺。
 
-0.3.0 安装包内置控制器、前端、Linux 客户系统、Go 工具链、固定的 Node/Python 解释器和 TypeScript 编译器。运行应用无需另装语言工具链或 Docker；准备第三方依赖输入可能需要 Foundry 外的工具。仓库导入需要本机受支持的 Git；Windows 还需已启用的硬件虚拟化及 Windows Hypervisor Platform。不会自动启用系统功能、安装服务或重启系统。Intel Mac、Windows ARM 和 Linux 桌面包暂不支持。详见[桌面指南](docs/public/desktop-guide.md)。
+0.4.0 安装包内置控制器、前端、Linux 客户系统、Go 工具链、固定的 Node/Python 解释器和 TypeScript 编译器。运行应用无需另装语言工具链或 Docker；准备第三方依赖输入可能需要 Foundry 外的工具。仓库导入需要本机受支持的 Git；Windows 还需已启用的硬件虚拟化及 Windows Hypervisor Platform。不会自动启用系统功能、安装服务或重启系统。Intel Mac、Windows ARM 和 Linux 桌面包暂不支持。详见[桌面指南](docs/public/desktop-guide.md)。
 
 ## 用自己的模型完成一次交付
 
-在应用菜单选择 **Controlled Coding Workbench**：
+打开默认工作台，点击 **新建任务 → 从想法创建**：
 
 1. **配置 API。** 在模型设置创建 OpenAI 或兼容 Responses 网关账户，保存 Key。用「API 快速配置」填入该服务的模型 ID，确认计费方式，再分配给新任务的角色。兼容 Magpie/CPA 的显式 Responses 端点；不需要 ChatGPT 登录，不在保存时查询目录或推理。[接入说明](docs/public/api-key-coding.md)
-2. **导入仓库。** 选择受支持配置与已提交的仓库；新语言配置先单独导入预先准备的依赖。填写需求、可修改文件与受保护测试，检查精确的已提交快照，再确认模型、调用次数上限和沙盒。
-3. **建立基线。** 分别审批并执行 VM 就绪检查、基线测试。基线必须通过；不会让模型顺带修复原本已失败的仓库。
+2. **描述想法。** 填写应用名称、目标和验收要求，选择模型与调用上限。Foundry 自动创建独立项目；创建本身不调用模型或启动 VM。若要修改现有项目，切换到 **改进已有仓库**。
+3. **建立基线。** 分别审批并执行 VM 就绪检查、基线测试。基线检查初始项目的固定契约；这是环境与测试起点，不代表你的新功能已经完成。
 4. **审批计划。** 确认发送的文件与接收端，授权 Researcher / Planner 生成计划。审阅或修订后，再单独批准执行。
 5. **检验结果。** Worker 修改独立候选；真实测试明确失败时，Debugger 根据错误修复并复验。QA / Auditor 分别审查证据。网络、基础设施和结果不明的失败直接停止。
-6. **交付。** 审批导出 patch 与报告，在产品外审查并应用。Foundry 不自动提交、推送、部署或修改原仓库。
+6. **交付。** 预览应用，审批导出完整源码 ZIP、patch 与报告；已有仓库在产品外审查并应用补丁。Foundry 不自动提交、推送、部署或修改原仓库。
 
 API Key 在 Mac 存入 Keychain，在 Windows 存入 Credential Manager，不写入浏览器存储或明文配置。任务固定接收地址、账户和模型，不自动重试调用或切换收费 API。调用次数和超时 **不是金额上限**，请同时设置供应商支出限额。已发送但结果不明的调用也消耗预算，不会在重启后自动重放。
 
@@ -103,6 +111,7 @@ API Key 在 Mac 存入 Keychain，在 Windows 存入 Credential Manager，不写
 
 | 证据 | 覆盖范围 |
 | :--- | :--- |
+| 0.4.0 想法创建闭环（Mac） | 本地模型协议夹具依次生成计划、错误候选和修复；真实 VM 基线 2 项通过、候选 4 项检测到错误、修复后 4 项通过。完整源码 ZIP 与候选和预览一致，所有实例已关闭；本轮未调用真实模型。 |
 | [历史 v0.1.0 Mac Go CPA/Grok 真实交付](docs/public/compatible-api-acceptance.md) | 5 次真实角色调用；基线和候选各 14 项真实 VM 测试通过，原仓库与受保护测试未改。首版通过，未触发真实 Debugger。 |
 | [历史 v0.1.0 Mac Go 故障修复交付](docs/public/compatible-api-acceptance.md#real-repair-and-delivery--stable-candidate) | 6 个角色各一次真实调用；明确注入的错误被 VM 检出，Debugger 修复后 9 项测试通过。不是模型自然出错的宣称。 |
 | 版本 Release 的验收回执 | 区分供应商调用、协议 fixture、安装升级与 VM 执行，按提交和安装包摘要绑定。 |

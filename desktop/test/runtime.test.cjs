@@ -344,16 +344,17 @@ test("coding workbench uses exact closed argv, environment, and retained data di
   }
 });
 
-test("normal launch stays closed and coding mode cannot consume repository arguments", async (t) => {
+test("normal launch enables approved coding in the same persistent profile without accepting repository arguments", async (t) => {
   const root = fixture(
     t,
     `const fs=require('node:fs');fs.writeFileSync(require('node:path').join(process.cwd(),'normal.json'),JSON.stringify(process.argv.slice(2)));process.stdin.once('data',()=>console.log(JSON.stringify({protocol:1,url:'http://127.0.0.1:12345',pid:process.pid,dataDir:process.env.FOUNDRY_DATA_DIR})));process.stdin.on('end',()=>process.exit(0));`,
   );
   const dataRoot = path.join(root, "state");
   const child = await startBackend({ resources: root, dataRoot });
+  t.after(() => child.stop());
   assert.deepEqual(
     JSON.parse(fs.readFileSync(path.join(dataRoot, "normal.json"))),
-    ["--desktop"],
+    ["--desktop", "--coding-workbench"],
   );
   assert.equal(child.ready.dataDir, path.join(dataRoot, "workbench"));
   await child.stop();

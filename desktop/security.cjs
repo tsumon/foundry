@@ -21,6 +21,22 @@ function allowNavigation(origin, target) {
 function allowExternal(target) {
   return documentation.has(target);
 }
+function allowFrameRequest(origin, details) {
+  if (!allowNavigation(origin, details.url)) return false;
+  if (details.resourceType === "subFrame") {
+    const url = new URL(details.url);
+    return (
+      /^\/api\/missions\/[a-f0-9]{32}\/app-preview\/frame$/.test(
+        url.pathname,
+      ) &&
+      /^\?digest=[a-f0-9]{64}$/.test(url.search) &&
+      !url.hash
+    );
+  }
+  // Generated documents are opaque-origin subframes. They receive no API,
+  // stylesheet, image or fetch capability from the desktop session.
+  return !details.frame?.parent;
+}
 function artifactSaveName(origin, request, chain, initiator, source, owner) {
   if (
     !request ||
@@ -39,13 +55,15 @@ function artifactRouteName(origin, target) {
   try {
     const url = new URL(target);
     if (!allowNavigation(origin, target) || url.search || url.hash) return null;
-    const match = /^\/api\/missions\/[a-f0-9]{32}\/(patch|report)$/.exec(
+    const match = /^\/api\/missions\/[a-f0-9]{32}\/(patch|report|source)$/.exec(
       url.pathname,
     );
     return match
       ? match[1] === "patch"
         ? "changes.patch"
-        : "report.md"
+        : match[1] === "source"
+          ? "application-source.zip"
+          : "report.md"
       : null;
   } catch {
     return null;
@@ -78,4 +96,5 @@ module.exports = {
   activationSwitches,
   artifactSaveName,
   artifactRouteName,
+  allowFrameRequest,
 };

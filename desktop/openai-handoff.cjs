@@ -7,7 +7,7 @@ function createOpenAIHandoff({ platform, mode, isCurrent, verify, open }) {
   return async (raw) => {
     if (
       (platform !== "darwin" && platform !== "win32") ||
-      mode !== "coding" ||
+      (mode !== "coding" && mode !== "normal") ||
       !isCurrent() ||
       pending ||
       launched.has(raw)

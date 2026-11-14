@@ -26,6 +26,20 @@ function item(target = url) {
     getInitiatorOrigin: () => origin,
   };
 }
+test("approved complete source downloads use ZIP media type and a fixed filename", () => {
+  const guard = createDownloadGuard(origin, () => 7);
+  const target = url.replace(/patch$/, "source");
+  guard.observeRequest({ ...request, url: target });
+  guard.observeResponse({
+    ...response,
+    url: target,
+    responseHeaders: {
+      "Content-Type": ["application/zip"],
+      "Content-Disposition": ['attachment; filename="untrusted.exe"'],
+    },
+  });
+  assert.equal(guard.saveName(item(target), 7), "application-source.zip");
+});
 test("delivery guard authenticates a correlated successful response, not hidden cookie headers", () => {
   const guard = createDownloadGuard(origin, () => 7);
   guard.observeRequest(request);

@@ -281,6 +281,11 @@ func (e *Engine) Deliver(ctx context.Context, id string, revision int64) (domain
 	if err != nil {
 		return m, err
 	}
+	if m.IdeaProject != nil {
+		if _, err = e.AppPreview(m.ID); err != nil {
+			return m, err
+		}
+	}
 	if e.active != nil {
 		return m, errors.New("another operation is active")
 	}

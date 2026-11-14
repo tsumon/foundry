@@ -10,6 +10,7 @@ import (
 )
 
 type EvidenceV2 struct {
+	Idea                   *IdeaEvidence             `json:"idea,omitempty"`
 	ProfileID              string                    `json:"profile_id"`
 	Case                   string                    `json:"case"`
 	Provenance             string                    `json:"provenance"`
@@ -92,7 +93,7 @@ func v2OperationEvidence(o domain.C4Operation, n vmruntime.AuthenticatedEvidence
 				return OperationEvidence{}, fail
 			}
 		}
-	} else if n.Tests != f.expectedTests || (n.Class != "passed" && n.Class != "test_failed") || !last.ResourceLimitsOK || last.DeadlineExceeded {
+	} else if n.Tests != f.testsFor(o.Kind) || (n.Class != "passed" && n.Class != "test_failed") || !last.ResourceLimitsOK || last.DeadlineExceeded {
 		return OperationEvidence{}, fail
 	}
 	return record, nil

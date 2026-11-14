@@ -22,6 +22,7 @@ const { createOpenAIHandoff } = require("./openai-handoff.cjs");
 const {
   allowNavigation,
   allowExternal,
+  allowFrameRequest,
   windowOptions,
   activationSwitches,
 } = require("./security.cjs");
@@ -118,9 +119,13 @@ if (!owner) {
         });
       });
       isolated.webRequest.onBeforeRequest((details, callback) =>
-        callback({ cancel: !allowNavigation(current.ready.url, details.url) }),
+        callback({ cancel: !allowFrameRequest(current.ready.url, details) }),
       );
       isolated.webRequest.onBeforeSendHeaders((details, callback) => {
+        if (!allowFrameRequest(current.ready.url, details)) {
+          callback({ cancel: true });
+          return;
+        }
         downloads.observeRequest(details);
         callback(
           requestDecision(

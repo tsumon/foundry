@@ -80,7 +80,13 @@ func authority(m domain.Mission, base string, includePlan bool) (string, error) 
 		if err != nil {
 			return "", err
 		}
-		raw, _ := json.Marshal(m.RepositoryImport)
+		raw, _ := json.Marshal(struct {
+			Import *domain.RepositoryImportBinding `json:"import"`
+			Idea   *domain.IdeaProject             `json:"idea,omitempty"`
+		}{m.RepositoryImport, m.IdeaProject})
+		if m.IdeaProject == nil {
+			raw, _ = json.Marshal(m.RepositoryImport)
+		}
 		h := sha256.Sum256([]byte("FOUNDRY repository import authority v1\x00" + string(raw) + "\x00" + digest))
 		return hex.EncodeToString(h[:]), nil
 	}

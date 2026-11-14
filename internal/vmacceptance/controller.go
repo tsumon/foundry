@@ -94,30 +94,35 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	if identity.HostPlatform == "windows/amd64" {
 		summary.Acceleration = "whpx"
 	}
-	summary.Stage = "repository"
-	source := filepath.Join(c.DataDir, "source")
-	if c.Profile == "" {
-		err = createRepository(ctx, source)
-	} else {
-		err = f.create(ctx, source, filepath.Join(c.DataDir, "dependency-input"))
-	}
-	if err != nil {
-		return
-	}
-	// This digest includes the committed .git tree, so source mutation cannot be
-	// hidden by changing the index or commit while leaving the three files intact.
-	summary.SourceDigest, err = sourceTreeDigest(source)
-	if err != nil {
-		return
-	}
+	source := ""
 	protected := protectedDigests
-	if c.Profile != "" {
-		protected = f.protectedDigests
-		summary.V2.ExpectedFiles = f.fileDigests()
-	}
-	summary.ProtectedDigests, err = protected(source)
-	if err != nil {
-		return
+	if f.caseID != "idea-app" {
+		summary.Stage = "repository"
+		source = filepath.Join(c.DataDir, "source")
+		if c.Profile == "" {
+			err = createRepository(ctx, source)
+		} else {
+			err = f.create(ctx, source, filepath.Join(c.DataDir, "dependency-input"))
+		}
+		if err != nil {
+			return
+		}
+		// This digest includes the committed .git tree, so source mutation cannot be
+		// hidden by changing the index or commit while leaving the three files intact.
+		summary.SourceDigest, err = sourceTreeDigest(source)
+		if err != nil {
+			return
+		}
+		protected = protectedDigests
+		if c.Profile != "" {
+			protected = f.protectedDigests
+			summary.V2.ExpectedFiles = f.fileDigests()
+		}
+		summary.ProtectedDigests, err = protected(source)
+		if err != nil {
+			return
+		}
+
 	}
 	summary.Stage = "setup"
 	s, e := store.Open(filepath.Join(c.DataDir, "acceptance.db"))
@@ -180,57 +185,69 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	if err = registerFixture(s, lease.base); err != nil {
 		return
 	}
-	spec := domain.RepositoryImportSpec{Scope: []string{"triple.go"}, Protected: []string{"go.mod", "triple_test.go"}, Acceptance: []string{"/opt/foundry/verify-go-v1"}, Image: "embedded-vm-native-acceptance"}
-	if c.Profile != "" {
-		summary.Stage = "dependencies"
-		var selected *engine.CodingProfileTemplateV2
-		for _, row := range controller.CodingProfilesV2() {
-			if row.ProfileID == c.Profile {
-				copy := row
-				selected = &copy
+	var m domain.Mission
+	if f.caseID == "idea-app" {
+		summary.Stage = "create"
+		m, err = createIdeaAcceptance(ctx, controller, s, &f, &summary)
+		if err != nil {
+			return
+		}
+		source = m.RepoPath
+		protected = f.protectedDigests
+	} else {
+		spec := domain.RepositoryImportSpec{Scope: []string{"triple.go"}, Protected: []string{"go.mod", "triple_test.go"}, Acceptance: []string{"/opt/foundry/verify-go-v1"}, Image: "embedded-vm-native-acceptance"}
+		if c.Profile != "" {
+			summary.Stage = "dependencies"
+			var selected *engine.CodingProfileTemplateV2
+			for _, row := range controller.CodingProfilesV2() {
+				if row.ProfileID == c.Profile {
+					copy := row
+					selected = &copy
+				}
 			}
+			if selected == nil || !selected.Available || selected.EmbeddedVM == nil {
+				err = errors.New("current_v2_profile_unavailable")
+				return
+			}
+			admission, admitErr := controller.ImportCodingDependencies(ctx, engine.CodingDependencyImportRequest{RepoPath: source, ProfileID: c.Profile, EmbeddedVM: *selected.EmbeddedVM, RuntimeInventoryDigest: selected.RuntimeInventoryDigest, InputDirectory: filepath.Join(c.DataDir, "dependency-input"), Consent: true})
+			if admitErr != nil {
+				err = admitErr
+				return
+			}
+			summary.V2.RuntimeInventoryDigest = selected.RuntimeInventoryDigest
+			summary.V2.AdmissionDigest = admission.AdmissionDigest
+			dependencyRoot := filepath.Join(c.DataDir, "engine", "dependency-bundles")
+			manifest, manifestErr := dependencybundle.DescribeVerified(ctx, dependencyRoot, dependencybundle.Binding(admission.Dependencies))
+			if manifestErr != nil {
+				err = manifestErr
+				return
+			}
+			summary.V2.DependencyFiles = manifest.Files
+			spec = domain.RepositoryImportSpec{Scope: []string{f.path}, Protected: []string{}, Acceptance: []string{f.verifier}, VerificationV2: &domain.C4ImportSelectionV2{SchemaVersion: 2, ProfileID: c.Profile, EmbeddedVM: *selected.EmbeddedVM, RuntimeInventoryDigest: selected.RuntimeInventoryDigest, AdmissionDigest: admission.AdmissionDigest, Dependencies: admission.Dependencies, SourceRoot: f.sourceRoot, TestRoot: "tests", TestSupportPrefixes: []string{}}}
+			summary.Stage = "inspection"
 		}
-		if selected == nil || !selected.Available || selected.EmbeddedVM == nil {
-			err = errors.New("current_v2_profile_unavailable")
+		inspection, e := controller.InspectRepository(ctx, domain.RepositoryInspectionRequest{RepoPath: source, Consent: true, Spec: spec})
+		if e != nil || inspection.Status != "ready" {
+			err = errors.New("repository_inspection_not_ready")
 			return
 		}
-		admission, admitErr := controller.ImportCodingDependencies(ctx, engine.CodingDependencyImportRequest{RepoPath: source, ProfileID: c.Profile, EmbeddedVM: *selected.EmbeddedVM, RuntimeInventoryDigest: selected.RuntimeInventoryDigest, InputDirectory: filepath.Join(c.DataDir, "dependency-input"), Consent: true})
-		if admitErr != nil {
-			err = admitErr
+		profile, ok := controller.CodingVMProfile()
+		if c.Profile != "" {
+			profile = domain.C4Profile{SchemaVersion: 2, ID: c.Profile, Mode: "embedded_vm"}
+			ok = inspection.VerificationV2 != nil
+			summary.V2.Inputs = inspection.VerificationV2
+		}
+		if !ok {
+			err = errors.New("trusted_vm_profile_missing")
 			return
 		}
-		summary.V2.RuntimeInventoryDigest = selected.RuntimeInventoryDigest
-		summary.V2.AdmissionDigest = admission.AdmissionDigest
-		dependencyRoot := filepath.Join(c.DataDir, "engine", "dependency-bundles")
-		manifest, manifestErr := dependencybundle.DescribeVerified(ctx, dependencyRoot, dependencybundle.Binding(admission.Dependencies))
-		if manifestErr != nil {
-			err = manifestErr
+		summary.Stage = "create"
+		m, e = controller.Create(ctx, engine.CreateRequest{ImportVersion: 1, ImportSelection: &domain.ImportSelection{InspectionID: inspection.ID, Digest: inspection.Digest}, CodingVersion: 1, WorkspaceMode: "generations_v1", Title: "SYNTHETIC model / native VM acceptance", Goal: "Implement Triple using addition only, preserving positive and negative behavior. Do not modify protected tests or module metadata.", RepoPath: inspection.Root, Spec: domain.Spec{Scope: inspection.Spec.Scope, Protected: inspection.Spec.Protected, Acceptance: inspection.Spec.Acceptance, Image: inspection.Spec.Image, ProfileID: "native-fixture-profile", Research: true, MaxCalls: 6, C4: &profile}})
+		if e != nil {
+			err = e
 			return
 		}
-		summary.V2.DependencyFiles = manifest.Files
-		spec = domain.RepositoryImportSpec{Scope: []string{f.path}, Protected: []string{}, Acceptance: []string{f.verifier}, VerificationV2: &domain.C4ImportSelectionV2{SchemaVersion: 2, ProfileID: c.Profile, EmbeddedVM: *selected.EmbeddedVM, RuntimeInventoryDigest: selected.RuntimeInventoryDigest, AdmissionDigest: admission.AdmissionDigest, Dependencies: admission.Dependencies, SourceRoot: f.sourceRoot, TestRoot: "tests", TestSupportPrefixes: []string{}}}
-		summary.Stage = "inspection"
-	}
-	inspection, e := controller.InspectRepository(ctx, domain.RepositoryInspectionRequest{RepoPath: source, Consent: true, Spec: spec})
-	if e != nil || inspection.Status != "ready" {
-		err = errors.New("repository_inspection_not_ready")
-		return
-	}
-	profile, ok := controller.CodingVMProfile()
-	if c.Profile != "" {
-		profile = domain.C4Profile{SchemaVersion: 2, ID: c.Profile, Mode: "embedded_vm"}
-		ok = inspection.VerificationV2 != nil
-		summary.V2.Inputs = inspection.VerificationV2
-	}
-	if !ok {
-		err = errors.New("trusted_vm_profile_missing")
-		return
-	}
-	summary.Stage = "create"
-	m, e := controller.Create(ctx, engine.CreateRequest{ImportVersion: 1, ImportSelection: &domain.ImportSelection{InspectionID: inspection.ID, Digest: inspection.Digest}, CodingVersion: 1, WorkspaceMode: "generations_v1", Title: "SYNTHETIC model / native VM acceptance", Goal: "Implement Triple using addition only, preserving positive and negative behavior. Do not modify protected tests or module metadata.", RepoPath: inspection.Root, Spec: domain.Spec{Scope: inspection.Spec.Scope, Protected: inspection.Spec.Protected, Acceptance: inspection.Spec.Acceptance, Image: inspection.Spec.Image, ProfileID: "native-fixture-profile", Research: true, MaxCalls: 6, C4: &profile}})
-	if e != nil {
-		err = e
-		return
+
 	}
 	summary.MissionID = m.ID
 	initialSnapshot, _ := json.Marshal(m.ModelSnapshot)
@@ -418,7 +435,7 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		}
 	}
 	summary.Checks.ExactInstances = true
-	if m.CandidateGeneration == nil || len(m.Changes) != 2 || m.Changes[0].Before != f.initial || m.Changes[0].After != f.worker || m.Changes[1].After != f.repaired {
+	if m.CandidateGeneration == nil || !fixtureRepairTrace(m, f) {
 		err = errors.New("repair_trace_not_preserved")
 		return
 	}
@@ -470,6 +487,12 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 		return
 	}
 	summary.Checks.LocalModelOnly = true
+	if f.caseID == "idea-app" {
+		if _, denied := controller.AppSource(m.ID); denied == nil {
+			err = errors.New("unapproved_idea_source_exported")
+			return
+		}
+	}
 	summary.Stage = "deliver"
 	if _, err = controller.Deliver(ctx, m.ID, m.Revision); err != nil {
 		return
@@ -514,6 +537,12 @@ func Run(parent context.Context, c Config) (summary Summary, err error) {
 	}
 	summary.PatchDigest = digestBytes(patch)
 	summary.ReportDigest = digestBytes(report)
+	if f.caseID == "idea-app" {
+		summary.V2.Idea, err = verifyIdeaDelivery(controller, m, tree, *summary.V2.Inputs)
+		if err != nil {
+			return
+		}
+	}
 	summary.Checks.DeliveryFrozen = true
 	summary.Stage = "complete"
 	summary.Passed = true

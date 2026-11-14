@@ -19,7 +19,7 @@ func CheckCodingRecoveryModelSnapshots(s *store.Store) error {
 		return err
 	}
 	for _, m := range missions {
-		if !isModelC4(m) || c4Structure(m) != nil || domain.ValidateCodingTrace(m) != nil {
+		if isC4(m) && !isModelC4(m) || c4Structure(m) != nil || domain.ValidateCodingTrace(m) != nil {
 			return ErrC4Unavailable
 		}
 	}
@@ -56,8 +56,16 @@ func (e *Engine) CheckC4ControlledRecovery() error {
 		return err
 	}
 	for _, m := range missions {
+		if !isC4(m) {
+			continue
+		}
 		if c4Structure(m) != nil || domain.ValidateMissionModelSnapshot(m) != nil || domain.ValidateCodingTrace(m) != nil {
 			return ErrC4Unavailable
+		}
+		if m.IdeaProject != nil {
+			if err = e.validateIdeaOrigin(m); err != nil {
+				return err
+			}
 		}
 		if err = e.ValidateRepositoryImport(m); err != nil {
 			return ErrC4Unavailable
@@ -97,4 +105,19 @@ func validateRecoveryModelSnapshots(missions []domain.Mission) error {
 		}
 	}
 	return nil
+}
+
+// The default coding workbench retains historical ordinary tasks verbatim. Its
+// constrained C4 runtime has no authority to recover or execute their runner.
+func (e *Engine) codingRecoveryMissions(missions []domain.Mission) []domain.Mission {
+	if !e.options.CodingWorkbench {
+		return missions
+	}
+	out := make([]domain.Mission, 0, len(missions))
+	for _, m := range missions {
+		if isC4(m) {
+			out = append(out, m)
+		}
+	}
+	return out
 }

@@ -419,7 +419,7 @@ async function startBackend({
   if (process.platform !== "win32") privateDirectory(dataDir);
   const webDir = path.join(resources, "web");
   let args;
-  if (mode === "normal") args = ["--desktop"];
+  if (mode === "normal") args = ["--desktop", "--coding-workbench"];
   else if (mode === "coding") args = ["--desktop", "--coding-workbench"];
   else
     args = [

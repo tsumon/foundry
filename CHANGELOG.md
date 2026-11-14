@@ -2,6 +2,19 @@
 
 All notable public-facing changes will be recorded here.
 
+## 0.4.0 — 2026-11-14
+
+- Make an idea and acceptance requirements the default new-task entry; create a
+  managed browser-app project without asking for a Git repository or build inputs.
+- Reuse independent model/context, plan, VM test/repair and delivery approvals.
+  Keep existing repository workflows and historical records available.
+- Preview generated HTML/CSS/JavaScript in an opaque-origin, offline browser frame;
+  export a complete source ZIP only from an approved delivered candidate.
+- Enable installed coding capabilities in the default persistent workbench while
+  retaining its original data directory and the separate legacy coding workspace.
+- Document structural test coverage separately from business acceptance and
+  distinguish generated browser apps from Foundry's own desktop installers.
+
 ## 0.3.0 — 2026-11-14
 
 - Pin the host build and verification compiler to Go 1.27.4 for `GO-2026-6859`

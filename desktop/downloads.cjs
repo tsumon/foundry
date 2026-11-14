@@ -42,7 +42,11 @@ function createDownloadGuard(origin, owner, diagnose = () => {}) {
     const type = values("content-type").some(
       (value) =>
         value.split(";")[0].trim().toLowerCase() ===
-        (name === "changes.patch" ? "text/plain" : "text/markdown"),
+        (name === "changes.patch"
+          ? "text/plain"
+          : name === "application-source.zip"
+            ? "application/zip"
+            : "text/markdown"),
     );
     const statusOK = details.statusCode === 200;
     const sameRequest =

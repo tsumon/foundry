@@ -39,10 +39,13 @@ Checked $windowsPowerShell @('-NoProfile', '-NonInteractive', '-File', (Join-Pat
 # Real native Electron session/cookie/attachment events, in disposable profiles.
 $electron = Join-Path $PWD 'desktop/node_modules/electron/dist/electron.exe'
 $contract = Join-Path $PWD 'desktop/test/download-contract.cjs'
-foreach ($kind in @('patch', 'report')) {
+foreach ($kind in @('patch', 'report', 'source')) {
   $contractProcess = Start-Process -FilePath $electron -ArgumentList @("`"$contract`"", $kind) -Wait -PassThru
   if ($contractProcess.ExitCode -ne 0) { throw "Native Electron $kind download contract failed" }
 }
+$previewContract = Join-Path $PWD 'desktop/test/preview-contract.cjs'
+$previewProcess = Start-Process -FilePath $electron -ArgumentList @("`"$previewContract`"") -Wait -PassThru
+if ($previewProcess.ExitCode -ne 0) { throw 'Native Electron isolated preview contract failed' }
 Checked 'npm.cmd' @('test', '--prefix', 'web', '--', '--run')
 Checked 'npm.cmd' @('audit', '--prefix', 'web', '--audit-level=low')
 Checked 'npm.cmd' @('audit', '--prefix', 'desktop', '--audit-level=low')

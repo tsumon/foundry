@@ -42,7 +42,7 @@ func checkCodingJSON(d *json.Decoder, t reflect.Type, depth int, strict bool) er
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
-	required := t == reflect.TypeOf(domain.C4ImportSelectionV2{}) || t == reflect.TypeOf(domain.C4DependencyBindingV2{}) || t == reflect.TypeOf(domain.C4VMIdentity{}) || t == reflect.TypeOf(engine.CodingDependencyImportRequest{})
+	required := t == reflect.TypeOf(engine.IdeaCreateRequest{}) || t == reflect.TypeOf(domain.C4ImportSelectionV2{}) || t == reflect.TypeOf(domain.C4DependencyBindingV2{}) || t == reflect.TypeOf(domain.C4VMIdentity{}) || t == reflect.TypeOf(engine.CodingDependencyImportRequest{})
 	token, err := d.Token()
 	if err != nil {
 		return err

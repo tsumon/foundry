@@ -32,6 +32,7 @@ type Options struct {
 	Runner                        sandbox.Runner
 }
 type CreateRequest struct {
+	ideaProject         *domain.IdeaProject
 	ImportVersion       int                         `json:"import_version,omitempty"`
 	ImportSelection     *domain.ImportSelection     `json:"import_selection,omitempty"`
 	CodingVersion       int                         `json:"coding_version,omitempty"`
@@ -410,6 +411,7 @@ func (e *Engine) Recover(ctx context.Context) error {
 	if err := validateRecoveryModelSnapshots(missions); err != nil {
 		return err
 	}
+	missions = e.codingRecoveryMissions(missions)
 	for _, m := range missions {
 		if err := e.c4Gate(m); err != nil {
 			return err
@@ -424,6 +426,9 @@ func (e *Engine) Recover(ctx context.Context) error {
 	}
 	for _, m := range missions {
 		if isC4(m) {
+			if err := e.ensureIdeaCatalog(m); err != nil {
+				return err
+			}
 			if err := e.recoverC4(m); err != nil {
 				return err
 			}
@@ -442,6 +447,7 @@ func (e *Engine) Recover(ctx context.Context) error {
 		}
 	}
 	missions, err = e.s.ListMissions()
+	missions = e.codingRecoveryMissions(missions)
 	if err != nil {
 		return err
 	}
@@ -510,6 +516,7 @@ func (e *Engine) Recover(ctx context.Context) error {
 		}
 	}
 	missions, err = e.s.ListMissions()
+	missions = e.codingRecoveryMissions(missions)
 	if err != nil {
 		return err
 	}
@@ -574,6 +581,7 @@ func (e *Engine) Recover(ctx context.Context) error {
 		}
 	}
 	missions, err = e.s.ListMissions()
+	missions = e.codingRecoveryMissions(missions)
 	if err != nil {
 		return err
 	}

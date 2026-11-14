@@ -191,6 +191,7 @@ type Delivery struct {
 }
 
 type Mission struct {
+	IdeaProject               *IdeaProject             `json:"idea_project,omitempty"`
 	ModelContinuations        []ModelContinuation      `json:"model_continuations,omitempty"`
 	ModelContinuationsInvalid bool                     `json:"-"`
 	C4Operations              []C4Operation            `json:"c4_operations,omitempty"`

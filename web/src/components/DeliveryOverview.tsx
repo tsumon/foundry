@@ -39,7 +39,7 @@ export function DeliveryOverview(props: Props) {
     return (
       <StatusPage title="交付总览" message="第一份交付，从这里开始">
         <p className="muted">
-          连接模型，选择一个已提交的 Git 仓库，检查上下文、计划与真实验证证据。
+          描述你的想法，从零创建应用，或改进已有项目。计划、验证和交付都在这里完成。
         </p>
         <div className="actions">
           <button className="primary" onClick={props.onCreate}>

@@ -17,6 +17,43 @@ import {
   emptyCapabilities,
 } from "./components/capabilities/testFixtures";
 
+it("starts with an idea and preserves it across settings without requiring a source repository", async () => {
+  const fetcher = vi.fn(async (path: string) =>
+    response(
+      path === "/api/health"
+        ? { status: "ok", capabilities: {} }
+        : path === "/api/missions"
+          ? { missions: [] }
+          : path === "/api/idea-tasks"
+            ? { available: true, reason: "" }
+            : path === "/api/profiles"
+              ? {
+                  profiles: [profile],
+                  settings: { default_profile_id: "p1", role_bindings: {} },
+                }
+              : {},
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "创建交付任务" }));
+  expect(screen.getByRole("tab", { name: "从想法创建" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await screen.findByRole("option", { name: "测试连接 · fixture-model" });
+  expect(screen.queryByLabelText("Git 仓库绝对路径")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("描述你的想法"), {
+    target: { value: "做一个订单看板" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "设置" }));
+  fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
+  expect(screen.getByLabelText("描述你的想法")).toHaveValue("做一个订单看板");
+  expect(
+    fetcher.mock.calls.some(([path]) => path.includes("repository-imports")),
+  ).toBe(false);
+});
+
 it.each(["invalid_mission_model_snapshot", "c4_runtime_mismatch"])(
   "keeps history usable with a global %s read-only notice across navigation",
   async (recoveryError) => {
@@ -341,6 +378,7 @@ it("retains a new-task draft and import receipt through settings, then clears it
   vi.stubGlobal("fetch", fetcher);
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "创建交付任务" }));
+  fireEvent.click(screen.getByRole("tab", { name: "改进已有仓库" }));
   await screen.findByRole("option", { name: "测试连接 · fixture-model" });
   for (const [label, value] of [
     ["任务标题", "保留草稿"],
@@ -373,11 +411,13 @@ it("retains a new-task draft and import receipt through settings, then clears it
   ).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "取消" }));
   fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
+  fireEvent.click(screen.getByRole("tab", { name: "改进已有仓库" }));
   expect(screen.getByLabelText("任务标题")).toHaveValue("");
   expect(screen.queryByText("可创建任务")).not.toBeInTheDocument();
 });
 
 async function submitNewMission(prefilled = false) {
+  fireEvent.click(screen.getByRole("tab", { name: "改进已有仓库" }));
   await screen.findByRole("option", { name: "测试连接 · fixture-model" });
   fireEvent.change(screen.getByLabelText("任务标题"), {
     target: { value: "新建任务" },
@@ -468,9 +508,7 @@ it("enters catalog only after bootstrap, preserves navigation priorities and ope
   fireEvent.click(screen.getByRole("button", { name: "项目资产" }));
   expect(await screen.findByRole("heading", { name: "项目 A" })).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
-  expect(
-    screen.getByRole("heading", { name: "定义这一次交付。" }),
-  ).toBeVisible();
+  expect(screen.getByRole("heading", { name: "你想做什么？" })).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "设置" }));
   expect(
     await screen.findByRole("heading", { name: /模型/, level: 1 }),

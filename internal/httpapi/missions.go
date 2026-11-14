@@ -78,6 +78,9 @@ func (s *server) missionRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	if s.ideaArtifactRoute(w, r, parts) {
+		return
+	}
 	if s.modelContinuationRoute(w, r, parts) {
 		return
 	}

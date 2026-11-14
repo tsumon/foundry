@@ -59,7 +59,7 @@ try {
   $v2Result = & $node (Join-Path $PSScriptRoot 'native-vm-smoke.cjs') --v2-matrix
   if ($LASTEXITCODE -ne 0) { throw 'Mandatory installed v2 WHPX matrix failed; distinct bounded attempt receipts retained' }
   $nativeV2 = ($v2Result -join "`n") | ConvertFrom-Json
-  if ($nativeV2.passed -ne $true -or $nativeV2.kind -cne 'foundry-native-vm-v2-matrix' -or $nativeV2.cases.Count -ne 12) { throw 'Missing installed v2 native matrix' }
+  if ($nativeV2.passed -ne $true -or $nativeV2.kind -cne 'foundry-native-vm-v2-matrix' -or $nativeV2.cases.Count -ne 13) { throw 'Missing installed v2 native matrix' }
   $runtimeResult = & $node (Join-Path $PSScriptRoot 'installed-smoke.cjs')
   if ($LASTEXITCODE -ne 0) { throw 'Installed bundled backend smoke failed' }
   $runtime = ($runtimeResult -join "`n") | ConvertFrom-Json

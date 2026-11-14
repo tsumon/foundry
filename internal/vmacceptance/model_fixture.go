@@ -111,6 +111,18 @@ func fixtureReplyFor(q model.Request, f *fixtureSpec) (string, error) {
 		path, worker, repaired = f.path, f.worker, f.repaired
 	}
 	var value any
+	if f != nil && f.caseID == "idea-app" {
+		switch q.Role {
+		case domain.Planner:
+			value = map[string]any{"summary": "Build an increment/reset counter with candidate-authored assertions", "steps": []any{map[string]any{"id": "counter", "title": "Counter", "description": "Implement increment and reset and assert both requirements", "depends_on": []string{}, "files": []string{"src/app.js", "src/checks.js"}}}}
+		case domain.Worker:
+			value = map[string]any{"summary": "SYNTHETIC failing increment with genuine requirement assertions", "edits": []any{map[string]string{"path": path, "content": worker}, map[string]string{"path": "src/checks.js", "content": ideaRequirementChecks}}}
+		}
+		if value != nil {
+			raw, e := json.Marshal(value)
+			return string(raw), e
+		}
+	}
 	switch q.Role {
 	case domain.Researcher:
 		value = map[string]any{"summary": "SYNTHETIC local fixture observation", "findings": []any{}, "unknowns": []any{}}

@@ -18,18 +18,38 @@ const h = "a".repeat(64);
 function success(profile, caseID, host, manifest = h) {
   const python = profile === "c4_python_model_v2",
     ts = profile === "c4_typescript_model_v2",
-    workflow = caseID === "workflow";
-  const meta = python
-    ? ["foundry.python.lock.json"]
-    : ["package-lock.json", "package.json", ...(ts ? ["tsconfig.json"] : [])];
-  const source = python ? "src/triple.py" : `src/triple.${ts ? "ts" : "js"}`,
-    test = python
-      ? "tests/test_triple.py"
-      : `tests/triple.test.${ts ? "ts" : "js"}`,
-    helper = python ? "tests/guards.py" : "tests/guards.cjs";
-  const protectedPaths = [...meta, helper, test].sort(),
+    workflow = ["workflow", "idea-app"].includes(caseID),
+    idea = caseID === "idea-app";
+  const meta = idea
+    ? [
+        "APP_CONTRACT.md",
+        "idea-project.json",
+        "package-lock.json",
+        "package.json",
+        "src/index.html",
+        "src/style.css",
+      ]
+    : python
+      ? ["foundry.python.lock.json"]
+      : ["package-lock.json", "package.json", ...(ts ? ["tsconfig.json"] : [])];
+  const source = idea
+      ? "src/app.js"
+      : python
+        ? "src/triple.py"
+        : `src/triple.${ts ? "ts" : "js"}`,
+    test = idea
+      ? "tests/app.test.cjs"
+      : python
+        ? "tests/test_triple.py"
+        : `tests/triple.test.${ts ? "ts" : "js"}`,
+    helper = idea
+      ? "src/checks.js"
+      : python
+        ? "tests/guards.py"
+        : "tests/guards.cjs";
+  const protectedPaths = [...meta, ...(!idea ? [helper] : []), test].sort(),
     expected = Object.fromEntries(
-      [...protectedPaths, source].map((p) => [p, h]),
+      [...protectedPaths, source, ...(idea ? [helper] : [])].map((p) => [p, h]),
     );
   const identity = {
     schema_version: 2,
@@ -48,31 +68,35 @@ function success(profile, caseID, host, manifest = h) {
     ecosystem: python ? "python" : "node",
     bundle_digest: h,
     manifest_digest: h,
-    file_count: 1,
-    total_bytes: 1,
+    file_count: idea ? 0 : 1,
+    total_bytes: idea ? 0 : 1,
   };
   const inputs = {
     schema_version: 2,
     profile_id: profile,
     dependencies: dep,
     admission_digest: h,
-    source_files: meta.map((p) => ({ path: p, bytes: 1, sha256: h })),
-    protected: protectedPaths.map((p) => ({
-      path: p,
-      mode: 420,
-      bytes: 1,
-      sha256: h,
-      role:
-        p === test
-          ? "test"
-          : p === helper
-            ? "helper"
-            : p.endsWith("lock.json")
-              ? "lock"
-              : p === "tsconfig.json"
-                ? "config"
-                : "manifest",
-    })),
+    source_files: (idea ? ["package-lock.json", "package.json"] : meta).map(
+      (p) => ({ path: p, bytes: 1, sha256: h }),
+    ),
+    protected: protectedPaths
+      .filter((p) => !idea || !p.startsWith("src/"))
+      .map((p) => ({
+        path: p,
+        mode: 420,
+        bytes: 1,
+        sha256: h,
+        role:
+          p === test
+            ? "test"
+            : p === helper
+              ? "helper"
+              : p.endsWith("lock.json")
+                ? "lock"
+                : p === "tsconfig.json"
+                  ? "config"
+                  : "manifest",
+      })),
     protected_prefixes: [
       ".foundry-build",
       ".venv",
@@ -118,7 +142,8 @@ function success(profile, caseID, host, manifest = h) {
       ];
   const operations = classes.map((cl, i) => {
     const id = String(i + 1).repeat(64),
-      count = workflow ? 4 : caseID === "descendant" ? 1 : 0;
+      count =
+        idea && i === 0 ? 2 : workflow ? 4 : caseID === "descendant" ? 1 : 0;
     const phases = (
       ts
         ? [
@@ -213,22 +238,35 @@ function success(profile, caseID, host, manifest = h) {
       runtime_inventory_digest: h,
       admission_digest: h,
       inputs,
-      dependency_files: [
-        {
-          path: python
-            ? "foundry_fixture_dep.py"
-            : "foundry-fixture-dep/index.js",
-          size: 1,
-          sha256: h,
-        },
-      ],
+      dependency_files: idea
+        ? []
+        : [
+            {
+              path: python
+                ? "foundry_fixture_dep.py"
+                : "foundry-fixture-dep/index.js",
+              size: 1,
+              sha256: h,
+            },
+          ],
       expected_files: expected,
+      ...(idea
+        ? {
+            idea: {
+              candidate_digest: operations[2].candidate_digest,
+              preview_digest: h,
+              source_zip_digest: h,
+              files: 9,
+              unapproved_source_denied: true,
+            },
+          }
+        : {}),
     },
   };
 }
 test("closed v2 receipts reject swapped targets, fabricated counts and unobserved pressure", () => {
   const matrix = nativeV2Cases();
-  assert.equal(matrix.length, 12);
+  assert.equal(matrix.length, 13);
   for (const row of matrix) {
     const r = success(row.profile, row.case, "windows/amd64");
     assert.doesNotThrow(() =>
@@ -274,6 +312,29 @@ test("closed v2 receipts reject swapped targets, fabricated counts and unobserve
   assert.throws(() =>
     assertNativeVMReceiptV2(r, h, "c4_python_model_v2", "memory", "win32"),
   );
+});
+test("idea receipts require approval-bound ZIP and the genuine baseline versus requirement counts", () => {
+  for (const mutate of [
+    (r) => delete r.v2.idea,
+    (r) => (r.v2.idea.unapproved_source_denied = false),
+    (r) => (r.v2.idea.candidate_digest = "b".repeat(64)),
+    (r) => (r.v2.idea.files = 8),
+    (r) => (r.operations[0].tests = r.operations[0].native_v2.tests = 4),
+    (r) => (r.v2.inputs.dependencies.file_count = 1),
+    (r) => (r.v2.idea.source_zip_digest = "missing"),
+  ]) {
+    const receipt = success("c4_node_model_v2", "idea-app", "windows/amd64");
+    mutate(receipt);
+    assert.throws(() =>
+      assertNativeVMReceiptV2(
+        receipt,
+        h,
+        "c4_node_model_v2",
+        "idea-app",
+        "win32",
+      ),
+    );
+  }
 });
 for (const host of ["darwin/arm64", "windows/amd64"])
   test(`installed matrix executes every closed case once against one v2 bundle: ${host}`, (t) => {
@@ -341,7 +402,7 @@ for (const host of ["darwin/arm64", "windows/amd64"])
       calls,
       nativeV2Cases().map((r) => [r.profile, r.case]),
     );
-    assert.equal(new Set(r.cases.map((r) => r.report)).size, 12);
+    assert.equal(new Set(r.cases.map((r) => r.report)).size, 13);
     for (const row of r.cases)
       assert.equal(JSON.parse(fs.readFileSync(row.report)).passed, true);
     assert.throws(() =>

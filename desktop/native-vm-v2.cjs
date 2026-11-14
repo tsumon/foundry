@@ -45,6 +45,7 @@ function integer(v, min, max) {
 function nativeV2Cases() {
   return [
     ...profiles.map((profile) => ({ profile, case: "workflow" })),
+    { profile: profiles[0], case: "idea-app" },
     { profile: profiles[1], case: "typecheck" },
     ...[
       "setup",
@@ -65,7 +66,21 @@ function selectedV2(profile, caseID) {
   );
   return { profile, case: caseID };
 }
-function expectedV2Files(profile) {
+function expectedV2Files(profile, caseID) {
+  if (caseID === "idea-app")
+    return {
+      source: "src/app.js",
+      test: "tests/app.test.cjs",
+      helper: "src/checks.js",
+      metadata: [
+        "APP_CONTRACT.md",
+        "idea-project.json",
+        "package-lock.json",
+        "package.json",
+        "src/index.html",
+        "src/style.css",
+      ],
+    };
   const py = profile === profiles[2],
     ts = profile === profiles[1];
   return {
@@ -126,8 +141,8 @@ function bindingShape(v) {
   a.ok(["node", "python"].includes(v.ecosystem));
   digest(v.bundle_digest);
   digest(v.manifest_digest);
-  integer(v.file_count, 1, 10000);
-  integer(v.total_bytes, 1, 67108864);
+  integer(v.file_count, 0, 10000);
+  integer(v.total_bytes, 0, 67108864);
 }
 function rows(v, fields) {
   a.ok(Array.isArray(v) && v.length > 0 && v.length <= 500);
@@ -147,7 +162,7 @@ function rows(v, fields) {
   a.equal(new Set(names).size, names.length);
   a.deepEqual(names, [...names].sort());
 }
-function inputsShape(v) {
+function inputsShape(v, caseID) {
   keys(v, [
     "schema_version",
     "profile_id",
@@ -182,16 +197,22 @@ function inputsShape(v) {
     "site-packages",
     "tests",
   ]);
-  const f = expectedV2Files(v.profile_id);
+  const f = expectedV2Files(v.profile_id, caseID);
   a.deepEqual(v.source_roots, [v.profile_id === profiles[2] ? "src" : "."]);
   a.deepEqual(v.test_files, [f.test]);
   a.deepEqual(
     v.source_files.map((r) => r.path),
-    [...f.metadata].sort(),
+    (caseID === "idea-app"
+      ? ["package-lock.json", "package.json"]
+      : [...f.metadata]
+    ).sort(),
   );
   a.deepEqual(
     v.protected.map((r) => r.path),
-    [...f.metadata, f.test, f.helper].sort(),
+    (caseID === "idea-app"
+      ? [...f.metadata.filter((p) => !p.startsWith("src/")), f.test]
+      : [...f.metadata, f.test, f.helper]
+    ).sort(),
   );
   a.equal(
     v.dependencies.ecosystem,
@@ -321,15 +342,35 @@ function boundedV2Receipt(raw) {
     "inputs",
     "dependency_files",
     "expected_files",
+    ...(Object.hasOwn(r.v2, "idea") ? ["idea"] : []),
   ]);
   selectedV2(r.v2.profile_id, r.v2.case);
+  if (r.v2.idea !== undefined) {
+    a.equal(r.v2.case, "idea-app");
+    keys(r.v2.idea, [
+      "candidate_digest",
+      "preview_digest",
+      "source_zip_digest",
+      "files",
+      "unapproved_source_denied",
+    ]);
+    for (const k of ["candidate_digest", "preview_digest", "source_zip_digest"])
+      digest(r.v2.idea[k]);
+    integer(r.v2.idea.files, 1, 500);
+    a.equal(typeof r.v2.idea.unapproved_source_denied, "boolean");
+  }
   a.equal(r.v2.provenance, "repository_owned_local_fixture");
   digest(r.v2.runtime_inventory_digest, true);
   digest(r.v2.admission_digest, true);
-  const f = expectedV2Files(r.v2.profile_id),
+  const f = expectedV2Files(r.v2.profile_id, r.v2.case),
     expected = [f.source, f.test, f.helper, ...f.metadata];
   for (const [field, allowed] of [
-    ["protected_digests", expected.filter((p) => p !== f.source)],
+    [
+      "protected_digests",
+      expected.filter(
+        (p) => p !== f.source && (r.v2.case !== "idea-app" || p !== f.helper),
+      ),
+    ],
   ])
     if (r[field] !== undefined) {
       keys(r[field], allowed);
@@ -350,7 +391,7 @@ function boundedV2Receipt(raw) {
   );
   if (r.v2.dependency_files.length)
     rows(r.v2.dependency_files, ["path", "size", "sha256"]);
-  if (r.v2.inputs !== null) inputsShape(r.v2.inputs);
+  if (r.v2.inputs !== null) inputsShape(r.v2.inputs, r.v2.case);
   for (const [k, v] of Object.entries(r.role_counts || {})) {
     a.ok(roles.includes(k));
     integer(v, 0, 16);
@@ -415,12 +456,16 @@ function assertNativeVMReceiptV2(
   a.equal(r.v2.case, caseID);
   digest(r.v2.runtime_inventory_digest);
   digest(r.v2.admission_digest);
-  inputsShape(r.v2.inputs);
+  inputsShape(r.v2.inputs, r.v2.case);
   a.equal(r.v2.inputs.profile_id, profile);
   a.equal(r.v2.inputs.admission_digest, r.v2.admission_digest);
-  const f = expectedV2Files(profile);
+  const f = expectedV2Files(profile, caseID);
   keys(r.v2.expected_files, [f.source, f.test, f.helper, ...f.metadata]);
-  keys(r.protected_digests, [f.test, f.helper, ...f.metadata]);
+  keys(r.protected_digests, [
+    f.test,
+    ...(caseID === "idea-app" ? [] : [f.helper]),
+    ...f.metadata,
+  ]);
   for (const p of r.v2.inputs.protected) {
     a.equal(p.sha256, r.protected_digests[p.path]);
     a.equal(p.sha256, r.v2.expected_files[p.path]);
@@ -432,7 +477,7 @@ function assertNativeVMReceiptV2(
     r.v2.dependency_files.reduce((n, f) => n + f.size, 0),
     r.v2.inputs.dependencies.total_bytes,
   );
-  const workflow = caseID === "workflow",
+  const workflow = ["workflow", "idea-app"].includes(caseID),
     classes = workflow
       ? ["passed", "test_failed", "passed"]
       : [
@@ -461,7 +506,16 @@ function assertNativeVMReceiptV2(
   r.operations.forEach((o, i) => {
     a.equal(o.kind, i === 0 ? "baseline" : "candidate");
     a.equal(o.class, classes[i]);
-    a.equal(o.tests, workflow ? 4 : caseID === "descendant" ? 1 : 0);
+    a.equal(
+      o.tests,
+      caseID === "idea-app" && i === 0
+        ? 2
+        : workflow
+          ? 4
+          : caseID === "descendant"
+            ? 1
+            : 0,
+    );
     a.equal(o.cleanup_confirmed, true);
     const n = o.native_v2;
     a.equal(n.session_id, o.instance_id);
@@ -512,6 +566,17 @@ function assertNativeVMReceiptV2(
       r.operations[1].candidate_digest,
       r.operations[2].candidate_digest,
     );
+  if (caseID === "idea-app") {
+    a.ok(r.v2.idea);
+    a.equal(r.v2.idea.unapproved_source_denied, true);
+    a.equal(r.v2.idea.files, 9);
+    a.equal(r.v2.idea.candidate_digest, r.operations[2].candidate_digest);
+    a.equal(r.v2.inputs.dependencies.file_count, 0);
+    a.equal(r.v2.inputs.dependencies.total_bytes, 0);
+  } else {
+    a.equal(r.v2.idea, undefined);
+    a.ok(r.v2.inputs.dependencies.file_count > 0);
+  }
   return r;
 }
 module.exports = {

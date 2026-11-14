@@ -8,7 +8,7 @@ import {
   type MissionSession,
 } from "./components/MissionWorkspace";
 import { StageRail } from "./components/StageRail";
-import { CreateMission } from "./components/CreateMission";
+import { CreateEntry } from "./components/CreateEntry";
 import { CapabilitySettings } from "./components/capabilities/CapabilitySettings";
 import { DemoWorkspace } from "./components/DemoWorkspace";
 import {
@@ -253,7 +253,7 @@ export default function App() {
         </div>
         {hasCreationDraft && (
           <div hidden={!creating}>
-            <CreateMission
+            <CreateEntry
               key={creationSession}
               active={creating}
               onBusyChange={(busy) => {

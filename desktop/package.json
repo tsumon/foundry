@@ -1,6 +1,6 @@
 {
   "name": "foundry-desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Foundry local desktop workbench",
   "author": "Foundry contributors",

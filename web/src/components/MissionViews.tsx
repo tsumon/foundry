@@ -16,6 +16,7 @@ import {
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelContinuation } from "./ModelContinuation";
 import { RecoveryDiagnostic, RepositorySource } from "./RecoveryDiagnostic";
+import { AppPreview } from "./AppPreview";
 export const views = [
   "总览",
   "会话",
@@ -51,6 +52,51 @@ export function MissionViews({
   onChanged?: (mission: Mission) => void;
   busy?: boolean;
 }) {
+  const engineering = (
+    <>
+      <RepositorySource mission={mission} />
+      <dl className="metadata">
+        <dt>仓库</dt>
+        <dd>
+          <code>{mission.repo_path}</code>
+        </dd>
+        <dt>基线 commit</dt>
+        <dd>
+          <code>{mission.base_commit}</code>
+        </dd>
+        <dt>允许修改</dt>
+        <dd>{(mission.spec.scope ?? []).join(" · ")}</dd>
+        <dt>受保护文件</dt>
+        <dd>
+          {(mission.spec.protected ?? []).join(" · ") || "由控制器应用默认保护"}
+        </dd>
+        <dt>验收命令</dt>
+        <dd>
+          {(mission.spec.acceptance ?? []).map((command, i) => (
+            <code className="block-code" key={i}>
+              {command}
+            </code>
+          ))}
+        </dd>
+        <dt>验证镜像</dt>
+        <dd>
+          <code>{mission.spec.image}</code>
+          <br />
+          <code>{mission.spec.image_id || "待解析本地镜像 ID"}</code>
+        </dd>
+        <dt>模型调用</dt>
+        <dd>
+          {mission.budget.used_calls} / {mission.budget.max_calls}
+        </dd>
+        <dt>Token 使用量</dt>
+        <dd>
+          {mission.budget.usage_unknown
+            ? "未知（提供方未完整返回）"
+            : `输入 ${mission.budget.input_tokens} · 输出 ${mission.budget.output_tokens}`}
+        </dd>
+      </dl>
+    </>
+  );
   if (view === "总览")
     return (
       <>
@@ -59,49 +105,36 @@ export function MissionViews({
           <span className="muted small">任务 r{mission.revision}</span>
         </div>
         <p className="goal">{mission.goal}</p>
-        <RepositorySource mission={mission} />
+        {mission.idea_project && (
+          <section aria-label="应用目标">
+            <h3>需求验收清单</h3>
+            <ul>
+              {mission.idea_project.acceptance.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+            <p className="muted">
+              Foundry
+              已自动创建独立应用项目。固定测试验证运行契约，生成的需求断言参与复验；完成情况还需结合审查与预览确认。
+            </p>
+            {!demo && <AppPreview mission={mission} disabled={busy} />}
+          </section>
+        )}
         {mcpDecision}
-        <dl className="metadata">
-          <dt>仓库</dt>
-          <dd>
-            <code>{mission.repo_path}</code>
-          </dd>
-          <dt>基线 commit</dt>
-          <dd>
-            <code>{mission.base_commit}</code>
-          </dd>
-          <dt>允许修改</dt>
-          <dd>{(mission.spec.scope ?? []).join(" · ")}</dd>
-          <dt>受保护文件</dt>
-          <dd>
-            {(mission.spec.protected ?? []).join(" · ") ||
-              "由控制器应用默认保护"}
-          </dd>
-          <dt>验收命令</dt>
-          <dd>
-            {(mission.spec.acceptance ?? []).map((command, i) => (
-              <code className="block-code" key={i}>
-                {command}
-              </code>
-            ))}
-          </dd>
-          <dt>验证镜像</dt>
-          <dd>
-            <code>{mission.spec.image}</code>
-            <br />
-            <code>{mission.spec.image_id || "待解析本地镜像 ID"}</code>
-          </dd>
-          <dt>模型调用</dt>
-          <dd>
-            {mission.budget.used_calls} / {mission.budget.max_calls}
-          </dd>
-          <dt>Token 使用量</dt>
-          <dd>
-            {mission.budget.usage_unknown
-              ? "未知（提供方未完整返回）"
-              : `输入 ${mission.budget.input_tokens} · 输出 ${mission.budget.output_tokens}`}
-          </dd>
-        </dl>
+        {mission.idea_project ? (
+          <>
+            <p className="muted">
+              模型调用 {mission.budget.used_calls} / {mission.budget.max_calls}{" "}
+              · 交付目标：浏览器应用
+            </p>
+            <details>
+              <summary>工程记录与恢复基线</summary>
+              {engineering}
+            </details>
+          </>
+        ) : (
+          engineering
+        )}
         <ModelSnapshot
           mission={mission}
           compact={mission.coding_version === 1}
@@ -308,6 +341,9 @@ export function MissionViews({
   return (
     <>
       <h2>交付报告</h2>
+      {mission.idea_project && !demo && (
+        <AppPreview mission={mission} disabled={busy} />
+      )}
       {mission.coding_version === 1 && (
         <p className="muted">
           C2
@@ -316,7 +352,11 @@ export function MissionViews({
       )}
       {mission.delivery && mission.state === "delivered" ? (
         <>
-          <p>已生成本地 patch 与报告；未修改原仓库，也未推送或部署。</p>
+          <p>
+            {mission.idea_project
+              ? "已完成应用交付。下载完整项目后打开 src/index.html 使用；完整源码、受保护测试和报告均可保留。"
+              : "已生成本地 patch 与报告；未修改原仓库，也未推送或部署。"}
+          </p>
           <dl className="metadata">
             <dt>基线 commit</dt>
             <dd>
@@ -331,6 +371,15 @@ export function MissionViews({
           </dl>
           {!demo && (
             <div className="actions">
+              {mission.idea_project && (
+                <a
+                  className="button primary"
+                  href={`/api/missions/${encodeURIComponent(mission.id)}/source`}
+                  download
+                >
+                  下载完整应用 ZIP
+                </a>
+              )}
               <a
                 className="button primary"
                 href={`/api/missions/${encodeURIComponent(mission.id)}/patch`}

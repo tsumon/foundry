@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	version      = "0.3.0"
+	version      = "0.4.0"
 	maxBodyBytes = 1 << 20
 	sessionName  = "foundry_session"
 )
@@ -334,6 +334,8 @@ func (s *server) dispatchAPI(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/api/coding-dependencies":
 		s.codingDependencies(w, r)
+	case r.URL.Path == "/api/idea-tasks":
+		s.ideaTasks(w, r)
 	case r.URL.Path == "/api/coding-tasks":
 		s.codingTasks(w, r)
 	case r.URL.Path == "/api/model-accounts" || strings.HasPrefix(r.URL.Path, "/api/model-accounts/"):

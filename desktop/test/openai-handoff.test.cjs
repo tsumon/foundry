@@ -41,7 +41,7 @@ test("only current Mac coding session can launch once after host verification", 
   assert.equal(await handoff("http://127.0.0.1:4321/auth/start"), false);
   for (const patch of [
     { platform: "linux" },
-    { mode: "normal" },
+    { mode: "unknown" },
     { mode: "simulation" },
   ])
     assert.equal(
@@ -50,6 +50,20 @@ test("only current Mac coding session can launch once after host verification", 
       ),
       false,
     );
+  assert.equal(opened, 1);
+});
+test("default persistent workbench still verifies the one-shot account handoff", async () => {
+  let opened = 0;
+  const handoff = createOpenAIHandoff({
+    platform: "darwin",
+    mode: "normal",
+    isCurrent: () => true,
+    verify: async () => true,
+    open: async () => opened++,
+  });
+  const url = "http://127.0.0.1:2345/auth/start";
+  assert.equal(await handoff(url), true);
+  assert.equal(await handoff(url), false);
   assert.equal(opened, 1);
 });
 test("Windows coding handoff requires independent verification and launches only once", async () => {
