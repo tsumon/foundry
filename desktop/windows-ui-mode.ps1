@@ -457,6 +457,7 @@ $confirmation = $false
 $fixedExplanation = $false
 $createForm = $false
 $codingSectionVisible = $false
+$creationEntry = @{ ideaDefault=$false; repositoryEntry=$false }
 if ($Action -eq 'coding') {
   $dialog = Wait-OwnedExact ([System.Windows.Automation.ControlType]::Window) 'Open Controlled Coding Workbench?' 5
   $button = Wait-CodingTaskDialogAction $dialog $OwnerProcess 5
@@ -474,6 +475,7 @@ if ($Action -eq 'coding') {
   }
   Invoke-Exact $create 'create-mission-button'
   $createForm = $true
+  $creationEntry = Select-CreationRepositoryEntry $destinationRoot $OwnerProcess
   $codingSection = $null
   $deadline = [DateTime]::UtcNow.AddSeconds(30)
   while ([DateTime]::UtcNow -lt $deadline) {
@@ -502,4 +504,6 @@ if ($Action -eq 'coding') {
   destination=$true
   createForm=$createForm
   codingSection=$codingSectionVisible
+  ideaDefault=$creationEntry.ideaDefault
+  repositoryEntry=$creationEntry.repositoryEntry
 } | ConvertTo-Json -Compress

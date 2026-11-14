@@ -183,12 +183,26 @@ function Set-FixtureScrollPosition([object]$Section, [int]$Owner, [double]$Perce
 try {
   $process = Start-Process -FilePath $electron -ArgumentList @("--user-data-dir=`"$fixtureRoot`"", "`"$fixture`"") -PassThru
   $section = $null
+  $selectedRepository = $false
   $deadline = [DateTime]::UtcNow.AddSeconds(15)
   while ([DateTime]::UtcNow -lt $deadline -and $null -eq $section) {
     $process.Refresh()
     if ($process.HasExited) { throw 'Native scroll fixture exited' }
     if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
       $root = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
+      if (-not $selectedRepository) {
+        $entryCapture = Get-CreationEntryCapture $root $process.Id
+        if ($null -eq $entryCapture) { Start-Sleep -Milliseconds 100; continue }
+        Assert-True ($entryCapture.idea.selected -and -not $entryCapture.repository.selected) 'Native fixture did not start with the idea tab selected'
+        Assert-Rejected { Get-CreationEntryCapture $root ($process.Id+1) } 'ownership changed'
+        $beforeItems = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+        $hiddenSections = @($beforeItems | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Group -and $_.Current.Name -ceq '账户模型编码设置' })
+        Assert-True ($hiddenSections.Count -eq 0) 'Repository section was exposed before tab selection'
+        $entry = Select-CreationRepositoryEntry $root $process.Id
+        Assert-True ($entry.ideaDefault -and $entry.repositoryEntry) 'Native repository entry selection was not observed'
+        Assert-Rejected { Select-CreationRepositoryEntry $root $process.Id } 'default idea selection missing'
+        $selectedRepository = $true
+      }
       $items = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
       if ($items.Count -gt 2048) { throw 'Native fixture tree exceeds bound' }
       foreach ($item in $items) {
@@ -197,7 +211,7 @@ try {
     }
     if ($null -eq $section) { Start-Sleep -Milliseconds 100 }
   }
-  Assert-True ($null -ne $section) 'Native long-section fixture unavailable'
+  Assert-True ($selectedRepository -and $null -ne $section) 'Native repository long-section fixture unavailable'
   foreach ($start in @('top','bottom','near-bottom')) {
     $capture=Get-CodingScrollCapture $section $process.Id
     Assert-True ($null -ne $capture.scroll) 'Native fixture lacks scroll ancestor'

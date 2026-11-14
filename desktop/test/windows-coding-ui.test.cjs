@@ -270,6 +270,8 @@ test("native mode driver receipts admit only fixed coding and persistent actions
         destination: true,
         createForm: true,
         codingSection: true,
+        ideaDefault: true,
+        repositoryEntry: true,
       },
       "coding",
       42,
@@ -288,6 +290,8 @@ test("native mode driver receipts admit only fixed coding and persistent actions
         destination: true,
         createForm: false,
         codingSection: false,
+        ideaDefault: false,
+        repositoryEntry: false,
       },
       "persistent",
       42,
@@ -319,6 +323,16 @@ test("native mode driver receipts admit only fixed coding and persistent actions
     },
   ])
     assert.throws(() => modeActionReceipt(bad, "coding", 42));
+});
+
+test("native coding receipt requires observed idea default and repository selection", () => {
+  const receipt = {action:"coding",processId:42,window:"5678",menu:true,confirmation:true,fixedExplanation:true,destination:true,createForm:true,codingSection:true,ideaDefault:true,repositoryEntry:true};
+  for (const field of ["ideaDefault", "repositoryEntry"]) {
+    for (const value of [undefined, false, "true"]) {
+      const changed = {...receipt, [field]:value};
+      assert.throws(() => modeActionReceipt(changed, "coding", 42));
+    }
+  }
 });
 
 test("native coding scrolling targets owned controls and runs actual native regressions early", () => {
@@ -460,6 +474,8 @@ function runNativeModeDriver({ elapsedMs, action = "coding" }) {
             destination: true,
             createForm: action === "coding",
             codingSection: action === "coding",
+            ideaDefault: action === "coding",
+            repositoryEntry: action === "coding",
           });
         },
       };

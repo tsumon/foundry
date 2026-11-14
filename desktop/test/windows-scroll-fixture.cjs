@@ -11,7 +11,7 @@ app.whenReady().then(async () => {
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   const html = `<!doctype html><html><head><meta charset="utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
     <title>Foundry — Controlled Coding Workbench</title>
     <style>body{margin:0;font:14px sans-serif}#status{position:fixed;top:0;background:white;z-index:1;padding:8px}
     main{padding:50px 40px}section{border:1px solid #aaa;padding:20px}.above{height:1400px}.below{height:1000px}
@@ -19,7 +19,11 @@ app.whenReady().then(async () => {
     dt,dd{margin:0;padding:10px 0;line-height:22px;border-bottom:1px solid #ddd;overflow-wrap:anywhere}
     p{margin:16px 0;line-height:22px}label{display:block;margin:16px 0;line-height:22px}button{height:39px;margin:0}</style></head><body>
     <div id="status" role="group" aria-label="工作台状态"><span>已收到</span><span>事件流已连接</span></div>
-    <main><div class="above">Preceding task inputs</div>
+    <main><div role="tablist" aria-label="创建方式">
+      <button id="idea-tab" role="tab" aria-selected="true">从想法创建</button>
+      <button id="repository-tab" role="tab" aria-selected="false">改进已有仓库</button>
+    </div><div id="idea-form">Describe an idea</div>
+    <div id="repository-form" hidden><div class="above">Preceding task inputs</div>
     <section role="group" aria-label="账户模型编码设置">
       <div class="above">Language selectors and fixed VM identity metadata</div>
       <dl><dt>运行时 / 提供商</dt><dd>可配置 · openai</dd>
@@ -30,7 +34,12 @@ app.whenReady().then(async () => {
       <p>元数据可用不等于已授权。创建只冻结仓库、七角色账户/模型/消费类别与此配置；readiness、baseline、context、execute、delivery 仍分别决定。Token 用量不是订阅剩余额度；界面不宣称金额硬上限，也不会自动重试、换模型或付费降级。</p>
       <label><input type="checkbox">启用账户模型与内置 VM（仅创建配置，不批准或执行）</label>
       <button type="button">刷新编码能力</button>
-    </section><div class="below">Following task inputs</div></main></body></html>`;
+    </section><div class="below">Following task inputs</div></div></main>
+    <script>
+      const idea=document.getElementById('idea-tab'),repository=document.getElementById('repository-tab');
+      repository.onclick=()=>{idea.setAttribute('aria-selected','false');repository.setAttribute('aria-selected','true');document.getElementById('idea-form').hidden=true;document.getElementById('repository-form').hidden=false;};
+      idea.onclick=()=>{idea.setAttribute('aria-selected','true');repository.setAttribute('aria-selected','false');document.getElementById('idea-form').hidden=false;document.getElementById('repository-form').hidden=true;};
+    </script></body></html>`;
   await window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
 }).catch((error) => {
   process.stderr.write(`Native scroll fixture failed: ${error.message}\n`);

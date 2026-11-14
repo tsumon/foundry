@@ -1,4 +1,55 @@
-﻿# Acceptance driver only. Scrolls fixed configuration controls, never invokes
+﻿# Creation-entry navigation only. Observe the default before selecting the
+# repository tab once; this never invokes configuration or approval controls.
+function Get-CreationEntryCapture([object]$Root, [int]$OwnerProcess) {
+  if ($null -eq $Root -or $Root.Current.ProcessId -ne $OwnerProcess) { throw 'creation-entry: window ownership changed' }
+  $items = $Root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+  if ($items.Count -gt 2048) { throw 'creation-entry: window tree exceeds bound' }
+  $lists = @($items | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Tab -and $_.Current.Name -ceq '创建方式' })
+  if ($lists.Count -gt 1) { throw 'creation-entry: tab list ambiguous' }
+  if ($lists.Count -eq 0) { return $null }
+  if ($lists[0].Current.ProcessId -ne $OwnerProcess) { throw 'creation-entry: tab list ownership changed' }
+  $tabs = $lists[0].FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+  if ($tabs.Count -gt 32) { throw 'creation-entry: tab list exceeds bound' }
+  $capture = @{}
+  foreach ($name in @('idea','repository')) {
+    $label = if ($name -ceq 'idea') { '从想法创建' } else { '改进已有仓库' }
+    $matches = @($tabs | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::TabItem -and $_.Current.Name -ceq $label })
+    if ($matches.Count -gt 1) { throw 'creation-entry: tab ambiguous' }
+    if ($matches.Count -eq 0) { return $null }
+    $element = $matches[0]
+    $current = $element.Current
+    if ($current.ProcessId -ne $OwnerProcess -or -not $current.IsEnabled -or $current.IsOffscreen) { throw 'creation-entry: tab identity/state changed' }
+    $pattern = $null
+    if (-not $element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) { throw 'creation-entry: selection pattern unavailable' }
+    $capture[$name] = @{ element=$element; pattern=$pattern; selected=([System.Windows.Automation.SelectionItemPattern]$pattern).Current.IsSelected }
+  }
+  return $capture
+}
+
+function Select-CreationRepositoryEntry([object]$Root, [int]$OwnerProcess) {
+  $deadline = [DateTime]::UtcNow.AddSeconds(5)
+  $capture = $null
+  while ([DateTime]::UtcNow -lt $deadline) {
+    $capture = Get-CreationEntryCapture $Root $OwnerProcess
+    if ($null -ne $capture) { break }
+    Start-Sleep -Milliseconds 100
+  }
+  if ($null -eq $capture) { throw 'creation-entry: tabs unavailable' }
+  if (-not $capture.idea.selected -or $capture.repository.selected) { throw 'creation-entry: default idea selection missing' }
+  ([System.Windows.Automation.SelectionItemPattern]$capture.repository.pattern).Select()
+  $deadline = [DateTime]::UtcNow.AddSeconds(5)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    $after = Get-CreationEntryCapture $Root $OwnerProcess
+    if ($null -eq $after) { throw 'creation-entry: tabs disappeared after selection' }
+    if (-not $after.idea.selected -and $after.repository.selected) {
+      return @{ ideaDefault=$true; repositoryEntry=$true }
+    }
+    Start-Sleep -Milliseconds 100
+  }
+  throw 'creation-entry: repository selection not observed'
+}
+
+# Acceptance driver only. Scrolls fixed configuration controls, never invokes
 # them. The final current-viewport semantics/paint gate remains independent.
 function Test-CodingScrollReady([object]$Facts) {
   if ($null -eq $Facts) { return $false }

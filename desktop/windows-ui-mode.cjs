@@ -13,12 +13,16 @@ function modeActionReceipt(value, action, processId) {
       (value.confirmation !== true ||
         value.fixedExplanation !== true ||
         value.createForm !== true ||
-        value.codingSection !== true)) ||
+        value.codingSection !== true ||
+        value.ideaDefault !== true ||
+        value.repositoryEntry !== true)) ||
     (action === "persistent" &&
       (value.confirmation !== false ||
         value.fixedExplanation !== false ||
         value.createForm !== false ||
-        value.codingSection !== false))
+        value.codingSection !== false ||
+        value.ideaDefault !== false ||
+        value.repositoryEntry !== false))
   )
     throw Error("Native mode action was not confirmed");
   return { ok: true, action, window: value.window };
@@ -60,7 +64,7 @@ if (require.main === module) {
       ],
       {
         encoding: "utf8",
-        // Bounded menu/loading waits (110s) plus at most sixteen 2s AX
+        // Bounded menu/loading waits (120s) plus at most sixteen 2s AX
         // acknowledgements fit here, with startup/diagnostic overhead.
         timeout: 160000,
         maxBuffer: 64 * 1024,
