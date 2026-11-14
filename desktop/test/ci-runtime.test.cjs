@@ -110,9 +110,11 @@ function assertNativeV2Wiring(workflow,driver){
  assert.equal((driver.match(/native-vm-smoke\.cjs'\) --v2-matrix/g)||[]).length,1);
  assert.equal((driver.match(/\$vmResult = & \$node .*native-vm-smoke\.cjs'\)\s*\n/g)||[]).length,1);
  const upload=steps.find(s=>s.with?.name==='foundry-windows-x64');assert.ok(steps.indexOf(upload)>index);assert.equal(upload.if,undefined);assert.equal(upload['continue-on-error'],undefined);
- for(const row of require('../native-vm-v2.cjs').nativeV2Cases()){const name='native-vm-v2-'+row.profile.replace(/^c4_/,'').replace(/_model_v2$/,'')+'-'+row.case+'.json';assert.ok(upload.with.path.includes(name),'missing gated receipt '+name)}
+ const receiptPaths=require('../native-vm-v2.cjs').nativeV2Cases().map(row=>'${{ runner.temp }}/foundry-windows-output/native-vm-v2-'+row.profile.replace(/^c4_/,'').replace(/_model_v2$/,'')+'-'+row.case+'.json');
+ const uploadedPaths=upload.with.path.trim().split(/\r?\n/);
+ for(const file of receiptPaths)assert.ok(uploadedPaths.includes(file),'missing gated receipt '+file);
  const diagnostic=steps.find(s=>s.with?.name==='foundry-windows-native-diagnostics');assert.match(diagnostic.if,/failure\(\)/);assert.ok(steps.indexOf(diagnostic)>index);assert.equal(diagnostic.with['if-no-files-found'],'ignore');
- for(const file of diagnostic.with.path.trim().split(/\r?\n/)){assert.match(file,/\/native-vm-(?:acceptance|v2-(?:node|typescript|python)-(?:workflow|typecheck|setup|discovery|memory|pids|timeout|signal|descendant|held_stream))\.json$/)}
+ assert.deepEqual(diagnostic.with.path.trim().split(/\r?\n/).sort(),['${{ runner.temp }}/foundry-windows-output/native-vm-acceptance.json',...receiptPaths].sort());
  assert.match(upload.with.path,/upgrade-stable-acceptance\.json/);
  assert.match(driver,/windows-upgrade-smoke\.ps1/);
 }
@@ -123,6 +125,9 @@ for(const [name,mutate] of [
  ['conditional installed gate',v=>v.jobs['windows-installer'].steps.find(s=>s.id==='installed-contract').if='false'],
  ['missing stable source',v=>v.jobs['windows-installer'].steps=v.jobs['windows-installer'].steps.filter(s=>s.with?.path!=='release-stable-source')],
  ['missing v2 receipt',v=>{const s=v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-x64');s.with.path=s.with.path.replace(/^.*native-vm-v2-python-memory\.json.*\n/m,'')}],
+ ['missing idea delivery receipt',v=>{const s=v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-x64');s.with.path=s.with.path.replace(/^.*native-vm-v2-node-idea-app\.json.*\n/m,'')}],
+ ['missing idea failure receipt',v=>{const s=v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-native-diagnostics');s.with.path=s.with.path.replace(/^.*native-vm-v2-node-idea-app\.json.*\n/m,'')}],
+ ['unsupported idea profile receipt',v=>{const s=v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-native-diagnostics');s.with.path=s.with.path.replace('native-vm-v2-node-idea-app.json','native-vm-v2-python-idea-app.json')}],
  ['ungated distribution artifact',v=>v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-x64').if='always()'],
  ['broad failure upload',v=>v.jobs['windows-installer'].steps.find(s=>s.with?.name==='foundry-windows-native-diagnostics').with.path+='\n${{ runner.temp }}/private-data/**'],
 ])test('Windows native wiring rejects '+name,()=>{assertNativeV2Wiring(nativeWorkflow,installedDriver);const changed=structuredClone(nativeWorkflow);mutate(changed);assert.throws(()=>assertNativeV2Wiring(changed,installedDriver))});
