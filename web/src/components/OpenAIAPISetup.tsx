@@ -24,6 +24,7 @@ export function OpenAIAPISetup({
   loaded,
   onRoutes,
   onProfile,
+  onApplyDefaultAllRoles,
 }: {
   accounts: ModelAccount[];
   routes: ModelRoute[];
@@ -32,10 +33,13 @@ export function OpenAIAPISetup({
   loaded: boolean;
   onRoutes: (routes: ModelRoute[]) => void;
   onProfile: (profile: Profile) => void;
+  onApplyDefaultAllRoles?: (profile: Profile) => Promise<void>;
 }) {
   const [accountID, setAccountID] = useState("");
   const [model, setModel] = useState("");
   const [consent, setConsent] = useState(false);
+  const [applyAllRoles, setApplyAllRoles] = useState(false);
+  const [savedProfile, setSavedProfile] = useState<Profile | null>(null);
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [notice, setNotice] = useState("");
@@ -116,9 +120,24 @@ export function OpenAIAPISetup({
           })
         ).profile;
       onProfile(profile);
-      setNotice(
-        "连接已保存；尚未调用或验证模型。请在角色分配中选择它并保存，仅用于新任务。",
-      );
+      setSavedProfile(profile);
+      if (applyAllRoles && onApplyDefaultAllRoles) {
+        try {
+          await onApplyDefaultAllRoles(profile);
+          setNotice(
+            "连接已保存，并已设为新任务默认连接（全部角色）；尚未调用或验证模型，仅用于新任务。",
+          );
+        } catch (roleCause) {
+          setNotice(
+            "连接已保存，但自动分配角色失败，请在下方角色分配手动保存。",
+          );
+          setError(accountError(roleCause));
+        }
+      } else {
+        setNotice(
+          "连接已保存；尚未调用或验证模型。请在角色分配中选择它并保存，仅用于新任务。",
+        );
+      }
     } catch (cause) {
       // An accepted write may have lost its response. No replay, including
       // client errors: the user can reconcile nonsecret metadata first.
@@ -180,8 +199,8 @@ export function OpenAIAPISetup({
       </p>
       {!available && (
         <p className="field-help">
-          可保存配置。真实编码需在桌面菜单开启 Controlled Coding
-          Workbench，之后仍按任务审批。
+          可保存配置。默认 Persistent Workbench
+          已支持按任务独立审批的隔离编码执行。
         </p>
       )}
       {error && (
@@ -192,6 +211,34 @@ export function OpenAIAPISetup({
       {notice && (
         <p role="status">
           {notice} <a href="#model-role-settings">前往角色分配</a>
+          {savedProfile && onApplyDefaultAllRoles && !applyAllRoles && (
+            <>
+              {" "}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  if (lock.current || !savedProfile) return;
+                  lock.current = true;
+                  setBusy(true);
+                  setError("");
+                  void onApplyDefaultAllRoles(savedProfile)
+                    .then(() => {
+                      setNotice(
+                        "已将新连接设为默认并绑定全部 7 个角色；仅用于新任务。",
+                      );
+                    })
+                    .catch((cause) => setError(accountError(cause)))
+                    .finally(() => {
+                      lock.current = false;
+                      setBusy(false);
+                    });
+                }}
+              >
+                设为新任务默认（全部角色）
+              </button>
+            </>
+          )}
         </p>
       )}
       {uncertain && (
@@ -265,6 +312,16 @@ export function OpenAIAPISetup({
             />
             我选择按 API 计费；任务调用另行审批，不自动切换账户或模型。
           </label>
+          {onApplyDefaultAllRoles && (
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={applyAllRoles}
+                onChange={(e) => setApplyAllRoles(e.target.checked)}
+              />
+              同时设为新任务默认连接并绑定全部角色
+            </label>
+          )}
           <button
             type="submit"
             className="primary"

@@ -27,6 +27,7 @@ import (
 	"foundry/internal/model"
 	"foundry/internal/sandbox"
 	"foundry/internal/store"
+	"foundry/internal/workspace"
 )
 
 const (
@@ -428,6 +429,8 @@ func writeMappedError(w http.ResponseWriter, err error) {
 		writeError(w, 409, "model_account_unavailable", "the frozen account credential is unavailable")
 	case errors.Is(err, domain.ErrInvalidModelSnapshot):
 		writeError(w, 409, "invalid_mission_model_snapshot", "model snapshot is invalid or unsupported")
+	case errors.Is(err, workspace.ErrBrowserAppAsset):
+		writeBrowserAssetError(w, err)
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "resource not found")
 	case errors.Is(err, store.ErrConflict):

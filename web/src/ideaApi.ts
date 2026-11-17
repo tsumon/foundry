@@ -17,6 +17,14 @@ export const ideaApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  continueIdea: (missionId: string, body: IdeaRequest) =>
+    request<{ mission: Mission }>(
+      `/api/missions/${encodeURIComponent(missionId)}/idea-continue`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
   preview: (id: string, signal?: AbortSignal) =>
     request<{ html: string; candidate_digest: string }>(
       `/api/missions/${encodeURIComponent(id)}/app-preview`,

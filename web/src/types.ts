@@ -898,9 +898,10 @@ export interface Delivery {
 }
 export interface Mission {
   idea_project?: {
-    schema_version: 1;
+    schema_version: 1 | 2;
     template: "browser_app_v1";
     acceptance: string[];
+    parent_mission_id?: string;
   };
   c4_profile_binding?: {
     revision: number;

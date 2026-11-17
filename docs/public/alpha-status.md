@@ -1,4 +1,22 @@
-# Supported scope — 0.2.2 and historical releases
+# Supported scope — 0.4.0+ and historical releases
+
+## 0.4.0+ idea-to-app, knowledge graph, and 14-case native VM scope
+
+Version `0.4.0` and subsequent updates add the zero-repository managed browser
+application workflow (`从想法创建`, isolated preview with opaque-origin storage
+fallback, full source ZIP and standalone `.html` export, immutable follow-up
+iterations sharing the same catalog project, and per-requirement QA checks for
+`schema_version=2` idea tasks) alongside the embedded SQLite delivery ontology
+and knowledge graph (`knowledge_*` derived tables).
+
+Native VM acceptance covers 14 scenarios: the retained Go `v1` gate plus 13
+`v2` cases (the 12-case Node/TypeScript/Python language, dependency, compiler,
+setup/discovery, resource, signal, descendant and held-stream matrix plus the
+`c4_node_model_v2` `idea-app` baseline → candidate failure → repair → preview/ZIP
+case). Native VM workflow fixtures use `local_protocol_fixture/not_real_provider`;
+real-provider evidence remains separately attributed in
+[compatible-api-acceptance.md](compatible-api-acceptance.md). Historical
+`0.2.x` and `0.1.0` sections below keep their original scope and commit attributions.
 
 ## 0.2.2 maintenance
 

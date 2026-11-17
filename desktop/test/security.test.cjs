@@ -19,6 +19,17 @@ test("only owned authenticated GET patch/report downloads reach a native save di
     artifactSaveName(
       origin,
       request,
+      [patch.replace(/patch$/, "app-html")],
+      origin,
+      7,
+      7,
+    ),
+    "application.html",
+  );
+  assert.equal(
+    artifactSaveName(
+      origin,
+      request,
       [patch.replace(/patch$/, "report")],
       origin,
       7,

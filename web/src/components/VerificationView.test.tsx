@@ -152,6 +152,51 @@ it("keeps C2 current review and delivery approval separate", () => {
   expect(screen.getByText(/清单完整性/)).toBeVisible();
 });
 
+it("enforces per-requirement QA checks for schema_version 2 idea projects", () => {
+  const ideaV2: Mission = {
+    ...reviewedCodingMission(),
+    idea_project: {
+      schema_version: 2,
+      template: "browser_app_v1",
+      acceptance: ["Add item", "Filter item"],
+    },
+  };
+  const { rerender } = render(
+    <DecisionPanel mission={ideaV2} busy={false} onAction={vi.fn()} />,
+  );
+  expect(screen.getByRole("button", { name: "批准并导出交付" })).toBeDisabled();
+  const complete: Mission = {
+    ...ideaV2,
+    reviews: [
+      {
+        ...ideaV2.reviews[0],
+        checks: [
+          ...ideaV2.reviews[0].checks!,
+          {
+            id: "requirement:0",
+            passed: true,
+            summary: "Covered",
+            paths: ["src/app.js", "src/checks.js"],
+            acceptance_index: 0,
+            verification_id: "verification-current",
+          },
+          {
+            id: "requirement:1",
+            passed: true,
+            summary: "Covered",
+            paths: ["src/app.js", "src/checks.js"],
+            acceptance_index: 1,
+            verification_id: "verification-current",
+          },
+        ],
+      },
+      ideaV2.reviews[1],
+    ],
+  };
+  rerender(<DecisionPanel mission={complete} busy={false} onAction={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "批准并导出交付" })).toBeEnabled();
+});
+
 it("shows controller lifecycle without upgrading worker success to tests or provider receipts", () => {
   const traced = {
     ...mission,

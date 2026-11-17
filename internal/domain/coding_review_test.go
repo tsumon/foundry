@@ -111,3 +111,55 @@ func TestCodingReviewBoundsAndMissingDecisionsFailClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestCodingReviewRequiresIdeaV2RequirementsAndKeepsV1Compatible(t *testing.T) {
+	v1 := codingReviewMission(t)
+	v1.IdeaProject = &IdeaProject{SchemaVersion: 1, Template: "browser_app_v1", Acceptance: []string{"Req A", "Req B"}}
+	c1, err := NewCodingReviewContract(v1, QA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c1.Required) != 1 || c1.Required[0].ID != "acceptance:0" {
+		t.Fatalf("schema v1 altered required checks: %+v", c1.Required)
+	}
+
+	v2 := codingReviewMission(t)
+	v2.IdeaProject = &IdeaProject{SchemaVersion: 2, Template: "browser_app_v1", Acceptance: []string{"Req A", "Req B"}}
+	v2.Reviews = nil
+	for _, role := range []Role{QA, Auditor} {
+		c, err := NewCodingReviewContract(v2, role)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if role == QA {
+			if len(c.Required) != 3 || c.Required[1].ID != "requirement:0" || c.Required[1].Requirement != "Req A" || c.Required[2].ID != "requirement:1" || c.Required[2].Requirement != "Req B" {
+				t.Fatalf("schema v2 QA checks missing per-requirement entries: %+v", c.Required)
+			}
+		}
+		r := Review{Role: role, CodingVersion: 1, PlanRevision: 3, CandidateDigest: v2.CandidateDigest, TraceDigest: c.TraceDigest, BindingDigest: c.BindingDigest, Passed: true, Summary: "assessment", Findings: []Finding{}}
+		passed := true
+		for _, ref := range c.Required {
+			r.Checks = append(r.Checks, CodingReviewCheck{ID: ref.ID, Passed: &passed, Summary: "reviewed reference", Paths: []string{}, VerificationID: ref.VerificationID, AcceptanceIndex: ref.AcceptanceIndex, ReferenceDigest: ref.ReferenceDigest})
+		}
+		v2.Reviews = append(v2.Reviews, r)
+	}
+	if err := CanDeliver(v2, v2.CandidateDigest); err != nil {
+		t.Fatalf("valid schema v2 review rejected: %v", err)
+	}
+	// Dropping or failing a requirement check must block delivery.
+	broken := v2
+	broken.Reviews = append([]Review{}, v2.Reviews...)
+	brokenQA := broken.Reviews[0]
+	brokenQA.Checks = append([]CodingReviewCheck{}, brokenQA.Checks...)
+	failed := false
+	brokenQA.Checks[2].Passed = &failed
+	broken.Reviews[0] = brokenQA
+	if err := CanDeliver(broken, broken.CandidateDigest); err == nil {
+		t.Fatal("failed requirement check delivered")
+	}
+	brokenQA.Checks = brokenQA.Checks[:2]
+	broken.Reviews[0] = brokenQA
+	if err := CanDeliver(broken, broken.CandidateDigest); err == nil {
+		t.Fatal("omitted requirement check delivered")
+	}
+}

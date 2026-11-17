@@ -25,6 +25,7 @@ type CodingReviewReference struct {
 	VerificationID  string `json:"verification_id,omitempty"`
 	AcceptanceIndex *int   `json:"acceptance_index,omitempty"`
 	ReferenceDigest string `json:"reference_digest,omitempty"`
+	Requirement     string `json:"requirement,omitempty"`
 }
 
 type CodingReviewContract struct {
@@ -117,18 +118,36 @@ func NewCodingReviewContract(m Mission, role Role) (CodingReviewContract, error)
 	c.TraceDigest = CodingReviewTraceDigest(m)
 	// Unlike the historical digest, C2 binds even unknown/legacy provenance.
 	c.EvidenceDigest = codingDigest("review evidence", m.Evidence)
-	c.BindingDigest = codingDigest("review binding", struct {
-		Contract CodingReviewContract
-		Spec     Spec
-		Base     string
-		Context  []FileMeta
-		Changes  []Change
-		Failure  *FailureBundle
-	}{c, m.Spec, m.BaseCommit, m.ContextManifest, m.Changes, m.ReplanContext})
+	if m.IdeaProject != nil && m.IdeaProject.SchemaVersion >= 2 {
+		c.BindingDigest = codingDigest("review binding", struct {
+			Contract CodingReviewContract
+			Spec     Spec
+			Base     string
+			Context  []FileMeta
+			Changes  []Change
+			Failure  *FailureBundle
+			Idea     *IdeaProject
+		}{c, m.Spec, m.BaseCommit, m.ContextManifest, m.Changes, m.ReplanContext, m.IdeaProject})
+	} else {
+		c.BindingDigest = codingDigest("review binding", struct {
+			Contract CodingReviewContract
+			Spec     Spec
+			Base     string
+			Context  []FileMeta
+			Changes  []Change
+			Failure  *FailureBundle
+		}{c, m.Spec, m.BaseCommit, m.ContextManifest, m.Changes, m.ReplanContext})
+	}
 	if role == QA {
 		for i := range m.Spec.Acceptance {
 			index := i
 			c.Required = append(c.Required, CodingReviewReference{ID: fmt.Sprintf("acceptance:%d", i), VerificationID: v.ID, AcceptanceIndex: &index})
+		}
+		if m.IdeaProject != nil && m.IdeaProject.SchemaVersion >= 2 {
+			for i, reqText := range m.IdeaProject.Acceptance {
+				index := i
+				c.Required = append(c.Required, CodingReviewReference{ID: fmt.Sprintf("requirement:%d", i), VerificationID: v.ID, AcceptanceIndex: &index, Requirement: reqText})
+			}
 		}
 	} else {
 		for _, id := range []string{"scope", "protected", "approval", "integrity"} {

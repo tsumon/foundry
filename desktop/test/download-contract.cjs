@@ -25,13 +25,15 @@ app
   .whenReady()
   .then(async () => {
     const kind = process.argv[2] || "patch";
-    assert.ok(["patch", "report", "source"].includes(kind));
+    assert.ok(["patch", "report", "source", "app-html"].includes(kind));
     const expectedName =
       kind === "patch"
         ? "changes.patch"
         : kind === "source"
           ? "application-source.zip"
-          : "report.md";
+          : kind === "app-html"
+            ? "application.html"
+            : "report.md";
     const route = "/api/missions/0123456789abcdef0123456789abcdef/" + kind;
     server = http.createServer((req, res) => {
       if (req.url === route) {
@@ -50,7 +52,9 @@ app
               ? "text/plain"
               : kind === "source"
                 ? "application/zip"
-                : "text/markdown",
+                : kind === "app-html"
+                  ? "text/html; charset=utf-8"
+                  : "text/markdown",
           "Content-Disposition": 'attachment; filename="' + expectedName + '"',
         });
         res.end("fixture artifact");

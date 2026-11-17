@@ -1254,6 +1254,8 @@ internal/workspace/app_preview_test.go
 internal/workspace/managed_app.go
 web/src/components/AppPreview.test.tsx
 web/src/components/AppPreview.tsx
+web/src/components/CodeDiffView.test.tsx
+web/src/components/CodeDiffView.tsx
 web/src/components/CreateEntry.tsx
 web/src/components/IdeaCreate.test.tsx
 web/src/components/IdeaCreate.tsx

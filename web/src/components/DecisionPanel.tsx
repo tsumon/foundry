@@ -35,6 +35,7 @@ export function DecisionPanel({
   demo = false,
   onAction,
   onOpenMCPApproval,
+  onContinueIdea,
   planApprovalBlocked = false,
   unsupportedWorkspaceMode = false,
   c4Decision,
@@ -46,6 +47,7 @@ export function DecisionPanel({
   demo?: boolean;
   onAction: (action: MissionAction, controlledConsent?: true) => void;
   onOpenMCPApproval?: () => void;
+  onContinueIdea?: (mission: Mission) => void;
   planApprovalBlocked?: boolean;
   unsupportedWorkspaceMode?: boolean;
   c4Decision?: React.ReactNode;
@@ -410,6 +412,21 @@ export function DecisionPanel({
           {mission.state === "delivered" && (
             <p className="note">交付产物已生成，可在“交付报告”视角下载。</p>
           )}
+          {mission.idea_project &&
+            !demo &&
+            onContinueIdea &&
+            ["delivered", "blocked", "failed", "paused"].includes(
+              mission.state,
+            ) && (
+              <button
+                type="button"
+                className="full"
+                disabled={busy}
+                onClick={() => onContinueIdea(mission)}
+              >
+                基于当前版本继续改进
+              </button>
+            )}
         </>
       )}
     </section>

@@ -183,6 +183,22 @@ export function ModelSettings() {
             ...old.filter((p) => p.id !== profile.id),
           ])
         }
+        onApplyDefaultAllRoles={async (profile) => {
+          const allRoles = Object.fromEntries(
+            roles.map((role) => [role, profile.id]),
+          );
+          const result = await api.saveSettings({
+            default_profile_id: profile.id,
+            role_bindings: allRoles,
+          });
+          setSettings({
+            ...result.settings,
+            role_bindings: result.settings.role_bindings ?? {},
+          });
+          setNotice(
+            `已将「${profile.name}」设为新任务默认连接并绑定全部角色。`,
+          );
+        }}
       />
       <ModelAccounts
         onAccounts={setAccounts}

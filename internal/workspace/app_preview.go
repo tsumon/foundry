@@ -23,7 +23,46 @@ const MaxBrowserAppPreviewBytes = 10 << 20
 
 const BrowserAppCSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'"
 
+// BrowserAppStorageShim provides an in-memory Storage fallback only when
+// opaque-origin iframe sandboxing denies window.localStorage / sessionStorage.
+const BrowserAppStorageShim = `<script data-foundry-storage-shim>(function(){function m(){var d=Object.create(null);return{get length(){return Object.keys(d).length},key:function(i){var k=Object.keys(d);return i>=0&&i<k.length?k[i]:null},getItem:function(k){k=String(k);return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[String(k)]=String(v)},removeItem:function(k){delete d[String(k)]},clear:function(){d=Object.create(null)}};}["localStorage","sessionStorage"].forEach(function(n){try{var s=window[n];if(!s)throw 0;var p="__foundry_probe__";s.setItem(p,"1");s.removeItem(p);}catch(_){try{Object.defineProperty(window,n,{configurable:true,enumerable:true,value:m()});}catch(_){}}});})();</script>`
+
 var ErrBrowserAppAsset = errors.New("unsupported browser application document or asset")
+
+// BrowserAppAssetError carries a bounded diagnostic reason while still matching
+// errors.Is(err, ErrBrowserAppAsset).
+type BrowserAppAssetError struct {
+	Reason string
+}
+
+func (e *BrowserAppAssetError) Error() string {
+	if e.Reason == "" {
+		return ErrBrowserAppAsset.Error()
+	}
+	return ErrBrowserAppAsset.Error() + ": " + e.Reason
+}
+
+func (e *BrowserAppAssetError) Unwrap() error {
+	return ErrBrowserAppAsset
+}
+
+func browserAppError(reason string) error {
+	return &BrowserAppAssetError{Reason: reason}
+}
+
+func safeDiagToken(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s) && b.Len() < 40; i++ {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' || c == '/' {
+			b.WriteByte(c)
+		}
+	}
+	if b.Len() == 0 {
+		return "unknown"
+	}
+	return b.String()
+}
 
 // ReadAppFiles returns the exact bounded bytes bound to the selected digest;
 // hashing the returned snapshot avoids a validate/read replacement race.
@@ -167,39 +206,43 @@ func appTag(tag string) (string, map[string]string, bool) {
 }
 func localAppAsset(files map[string][]byte, ref, extension string) ([]byte, error) {
 	if strings.ContainsAny(ref, "\\?#:\x00") || strings.HasPrefix(ref, "/") || ref == "" || ref == ".." || strings.HasPrefix(ref, "../") || strings.Contains(ref, "/../") {
-		return nil, ErrBrowserAppAsset
+		return nil, browserAppError("asset reference " + safeDiagToken(ref) + " must be a relative path inside src/")
 	}
 	p := path.Clean(path.Join("src", ref))
 	if !strings.HasPrefix(p, "src/") || path.Ext(p) != extension {
-		return nil, ErrBrowserAppAsset
+		return nil, browserAppError("asset " + safeDiagToken(ref) + " must resolve to a " + extension + " file under src/")
 	}
 	b, ok := files[p]
 	if !ok || len(b) > MaxBrowserAppPreviewBytes || !utf8.Valid(b) {
-		return nil, ErrBrowserAppAsset
+		return nil, browserAppError("missing or invalid UTF-8 asset " + p)
 	}
 	return b, nil
 }
 func BundleBrowserApp(files map[string][]byte) (string, error) {
 	raw, ok := files["src/index.html"]
 	if !ok || len(raw) > MaxBrowserAppPreviewBytes || !utf8.Valid(raw) {
-		return "", ErrBrowserAppAsset
+		return "", browserAppError("missing or invalid UTF-8 src/index.html")
 	}
 	source := string(raw)
 	head := appHead.FindStringIndex(source)
 	if head == nil || !strings.Contains(strings.ToLower(source), "</head>") || !strings.Contains(strings.ToLower(source), "</body>") {
-		return "", ErrBrowserAppAsset
+		return "", browserAppError("src/index.html must contain valid html, head, and body elements")
 	}
-	// CSP is controller-authored and is the first head child. It is independent
-	// of any generated policy or malformed attributes later in the document.
+	// CSP is controller-authored and is the first head child, followed by the
+	// controller-authored opaque-origin storage shim. Candidate tags start at
+	// cursor = head[1] so candidate markup cannot spoof shim attributes.
 	meta := `<meta http-equiv="Content-Security-Policy" content="` + html.EscapeString(BrowserAppCSP) + `">`
-	if len(source) > MaxBrowserAppPreviewBytes-len(meta) {
-		return "", ErrBrowserAppAsset
+	overhead := len(meta) + len(BrowserAppStorageShim)
+	if len(source) > MaxBrowserAppPreviewBytes-overhead {
+		return "", browserAppError("bundled HTML exceeds 10 MiB preview limit")
 	}
-	source = source[:head[1]] + meta + source[head[1]:]
-	expanded := len(source)
+	expanded := len(source) + overhead
 	sourceLower := strings.ToLower(source)
 	var out strings.Builder
-	cursor := 0
+	out.WriteString(source[:head[1]])
+	out.WriteString(meta)
+	out.WriteString(BrowserAppStorageShim)
+	cursor := head[1]
 	deferred := []string{}
 	matches := appTags.FindAllStringIndex(source, -1)
 	for _, pos := range matches {
@@ -212,44 +255,55 @@ func BundleBrowserApp(files map[string][]byte) (string, error) {
 		}
 		name, a, valid := appTag(tag)
 		if !valid {
-			return "", ErrBrowserAppAsset
+			return "", browserAppError("malformed HTML tag syntax")
 		}
 		if strings.HasPrefix(tag, "</") {
 			continue
 		}
 		switch name {
 		case "iframe", "frame", "frameset", "object", "embed", "base", "math":
-			return "", ErrBrowserAppAsset
+			return "", browserAppError("disallowed element <" + name + ">")
 		}
 		if name == "meta" && strings.EqualFold(a["http-equiv"], "refresh") {
-			return "", ErrBrowserAppAsset
+			return "", browserAppError(`<meta http-equiv="refresh"> is unsupported`)
 		}
 		for k, v := range a {
 			switch k {
 			case "srcset", "poster", "background", "data", "action", "formaction", "srcdoc", "ping":
-				return "", ErrBrowserAppAsset
+				return "", browserAppError("disallowed attribute " + safeDiagToken(k) + " on <" + safeDiagToken(name) + ">")
 			case "href", "xlink:href":
 				if name != "link" && !strings.HasPrefix(v, "#") && !(name == "image" && safeDataImage.MatchString(v)) {
-					return "", ErrBrowserAppAsset
+					return "", browserAppError("external href on <" + safeDiagToken(name) + "> is unsupported")
 				}
 			case "src":
 				if name != "script" && !(name == "img" && safeDataImage.MatchString(v)) {
-					return "", ErrBrowserAppAsset
+					return "", browserAppError("external src on <" + safeDiagToken(name) + "> is unsupported")
 				}
 			}
 		}
 		if css, ok := a["style"]; ok && externalCSS.MatchString(css) {
-			return "", ErrBrowserAppAsset
+			return "", browserAppError("CSS url(), @import, or backslash escape in inline style is unsupported")
 		}
 		if name == "style" {
 			end := strings.Index(sourceLower[pos[1]:], "</style>")
 			if end < 0 || externalCSS.MatchString(source[pos[1]:pos[1]+end]) {
-				return "", ErrBrowserAppAsset
+				return "", browserAppError("CSS url(), @import, or backslash escape in <style> is unsupported")
 			}
 		}
 		if name == "link" {
-			if !strings.EqualFold(a["rel"], "stylesheet") || len(a) != 2 {
-				return "", ErrBrowserAppAsset
+			if !strings.EqualFold(a["rel"], "stylesheet") || strings.TrimSpace(a["href"]) == "" {
+				return "", browserAppError(`<link> must use rel="stylesheet" and reference a local .css file under src/`)
+			}
+			for key, val := range a {
+				switch key {
+				case "rel", "href", "id", "media", "title":
+				case "type":
+					if val != "" && !strings.EqualFold(val, "text/css") {
+						return "", browserAppError("disallowed link type on <link>")
+					}
+				default:
+					return "", browserAppError("disallowed attribute " + safeDiagToken(key) + " on <link>")
+				}
 			}
 			b, err := localAppAsset(files, a["href"], ".css")
 			if err != nil {
@@ -258,11 +312,11 @@ func BundleBrowserApp(files map[string][]byte) (string, error) {
 			replacementBytes := len("<style></style>") + len(b)
 			removedBytes := pos[1] - pos[0]
 			if replacementBytes > MaxBrowserAppPreviewBytes-(expanded-removedBytes) {
-				return "", ErrBrowserAppAsset
+				return "", browserAppError("bundled HTML exceeds 10 MiB preview limit")
 			}
 			expanded = expanded - removedBytes + replacementBytes
 			if externalCSS.Match(b) || bytes.Contains(bytes.ToLower(b), []byte("</style")) {
-				return "", ErrBrowserAppAsset
+				return "", browserAppError("stylesheet CSS url(), @import, backslash escape, or </style is unsupported")
 			}
 			out.WriteString(source[cursor:pos[0]])
 			out.WriteString("<style>" + string(b) + "</style>")
@@ -270,30 +324,30 @@ func BundleBrowserApp(files map[string][]byte) (string, error) {
 		}
 		if name == "script" {
 			if a["type"] != "" && a["type"] != "text/javascript" {
-				return "", ErrBrowserAppAsset
+				return "", browserAppError("non-classic script type (such as module) is unsupported")
 			}
 			if src, ok := a["src"]; ok {
 				for key := range a {
 					if key != "src" && key != "type" && key != "defer" {
-						return "", ErrBrowserAppAsset
+						return "", browserAppError("disallowed attribute " + safeDiagToken(key) + " on <script src>")
 					}
 				}
 				b, err := localAppAsset(files, src, ".js")
 				if err != nil {
-					return "", ErrBrowserAppAsset
+					return "", err
 				}
 				end := strings.Index(sourceLower[pos[1]:], "</script>")
 				if end < 0 || strings.TrimSpace(source[pos[1]:pos[1]+end]) != "" {
-					return "", ErrBrowserAppAsset
+					return "", browserAppError("<script src> tag must have an empty inline body")
 				}
 				replacementBytes := len("<script></script>") + len(b)
 				removedBytes := pos[1] + end + len("</script>") - pos[0]
 				if replacementBytes > MaxBrowserAppPreviewBytes-(expanded-removedBytes) {
-					return "", ErrBrowserAppAsset
+					return "", browserAppError("bundled HTML exceeds 10 MiB preview limit")
 				}
 				expanded = expanded - removedBytes + replacementBytes
 				if bytes.Contains(bytes.ToLower(b), []byte("</script")) {
-					return "", ErrBrowserAppAsset
+					return "", browserAppError("script file cannot contain </script")
 				}
 				out.WriteString(source[cursor:pos[0]])
 				if _, delayed := a["defer"]; delayed {
@@ -305,7 +359,7 @@ func BundleBrowserApp(files map[string][]byte) (string, error) {
 			} else {
 				end := strings.Index(sourceLower[pos[1]:], "</script>")
 				if end < 0 {
-					return "", ErrBrowserAppAsset
+					return "", browserAppError("unclosed inline <script> tag")
 				}
 				stop := pos[1] + end + len("</script>")
 				out.WriteString(source[cursor:stop])

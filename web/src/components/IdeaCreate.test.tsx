@@ -90,3 +90,81 @@ it("does not offer host fallback when the installed VM is unavailable", async ()
   );
   expect(screen.getByRole("button", { name: "创建应用任务" })).toBeDisabled();
 });
+
+it("populates starter templates locally, warns on low call ceilings, and links to model settings", async () => {
+  const fetcher = vi.fn(async (path: string, _init?: RequestInit) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [],
+        settings: { default_profile_id: "", role_bindings: {} },
+      });
+    return response({ available: true, reason: "" });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const openSettings = vi.fn();
+  render(
+    <IdeaCreate
+      onCancel={() => {}}
+      onCreated={() => {}}
+      onOpenSettings={openSettings}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "前往配置模型" }),
+  );
+  expect(openSettings).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "报价利润计算器" }));
+  expect(screen.getByLabelText("应用名称")).toHaveValue("项目报价与利润计算器");
+  expect(screen.getByLabelText("怎样算做好了")).not.toHaveValue("");
+  fireEvent.change(screen.getByLabelText("调用上限"), {
+    target: { value: "3" },
+  });
+  expect(screen.getByText(/通常需要 6～12 次调用/)).toBeVisible();
+  expect(
+    fetcher.mock.calls.some(([, init]) => init?.method === "POST"),
+  ).toBe(false);
+});
+
+it("submits follow-up iterations to /idea-continue while pre-filling title and acceptance", async () => {
+  const v1 = {
+    ...mission,
+    id: "m-v1",
+    title: "客户看板",
+    candidate_digest: "abcdef0123456789",
+    idea_project: {
+      schema_version: 2 as const,
+      template: "browser_app_v1" as const,
+      acceptance: ["可以添加客户", "可以筛选"],
+    },
+  };
+  const v2 = { ...v1, id: "m-v2", title: "客户看板 v2" };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === "/api/profiles")
+      return response({
+        profiles: [profile],
+        settings: { default_profile_id: "p1", role_bindings: {} },
+      });
+    if (path === "/api/missions/m-v1/idea-continue" && init?.method === "POST")
+      return response({ mission: v2 });
+    return response({ available: true, reason: "" });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const created = vi.fn();
+  render(
+    <IdeaCreate
+      continueFrom={v1}
+      onCancel={() => {}}
+      onCreated={created}
+    />,
+  );
+  await screen.findByRole("option", { name: /测试连接/ });
+  expect(screen.getByLabelText("应用名称")).toHaveValue("客户看板 v2");
+  expect(screen.getByLabelText("怎样算做好了")).toHaveValue(
+    "可以添加客户\n可以筛选",
+  );
+  fireEvent.change(screen.getByLabelText("描述你的想法"), {
+    target: { value: "增加导出 JSON 按钮" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "创建改进任务" }));
+  await waitFor(() => expect(created).toHaveBeenCalledWith(v2));
+});

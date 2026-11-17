@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   isControlledReadMission,
   isControlledMCPReadMission,
@@ -17,6 +17,7 @@ import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelContinuation } from "./ModelContinuation";
 import { RecoveryDiagnostic, RepositorySource } from "./RecoveryDiagnostic";
 import { AppPreview } from "./AppPreview";
+import { CodeDiffView } from "./CodeDiffView";
 export const views = [
   "总览",
   "会话",
@@ -38,6 +39,7 @@ export function MissionViews({
   mcpDecision,
   onOpenDecision,
   onChanged,
+  onContinueIdea,
   busy = false,
 }: {
   mission: Mission;
@@ -50,8 +52,17 @@ export function MissionViews({
   mcpDecision?: ReactNode;
   onOpenDecision?: () => void;
   onChanged?: (mission: Mission) => void;
+  onContinueIdea?: (mission: Mission) => void;
   busy?: boolean;
 }) {
+  const [changeMode, setChangeMode] = useState<
+    "history" | "net" | "side_by_side"
+  >("history");
+  const canContinueIdea =
+    !!mission.idea_project &&
+    !demo &&
+    !!onContinueIdea &&
+    ["delivered", "blocked", "failed", "paused"].includes(mission.state);
   const engineering = (
     <>
       <RepositorySource mission={mission} />
@@ -117,6 +128,13 @@ export function MissionViews({
               Foundry
               已自动创建独立应用项目。固定测试验证运行契约，生成的需求断言参与复验；完成情况还需结合审查与预览确认。
             </p>
+            {canContinueIdea && (
+              <div className="actions">
+                <button type="button" onClick={() => onContinueIdea(mission)}>
+                  基于当前版本继续改进
+                </button>
+              </div>
+            )}
             {!demo && <AppPreview mission={mission} disabled={busy} />}
           </section>
         )}
@@ -269,39 +287,80 @@ export function MissionViews({
         {planEditor}
       </>
     );
-  if (view === "代码变更")
+  if (view === "代码变更") {
+    const netChanges = (() => {
+      const byPath = new Map<
+        string,
+        { path: string; before: string; after: string }
+      >();
+      for (const change of mission.changes ?? []) {
+        const existing = byPath.get(change.path);
+        if (existing) existing.after = change.after;
+        else
+          byPath.set(change.path, {
+            path: change.path,
+            before: change.before,
+            after: change.after,
+          });
+      }
+      return [...byPath.values()];
+    })();
+    const list = changeMode === "net" ? netChanges : (mission.changes ?? []);
     return (
       <>
         <div className="section-heading">
           <h2>代码变更记录</h2>
-          <span className="muted small">按产生顺序，保留修复历史</span>
+          <span className="muted small">
+            {changeMode === "net"
+              ? "对比初始基线与当前最终候选"
+              : "按产生顺序，保留修复历史"}
+          </span>
         </div>
-        <p className="muted small">
-          候选摘要 <code>{mission.candidate_digest || "尚未生成"}</code>
-        </p>
-        {!mission.changes?.length && (
-          <p className="quiet-state">尚无代码变更</p>
-        )}
-        {(mission.changes ?? []).map((change, i) => (
-          <details className="change-file" key={`${i}:${change.path}`} open>
+        <div className="diff-mode-row">
+          <p className="muted small">
+            候选摘要 <code>{mission.candidate_digest || "尚未生成"}</code>
+          </p>
+          {!!mission.changes?.length && (
+            <div className="diff-mode-tabs" role="group" aria-label="差异视图">
+              {(
+                [
+                  ["history", "按步骤与修复历史"],
+                  ["net", "最终候选对比基线"],
+                  ["side_by_side", "并排全文"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={changeMode === mode}
+                  className={changeMode === mode ? "selected" : ""}
+                  onClick={() => setChangeMode(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {!list.length && <p className="quiet-state">尚无代码变更</p>}
+        {list.map((change, i) => (
+          <details className="change-file" key={`${changeMode}:${i}:${change.path}`} open>
             <summary>
               <code>{change.path}</code>
-              <span className="muted small">变更 {i + 1}</span>
+              <span className="muted small">
+                {changeMode === "net" ? "文件汇总差异" : `变更 ${i + 1}`}
+              </span>
             </summary>
-            <div className="code-pair">
-              <section>
-                <h3>变更前</h3>
-                <pre>{change.before || "（空文件 / 新文件）"}</pre>
-              </section>
-              <section>
-                <h3>变更后</h3>
-                <pre>{change.after || "（空内容）"}</pre>
-              </section>
-            </div>
+            <CodeDiffView
+              before={change.before}
+              after={change.after}
+              sideBySide={changeMode === "side_by_side"}
+            />
           </details>
         ))}
       </>
     );
+  }
   if (view === "验证") return <VerificationView mission={mission} />;
   if (view === "审批")
     return (
@@ -372,13 +431,22 @@ export function MissionViews({
           {!demo && (
             <div className="actions">
               {mission.idea_project && (
-                <a
-                  className="button primary"
-                  href={`/api/missions/${encodeURIComponent(mission.id)}/source`}
-                  download
-                >
-                  下载完整应用 ZIP
-                </a>
+                <>
+                  <a
+                    className="button primary"
+                    href={`/api/missions/${encodeURIComponent(mission.id)}/source`}
+                    download
+                  >
+                    下载完整应用 ZIP
+                  </a>
+                  <a
+                    className="button"
+                    href={`/api/missions/${encodeURIComponent(mission.id)}/app-html`}
+                    download
+                  >
+                    下载单文件应用 (.html)
+                  </a>
+                </>
               )}
               <a
                 className="button primary"
@@ -394,6 +462,11 @@ export function MissionViews({
               >
                 下载 Markdown 报告
               </a>
+              {canContinueIdea && (
+                <button type="button" onClick={() => onContinueIdea(mission)}>
+                  基于当前版本继续改进
+                </button>
+              )}
             </div>
           )}
         </>
@@ -403,6 +476,11 @@ export function MissionViews({
           <p>
             当前候选通过验证与审查，并由你批准交付后，才会生成可下载的产物。
           </p>
+          {canContinueIdea && (
+            <button type="button" onClick={() => onContinueIdea(mission)}>
+              基于当前版本继续改进
+            </button>
+          )}
         </div>
       )}
     </>

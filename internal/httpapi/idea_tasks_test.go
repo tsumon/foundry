@@ -170,6 +170,25 @@ func TestIdeaHTTPManagedCreationPreviewAndPinnedFrame(t *testing.T) {
 	if r = f.request("GET", "/api/missions/"+m.ID+"/source", "", true); r.Code < 400 {
 		t.Fatal("undelivered export admitted", r.Code)
 	}
+	if r = f.request("GET", "/api/missions/"+m.ID+"/app-html", "", true); r.Code < 400 {
+		t.Fatal("undelivered standalone html admitted", r.Code)
+	}
+	if r = f.request("POST", "/api/missions/"+m.ID+"/idea-continue", `{"title":"v2","goal":"Add filter","acceptance":["Filter works"],"profile_id":"idea-model","max_calls":12}`, false); r.Code != 401 {
+		t.Fatal("unauthenticated continue admitted", r.Code)
+	}
+	if r = f.request("POST", "/api/missions/"+m.ID+"/idea-continue", `{"title":"v2","goal":"Add filter","acceptance":["Filter works"],"profile_id":"idea-model","max_calls":12,"extra":1}`, true); r.Code != 400 {
+		t.Fatal("non-closed continue JSON admitted", r.Code)
+	}
+	cont := f.request("POST", "/api/missions/"+m.ID+"/idea-continue", `{"title":"v2","goal":"Add filter","acceptance":["Filter works"],"profile_id":"idea-model","max_calls":12}`, true)
+	if cont.Code != 200 {
+		t.Fatal("continue failed", cont.Code, cont.Body.String())
+	}
+	var contResp struct {
+		Mission domain.Mission `json:"mission"`
+	}
+	if err = json.Unmarshal(cont.Body.Bytes(), &contResp); err != nil || contResp.Mission.IdeaProject == nil || contResp.Mission.IdeaProject.ParentMissionID != m.ID {
+		t.Fatalf("unexpected continuation response: %v %s", err, cont.Body.String())
+	}
 	calls, err := f.store.ListInvocations(m.ID, 0, 100)
 	if err != nil || len(calls) != 0 {
 		t.Fatal("metadata/create/preview invoked model", calls, err)

@@ -307,3 +307,44 @@ it.each(["网关".repeat(35), "a".repeat(195), "😀".repeat(60)])(
     expect(`My API ${name} · approved-api-model`.startsWith(saved)).toBe(true);
   },
 );
+
+it("optionally assigns a newly saved API profile to default and all seven roles in one step", async () => {
+  const baseFetcher = fixture();
+  const settingsCalls: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === "/api/settings" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        settingsCalls.push(body);
+        return response({ settings: body });
+      }
+      return baseFetcher(path, init);
+    }),
+  );
+  render(<ModelSettings />);
+  const panel = await fill();
+  fireEvent.click(panel.getByRole("checkbox", { name: /按 API 计费/ }));
+  fireEvent.click(
+    panel.getByRole("checkbox", { name: /同时设为新任务默认连接并绑定全部角色/ }),
+  );
+  fireEvent.click(panel.getByRole("button", { name: "保存 API 模型连接" }));
+  await waitFor(() =>
+    expect(panel.getByRole("status")).toHaveTextContent(
+      "已设为新任务默认连接（全部角色）",
+    ),
+  );
+  expect(settingsCalls).toHaveLength(1);
+  expect(settingsCalls[0]).toEqual({
+    default_profile_id: "api-profile",
+    role_bindings: {
+      main: "api-profile",
+      researcher: "api-profile",
+      planner: "api-profile",
+      worker: "api-profile",
+      debugger: "api-profile",
+      qa: "api-profile",
+      auditor: "api-profile",
+    },
+  });
+});

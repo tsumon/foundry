@@ -1,5 +1,12 @@
 # Desktop release readiness
 
+Current `0.4.0+` builds extend the gated workbench below with the
+[idea-to-app browser application workflow](idea-to-app.md), the embedded SQLite
+[knowledge graph](knowledge-graph.md), and the `idea-app` `v2` native VM
+scenario alongside Go `v1` and the 12-case `v2` matrix (14 native VM scenarios
+total). Released `0.1.0` and `0.2.0` scope notes below keep their original
+historical commit attributions.
+
 Released 0.1.0 is a bounded, serial Go coding workbench, not an
 unattended general-purpose developer. Its primary connection is an explicitly
 selected API Key / Responses route. Subscription sign-in stays experimental.

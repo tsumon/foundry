@@ -238,7 +238,7 @@ func (e *Engine) v2ContextSummary(m domain.Mission) (verificationContextV2, erro
 	}
 	v := verificationContextV2{Language: m.Spec.C4.V2.Language, SourceRoots: c.SourceRoots, SelectedTestFileCount: len(c.TestFiles), ExecutionContractDigest: c.ExecutionContractDigest, Dependencies: summary}
 	if m.IdeaProject != nil {
-		v.Application = &applicationTestsContext{Template: m.IdeaProject.Template, CandidateAuthoredTestModule: "src/checks.js", ValidationScope: "Fixed harness checks structure and syntax and loads candidate-authored requirement assertions. These assertions are not independent validation; QA/Auditor must separately assess user acceptance coverage and behavior.", Acceptance: append([]string{}, m.IdeaProject.Acceptance...)}
+		v.Application = &applicationTestsContext{Template: m.IdeaProject.Template, CandidateAuthoredTestModule: "src/checks.js", ValidationScope: "Fixed harness checks document/preview-bundle structure, classic JS syntax, minimal DOM initialization smoke, and loads candidate-authored requirement assertions. These assertions are not independent validation; QA/Auditor must separately assess each user acceptance requirement and behavior.", Acceptance: append([]string{}, m.IdeaProject.Acceptance...)}
 	}
 	return v, nil
 }

@@ -850,3 +850,120 @@ it("expires controls locally without another GET or POST", async () => {
   expect(get).toHaveBeenCalledTimes(1);
   expect(post).not.toHaveBeenCalled();
 });
+
+it("runs guided readiness and baseline sequentially for idea projects without auto-retry on error", async () => {
+  let m: Mission = {
+    ...initial(),
+    idea_project: {
+      schema_version: 2,
+      template: "browser_app_v1",
+      acceptance: ["Works offline"],
+    },
+  };
+  vi.spyOn(api, "c4").mockImplementation(async () => status(m));
+  const actions: string[] = [];
+  vi.spyOn(api, "c4Action").mockImplementation(async (_, body) => {
+    actions.push(body.action);
+    m = { ...m, revision: m.revision + 1 };
+    if (body.action === "prepare_readiness") m.c4_controls = [prepared(m)];
+    if (body.action === "approve_control")
+      m.c4_controls = [
+        {
+          ...m.c4_controls![0],
+          state: "approved",
+          approval: {
+            digest: m.c4_controls![0].material_digest,
+            revision: m.revision - 1,
+            at: new Date().toISOString(),
+          },
+        },
+      ];
+    if (body.action === "execute_readiness")
+      m.c4_controls = [
+        {
+          ...m.c4_controls![0],
+          state: "completed",
+          dispatch: { revision: m.revision - 1, at: new Date().toISOString() },
+          result: {
+            status: "ready",
+            revision: m.revision,
+            at: new Date().toISOString(),
+            valid_until: future(),
+            fingerprint: "e".repeat(64),
+          },
+        },
+      ];
+    if (body.action === "prepare")
+      m.c4_operations = [
+        {
+          ...c4Operation,
+          id: `${m.revision - 1}-base`,
+          kind: "baseline",
+          state: "prepared",
+          approval: undefined,
+          dispatch: undefined,
+          result: undefined,
+          readiness_id: m.c4_controls!.at(-1)!.id,
+          readiness_digest: m.c4_controls!.at(-1)!.material_digest,
+        },
+      ];
+    if (body.action === "approve")
+      m.c4_operations = [
+        {
+          ...m.c4_operations![0],
+          state: "approved",
+          approval: {
+            digest: m.c4_operations![0].material_digest,
+            revision: m.revision - 1,
+            at: new Date().toISOString(),
+          },
+        },
+      ];
+    if (body.action === "execute")
+      m.c4_operations = [
+        {
+          ...m.c4_operations![0],
+          state: "completed",
+          dispatch: { revision: m.revision - 1, at: new Date().toISOString() },
+          result: {
+            class: "passed",
+            exit_code: 0,
+            tests: 2,
+            output: "ok",
+            truncated: false,
+            revision: m.revision,
+            at: new Date().toISOString(),
+          },
+        },
+      ];
+    return { mission: m };
+  });
+  render(<Harness start={m} />);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "一键完成就绪检查" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "一键完成就绪检查" }));
+  await waitFor(() =>
+    expect(screen.getByText("1. 隔离环境已就绪（有效期内自动复用）")).toBeVisible(),
+  );
+  expect(actions).toEqual([
+    "prepare_readiness",
+    "approve_control",
+    "execute_readiness",
+  ]);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "一键完成基线验证" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "一键完成基线验证" }));
+  await waitFor(() =>
+    expect(screen.getByText("2. 初始基线验证已通过")).toBeVisible(),
+  );
+  expect(actions).toEqual([
+    "prepare_readiness",
+    "approve_control",
+    "execute_readiness",
+    "prepare",
+    "approve",
+    "execute",
+  ]);
+});

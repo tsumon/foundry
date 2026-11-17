@@ -54,3 +54,18 @@ func (e *Engine) AppSource(id string) ([]byte, error) {
 	}
 	return workspace.ZipAppFiles(files)
 }
+
+func (e *Engine) AppStandaloneHTML(id string) ([]byte, error) {
+	m, files, err := e.ideaFiles(id)
+	if err != nil {
+		return nil, err
+	}
+	if err = e.verifyDelivery(m); err != nil {
+		return nil, err
+	}
+	html, err := workspace.BundleBrowserApp(files)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(html), nil
+}

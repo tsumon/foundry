@@ -46,7 +46,9 @@ function createDownloadGuard(origin, owner, diagnose = () => {}) {
           ? "text/plain"
           : name === "application-source.zip"
             ? "application/zip"
-            : "text/markdown"),
+            : name === "application.html"
+              ? "text/html"
+              : "text/markdown"),
     );
     const statusOK = details.statusCode === 200;
     const sameRequest =

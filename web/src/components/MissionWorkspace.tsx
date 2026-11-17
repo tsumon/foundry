@@ -74,6 +74,7 @@ export function MissionWorkspace({
   onOpenProject,
   onBack,
   backLabel,
+  onContinueIdea,
   session,
   onSessionChange,
   hooksEnabled = false,
@@ -89,6 +90,7 @@ export function MissionWorkspace({
   onOpenProject?: (projectId: string) => void;
   onBack?: () => void;
   backLabel?: string;
+  onContinueIdea?: (mission: Mission) => void;
   session?: MissionSession;
   onSessionChange?: Dispatch<SetStateAction<MissionSession>>;
   hooksEnabled?: boolean;
@@ -510,6 +512,7 @@ export function MissionWorkspace({
           <MissionViews
             mission={mission}
             onChanged={onUpdate}
+            onContinueIdea={onContinueIdea}
             busy={busy}
             onOpenDecision={() => setDrawer(true)}
             view={view}
@@ -563,6 +566,7 @@ export function MissionWorkspace({
           mission={mission}
           busy={busy}
           demo={demo}
+          onContinueIdea={onContinueIdea}
           onOpenMCPApproval={() => {
             setView("审批");
             if (isNarrow()) closeDrawer();

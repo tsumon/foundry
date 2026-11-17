@@ -13,20 +13,21 @@ Foundry 的默认起点应当是用户的想法，而不是 Git 快照。本次�
 1. 输入想法和验收要求，生成可恢复项目及任务；自动绑定项目台账。
 2. 沿用独立 VM 就绪、基线、上下文授权；这些检查的参数自动填入，已有有效结果不重复执行。
 3. Researcher 和 Planner 根据需求与初始项目生成可修改、可核对的计划；用户批准执行后 Workers 修改候选，失败由 Debugger 修复并复验。
-4. 固定测试验证应用结构和运行契约，并在 VM 中加载可修改的 `src/checks.js` 需求断言；这些由候选作者提供的断言与独立 QA、审计结果分别呈现。结构测试通过不能宣称所有业务要求已通过。
-5. 用户预览候选，确认后批准交付，下载完整应用源码 ZIP、patch 和报告。ZIP 可独立打开或在用户自行选择的静态服务上运行。
+4. 固定测试验证应用结构、预览打包规则、经典 JS 语法与轻量 DOM 初始化冒烟，并在 VM 中加载可修改的 `src/checks.js` 需求断言；`schema_version=2` 任务的 QA 审查还必须在结构化清单中逐条核对每项用户验收要求（`requirement:0..N`）。候选作者编写的断言与独立 QA、审计结果分别呈现，结构测试通过不能替代业务需求确认。
+5. 用户在支持桌面/平板/手机视口切换、状态重置及对照需求清单的隔离窗口中预览候选，确认后批准交付，可下载完整应用源码 ZIP、单文件离线 `.html` 应用、patch 和报告。
+6. 对已交付或中止的受管理应用，可发起“基于当前版本继续改进”：原任务、基线、预算和证据保持只读封存不变，控制器复制当前候选 `src/` 代码到关联同一项目台账的新一代任务中继续迭代。
 
-预览仅在隔离浏览器框架执行生成的页面，禁止网络、导航、弹窗和访问工作台能力。控制器不启动生成的服务器代码，不把 VM 测试降级到宿主执行。预览不等同于测试通过，也不能绕过交付审批。
+预览仅在隔离浏览器框架执行生成的页面，禁止网络、导航、弹窗和访问工作台能力，并为不透明沙盒 origin 自动注入内存型 `localStorage` / `sessionStorage` 回退垫片（仅在浏览器原生存储被沙盒拒绝时生效）。控制器不启动生成的服务器代码，不把 VM 测试降级到宿主执行。预览不等同于测试通过，也不能绕过交付审批。
 
 保留所有旧任务、审批、基线、预算及原始证据。模型使用现有明确选择的账户和路由，不引入隐式模型调用、自动重试或收费 API 切换。已有仓库入口的权限保持不变。
 
 ## 工程实现
 
-- 新任务持久化 `idea_project` 来源（schema_version=1、template=browser_app_v1、用户验收要求），绑定现有不可变导入和任务授权。仅专用创建入口可设置此字段。
-- 使用已安装 v2 Node 验证器和空依赖准入；种子、测试、manifest、lock 固定，应用文件可修改。模型上下文解释模板契约和真实验证范围。
-- `POST /api/idea-tasks` 接收 `{title, goal, acceptance, profile_id, max_calls}`，返回 `{mission}`；`GET` 返回 `{available, reason}`。不接受目录、脚本或执行命令。
-- `GET /api/missions/:id/app-preview` 返回 `{html, candidate_digest}`；仅受管理应用、当前候选且有效文件集可用。页面经受限打包后，通过绑定候选摘要的 `/app-preview/frame?digest=…` 放入 `sandbox="allow-scripts"` iframe。独立响应 CSP 禁止外联和同源访问，不继承工作台的脚本许可。
-- `GET /api/missions/:id/source` 仅对已批准交付且摘要匹配的受管理应用返回完整 ZIP。复用交付一致性校验，不接受任意路径。
+- 新任务持久化 `idea_project` 来源（`schema_version=2`、`template=browser_app_v1`、用户验收要求及可选 `parent_mission_id`），同时兼容读取既有 `schema_version=1` 任务，绑定现有不可变导入和任务授权。仅专用创建/迭代入口可设置此字段。
+- 使用已安装 v2 Node 验证器和空依赖准入；种子、测试、manifest、lock 固定，应用文件可修改。`tests/app.test.cjs` 与预览打包器校验对齐，并在 VM 中执行轻量 DOM 挂载冒烟捕获缺失元素 ID 等初始化错误。模型上下文解释模板契约和真实验证范围。
+- `POST /api/idea-tasks` 与 `POST /api/missions/:id/idea-continue` 接收闭合请求 `{title, goal, acceptance, profile_id, max_calls}`，返回 `{mission}`；`GET /api/idea-tasks` 返回 `{available, reason}`。不接受目录、脚本或执行命令。
+- `GET /api/missions/:id/app-preview` 返回 `{html, candidate_digest}`；仅受管理应用、当前候选且有效文件集可用。页面经受限打包并注入受控 `CSP` 与内存存储垫片后，通过绑定候选摘要的 `/app-preview/frame?digest=…` 放入 `sandbox="allow-scripts"` iframe，并返回可定位的具体资产错误原因。
+- `GET /api/missions/:id/source`（完整 ZIP）与 `GET /api/missions/:id/app-html`（单文件独立 `.html`）仅对已批准交付且摘要匹配的受管理应用返回，复用交付一致性校验与桌面安全下载守卫。
 - Mac、Windows 默认持久工作台提供此能力，沿用原数据目录；既有独立编码工作台数据不迁移、不删除。
 
 ## 验收

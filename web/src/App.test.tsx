@@ -1317,3 +1317,82 @@ it("preserves knowledge filters and traversal when returning from a source task"
   });
   expect(screen.getByRole("button", { name: "清除探索起点" })).toBeVisible();
 });
+
+it("lands newly created idea missions on overview with decision panel open and supports continuing delivered versions", async () => {
+  const ideaCreated = {
+    ...mission,
+    id: "idea-1",
+    title: "报价器",
+    state: "draft",
+    approvals: [],
+    plan: null,
+    candidate_digest: "cand-1",
+    idea_project: {
+      schema_version: 2 as const,
+      template: "browser_app_v1" as const,
+      acceptance: ["计算总价"],
+    },
+  };
+  const ideaDelivered = {
+    ...ideaCreated,
+    id: "idea-delivered",
+    title: "已交付应用",
+    state: "delivered",
+    delivery: {
+      patch_path: "/tmp/p",
+      report_path: "/tmp/r",
+      candidate_digest: "cand-1",
+      created_at: "now",
+    },
+  };
+  const fetcher = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === "/api/health")
+      return response({ status: "ok", capabilities: {} });
+    if (path === "/api/missions")
+      return response({ missions: [ideaDelivered] });
+    if (path === "/api/profiles")
+      return response({
+        profiles: [profile],
+        settings: { default_profile_id: "p1", role_bindings: {} },
+      });
+    if (path === "/api/idea-tasks" && init?.method === "POST")
+      return response({ mission: ideaCreated });
+    if (path === "/api/idea-tasks")
+      return response({ available: true, reason: "" });
+    return response({});
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "创建交付任务" }));
+  await screen.findByRole("option", { name: /测试连接/ });
+  fireEvent.change(screen.getByLabelText("应用名称"), {
+    target: { value: "报价器" },
+  });
+  fireEvent.change(screen.getByLabelText("描述你的想法"), {
+    target: { value: "报价" },
+  });
+  fireEvent.change(screen.getByLabelText("怎样算做好了"), {
+    target: { value: "计算总价" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "创建应用任务" }));
+  await waitFor(() =>
+    expect(screen.getByRole("tab", { name: "总览" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    ),
+  );
+  expect(screen.getByRole("region", { name: "决策与 Main Agent" })).toHaveClass(
+    "drawer-open",
+  );
+  fireEvent.click(screen.getByRole("button", { name: /已交付应用/ }));
+  await waitFor(() =>
+    expect(screen.getByRole("tab", { name: "交付报告" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    ),
+  );
+  fireEvent.click(
+    screen.getAllByRole("button", { name: "基于当前版本继续改进" })[0],
+  );
+  expect(screen.getByLabelText("应用名称")).toHaveValue("已交付应用 v2");
+});

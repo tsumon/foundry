@@ -18,6 +18,7 @@ import {
 import { DeliveryOverview } from "./components/DeliveryOverview";
 import { DecisionQueue } from "./components/DecisionQueue";
 import type { DecisionTargetView } from "./decisionMaterials";
+import type { MissionView } from "./components/MissionViews";
 import { useCatalog } from "./useCatalog";
 import { missionProjectContext } from "./projectContext";
 import { RecoveryNotice } from "./components/RecoveryNotice";
@@ -46,10 +47,13 @@ export default function App() {
   const creationBusy = useRef(false);
   const draftRepository = useRef<GitRepository | undefined>(undefined);
   const [creationRepository, setCreationRepository] = useState<GitRepository>();
+  const [continueMission, setContinueMission] = useState<
+    (typeof work.missions)[number] | undefined
+  >();
   const [demo, setDemo] = useState(false);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [initialMissionView, setInitialMissionView] = useState<
-    DecisionTargetView | undefined
+    MissionView | undefined
   >();
   const [knowledgeOpened, setKnowledgeOpened] = useState(false);
   const [knowledgeSession, setKnowledgeSession] = useState(0);
@@ -94,6 +98,7 @@ export default function App() {
         repository.revision !== draftRepository.current?.revision);
     if (creationBusy.current && sourceChanged) return;
     if (!hasCreationDraft || sourceChanged) {
+      setContinueMission(undefined);
       setCreationRepository(repository);
       draftRepository.current = repository;
       setCreationSession((version) => version + 1);
@@ -114,10 +119,33 @@ export default function App() {
     setCreating(true);
     setDemo(false);
   };
+  const beginContinueIdea = (mission: (typeof work.missions)[number]) => {
+    if (creationBusy.current) return;
+    setContinueMission(mission);
+    setCreationRepository(undefined);
+    draftRepository.current = undefined;
+    setCreationSession((version) => version + 1);
+    setHasCreationDraft(true);
+    creationSource.current = { kind: "section", section };
+    setCreating(true);
+    setDemo(false);
+  };
+  const defaultIdeaView = (
+    mission?: (typeof work.missions)[number],
+  ): MissionView | undefined => {
+    if (!mission?.idea_project) return undefined;
+    if (mission.state === "draft") return "总览";
+    if (mission.state === "awaiting_delivery" || mission.state === "delivered")
+      return "交付报告";
+    if (["verifying", "failed", "blocked"].includes(mission.state))
+      return "验证";
+    if (mission.state === "awaiting_approval") return "计划链路";
+    return "总览";
+  };
   const openMission = (
     id: string,
     openDecision = false,
-    initialView?: DecisionTargetView,
+    initialView?: DecisionTargetView | MissionView,
     source?: MissionSource,
   ) => {
     const mission = work.missions.find((item) => item.id === id);
@@ -129,7 +157,7 @@ export default function App() {
       );
     setSelected(id);
     setDecisionOpen(openDecision);
-    setInitialMissionView(initialView);
+    setInitialMissionView(initialView ?? defaultIdeaView(mission));
     setMissionSource(
       source ??
         (section === "catalog"
@@ -256,6 +284,8 @@ export default function App() {
             <CreateEntry
               key={creationSession}
               active={creating}
+              continueFrom={continueMission}
+              onOpenSettings={() => navigate("settings")}
               onBusyChange={(busy) => {
                 creationBusy.current = busy;
               }}
@@ -267,6 +297,7 @@ export default function App() {
                 creationBusy.current = false;
                 setCreating(false);
                 setHasCreationDraft(false);
+                setContinueMission(undefined);
               }}
               onCreated={(m) => {
                 creationBusy.current = false;
@@ -277,10 +308,11 @@ export default function App() {
                 }));
                 setSelected(m.id);
                 setMissionSource(creationSource.current);
-                setDecisionOpen(false);
-                setInitialMissionView(undefined);
+                setDecisionOpen(!!m.idea_project);
+                setInitialMissionView(m.idea_project ? "总览" : undefined);
                 setCreating(false);
                 setHasCreationDraft(false);
+                setContinueMission(undefined);
                 setSection("projects");
               }}
             />
@@ -328,6 +360,7 @@ export default function App() {
               initialView={initialMissionView}
               projectContext={projectContextFor(current.id)}
               onOpenProject={openProject}
+              onContinueIdea={beginContinueIdea}
               onBack={returnFromMission}
               backLabel={
                 missionSource.kind === "catalog"
@@ -407,9 +440,9 @@ export default function App() {
                         : "第一份交付，从这里开始"}
                 </h2>
                 <p className="muted">
-                  连接模型，选择一个已提交的 Git 仓库。
+                  描述你的想法直接构建浏览器应用，或选择已有 Git 仓库改进代码。
                   <br />
-                  检查上下文、审批计划，再审阅真实的验证证据。
+                  在关键节点检查上下文、审批计划与验证证据后导出交付。
                 </p>
                 <div className="actions">
                   <button
@@ -426,7 +459,7 @@ export default function App() {
                 </button>
               </section>
               <div className="empty-footnote">
-                原仓库只读 · 单 Worker 串行执行 · 交付本地 patch
+                隔离沙盒验证 · 独立审批 · 完整源码 / 单文件 HTML / patch 交付
               </div>
             </section>
             <aside className="decision-column empty-guide">
@@ -434,21 +467,20 @@ export default function App() {
               <h2>从需求到交付</h2>
               <ol className="guide-list">
                 <li>
-                  <strong>界定工作范围</strong>
-                  <p>明确目标、可修改文件和验收命令。</p>
+                  <strong>描述想法或选择仓库</strong>
+                  <p>明确目标与逐条验收要求，选择模型与调用上限。</p>
                 </li>
                 <li>
                   <strong>检查并授权上下文</strong>
-                  <p>查看文件清单与实际模型端点后，再发起规划。</p>
+                  <p>确认隔离环境和模型接收端后，再生成并审阅计划。</p>
                 </li>
                 <li>
-                  <strong>审计划，审证据</strong>
-                  <p>只有明确批准，才执行计划或生成交付。</p>
+                  <strong>验证、预览并交付</strong>
+                  <p>通过隔离测试、预览确认和独立审查后导出交付产物。</p>
                 </li>
               </ol>
               <div className="note">
-                新编码任务默认使用内置 VM，可显式选择
-                Docker。验证受独立审批控制；不会自动安装依赖、回退后端、推送或部署。
+                新编码任务默认使用内置 VM。验证与交付均受独立审批控制；不会自动重试模型、回退后端、推送或部署。
               </div>
             </aside>
           </div>

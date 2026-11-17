@@ -40,6 +40,20 @@ test("approved complete source downloads use ZIP media type and a fixed filename
   });
   assert.equal(guard.saveName(item(target), 7), "application-source.zip");
 });
+test("approved standalone HTML downloads use text/html media type and a fixed filename", () => {
+  const guard = createDownloadGuard(origin, () => 7);
+  const target = url.replace(/patch$/, "app-html");
+  guard.observeRequest({ ...request, url: target });
+  guard.observeResponse({
+    ...response,
+    url: target,
+    responseHeaders: {
+      "Content-Type": ["text/html; charset=utf-8"],
+      "Content-Disposition": ['attachment; filename="evil.exe"'],
+    },
+  });
+  assert.equal(guard.saveName(item(target), 7), "application.html");
+});
 test("delivery guard authenticates a correlated successful response, not hidden cookie headers", () => {
   const guard = createDownloadGuard(origin, () => 7);
   guard.observeRequest(request);

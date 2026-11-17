@@ -23,12 +23,8 @@ upstream fallback must be excluded. No app configuration is imported automatical
    available to the API project. A ChatGPT subscription model listing does not
    prove API availability. The setup saves a Responses route and model profile;
    it does not log in, discover models, run a probe or send an inference.
-3. Choose the saved profile in role settings for new tasks. Existing tasks keep
-   their original model snapshots and consumption; no subscription task is
-   converted to paid API automatically.
-4. Import a supported standard-library Go repository with protected tests. The
-   existing readiness, baseline, shared-context, execution and delivery approvals
-   apply. Tests run in the selected isolated backend, never on the host.
+3. Choose the saved profile in role settings for new tasks (or check the one-step option in API quick setup to set it as default and bind all seven roles). Existing tasks keep their original model snapshots and consumption; no subscription task is converted to paid API automatically.
+4. Create a managed browser application from an idea (no repository required) or import a supported committed repository (`Go` standard library, `Node.js` `node:test`, `TypeScript` typecheck + `node:test`, or `Python` `unittest` with optional consented local pure dependencies). The existing readiness, baseline, shared-context, execution and delivery approvals apply. Tests run in the selected isolated backend, never on the host.
 
 The API uses Bearer authentication on the controller, `POST /v1/responses`,
 `store:false` and the existing per-call `max_output_tokens`. Keys are never put in
@@ -56,11 +52,16 @@ Local protocol fixtures cover API dispatch through the production router and
 engine: Researcher, Planner, Worker, failed candidate, Debugger, recheck, QA,
 Auditor and sealed delivery. Native installer checks are separate from real
 provider acceptance. A working local fixture is not a successful paid API call.
-The [2026-10-28 Mac acceptance](compatible-api-acceptance.md) completed a real
-CPA/Grok-backed code change, VM tests, QA/Auditor review and sealed delivery in
-five successful calls. The candidate passed on its first run; real-provider
-Debugger repair remains untested. This does not certify every compatible gateway
-or the separate experimental subscription transport.
+The [2026-10-28 Mac acceptance](compatible-api-acceptance.md) initially completed a real
+CPA/Grok-backed Go code change, VM tests, QA/Auditor review and sealed delivery in
+five successful calls without invoking Debugger; subsequent bounded CPA/Grok runs
+documented in the same record exercised an injected-fault Go Debugger repair,
+a TypeScript path-validation fix, and a two-module TypeScript delivery across
+controller restarts. Zero-repository browser application delivery is verified
+with local protocol fixtures and real Linux VMs; real-provider acceptance for
+that new entrypoint and Windows real-provider access remain separately scoped,
+and this does not certify arbitrary compatible gateways or the separate
+experimental subscription transport.
 
 Protocol references: [authentication](https://developers.openai.com/api/reference/overview),
 [Responses](https://developers.openai.com/api/reference/resources/responses/methods/create).

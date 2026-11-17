@@ -81,6 +81,9 @@ func (s *server) missionRoute(w http.ResponseWriter, r *http.Request) {
 	if s.ideaArtifactRoute(w, r, parts) {
 		return
 	}
+	if s.ideaContinueRoute(w, r, parts) {
+		return
+	}
 	if s.modelContinuationRoute(w, r, parts) {
 		return
 	}

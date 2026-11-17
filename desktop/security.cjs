@@ -55,15 +55,18 @@ function artifactRouteName(origin, target) {
   try {
     const url = new URL(target);
     if (!allowNavigation(origin, target) || url.search || url.hash) return null;
-    const match = /^\/api\/missions\/[a-f0-9]{32}\/(patch|report|source)$/.exec(
-      url.pathname,
-    );
+    const match =
+      /^\/api\/missions\/[a-f0-9]{32}\/(patch|report|source|app-html)$/.exec(
+        url.pathname,
+      );
     return match
       ? match[1] === "patch"
         ? "changes.patch"
         : match[1] === "source"
           ? "application-source.zip"
-          : "report.md"
+          : match[1] === "app-html"
+            ? "application.html"
+            : "report.md"
       : null;
   } catch {
     return null;

@@ -319,45 +319,146 @@ export function C4Controls({
           baseline.readiness_digest !== readiness?.material_digest)
       ? "基线绑定的就绪材料已改变"
       : "";
-  return (
-    <section className="review-section" aria-label="C4 受控决策">
-      <h3>
-        {source === "synthetic_c4_control"
-          ? "模拟就绪检查 · 非真实 Docker"
-          : `C4 就绪检查 · ${c4BackendLabel(m.spec.c4?.mode)} 配置`}
-      </h3>
-      <p className="warning-copy">
-        {source === "synthetic_c4_control"
-          ? "本任务仅本地模拟，未执行真实 Docker；模拟不能证明 Docker、Go、镜像或隔离就绪。"
-          : isModelBackedC4(m)
-            ? `配置可用不代表就绪或执行成功；模型调用仍需独立上下文授权，${c4BackendLabel(m.spec.c4?.mode)} 执行仍需基线与执行审批。`
-            : "配置可用不代表就绪或执行成功；模型推理仍为本地模拟。"}
-      </p>
-      <p>
-        配置来源：{status?.control?.source_kind ?? "未配置"} · 激活到期：
-        {status?.control?.expires_at ?? "未配置"}
-      </p>
-      <p className="muted small">
-        {m.spec.c4?.id} · {m.spec.c4?.platform} ·{" "}
-        {m.spec.c4?.schema_version === 2
-          ? m.spec.c4.v2?.runner_id
-          : "Go 1.27.3"}{" "}
-        · <code>{m.spec.c4?.image_id}</code> ·{" "}
-        <code>{m.spec.c4?.verifier}</code>
-      </p>
-      <C4LanguageFacts profile={m.spec.c4} compact />
-      {m.spec.c4?.mode === "embedded_vm" && (
-        <C4VMIdentityFacts identity={m.spec.c4.embedded_vm} />
-      )}
-      <p className="note">
-        准备、批准、执行分别点击；就绪不是基线或候选通过，不授权上下文、计划、候选执行或交付。不会自动探测、重试或清理。
-      </p>
-      {terminalReason && <p className="warning-copy">{terminalReason}</p>}
-      {reason && <p className="warning-copy">{reason}</p>}
-      {error && <p role="alert">{error}</p>}
-      {readinessPreparationReason && (
-        <p className="muted small">{readinessPreparationReason}</p>
-      )}
+  const baselinePassed = baseline?.result?.class === "passed";
+  const guidedReadinessDisabled =
+    !!reason ||
+    !!terminalReason ||
+    !!readinessPreparationReason ||
+    available ||
+    stopped({ action: "prepare_readiness", revision: m.revision });
+  const guidedBaselineDisabled =
+    !!reason ||
+    !!terminalReason ||
+    !!baselineReason ||
+    !!baseline?.result ||
+    !!baseline?.dispatch ||
+    stopped({ action: "prepare", revision: m.revision });
+  const runGuidedReadiness = async () => {
+    if (guidedReadinessDisabled || lock.current) return;
+    lock.current = true;
+    setPending(true);
+    onBusyChange?.(true);
+    setError("");
+    let cur = m;
+    try {
+      const findLatestReadiness = () =>
+        (cur.c4_controls ?? []).filter((c) => c.kind === "readiness").at(-1);
+      let ctrl = findLatestReadiness();
+      if (!ctrl || controlReason(cur, ctrl, Date.now(), status?.control)) {
+        const res = await api.c4Action(cur.id, {
+          action: "prepare_readiness",
+          revision: cur.revision,
+        });
+        cur = res.mission;
+        onUpdate(cur);
+        ctrl = findLatestReadiness();
+      }
+      if (ctrl && ctrl.state === "prepared" && !ctrl.approval) {
+        const res = await api.c4Action(cur.id, {
+          action: "approve_control",
+          revision: cur.revision,
+          control_id: ctrl.id,
+          material_digest: ctrl.material_digest,
+        });
+        cur = res.mission;
+        onUpdate(cur);
+        ctrl = findLatestReadiness();
+      }
+      if (ctrl && ctrl.state === "approved" && !!ctrl.approval && !ctrl.dispatch) {
+        const res = await api.c4Action(cur.id, {
+          action: "execute_readiness",
+          revision: cur.revision,
+          control_id: ctrl.id,
+          material_digest: ctrl.material_digest,
+        });
+        cur = res.mission;
+        onUpdate(cur);
+      }
+    } catch (e) {
+      setFailed((old) => [
+        ...old,
+        key({ action: "prepare_readiness", revision: m.revision }),
+      ]);
+      setError(`${errorMessage(e)}。已停止后续步骤，未自动重试；请刷新并核对持久事实。`);
+      try {
+        onUpdate((await api.mission(cur.id)).mission);
+      } catch (refreshError) {
+        setError(`刷新失败：${errorMessage(refreshError)}。结果未知；未自动重试。`);
+      }
+    } finally {
+      lock.current = false;
+      setPending(false);
+      onBusyChange?.(false);
+    }
+  };
+  const runGuidedBaseline = async () => {
+    if (guidedBaselineDisabled || lock.current) return;
+    lock.current = true;
+    setPending(true);
+    onBusyChange?.(true);
+    setError("");
+    let cur = m;
+    try {
+      const findBaseline = () =>
+        cur.c4_operations?.filter((o) => o.kind === "baseline").at(-1);
+      let op = findBaseline();
+      if (!op) {
+        const res = await api.c4Action(cur.id, {
+          action: "prepare",
+          revision: cur.revision,
+        });
+        cur = res.mission;
+        onUpdate(cur);
+        op = findBaseline();
+      }
+      if (
+        op &&
+        op.state === "prepared" &&
+        Number(op.id.split("-")[0]) + 1 === cur.revision
+      ) {
+        const res = await api.c4Action(cur.id, {
+          action: "approve",
+          revision: cur.revision,
+          operation_id: op.id,
+          material_digest: op.material_digest,
+        });
+        cur = res.mission;
+        onUpdate(cur);
+        op = findBaseline();
+      }
+      if (
+        op &&
+        op.state === "approved" &&
+        op.approval?.revision === cur.revision - 1
+      ) {
+        const res = await api.c4Action(cur.id, {
+          action: "execute",
+          revision: cur.revision,
+          operation_id: op.id,
+          material_digest: op.material_digest,
+        });
+        cur = res.mission;
+        onUpdate(cur);
+      }
+    } catch (e) {
+      setFailed((old) => [
+        ...old,
+        key({ action: "prepare", revision: m.revision }),
+      ]);
+      setError(`${errorMessage(e)}。已停止后续步骤，未自动重试；请刷新并核对持久事实。`);
+      try {
+        onUpdate((await api.mission(cur.id)).mission);
+      } catch (refreshError) {
+        setError(`刷新失败：${errorMessage(refreshError)}。结果未知；未自动重试。`);
+      }
+    } finally {
+      lock.current = false;
+      setPending(false);
+      onBusyChange?.(false);
+    }
+  };
+  const stepControls = (
+    <>
       {button(
         "准备就绪材料",
         { action: "prepare_readiness", revision: m.revision },
@@ -414,6 +515,96 @@ export function C4Controls({
             )}
         </>
       )}
+    </>
+  );
+  return (
+    <section className="review-section" aria-label="C4 受控决策">
+      <h3>
+        {source === "synthetic_c4_control"
+          ? "模拟就绪检查 · 非真实 Docker"
+          : m.idea_project
+            ? "隔离沙盒就绪与基线检查"
+            : `C4 就绪检查 · ${c4BackendLabel(m.spec.c4?.mode)} 配置`}
+      </h3>
+      <p className="warning-copy">
+        {source === "synthetic_c4_control"
+          ? "本任务仅本地模拟，未执行真实 Docker；模拟不能证明 Docker、Go、镜像或隔离就绪。"
+          : isModelBackedC4(m)
+            ? `配置可用不代表就绪或执行成功；模型调用仍需独立上下文授权，${c4BackendLabel(m.spec.c4?.mode)} 执行仍需基线与执行审批。`
+            : "配置可用不代表就绪或执行成功；模型推理仍为本地模拟。"}
+      </p>
+      <p>
+        配置来源：{status?.control?.source_kind ?? "未配置"} · 激活到期：
+        {status?.control?.expires_at ?? "未配置"}
+      </p>
+      <p className="muted small">
+        {m.spec.c4?.id} · {m.spec.c4?.platform} ·{" "}
+        {m.spec.c4?.schema_version === 2
+          ? m.spec.c4.v2?.runner_id
+          : "Go 1.27.3"}{" "}
+        · <code>{m.spec.c4?.image_id}</code> ·{" "}
+        <code>{m.spec.c4?.verifier}</code>
+      </p>
+      <C4LanguageFacts profile={m.spec.c4} compact />
+      {m.spec.c4?.mode === "embedded_vm" && (
+        <C4VMIdentityFacts identity={m.spec.c4.embedded_vm} />
+      )}
+      <section className="c4-guided" aria-label="隔离验证快速引导">
+        <div className="c4-guided-step">
+          <span>
+            {available
+              ? "1. 隔离环境已就绪（有效期内自动复用）"
+              : "1. 准备并确认隔离 VM 就绪"}
+          </span>
+          {!available && (
+            <button
+              type="button"
+              className="primary full"
+              disabled={guidedReadinessDisabled}
+              onClick={() => void runGuidedReadiness()}
+            >
+              {pending ? "正在执行就绪检查…" : "一键完成就绪检查"}
+            </button>
+          )}
+        </div>
+        <div className="c4-guided-step">
+          <span>
+            {baselinePassed
+              ? "2. 初始基线验证已通过"
+              : baseline?.result
+                ? `2. ${c4OperationLabel(m, baseline)}`
+                : "2. 建立初始基线验证"}
+          </span>
+          {!baselinePassed && !baseline?.result && (
+            <button
+              type="button"
+              className="full"
+              disabled={guidedBaselineDisabled}
+              onClick={() => void runGuidedBaseline()}
+            >
+              {pending ? "正在执行基线验证…" : "一键完成基线验证"}
+            </button>
+          )}
+        </div>
+      </section>
+      <p className="note">
+        准备、批准、执行分别点击；就绪不是基线或候选通过，不授权上下文、计划、候选执行或交付。不会自动探测、重试或清理。
+      </p>
+      {terminalReason && <p className="warning-copy">{terminalReason}</p>}
+      {reason && <p className="warning-copy">{reason}</p>}
+      {error && <p role="alert">{error}</p>}
+      {readinessPreparationReason && (
+        <p className="muted small">{readinessPreparationReason}</p>
+      )}
+      {m.idea_project ? (
+        <details className="disclosure">
+          <summary>查看分步材料与控制记录</summary>
+          {stepControls}
+          <C4ControlFacts mission={m} />
+        </details>
+      ) : (
+        stepControls
+      )}
       {(m.c4_operations ?? [])
         .filter((o) => o.result && c4CleanupState(o) !== "confirmed")
         .map((o) => (
@@ -445,7 +636,7 @@ export function C4Controls({
             {controlButtons(latest("cleanup", o.id), true)}
           </div>
         ))}
-      <C4ControlFacts mission={m} />
+      {!m.idea_project && <C4ControlFacts mission={m} />}
       <button
         disabled={busy || pending || loading}
         onClick={() => void refreshFacts()}

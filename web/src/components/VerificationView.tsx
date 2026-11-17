@@ -52,9 +52,18 @@ export function codingReviewsCurrent(mission: Mission): boolean {
       )
     )
       return false;
+    const ideaRequirements =
+      review.role === "qa" &&
+      mission.idea_project &&
+      mission.idea_project.schema_version >= 2
+        ? mission.idea_project.acceptance.map((_, i) => `requirement:${i}`)
+        : [];
     const required =
       review.role === "qa"
-        ? mission.spec.acceptance.map((_, i) => `acceptance:${i}`)
+        ? [
+            ...mission.spec.acceptance.map((_, i) => `acceptance:${i}`),
+            ...ideaRequirements,
+          ]
         : ["scope", "protected", "approval", "integrity"];
     const checks = review.checks ?? [];
     return (
@@ -67,7 +76,10 @@ export function codingReviewsCurrent(mission: Mission): boolean {
           !!c.summary?.trim() &&
           (review.role === "qa"
             ? c.verification_id === evidence.id &&
-              c.id === `acceptance:${c.acceptance_index}` &&
+              (c.id === `acceptance:${c.acceptance_index}` ||
+                (!!mission.idea_project &&
+                  mission.idea_project.schema_version >= 2 &&
+                  c.id === `requirement:${c.acceptance_index}`)) &&
               !c.reference_digest
             : !!c.reference_digest &&
               !c.verification_id &&

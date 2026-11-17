@@ -255,6 +255,34 @@ func TestBrowserSeedOwnedNodeContractAndRequirementAssertions(t *testing.T) {
 	if out, err := run(); err != nil {
 		t.Fatalf("actual repaired assertions failed: %v\n%s", err, out)
 	}
+	// Verify localStorage + DOMContentLoaded smoke succeeds.
+	domApp := `function createCounter(){let value=0;return {get value(){return value;},increment(){return ++value;},reset(){value=0;return value;}};}
+if(typeof module!=="undefined")module.exports={createCounter};
+if(typeof document!=="undefined"){document.addEventListener('DOMContentLoaded',()=>{localStorage.setItem('k','1');document.getElementById('action').addEventListener('click',()=>{document.getElementById('status').textContent=localStorage.getItem('k');});});}`
+	os.WriteFile(filepath.Join(dir, "src/app.js"), []byte(domApp), 0644)
+	if out, err := run(); err != nil {
+		t.Fatalf("DOMContentLoaded + localStorage smoke failed: %v\n%s", err, out)
+	}
+	// Verify missing DOM element ID fails in VM smoke before delivery.
+	typoApp := strings.Replace(domApp, "getElementById('action')", "getElementById('missing-typo')", 1)
+	os.WriteFile(filepath.Join(dir, "src/app.js"), []byte(typoApp), 0644)
+	if out, err := run(); err == nil {
+		t.Fatalf("missing DOM id passed smoke: %s", out)
+	}
+	os.WriteFile(filepath.Join(dir, "src/app.js"), []byte(domApp), 0644)
+	// Verify disallowed HTML/module/missing-CSS fails in VM contract before delivery.
+	origHTML := seed["src/index.html"]
+	for _, badHTML := range []string{
+		strings.Replace(origHTML, "</main>", `<iframe src="about:blank"></iframe></main>`, 1),
+		strings.Replace(origHTML, `<script src="app.js"></script>`, `<script type="module" src="app.js"></script>`, 1),
+		strings.Replace(origHTML, `href="style.css"`, `href="missing.css"`, 1),
+	} {
+		os.WriteFile(filepath.Join(dir, "src/index.html"), []byte(badHTML), 0644)
+		if out, err := run(); err == nil {
+			t.Fatalf("disallowed HTML passed VM contract: %s\n%s", badHTML, out)
+		}
+	}
+	os.WriteFile(filepath.Join(dir, "src/index.html"), []byte(origHTML), 0644)
 }
 
 func TestIdeaProjectRejectsOriginAndProtectedTampering(t *testing.T) {
@@ -321,5 +349,102 @@ func TestIdeaProjectIgnoresPollutedGitEnvironment(t *testing.T) {
 	}
 	if _, err = os.Stat(sentinel); !os.IsNotExist(err) {
 		t.Fatal("ambient hook executed")
+	}
+}
+
+func TestIdeaProjectStandaloneHTMLAndContinueIteration(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "persistent.db")
+	persistent, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { persistent.Close() })
+	e, q, _, _ := codingV2ImportProfile(t, "c4_node_model_v2", persistent)
+	outputs := []string{
+		`{"summary":"obs","findings":[],"unknowns":[]}`,
+		`{"summary":"Counter v1","steps":[{"id":"counter","title":"Counter","description":"Build counter","depends_on":[],"files":["src/app.js","src/checks.js"]}]}`,
+		`{"summary":"working counter","edits":[{"path":"src/app.js","content":"function createCounter(){let value=0;return {get value(){return value;},increment(){return ++value;},reset(){value=0;return value;}};}if(typeof module!=='undefined')module.exports={createCounter};if(typeof document!=='undefined'){document.getElementById('action').addEventListener('click',()=>{localStorage.setItem('count',String(createCounter().increment()));});}"},{"path":"src/checks.js","content":"const {test}=require('node:test');const assert=require('node:assert/strict');const {createCounter}=require('./app.js');test('v1 counter',()=>{const c=createCounter();assert.equal(c.increment(),1);assert.equal(c.reset(),0);});"}]}`,
+		codingPass, codingPass,
+	}
+	gateway := &backendV2SyntheticModels{e: e, script: &codingReviewGateway{script: &scripted{outputs: outputs}}}
+	e.gateway = gateway
+	e.options.C4Controlled.models = gateway
+	v1, err := e.CreateIdea(context.Background(), IdeaCreateRequest{Title: "Counter App", Goal: "Build counter", Acceptance: []string{"Increment works"}, ProfileID: q.Spec.ProfileID, MaxCalls: 16})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.AppStandaloneHTML(v1.ID); err == nil {
+		t.Fatal("undelivered standalone html exported")
+	}
+	v1 = controlReady(t, e, v1)
+	v1 = c4Baseline(t, e, v1)
+	if _, err = e.PlanControlled(context.Background(), v1.ID, v1.Revision, true); err != nil {
+		t.Fatal(err)
+	}
+	finishCoding(e)
+	v1, _ = e.s.GetMission(v1.ID)
+	if _, err = e.Approve(context.Background(), v1.ID, v1.Revision); err != nil {
+		t.Fatal(err)
+	}
+	finishCoding(e)
+	v1, _ = e.s.GetMission(v1.ID)
+	v1, err = e.Deliver(context.Background(), v1.ID, v1.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standalone, err := e.AppStandaloneHTML(v1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := e.AppPreview(v1.ID)
+	if err != nil || string(standalone) != preview.HTML || !strings.Contains(string(standalone), "localStorage.setItem") {
+		t.Fatalf("standalone HTML mismatch: %v", err)
+	}
+	v1Before, _ := json.Marshal(v1)
+	v1ArchiveBefore, err := e.AppSource(v1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callsBefore := len(gateway.requests)
+	v2, err := e.ContinueIdea(context.Background(), v1.ID, IdeaCreateRequest{Title: "Counter App v2", Goal: "Add step size selector", Acceptance: []string{"Increment works", "Custom step size works"}, ProfileID: q.Spec.ProfileID, MaxCalls: 12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gateway.requests) != callsBefore {
+		t.Fatal("ContinueIdea invoked model")
+	}
+	if v2.IdeaProject == nil || v2.IdeaProject.SchemaVersion != 2 || v2.IdeaProject.ParentMissionID != v1.ID || v2.Budget.UsedCalls != 0 {
+		t.Fatalf("unexpected continuation mission: %+v", v2.IdeaProject)
+	}
+	v2Root, err := e.selectedCandidate(v2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inheritedJS, err := os.ReadFile(filepath.Join(v2Root, "src/app.js"))
+	if err != nil || !strings.Contains(string(inheritedJS), "localStorage.setItem") {
+		t.Fatalf("v2 candidate did not inherit v1 src/app.js: %v %s", err, string(inheritedJS))
+	}
+	catalog, err := e.s.Catalog()
+	if err != nil || len(catalog.Projects) != 1 || len(catalog.MissionLinks) != 2 || catalog.MissionLinks[0].ProjectID != catalog.MissionLinks[1].ProjectID {
+		t.Fatalf("v2 should share v1 catalog project: %+v", catalog)
+	}
+	v1AfterMission, _ := e.s.GetMission(v1.ID)
+	v1After, _ := json.Marshal(v1AfterMission)
+	if string(v1Before) != string(v1After) {
+		t.Fatal("ContinueIdea mutated parent mission")
+	}
+	v1ArchiveAfter, err := e.AppSource(v1.ID)
+	if err != nil || !bytes.Equal(v1ArchiveBefore, v1ArchiveAfter) {
+		t.Fatal("ContinueIdea mutated parent export")
+	}
+	nonIdea, err := e.Create(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.ContinueIdea(context.Background(), nonIdea.ID, IdeaCreateRequest{Title: "Bad", Goal: "Non-idea", Acceptance: []string{"x"}, ProfileID: q.Spec.ProfileID, MaxCalls: 12}); err == nil {
+		t.Fatal("ContinueIdea accepted non-idea mission")
+	}
+	if _, err = e.ContinueIdea(context.Background(), "00000000000000000000000000000000", IdeaCreateRequest{Title: "Missing", Goal: "Missing", Acceptance: []string{"x"}, ProfileID: q.Spec.ProfileID, MaxCalls: 12}); err == nil {
+		t.Fatal("ContinueIdea accepted missing mission")
 	}
 }
